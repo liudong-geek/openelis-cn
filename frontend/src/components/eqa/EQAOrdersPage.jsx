@@ -318,6 +318,9 @@ const EQAOrdersPage = () => {
                 <TableToolbar>
                   <TableToolbarContent>
                     <TableToolbarSearch
+                      closeButtonLabelText={intl.formatMessage({
+                        id: "carbon.search.clear",
+                      })}
                       onChange={onInputChange}
                       placeholder={intl.formatMessage({
                         id: "eqa.orders.search.placeholder",
@@ -361,10 +364,15 @@ const EQAOrdersPage = () => {
                                     type={STATUS_TAG_MAP[cell.value] || "gray"}
                                     size="sm"
                                   >
-                                    {intl.formatMessage({
-                                      id: `eqa.status.${(cell.value || "").toLowerCase().replace("_", "")}`,
-                                      defaultMessage: cell.value,
-                                    })}
+                                    {(() => {
+                                      const statusMessageId = `eqa.status.${(cell.value || "").toLowerCase().replace("_", "")}`;
+                                      return intl.formatMessage({
+                                        id:
+                                          statusMessageId in intl.messages
+                                            ? statusMessageId
+                                            : "status.unknown",
+                                      });
+                                    })()}
                                   </Tag>
                                 </TableCell>
                               );
@@ -378,10 +386,15 @@ const EQAOrdersPage = () => {
                                     }
                                     size="sm"
                                   >
-                                    {intl.formatMessage({
-                                      id: `eqa.priority.${(cell.value || "").toLowerCase()}`,
-                                      defaultMessage: cell.value,
-                                    })}
+                                    {(() => {
+                                      const priorityMessageId = `eqa.priority.${(cell.value || "").toLowerCase()}`;
+                                      return intl.formatMessage({
+                                        id:
+                                          priorityMessageId in intl.messages
+                                            ? priorityMessageId
+                                            : "status.unknown",
+                                      });
+                                    })()}
                                   </Tag>
                                 </TableCell>
                               );

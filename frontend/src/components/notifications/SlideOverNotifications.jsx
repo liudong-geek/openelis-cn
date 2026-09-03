@@ -31,33 +31,36 @@ export default function SlideOverNotifications(props) {
   const [subscriptionState, setSubscriptionState] = useState(null);
 
   useEffect(() => {
-    // Whenever subscriptionState changes, re-check the subscription status
+    let mounted = true;
 
-    intialSubscriptionState(); // Fetch the current subscription state again
-  }, [subscriptionState]);
+    const initializeSubscriptionState = async () => {
+      try {
+        const res = await getFromOpenElisServerV2(
+          "/rest/notification/pnconfig",
+        );
+        const reg = await navigator.serviceWorker.ready;
+        const subscription = await reg.pushManager.getSubscription();
+        if (!mounted) return;
 
-  const intialSubscriptionState = async () => {
-    try {
-      const res = await getFromOpenElisServerV2("/rest/notification/pnconfig");
-      const reg = await navigator.serviceWorker.ready;
-      const subscription = await reg.pushManager.getSubscription();
-      if (!subscription && !res?.pf_endpoint) {
-        setSubscriptionState("NotSubscribed");
-        console.log("NotSubscribed");
-      } else if (subscription?.endpoint === res?.pfEndpoint) {
-        setSubscriptionState("SubscribedOnThisDevice");
-        console.log("SubscribedOnThisDevice");
-      } else {
-        console.log("subscription?.endpoint", subscription?.endpoint);
-
-        setSubscriptionState("SubscribedOnAnotherDevice");
-        console.log("SubscribedOnAnotherDevice");
+        if (!res?.subscribed) {
+          setSubscriptionState("NotSubscribed");
+        } else if (subscription?.endpoint === res?.pfEndpoint) {
+          setSubscriptionState("SubscribedOnThisDevice");
+        } else {
+          setSubscriptionState("SubscribedOnAnotherDevice");
+        }
+      } catch {
+        // Push notifications are optional. A local installation without push
+        // configuration must remain usable and should not emit a console error.
+        if (mounted) setSubscriptionState("NotSubscribed");
       }
-    } catch (error) {
-      console.error("Error checking subscription status:", error);
-      setSubscriptionState("NotSubscribed");
-    }
-  };
+    };
+
+    initializeSubscriptionState();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   async function unsubscribe() {
     try {

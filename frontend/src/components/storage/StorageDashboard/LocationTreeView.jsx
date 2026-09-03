@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { ChevronRight, ChevronDown } from "@carbon/react/icons";
+import { useIntl } from "react-intl";
 import { getFromOpenElisServer } from "../../utils/Utils";
 import "./LocationTreeView.css";
 
@@ -12,6 +13,7 @@ import "./LocationTreeView.css";
  * - allowInactive: boolean - Allow selection of inactive locations (default: false)
  */
 const LocationTreeView = ({ onLocationSelect, allowInactive = false }) => {
+  const intl = useIntl();
   const [rooms, setRooms] = useState([]);
   const [expandedNodes, setExpandedNodes] = useState(new Set());
   const [loadedChildren, setLoadedChildren] = useState({}); // { nodeId: { devices: [], shelves: [], racks: [] } }
@@ -135,7 +137,11 @@ const LocationTreeView = ({ onLocationSelect, allowInactive = false }) => {
               onClick={() => toggleNode(node.id, nodeType, parentId)}
               className="tree-expand-button"
               aria-expanded={isExpanded}
-              aria-label={isExpanded ? "Collapse" : "Expand"}
+              aria-label={intl.formatMessage({
+                id: isExpanded
+                  ? "sampleManagement.hierarchy.collapse"
+                  : "sampleManagement.hierarchy.expand",
+              })}
               title=""
             >
               {isExpanded ? (
@@ -153,7 +159,11 @@ const LocationTreeView = ({ onLocationSelect, allowInactive = false }) => {
             disabled={!allowInactive && isInactive}
           >
             {displayName}
-            {isInactive && <span className="inactive-badge"> (Inactive)</span>}
+            {isInactive && (
+              <span className="inactive-badge">
+                {`（${intl.formatMessage({ id: "inventory.status.INACTIVE" })}）`}
+              </span>
+            )}
           </button>
         </div>
         {isExpanded && hasChildren && childType && (

@@ -69,6 +69,9 @@ public interface ResultDAO extends BaseDAO<Result, String> {
 
     List<Result> getResultsForSample(Sample sample) throws LIMSRuntimeException;
 
+    List<Result> getFinalizedReportableResultsForPatient(String patientId, String finalizedStatusId, String testId)
+            throws LIMSRuntimeException;
+
     List<Result> getChildResults(String resultId) throws LIMSRuntimeException;
 
     Result getResultByFhirUuid(String fhirUuid) throws LIMSRuntimeException;

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import {
   Button,
   InlineLoading,
+  InlineNotification,
   NumberInput,
   Stack,
   StructuredListBody,
@@ -14,6 +15,7 @@ import {
 import { Printer } from "@carbon/icons-react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { clampToMax, normalizeQuantity } from "./quantity";
+import { resolveBackendPrintUrl } from "./labelMakerUrl";
 import "./PostSavePrintDialog.scss";
 
 // Normalise one incoming row into the dialog's preset-driven shape.
@@ -105,6 +107,7 @@ const PostSavePrintDialog = ({
     });
     return seed;
   });
+  const [printError, setPrintError] = useState("");
 
   if (!accessionNumber) return null;
 
@@ -125,6 +128,7 @@ const PostSavePrintDialog = ({
 
   const handlePrint = (row) => {
     const chosenQty = clampToMax(quantityFor(row), row.savedQty);
+    setPrintError("");
     if (onPrint) {
       onPrint(
         row.presetId != null ? row.presetId : row.labelName,
@@ -134,20 +138,25 @@ const PostSavePrintDialog = ({
       return;
     }
     if (!row.printUrl) {
-      console.warn(
-        "PostSavePrintDialog: no printUrl or onPrint handler for",
-        row.labelName,
+      const message = intl.formatMessage(
+        { id: "barcode.print.dialog.error.unavailable" },
+        { label: labelNameFor(row) },
       );
+      console.warn(message);
+      setPrintError(message);
       return;
     }
     // Honour the chosen (decreased) quantity for legacy quantity-bearing URLs.
-    const url = applyQuantityToUrl(row.printUrl, chosenQty);
+    const url = resolveBackendPrintUrl(
+      applyQuantityToUrl(row.printUrl, chosenQty),
+    );
     const printWindow = window.open(url);
     if (!printWindow) {
-      console.warn(
-        "PostSavePrintDialog: window.open returned null (popup blocked?) for",
-        url,
-      );
+      const message = intl.formatMessage({
+        id: "barcode.print.dialog.error.popupBlocked",
+      });
+      console.warn(message);
+      setPrintError(message);
       if (onPopupBlocked) {
         onPopupBlocked(row);
       }
@@ -164,7 +173,22 @@ const PostSavePrintDialog = ({
           <Tag type="cool-gray" className="post-save-dialog__accession-tag">
             {accessionNumber}
           </Tag>
+          <p className="post-save-dialog__label-qty">
+            <FormattedMessage id="barcode.print.dialog.instruction" />
+          </p>
         </div>
+
+        {printError && (
+          <InlineNotification
+            kind="error"
+            lowContrast
+            title={intl.formatMessage({
+              id: "barcode.print.dialog.error.title",
+            })}
+            subtitle={printError}
+            onCloseButtonClick={() => setPrintError("")}
+          />
+        )}
 
         {onSkip && (
           <div className="post-save-dialog__skip">
@@ -207,6 +231,9 @@ const PostSavePrintDialog = ({
                             : _event?.target?.value;
                         handleQuantityChange(row, raw);
                       }}
+                      translateWithId={(messageId) =>
+                        intl.formatMessage({ id: `carbon.${messageId}` })
+                      }
                     />
                   </StructuredListCell>
                   <StructuredListCell className="post-save-dialog__action-cell">
@@ -224,7 +251,19 @@ const PostSavePrintDialog = ({
           </StructuredListWrapper>
         )}
 
-        {isLoading && <InlineLoading />}
+        {!isLoading && rows.length === 0 && (
+          <p className="post-save-dialog__label-qty">
+            <FormattedMessage id="barcode.print.dialog.empty" />
+          </p>
+        )}
+
+        {isLoading && (
+          <InlineLoading
+            description={intl.formatMessage({
+              id: "barcode.print.dialog.loading",
+            })}
+          />
+        )}
       </Stack>
     </Tile>
   );

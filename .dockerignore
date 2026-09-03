@@ -16,5 +16,10 @@ volume/
 dev/
 docs/
 specs/
+tmp/
 
+# Local conflict copies retained only until the G0 workspace audit is closed.
+# Never allow these stale implementations into a release build context.
+frontend/src/components/home/LandingPage 2.tsx
+frontend/src/components/reports/Index 2.jsx
 

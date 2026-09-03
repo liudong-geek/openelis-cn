@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+  <!--
+    The local Chinese delivery profile has one task-oriented result-entry
+    surface. Legacy routes remain compatibility aliases, but users should not
+    land on the fragmented search form from the dashboard or navigation.
+  -->
+  <changeSet author="local-chinese-edition" id="3.5.0-070-cn-enable-unified-results">
+    <preConditions onFail="MARK_RAN">
+      <sqlCheck expectedResult="1">
+        SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'resultsEntryUnifiedRoute'
+      </sqlCheck>
+    </preConditions>
+    <update schemaName="clinlims" tableName="site_information">
+      <column name="value" value="true"/>
+      <column name="lastupdated" valueComputed="now()"/>
+      <where>name = 'resultsEntryUnifiedRoute'</where>
+    </update>
+    <rollback>
+      <update schemaName="clinlims" tableName="site_information">
+        <column name="value" value="false"/>
+        <column name="lastupdated" valueComputed="now()"/>
+        <where>name = 'resultsEntryUnifiedRoute'</where>
+      </update>
+    </rollback>
+  </changeSet>
+
+</databaseChangeLog>

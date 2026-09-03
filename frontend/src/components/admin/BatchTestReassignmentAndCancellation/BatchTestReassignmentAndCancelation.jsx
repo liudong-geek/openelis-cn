@@ -9,8 +9,8 @@ import {
   Select,
   SelectItem,
   Checkbox,
-  Tag,
 } from "@carbon/react";
+import Tag from "../../common/LocalizedTag";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import {
@@ -18,6 +18,7 @@ import {
   NotificationKinds,
 } from "../../common/CustomNotification";
 import { NotificationContext } from "../../layout/Layout";
+import { navigateToInternalPath } from "../../utils/NavigationUtils";
 import {
   getFromOpenElisServer,
   postToOpenElisServerJsonResponse,
@@ -250,7 +251,7 @@ function BatchTestReassignmentAndCancelation() {
       });
       setNotificationVisible(true);
       setTimeout(() => {
-        window.location.reload();
+        refreshCurrentRoute();
       }, 200);
     } else {
       addNotification({
@@ -260,7 +261,7 @@ function BatchTestReassignmentAndCancelation() {
       });
       setNotificationVisible(true);
       setTimeout(() => {
-        window.location.reload();
+        refreshCurrentRoute();
       }, 200);
     }
   }
@@ -804,8 +805,9 @@ function BatchTestReassignmentAndCancelation() {
                 data-cy="cancelButton"
                 onClick={() => {
                   resetToDefault();
-                  window.location.assign(
+                  navigateToInternalPath(
                     "/MasterListsPage/batchTestReassignment",
+                    { replace: true },
                   );
                 }}
                 kind="tertiary"
@@ -1013,8 +1015,9 @@ function BatchTestReassignmentAndCancelation() {
                   </Button>{" "}
                   <Button
                     onClick={() =>
-                      window.location.assign(
+                      navigateToInternalPath(
                         "/MasterListsPage/batchTestReassignment",
+                        { replace: true },
                       )
                     }
                     kind="tertiary"

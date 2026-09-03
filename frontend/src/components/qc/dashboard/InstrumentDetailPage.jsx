@@ -158,7 +158,11 @@ const InstrumentDetailPage = () => {
           selectedIndex={activeSubTab}
           onChange={({ selectedIndex }) => setActiveSubTab(selectedIndex)}
         >
-          <TabList aria-label="Instrument detail tabs">
+          <TabList
+            aria-label={intl.formatMessage({
+              id: "qc.instrumentDetail.tabs.ariaLabel",
+            })}
+          >
             <Tab data-testid="tab-activity-timeline">
               {intl.formatMessage({ id: "qc.instrument.tab.timeline" })}
             </Tab>

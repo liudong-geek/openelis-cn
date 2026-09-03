@@ -1,4 +1,5 @@
 import React, { useContext, useState, useEffect, useRef } from "react";
+import { navigateToInternalPath } from "../utils/NavigationUtils";
 import {
   Checkbox,
   Heading,
@@ -211,7 +212,7 @@ function CytologyDashboard() {
   };
 
   const openCaseView = (id) => {
-    window.location.href = "/CytologyCaseView/" + id;
+    navigateToInternalPath(`/CytologyCaseView/${encodeURIComponent(id)}`);
   };
 
   useEffect(() => {

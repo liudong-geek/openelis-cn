@@ -16,12 +16,12 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  Tag,
   TextArea,
   TextInput,
   Tile,
   Toggle,
 } from "@carbon/react";
+import Tag from "../common/LocalizedTag";
 import { useContext, useEffect, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { useHistory } from "react-router-dom";

@@ -1,47 +1,56 @@
 import React, { useState } from "react";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
-import { Form, Grid, Column, Section, Button, Loading } from "@carbon/react";
-import CustomLabNumberInput from "../../common/CustomLabNumberInput";
-import { AlertDialog } from "../../common/CustomNotification";
+import {
+  Form,
+  Grid,
+  Column,
+  Section,
+  Button,
+  InlineNotification,
+  TextInput,
+} from "@carbon/react";
 import config from "../../../config.json";
+import { buildReportUrl, openReportWindow } from "./reportLaunch";
 
 function ReportByID(props) {
   const intl = useIntl();
   const [nationalId, setNationalId] = useState("");
   const [errors, setErrors] = useState({});
-  const [notificationVisible, setNotificationVisible] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [launchError, setLaunchError] = useState(false);
 
-  const handleSubmit = () => {
-    if (!nationalId) {
-      setErrors({ nationalId: "National ID is required" });
+  const handleSubmit = (event) => {
+    event?.preventDefault();
+    const normalizedNationalId = nationalId.trim();
+    if (!normalizedNationalId) {
+      setErrors({
+        nationalId: intl.formatMessage({
+          id: "reports.query.validation.nationalId",
+        }),
+      });
       return;
     }
 
-    setLoading(true);
-
-    console.log("National ID:", nationalId);
-    const baseParams = `report=${props.report}&type=patient`;
-    const baseUrl = `${config.serverBaseUrl}/ReportPrint`;
-    const url = `${baseUrl}?${baseParams}&patientNumberDirect=${nationalId}`;
-    window.open(url, "_blank");
-
-    setNationalId("");
+    const url = buildReportUrl(config.serverBaseUrl, {
+      report: props.report,
+      type: "patient",
+      patientNumberDirect: normalizedNationalId,
+    });
+    const opened = openReportWindow(url);
     setErrors({});
-    setLoading(false);
-    setNotificationVisible(true);
+    setLaunchError(!opened);
   };
 
   // Function to handle changes in the input field
   const handleInputChange = (event) => {
     setErrors({});
-    setNationalId(event.target.value);
+    setLaunchError(false);
+    setNationalId(event?.target?.value ?? "");
   };
 
   return (
     <>
       <br />
-      <Form>
+      <Form onSubmit={handleSubmit}>
         <Grid>
           <Column lg={16} md={8} sm={4}>
             <Section>
@@ -54,8 +63,17 @@ function ReportByID(props) {
           </Column>
         </Grid>
         <br />
-        {notificationVisible && <AlertDialog />}
-        {loading && <Loading />}
+        {launchError && (
+          <InlineNotification
+            kind="error"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({ id: "reports.query.error.title" })}
+            subtitle={intl.formatMessage({
+              id: "reports.query.popupBlocked",
+            })}
+          />
+        )}
         <Grid fullWidth={true}>
           <Column lg={16} md={8} sm={4}>
             <Section>
@@ -66,15 +84,14 @@ function ReportByID(props) {
         <br />
         <Grid fullWidth={true}>
           <Column lg={6} md={4} sm={4}>
-            <CustomLabNumberInput
+            <TextInput
               id="nationalID"
               labelText={intl.formatMessage({
                 id: "nationalID.title",
-                defaultMessage: "National ID",
               })}
               value={nationalId}
-              onChange={handleInputChange} // Use the new handler here
-              invalid={errors.nationalId}
+              onChange={handleInputChange}
+              invalid={!!errors.nationalId}
               invalidText={errors.nationalId}
             />
           </Column>
@@ -84,12 +101,7 @@ function ReportByID(props) {
         <Grid fullWidth={true}>
           <Column lg={16}>
             <Section>
-              <Button
-                data-cy="printableVersion"
-                type="button"
-                onClick={handleSubmit}
-                disabled={!nationalId}
-              >
+              <Button data-cy="printableVersion" type="submit">
                 <FormattedMessage id="label.button.generatePrintableVersion" />
               </Button>
             </Section>

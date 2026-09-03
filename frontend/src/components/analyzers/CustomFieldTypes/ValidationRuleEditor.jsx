@@ -10,9 +10,9 @@ import {
   InlineNotification,
   Grid,
   Column,
-  Tag,
   TextArea,
 } from "@carbon/react";
+import Tag from "../../common/LocalizedTag";
 import { useIntl } from "react-intl";
 import {
   createValidationRule,
@@ -236,7 +236,7 @@ const ValidationRuleEditor = ({
             id: "validationRule.error.saveFailed",
             defaultMessage: "Failed to save validation rule",
           }),
-          subtitle: extraParams?.error || "Unknown error",
+          subtitle: extraParams?.error || "未知错误",
         });
       }
     };
@@ -325,7 +325,7 @@ const ValidationRuleEditor = ({
             }),
       });
     } catch (e) {
-      setTestError(e.message || "Validation error");
+      setTestError(e.message || "校验过程发生错误");
       setTestResult(null);
     }
   };
@@ -398,10 +398,10 @@ const ValidationRuleEditor = ({
             }}
             data-testid="rule-type-select"
           >
-            <SelectItem value="REGEX" text="REGEX" />
-            <SelectItem value="RANGE" text="RANGE" />
-            <SelectItem value="ENUM" text="ENUM" />
-            <SelectItem value="LENGTH" text="LENGTH" />
+            <SelectItem value="REGEX" text="正则表达式" />
+            <SelectItem value="RANGE" text="数值范围" />
+            <SelectItem value="ENUM" text="允许值列表" />
+            <SelectItem value="LENGTH" text="文本长度" />
           </Select>
         </FormGroup>
 

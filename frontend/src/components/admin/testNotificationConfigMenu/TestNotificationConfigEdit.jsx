@@ -22,6 +22,7 @@ import {
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import { useLocation } from "react-router-dom";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import { navigateToInternalPath } from "../../utils/NavigationUtils";
 
 let breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -752,8 +753,9 @@ function TestNotificationConfigEdit() {
                 </Button>{" "}
                 <Button
                   onClick={() =>
-                    window.location.assign(
+                    navigateToInternalPath(
                       "/MasterListsPage/testNotificationConfigMenu",
+                      { replace: true },
                     )
                   }
                   kind="tertiary"

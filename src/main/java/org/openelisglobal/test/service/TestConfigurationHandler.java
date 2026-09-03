@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -158,8 +159,8 @@ public class TestConfigurationHandler implements DomainConfigurationHandler {
                     nextSortOrder++;
                 }
             } catch (Exception e) {
-                LogEvent.logError(this.getClass().getSimpleName(), "processConfiguration",
-                        "Error processing line " + lineNumber + " in file " + fileName + ": " + e.getMessage());
+                throw new IllegalStateException(
+                        "Error processing line " + lineNumber + " in file " + fileName + ": " + e.getMessage(), e);
             }
         }
 
@@ -172,8 +173,8 @@ public class TestConfigurationHandler implements DomainConfigurationHandler {
                     terminologyMappingService.syncLegacyLoinc(loaded.getId(), loaded.getLoinc(), "1");
                 }
             } catch (Exception e) {
-                LogEvent.logError(this.getClass().getSimpleName(), "processConfiguration",
-                        "Failed to bridge test " + loaded.getId() + " to the new editor model: " + e.getMessage());
+                throw new IllegalStateException(
+                        "Failed to bridge test " + loaded.getId() + " to the new editor model: " + e.getMessage(), e);
             }
         }
 
@@ -260,7 +261,7 @@ public class TestConfigurationHandler implements DomainConfigurationHandler {
         return localizationColumns;
     }
 
-    private Test processCsvLine(String[] values, int testNameIndex, int testSectionIndex, int sampleTypeIndex,
+    Test processCsvLine(String[] values, int testNameIndex, int testSectionIndex, int sampleTypeIndex,
             int loincIndex, int isActiveIndex, int isOrderableIndex, int sortOrderIndex, int unitOfMeasureIndex,
             Map<String, Integer> localizationColumns, int lineNumber, String fileName, int defaultSortOrder) {
 
@@ -356,21 +357,51 @@ public class TestConfigurationHandler implements DomainConfigurationHandler {
         }
     }
 
-    private Test findExistingTest(String testName, String[] values, Map<String, Integer> localizationColumns) {
-        Test existingTest = testService.getTestByNormalizedDescription(testName);
-        if (existingTest == null) {
-            for (Map.Entry<String, Integer> entry : localizationColumns.entrySet()) {
-                String translationValue = getValueOrEmpty(values, entry.getValue());
-                if (!translationValue.isEmpty()) {
-                    existingTest = testService.getTestByLocalizedName(translationValue,
-                            Locale.forLanguageTag(entry.getKey()));
-                    if (existingTest != null) {
-                        break;
-                    }
+    Test findExistingTest(String testName, String[] values, Map<String, Integer> localizationColumns) {
+        // The database uniqueness contract is the exact test description. Resolve that
+        // identity before fuzzy/localized fallbacks so a repeat import always updates the
+        // same row, including when several descriptions share one legacy normalized key.
+        Test existingTest = testService.getTestByDescription(testName);
+        if (existingTest != null) {
+            return existingTest;
+        }
+
+        for (Map.Entry<String, Integer> entry : localizationColumns.entrySet()) {
+            String translationValue = getValueOrEmpty(values, entry.getValue());
+            if (!translationValue.isEmpty()) {
+                existingTest = testService.getTestByLocalizedName(translationValue,
+                        Locale.forLanguageTag(entry.getKey()));
+                if (existingTest != null) {
+                    return existingTest;
                 }
             }
         }
-        return existingTest;
+
+        Test normalizedMatch = testService.getTestByNormalizedDescription(testName);
+        if (normalizedMatch == null) {
+            return null;
+        }
+
+        // The legacy normalized_description removes every punctuation mark, so distinct
+        // analyzer codes such as LYM% and LYM# both become "lym". Keep useful fuzzy
+        // upgrades (for example Stat-Pak -> Stat PaK), but never reuse a row when the
+        // clinically meaningful #/% discriminator differs.
+        if (configurationIdentity(testName).equals(configurationIdentity(normalizedMatch.getDescription()))) {
+            return normalizedMatch;
+        }
+
+        LogEvent.logWarn(this.getClass().getSimpleName(), "findExistingTest",
+                "Ignoring ambiguous normalized test match '" + normalizedMatch.getDescription() + "' for '" + testName
+                        + "'; an exact description will be created instead.");
+        return null;
+    }
+
+    private String configurationIdentity(String description) {
+        if (description == null) {
+            return "";
+        }
+        return Normalizer.normalize(description, Normalizer.Form.NFD).replaceAll("\\p{M}+", "")
+                .toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9#%]", "");
     }
 
     private String getValueOrEmpty(String[] values, int index) {

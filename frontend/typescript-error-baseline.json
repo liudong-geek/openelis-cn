@@ -1,0 +1,429 @@
+{
+  "version": 1,
+  "total": 1209,
+  "diagnostics": {
+    "playwright/tests/demo/core/ogc-284-barcode-workflow.spec.ts": {
+      "TS2305": 2,
+      "TS7006": 2
+    },
+    "playwright/tests/demo/core/ogc-284-labels-ui.spec.ts": {
+      "TS7006": 1
+    },
+    "playwright/tests/demo/core/ogc-307-tat-report.spec.ts": {
+      "TS2305": 1
+    },
+    "playwright/tests/demo/core/ogc-62-shipment-workflow.spec.ts": {
+      "TS2305": 1,
+      "TS7006": 1
+    },
+    "playwright/tests/demo/harness/astm-genexpert-results.spec.ts": {
+      "TS2305": 2
+    },
+    "playwright/tests/demo/harness/file-import-results.spec.ts": {
+      "TS2305": 1
+    },
+    "playwright/tests/foundational/core/billing-menu-config.spec.ts": {
+      "TS2305": 2,
+      "TS7006": 1
+    },
+    "playwright/tests/foundational/core/electronic-signature.spec.ts": {
+      "TS2305": 1
+    },
+    "playwright/tests/foundational/core/general-configurations.spec.ts": {
+      "TS2305": 2
+    },
+    "playwright/tests/foundational/core/ogc-557-informed-consent.spec.ts": {
+      "TS2305": 1,
+      "TS7006": 1
+    },
+    "playwright/tests/foundational/harness/analyzer-plugin-config.spec.ts": {
+      "TS2322": 1
+    },
+    "playwright/tests/foundational/harness/analyzer-simulator.spec.ts": {
+      "TS2322": 1
+    },
+    "playwright/tests/foundational/harness/analyzer-test-connection-foundational.spec.ts": {
+      "TS2322": 1
+    },
+    "src/components/admin/calculatedValue/__tests__/CalculatedValueForm.toggleRule.test.tsx": {
+      "TS2304": 13,
+      "TS7006": 5,
+      "TS2593": 4
+    },
+    "src/components/admin/calculatedValue/CalculatedValueForm.tsx": {
+      "TS7016": 4,
+      "TS2322": 24,
+      "TS7006": 23,
+      "TS7034": 1,
+      "TS7005": 1,
+      "TS2345": 1,
+      "TS7053": 2,
+      "TS18046": 1,
+      "TS2339": 4
+    },
+    "src/components/admin/generalConfig/common/ConfigMenuDisplay.tsx": {
+      "TS7016": 3,
+      "TS18048": 1,
+      "TS2345": 2,
+      "TS2783": 1
+    },
+    "src/components/admin/generalConfig/common/GenericConfigEdit.tsx": {
+      "TS7016": 2,
+      "TS2345": 1,
+      "TS2322": 3,
+      "TS2741": 1
+    },
+    "src/components/admin/generalConfig/siteBranding/__tests__/ColorPickerSection.test.tsx": {
+      "TS7016": 1,
+      "TS7006": 1,
+      "TS2593": 12,
+      "TS2304": 28,
+      "TS2322": 1,
+      "TS2345": 1
+    },
+    "src/components/admin/generalConfig/siteBranding/__tests__/LogoUploadSection.test.tsx": {
+      "TS2304": 28,
+      "TS2305": 1,
+      "TS7016": 1,
+      "TS7006": 11,
+      "TS2593": 16,
+      "TS2345": 4,
+      "TS2339": 4
+    },
+    "src/components/admin/generalConfig/siteBranding/__tests__/SiteBrandingConfig.test.tsx": {
+      "TS2304": 25,
+      "TS2305": 1,
+      "TS7016": 2,
+      "TS7006": 17,
+      "TS2593": 12,
+      "TS2339": 13,
+      "TS2345": 1
+    },
+    "src/components/admin/generalConfig/siteBranding/LogoUploadSection.tsx": {
+      "TS2345": 1,
+      "TS2322": 2
+    },
+    "src/components/admin/generalConfig/siteBranding/SiteBrandingConfig.tsx": {
+      "TS7016": 4,
+      "TS2345": 1
+    },
+    "src/components/admin/labNumber/LabNumberManagement.tsx": {
+      "TS7016": 4,
+      "TS2339": 5,
+      "TS2367": 1,
+      "TS2345": 4,
+      "TS2322": 1
+    },
+    "src/components/admin/localizationManagement/LanguageManagement.tsx": {
+      "TS7016": 2,
+      "TS2339": 1,
+      "TS2345": 4,
+      "TS2783": 1
+    },
+    "src/components/admin/localizationManagement/TranslationManagement.tsx": {
+      "TS7016": 2,
+      "TS2339": 2,
+      "TS2345": 1,
+      "TS2322": 1,
+      "TS2783": 1
+    },
+    "src/components/admin/OrganizationManagement/OrganizationAddModify.tsx": {
+      "TS7016": 5,
+      "TS2322": 1,
+      "TS2741": 1,
+      "TS2783": 2
+    },
+    "src/components/admin/OrganizationManagement/OrganizationManagement.tsx": {
+      "TS7016": 4,
+      "TS2345": 1,
+      "TS2783": 1
+    },
+    "src/components/admin/pluginFile/PluginFile.tsx": {
+      "TS7016": 1,
+      "TS2783": 1
+    },
+    "src/components/admin/ProviderMenu/ProviderMenu.tsx": {
+      "TS7016": 4,
+      "TS2345": 4,
+      "TS2783": 1
+    },
+    "src/components/admin/searchIndexManagement/SearchIndexManagement.tsx": {
+      "TS7016": 3
+    },
+    "src/components/analyzers/AnalyzersList/AnalyzersList.tsx": {
+      "TS7016": 2,
+      "TS2783": 2
+    },
+    "src/components/analyzers/DeleteAnalyzerModal/DeleteAnalyzerModal.tsx": {
+      "TS2345": 1
+    },
+    "src/components/analyzers/TestConnectionModal/TestConnectionModal.tsx": {
+      "TS18048": 1
+    },
+    "src/components/common/PageTitle/PageTitle.test.tsx": {
+      "TS7016": 1,
+      "TS2593": 7,
+      "TS2304": 11
+    },
+    "src/components/common/PageTitle/PageTitle.tsx": {
+      "TS7016": 1
+    },
+    "src/components/formModel/innitialValues/CalculatedValueFormSchema.tsx": {
+      "TS2322": 8
+    },
+    "src/components/home/Dashboard.tsx": {
+      "TS7016": 4,
+      "TS2345": 4,
+      "TS7006": 12,
+      "TS2339": 7,
+      "TS2783": 1
+    },
+    "src/components/home/LandingPage.tsx": {
+      "TS7016": 2
+    },
+    "src/components/patient/__tests__/CreatePatientForm.csvHierarchy.test.tsx": {
+      "TS2304": 27,
+      "TS7006": 4,
+      "TS7053": 1,
+      "TS2322": 1,
+      "TS2593": 6,
+      "TS18047": 4,
+      "TS2345": 2
+    },
+    "src/components/patient/__tests__/CreatePatientForm.editLifecycle.test.tsx": {
+      "TS2304": 27,
+      "TS7006": 5,
+      "TS7053": 1,
+      "TS7031": 3,
+      "TS2322": 2,
+      "TS2593": 6,
+      "TS2345": 13
+    },
+    "src/components/patient/__tests__/CreatePatientForm.enterDoesNotSubmit.test.tsx": {
+      "TS2304": 19,
+      "TS7006": 5,
+      "TS7053": 1,
+      "TS7031": 3,
+      "TS2322": 1,
+      "TS2593": 4,
+      "TS2345": 7,
+      "TS2531": 2
+    },
+    "src/components/patient/__tests__/CreatePatientForm.gating.test.tsx": {
+      "TS2304": 23,
+      "TS7006": 4,
+      "TS7016": 1,
+      "TS2322": 1,
+      "TS2593": 8,
+      "TS18047": 3
+    },
+    "src/components/patient/__tests__/CreatePatientForm.ogc671.test.tsx": {
+      "TS7016": 2,
+      "TS2304": 36,
+      "TS7006": 6,
+      "TS7053": 1,
+      "TS2322": 1,
+      "TS2593": 9
+    },
+    "src/components/patient/__tests__/CreatePatientForm.onChange.test.tsx": {
+      "TS2304": 25,
+      "TS7006": 4,
+      "TS7053": 1,
+      "TS2322": 1,
+      "TS2593": 5,
+      "TS18047": 8,
+      "TS2345": 3,
+      "TS2339": 1
+    },
+    "src/components/patient/__tests__/CreatePatientForm.phoneValidation.test.tsx": {
+      "TS2304": 17,
+      "TS7006": 5,
+      "TS7053": 1,
+      "TS7031": 4,
+      "TS2322": 1,
+      "TS2593": 5,
+      "TS2345": 4,
+      "TS18047": 3,
+      "TS2339": 1
+    },
+    "src/components/patient/__tests__/CreatePatientForm.statePreservation.test.tsx": {
+      "TS2304": 25,
+      "TS7006": 5,
+      "TS7053": 1,
+      "TS7031": 3,
+      "TS2322": 1,
+      "TS2593": 7,
+      "TS2345": 8,
+      "TS2531": 1,
+      "TS2339": 1
+    },
+    "src/components/patient/AddressSearch.tsx": {
+      "TS2345": 1,
+      "TS18048": 1
+    },
+    "src/components/patient/CreatePatientForm.tsx": {
+      "TS7016": 6,
+      "TS7006": 43,
+      "TS18048": 7,
+      "TS2339": 5,
+      "TS18047": 2,
+      "TS7053": 2,
+      "TS2362": 1,
+      "TS2363": 1,
+      "TS2345": 1,
+      "TS2322": 23,
+      "TS7031": 29,
+      "TS2349": 3,
+      "TS2740": 1
+    },
+    "src/components/patient/IdentificationDocuments.tsx": {
+      "TS2345": 3,
+      "TS2322": 2
+    },
+    "src/components/patient/PatientFormObserver.test.ts": {
+      "TS2593": 7,
+      "TS2304": 9,
+      "TS2339": 1,
+      "TS18048": 2
+    },
+    "src/components/patient/PatientFormObserver.tsx": {
+      "TS2322": 1,
+      "TS2339": 32
+    },
+    "src/components/patient/PatientHistory.tsx": {
+      "TS7016": 2,
+      "TS2322": 1
+    },
+    "src/components/patient/PatientManagement.tsx": {
+      "TS7016": 2,
+      "TS2322": 6
+    },
+    "src/components/patient/PatientMerge.tsx": {
+      "TS7016": 4,
+      "TS2339": 3,
+      "TS2345": 4,
+      "TS18047": 2
+    },
+    "src/components/patient/patientMerge/ConfirmationStep.tsx": {
+      "TS2322": 3,
+      "TS2345": 1
+    },
+    "src/components/patient/patientMerge/PatientCard.tsx": {
+      "TS2345": 2,
+      "TS18047": 8
+    },
+    "src/components/patient/patientMerge/patientMergeService.ts": {
+      "TS2769": 2
+    },
+    "src/components/patient/patientMerge/PatientSearchPanel.tsx": {
+      "TS7016": 2,
+      "TS2339": 2,
+      "TS2322": 3,
+      "TS7031": 4,
+      "TS7006": 1,
+      "TS2783": 1
+    },
+    "src/components/patient/patientMerge/PrimarySelectionStep.tsx": {
+      "TS2322": 3,
+      "TS2345": 1
+    },
+    "src/components/patient/resultsViewer/commons/empty-state/empty-state.component.tsx": {
+      "TS2722": 1
+    },
+    "src/components/patient/resultsViewer/commons/utils/notification.tsx": {
+      "TS7016": 1,
+      "TS2322": 1
+    },
+    "src/components/patient/resultsViewer/filter/filter-context.tsx": {
+      "TS7016": 1,
+      "TS2345": 1,
+      "TS7006": 1,
+      "TS7034": 1,
+      "TS18048": 2,
+      "TS7005": 1
+    },
+    "src/components/patient/resultsViewer/filter/filter-reducer.ts": {
+      "TS7006": 4,
+      "TS2322": 1,
+      "TS2464": 1,
+      "TS2538": 2
+    },
+    "src/components/patient/resultsViewer/filter/filter-set.tsx": {
+      "TS2322": 1
+    },
+    "src/components/patient/resultsViewer/grouped-timeline/grouped-timeline.tsx": {
+      "TS2783": 2,
+      "TS2322": 1
+    },
+    "src/components/patient/resultsViewer/grouped-timeline/useObstreeData.ts": {
+      "TS7006": 11,
+      "TS2339": 1
+    },
+    "src/components/patient/resultsViewer/loadPatientTestData/helpers.ts": {
+      "TS7006": 3
+    },
+    "src/components/patient/resultsViewer/overview/common-datatable.component.tsx": {
+      "TS2783": 2,
+      "TS7053": 1
+    },
+    "src/components/patient/resultsViewer/results-viewer.tsx": {
+      "TS7016": 2,
+      "TS2322": 2,
+      "TS7006": 1
+    },
+    "src/components/patient/resultsViewer/trendline/range-selector.component.tsx": {
+      "TS2322": 1
+    },
+    "src/components/patient/resultsViewer/trendline/trendline-resource.tsx": {
+      "TS18048": 2,
+      "TS2345": 2,
+      "TS7006": 1,
+      "TS2339": 2,
+      "TS2352": 1
+    },
+    "src/components/patient/resultsViewer/trendline/trendline.component.tsx": {
+      "TS7031": 7,
+      "TS18048": 5,
+      "TS7008": 2
+    },
+    "src/components/patient/SearchPatientForm.tsx": {
+      "TS7016": 7,
+      "TS2339": 7,
+      "TS2345": 10,
+      "TS2365": 1,
+      "TS7031": 7,
+      "TS7053": 2,
+      "TS7006": 3,
+      "TS2322": 2,
+      "TS2783": 1
+    },
+    "src/components/patient/usePatientDetails.ts": {
+      "TS2345": 2
+    },
+    "src/components/resultPage/fileUpload/FileInput.tsx": {
+      "TS2345": 1
+    },
+    "src/components/resultPage/unified/PolymorphicResultCell.tsx": {
+      "TS7016": 2
+    },
+    "src/components/resultPage/unified/routeGates.tsx": {
+      "TS7016": 2
+    },
+    "src/components/resultPage/unified/UnifiedResults.tsx": {
+      "TS7016": 3,
+      "TS2339": 2,
+      "TS2345": 3,
+      "TS2322": 1
+    },
+    "src/services/analyzerService.ts": {
+      "TS2345": 19,
+      "TS2769": 12
+    },
+    "src/services/serialService.ts": {
+      "TS2345": 3
+    },
+    "vite.config.ts": {
+      "TS2769": 1
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   Modal,
   TextInput,
@@ -13,6 +13,11 @@ import {
 import { Add } from "@carbon/icons-react";
 import { FormattedMessage, useIntl } from "react-intl";
 import {
+  getCarbonDateFormat,
+  getDatePickerPlaceholderMessage,
+} from "../common/dateLocaleUtils";
+import { ConfigurationContext } from "../layout/Layout";
+import {
   InventoryItemAPI,
   InventoryLotAPI,
   InventoryManagementAPI,
@@ -23,6 +28,12 @@ import StorageLocationModal from "./StorageLocationModal";
 const LotEntryModal = ({ open, onClose, onSave, lot = null }) => {
   const intl = useIntl();
   const isEdit = !!lot;
+  const { configurationProperties = {} } =
+    useContext(ConfigurationContext) || {};
+  const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "zh-CN";
+  const datePickerPlaceholder = intl.formatMessage(
+    getDatePickerPlaceholderMessage(dateLocale),
+  );
 
   const [formData, setFormData] = useState({
     inventoryItem: null,
@@ -45,16 +56,28 @@ const LotEntryModal = ({ open, onClose, onSave, lot = null }) => {
   const [locationModalOpen, setLocationModalOpen] = useState(false);
 
   const qcStatusOptions = [
-    { id: "PENDING", text: "Pending" },
-    { id: "PASSED", text: "Passed" },
-    { id: "FAILED", text: "Failed" },
-    { id: "QUARANTINED", text: "Quarantined" },
+    { id: "PENDING", text: intl.formatMessage({ id: "qc.status.pending" }) },
+    { id: "PASSED", text: intl.formatMessage({ id: "qc.status.passed" }) },
+    { id: "FAILED", text: intl.formatMessage({ id: "qc.status.failed" }) },
+    {
+      id: "QUARANTINED",
+      text: intl.formatMessage({ id: "qc.status.quarantined" }),
+    },
   ];
 
   const statusOptions = [
-    { id: "ACTIVE", text: "Active" },
-    { id: "IN_USE", text: "In Use" },
-    { id: "QUARANTINED", text: "Quarantined" },
+    {
+      id: "ACTIVE",
+      text: intl.formatMessage({ id: "inventory.status.ACTIVE" }),
+    },
+    {
+      id: "IN_USE",
+      text: intl.formatMessage({ id: "inventory.status.IN_USE" }),
+    },
+    {
+      id: "QUARANTINED",
+      text: intl.formatMessage({ id: "inventory.status.QUARANTINED" }),
+    },
   ];
 
   useEffect(() => {
@@ -132,22 +155,22 @@ const LotEntryModal = ({ open, onClose, onSave, lot = null }) => {
 
   const validate = () => {
     if (!formData.inventoryItem) {
-      setError("Please select a catalog item");
+      setError(intl.formatMessage({ id: "lot.validation.item" }));
       return false;
     }
 
     if (!formData.lotNumber?.trim()) {
-      setError("Lot number is required");
+      setError(intl.formatMessage({ id: "lot.validation.number" }));
       return false;
     }
 
     if (!formData.currentQuantity || formData.currentQuantity <= 0) {
-      setError("Quantity must be greater than 0");
+      setError(intl.formatMessage({ id: "lot.validation.quantity" }));
       return false;
     }
 
     if (!formData.storageLocation) {
-      setError("Please select a storage location");
+      setError(intl.formatMessage({ id: "lot.validation.location" }));
       return false;
     }
 
@@ -188,7 +211,7 @@ const LotEntryModal = ({ open, onClose, onSave, lot = null }) => {
       onSave();
     } catch (err) {
       console.error("Error saving lot:", err);
-      setError(err.message || "Error saving lot");
+      setError(intl.formatMessage({ id: "lot.save.error" }));
     } finally {
       setSaving(false);
     }
@@ -216,7 +239,7 @@ const LotEntryModal = ({ open, onClose, onSave, lot = null }) => {
           <Dropdown
             id="inventoryItem"
             titleText={<FormattedMessage id="lot.selectItem" />}
-            label="Select catalog item"
+            label={intl.formatMessage({ id: "lot.selectItem" })}
             items={items}
             itemToString={(item) => (item ? item.text : "")}
             selectedItem={
@@ -252,25 +275,27 @@ const LotEntryModal = ({ open, onClose, onSave, lot = null }) => {
 
           <DatePicker
             datePickerType="single"
+            dateFormat={getCarbonDateFormat(dateLocale)}
             value={formData.expirationDate}
             onChange={([date]) => handleChange("expirationDate", date)}
           >
             <DatePickerInput
               id="expirationDate"
               labelText={<FormattedMessage id="lot.expirationDate" />}
-              placeholder="mm/dd/yyyy"
+              placeholder={datePickerPlaceholder}
             />
           </DatePicker>
 
           <DatePicker
             datePickerType="single"
+            dateFormat={getCarbonDateFormat(dateLocale)}
             value={formData.receiptDate}
             onChange={([date]) => handleChange("receiptDate", date)}
           >
             <DatePickerInput
               id="receiptDate"
               labelText={<FormattedMessage id="lot.receiptDate" />}
-              placeholder="mm/dd/yyyy"
+              placeholder={datePickerPlaceholder}
             />
           </DatePicker>
 
@@ -298,7 +323,7 @@ const LotEntryModal = ({ open, onClose, onSave, lot = null }) => {
             </div>
             <Dropdown
               id="storageLocation"
-              label="Select storage location"
+              label={intl.formatMessage({ id: "lot.selectLocation" })}
               items={locations}
               itemToString={(item) => (item ? item.text : "")}
               selectedItem={
@@ -316,7 +341,7 @@ const LotEntryModal = ({ open, onClose, onSave, lot = null }) => {
           <Dropdown
             id="qcStatus"
             titleText={<FormattedMessage id="lot.qcStatus" />}
-            label="Select QC status"
+            label={intl.formatMessage({ id: "qc.status.select" })}
             items={qcStatusOptions}
             itemToString={(item) => (item ? item.text : "")}
             selectedItem={qcStatusOptions.find(
@@ -330,7 +355,7 @@ const LotEntryModal = ({ open, onClose, onSave, lot = null }) => {
           <Dropdown
             id="status"
             titleText={<FormattedMessage id="lot.status" />}
-            label="Select status"
+            label={intl.formatMessage({ id: "lot.status.select" })}
             items={statusOptions}
             itemToString={(item) => (item ? item.text : "")}
             selectedItem={statusOptions.find((s) => s.id === formData.status)}
@@ -344,7 +369,7 @@ const LotEntryModal = ({ open, onClose, onSave, lot = null }) => {
             labelText={<FormattedMessage id="lot.barcode" />}
             value={formData.barcode}
             onChange={(e) => handleChange("barcode", e.target.value)}
-            placeholder="Optional"
+            placeholder={intl.formatMessage({ id: "label.optional" })}
           />
         </Stack>
       </Modal>

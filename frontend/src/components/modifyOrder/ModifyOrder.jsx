@@ -22,11 +22,12 @@ import OrderSuccessMessage from "../addOrder/OrderSuccessMessage";
 import { FormattedMessage, useIntl } from "react-intl";
 import PatientHeader from "../common/PatientHeader";
 import PageBreadCrumb from "../common/PageBreadCrumb";
+import ListReturnButton from "../common/ListReturnButton";
 import ModifyOrderEntryValidationSchema from "../formModel/validationSchema/ModifyOrderEntryValidationSchema";
 import { sampleObject } from "../addOrder/Index";
 let breadcrumbs = [
   { label: "home.label", link: "/" },
-  { label: "sample.label.search.Order", link: "/SampleEdit" },
+  { label: "sidenav.label.order.active", link: "/order" },
 ];
 
 const ModifyOrder = () => {
@@ -297,7 +298,7 @@ const ModifyOrder = () => {
   return (
     <>
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
-      <br />
+      <ListReturnButton fallback="/order" />
 
       <PatientHeader
         id={patientId}

@@ -149,7 +149,11 @@ describe("TATSummaryTab", () => {
         filters={workingTimeFilters}
       />,
     );
-    expect(screen.getByText(/Working Time mode/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Excluded 8 non-working days according to the work calendar.",
+      ),
+    ).toBeInTheDocument();
   });
 
   test("shows no holidays warning when Working Time with 0 excluded days", () => {
@@ -169,7 +173,9 @@ describe("TATSummaryTab", () => {
       />,
     );
     expect(
-      screen.getByText(/No public holidays configured/),
+      screen.getByText(
+        "No non-working days were excluded in the selected range. Check the work calendar configuration.",
+      ),
     ).toBeInTheDocument();
   });
 

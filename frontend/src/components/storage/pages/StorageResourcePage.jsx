@@ -17,7 +17,7 @@ import {
   Loading,
 } from "@carbon/react";
 import { Add } from "@carbon/icons-react";
-import { FormattedMessage } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import BreadcrumbNav from "../components/BreadcrumbNav";
 import useStorageTableData from "../hooks/useStorageTableData";
 import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
@@ -49,6 +49,7 @@ export default function StorageResourcePage({
   addHref,
   onDeleteRequested,
 }) {
+  const intl = useIntl();
   const history = useHistory();
   const location = useLocation();
   const { userSessionDetails } = useContext(UserSessionDetailsContext);
@@ -82,7 +83,7 @@ export default function StorageResourcePage({
         nextRow.menuActions = (
           <OverflowMenu
             size="sm"
-            ariaLabel="Row actions"
+            ariaLabel={intl.formatMessage({ id: "label.actions" })}
             data-testid={`storage-row-actions-${rawItem?.id}`}
           >
             {editHref && (
@@ -109,7 +110,15 @@ export default function StorageResourcePage({
         ...nextRow,
       };
     });
-  }, [items, mapRow, editHref, history, isGlobalAdmin, onDeleteRequested]);
+  }, [
+    items,
+    mapRow,
+    editHref,
+    history,
+    intl,
+    isGlobalAdmin,
+    onDeleteRequested,
+  ]);
 
   const effectiveHeaders = useMemo(() => {
     const nextHeaders = [...headers];

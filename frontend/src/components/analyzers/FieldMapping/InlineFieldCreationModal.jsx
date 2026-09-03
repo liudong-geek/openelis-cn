@@ -49,21 +49,21 @@ const InlineFieldCreationModal = ({
 
   // Entity type options
   const entityTypeOptions = [
-    { id: "TEST", text: "Test" },
-    { id: "PANEL", text: "Panel" },
-    { id: "RESULT", text: "Result" },
-    { id: "ORDER", text: "Order" },
-    { id: "SAMPLE", text: "Sample" },
-    { id: "QC", text: "QC" },
-    { id: "METADATA", text: "Metadata" },
-    { id: "UNIT", text: "Unit" },
+    { id: "TEST", text: "检验项目" },
+    { id: "PANEL", text: "组合项目" },
+    { id: "RESULT", text: "检验结果" },
+    { id: "ORDER", text: "申请单" },
+    { id: "SAMPLE", text: "标本" },
+    { id: "QC", text: "质控" },
+    { id: "METADATA", text: "元数据" },
+    { id: "UNIT", text: "单位" },
   ];
 
   // Field type options
   const fieldTypeOptions = [
-    { id: "NUMERIC", text: "Numeric" },
-    { id: "QUALITATIVE", text: "Qualitative" },
-    { id: "TEXT", text: "Text" },
+    { id: "NUMERIC", text: "数值型" },
+    { id: "QUALITATIVE", text: "定性" },
+    { id: "TEXT", text: "文本" },
   ];
 
   // Unit options (mock - should be loaded from API)
@@ -245,7 +245,7 @@ const InlineFieldCreationModal = ({
       <ModalHeader
         title={intl.formatMessage({
           id: "analyzer.fieldCreation.modal.title",
-          defaultMessage: "Create New OpenELIS Field",
+          defaultMessage: "新建LIS字段",
         })}
         label={intl.formatMessage({
           id: "analyzer.fieldCreation.modal.subtitle",
@@ -436,7 +436,7 @@ const InlineFieldCreationModal = ({
         >
           <FormattedMessage
             id="analyzer.fieldCreation.create"
-            defaultMessage="Create Field"
+            defaultMessage="新建字段"
           />
         </Button>
       </ModalFooter>

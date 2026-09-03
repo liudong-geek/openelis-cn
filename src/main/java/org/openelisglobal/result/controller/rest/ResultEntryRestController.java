@@ -36,6 +36,7 @@ import org.openelisglobal.result.form.LogbookResultsForm;
 import org.openelisglobal.result.form.SingleResultEntryForm;
 import org.openelisglobal.result.service.LogbookResultsPersistService;
 import org.openelisglobal.result.service.ResultEntryPresenceService;
+import org.openelisglobal.result.service.ResultEntryWorklistService;
 import org.openelisglobal.role.service.RoleService;
 import org.openelisglobal.role.valueholder.Role;
 import org.openelisglobal.systemuser.service.SystemUserService;
@@ -102,6 +103,8 @@ public class ResultEntryRestController extends LogbookResultsBaseController {
     @Autowired
     private ResultEntryPresenceService presenceService;
     @Autowired
+    private ResultEntryWorklistService resultEntryWorklistService;
+    @Autowired
     private HistoryDAO historyDAO;
     @Autowired(required = false)
     private TestAlertEvaluationService testAlertEvaluationService;
@@ -131,6 +134,23 @@ public class ResultEntryRestController extends LogbookResultsBaseController {
             labUnits.add(unit);
         }
         return labUnits;
+    }
+
+    /**
+     * Canonical dashboard-to-results task list. Its predicate deliberately matches
+     * the dashboard's ORDERS_IN_PROGRESS metric (analysis status NotStarted), then
+     * applies the current user's Results lab-unit permissions.
+     */
+    @GetMapping(value = "pending", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    @PreAuthorize("hasRole('RESULTS')")
+    public Map<String, Object> getPendingResults(HttpServletRequest request) {
+        List<TestResultItem> pendingResults = resultEntryWorklistService
+                .getPendingResultsForUser(getSysUserId(request));
+        Map<String, Object> response = new HashMap<>();
+        response.put("testResult", pendingResults);
+        response.put("total", pendingResults.size());
+        return response;
     }
 
     /**
@@ -229,8 +249,11 @@ public class ResultEntryRestController extends LogbookResultsBaseController {
         }
 
         Analysis persisted = analysisService.get(analysisId);
-        if (persisted != null && persisted.getLastupdated() != null) {
-            body.put("analysisLastupdated", String.valueOf(persisted.getLastupdated().getTime()));
+        if (persisted != null) {
+            body.put("analysisStatusId", persisted.getStatusId());
+            if (persisted.getLastupdated() != null) {
+                body.put("analysisLastupdated", String.valueOf(persisted.getLastupdated().getTime()));
+            }
         }
         return ResponseEntity.ok(body);
     }

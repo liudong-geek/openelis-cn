@@ -11,12 +11,25 @@ import {
   NumberInput,
 } from "@carbon/react";
 import { Add } from "@carbon/icons-react";
+import { useIntl } from "react-intl";
 
-const DEVICE_TYPE_OPTIONS = [
-  { value: "freezer", label: "Freezer" },
-  { value: "refrigerator", label: "Refrigerator" },
-  { value: "cabinet", label: "Cabinet" },
-  { value: "other", label: "Other" },
+const getDeviceTypeOptions = (intl) => [
+  {
+    value: "freezer",
+    label: intl.formatMessage({ id: "coldStorage.device.type.freezer" }),
+  },
+  {
+    value: "refrigerator",
+    label: intl.formatMessage({ id: "coldStorage.device.type.refrigerator" }),
+  },
+  {
+    value: "cabinet",
+    label: intl.formatMessage({ id: "coldStorage.device.type.cabinet" }),
+  },
+  {
+    value: "other",
+    label: intl.formatMessage({ id: "coldStorage.device.type.other" }),
+  },
 ];
 
 const PROTOCOL_OPTIONS = [
@@ -24,12 +37,27 @@ const PROTOCOL_OPTIONS = [
   { value: "RTU", label: "Modbus RTU" },
 ];
 
-const PARITY_OPTIONS = [
-  { value: "NONE", label: "None" },
-  { value: "EVEN", label: "Even" },
-  { value: "ODD", label: "Odd" },
-  { value: "MARK", label: "Mark" },
-  { value: "SPACE", label: "Space" },
+const getParityOptions = (intl) => [
+  {
+    value: "NONE",
+    label: intl.formatMessage({ id: "coldStorage.deviceForm.parity.none" }),
+  },
+  {
+    value: "EVEN",
+    label: intl.formatMessage({ id: "coldStorage.deviceForm.parity.even" }),
+  },
+  {
+    value: "ODD",
+    label: intl.formatMessage({ id: "coldStorage.deviceForm.parity.odd" }),
+  },
+  {
+    value: "MARK",
+    label: intl.formatMessage({ id: "coldStorage.deviceForm.parity.mark" }),
+  },
+  {
+    value: "SPACE",
+    label: intl.formatMessage({ id: "coldStorage.deviceForm.parity.space" }),
+  },
 ];
 
 const INITIAL_FORM_DATA = {
@@ -61,6 +89,16 @@ export default function AddDeviceModal({
   onAddRoom,
   editingDevice = null,
 }) {
+  const intl = useIntl();
+  const deviceTypeOptions = getDeviceTypeOptions(intl);
+  const parityOptions = getParityOptions(intl);
+  const translateNumberInput = (messageId) =>
+    intl.formatMessage({
+      id:
+        messageId === "increment.number"
+          ? "carbon.increment.number"
+          : "carbon.decrement.number",
+    });
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
 
   useEffect(() => {
@@ -94,9 +132,18 @@ export default function AddDeviceModal({
         open={isOpen}
         onRequestClose={onClose}
         onRequestSubmit={handleSubmit}
-        modalHeading={editingDevice ? "Edit Device" : "Add New Device"}
-        primaryButtonText={editingDevice ? "Update" : "Create"}
-        secondaryButtonText="Cancel"
+        closeButtonLabel={intl.formatMessage({ id: "button.close" })}
+        modalHeading={intl.formatMessage({
+          id: editingDevice
+            ? "coldStorage.deviceForm.editTitle"
+            : "coldStorage.deviceForm.addTitle",
+        })}
+        primaryButtonText={intl.formatMessage({
+          id: editingDevice
+            ? "coldStorage.deviceForm.update"
+            : "coldStorage.deviceForm.create",
+        })}
+        secondaryButtonText={intl.formatMessage({ id: "button.cancel" })}
         primaryButtonDisabled={!isValid}
         size="sm"
       >
@@ -111,13 +158,19 @@ export default function AddDeviceModal({
                   color: "#161616",
                 }}
               >
-                Basic Information
+                {intl.formatMessage({
+                  id: "coldStorage.deviceForm.basicInformation",
+                })}
               </FormLabel>
               <Stack gap={5}>
                 <TextInput
                   id="name"
-                  labelText="Device Name *"
-                  placeholder="Enter device name"
+                  labelText={intl.formatMessage({
+                    id: "coldStorage.deviceForm.nameRequired",
+                  })}
+                  placeholder={intl.formatMessage({
+                    id: "coldStorage.deviceForm.namePlaceholder",
+                  })}
                   value={formData.name}
                   onChange={(e) => handleFormChange("name", e.target.value)}
                   required
@@ -125,14 +178,16 @@ export default function AddDeviceModal({
 
                 <Select
                   id="deviceType"
-                  labelText="Device Type *"
+                  labelText={intl.formatMessage({
+                    id: "coldStorage.deviceForm.typeRequired",
+                  })}
                   value={formData.deviceType}
                   onChange={(e) =>
                     handleFormChange("deviceType", e.target.value)
                   }
                   required
                 >
-                  {DEVICE_TYPE_OPTIONS.map((opt) => (
+                  {deviceTypeOptions.map((opt) => (
                     <SelectItem
                       key={opt.value}
                       value={opt.value}
@@ -151,7 +206,9 @@ export default function AddDeviceModal({
                   <div style={{ flex: 1 }}>
                     <Select
                       id="roomId"
-                      labelText="Room/Facility *"
+                      labelText={intl.formatMessage({
+                        id: "coldStorage.deviceForm.roomRequired",
+                      })}
                       value={formData.roomId}
                       onChange={(e) =>
                         handleFormChange("roomId", e.target.value)
@@ -162,8 +219,12 @@ export default function AddDeviceModal({
                         value=""
                         text={
                           locations.length === 0
-                            ? "No rooms available"
-                            : "Select a room"
+                            ? intl.formatMessage({
+                                id: "coldStorage.deviceForm.noRooms",
+                              })
+                            : intl.formatMessage({
+                                id: "coldStorage.deviceForm.selectRoom",
+                              })
                         }
                       />
                       {locations.map((location) => (
@@ -183,7 +244,7 @@ export default function AddDeviceModal({
                       onClick={onAddRoom}
                       style={{ marginBottom: "0.125rem" }}
                     >
-                      Add New Room
+                      {intl.formatMessage({ id: "coldStorage.room.addNew" })}
                     </Button>
                   )}
                 </div>
@@ -205,12 +266,16 @@ export default function AddDeviceModal({
                   color: "#161616",
                 }}
               >
-                Connection Settings
+                {intl.formatMessage({
+                  id: "coldStorage.deviceForm.connectionSettings",
+                })}
               </FormLabel>
               <Stack gap={5}>
                 <Select
                   id="protocol"
-                  labelText="Protocol *"
+                  labelText={intl.formatMessage({
+                    id: "coldStorage.deviceForm.protocolRequired",
+                  })}
                   value={formData.protocol}
                   onChange={(e) => handleFormChange("protocol", e.target.value)}
                 >
@@ -227,15 +292,22 @@ export default function AddDeviceModal({
                   <>
                     <TextInput
                       id="host"
-                      labelText="IP Address/Host *"
-                      placeholder="192.168.1.100 or modbus-simulator"
+                      labelText={intl.formatMessage({
+                        id: "coldStorage.deviceForm.hostRequired",
+                      })}
+                      placeholder={intl.formatMessage({
+                        id: "coldStorage.deviceForm.hostPlaceholder",
+                      })}
                       value={formData.host}
                       onChange={(e) => handleFormChange("host", e.target.value)}
                       required
                     />
                     <NumberInput
                       id="port"
-                      label="Port *"
+                      translateWithId={translateNumberInput}
+                      label={intl.formatMessage({
+                        id: "coldStorage.deviceForm.portRequired",
+                      })}
                       value={formData.port}
                       onChange={(e, { value }) =>
                         handleFormChange("port", value)
@@ -248,7 +320,9 @@ export default function AddDeviceModal({
                   <>
                     <TextInput
                       id="serialPort"
-                      labelText="Serial Port *"
+                      labelText={intl.formatMessage({
+                        id: "coldStorage.deviceForm.serialPortRequired",
+                      })}
                       placeholder="/dev/ttyUSB0"
                       value={formData.serialPort}
                       onChange={(e) =>
@@ -258,7 +332,10 @@ export default function AddDeviceModal({
                     />
                     <NumberInput
                       id="baudRate"
-                      label="Baud Rate *"
+                      translateWithId={translateNumberInput}
+                      label={intl.formatMessage({
+                        id: "coldStorage.deviceForm.baudRateRequired",
+                      })}
                       value={formData.baudRate}
                       onChange={(e, { value }) =>
                         handleFormChange("baudRate", value)
@@ -268,7 +345,10 @@ export default function AddDeviceModal({
                     />
                     <NumberInput
                       id="dataBits"
-                      label="Data Bits *"
+                      translateWithId={translateNumberInput}
+                      label={intl.formatMessage({
+                        id: "coldStorage.deviceForm.dataBitsRequired",
+                      })}
                       value={formData.dataBits}
                       onChange={(e, { value }) =>
                         handleFormChange("dataBits", value)
@@ -278,7 +358,10 @@ export default function AddDeviceModal({
                     />
                     <NumberInput
                       id="stopBits"
-                      label="Stop Bits *"
+                      translateWithId={translateNumberInput}
+                      label={intl.formatMessage({
+                        id: "coldStorage.deviceForm.stopBitsRequired",
+                      })}
                       value={formData.stopBits}
                       onChange={(e, { value }) =>
                         handleFormChange("stopBits", value)
@@ -288,13 +371,15 @@ export default function AddDeviceModal({
                     />
                     <Select
                       id="parity"
-                      labelText="Parity *"
+                      labelText={intl.formatMessage({
+                        id: "coldStorage.deviceForm.parityRequired",
+                      })}
                       value={formData.parity}
                       onChange={(e) =>
                         handleFormChange("parity", e.target.value)
                       }
                     >
-                      {PARITY_OPTIONS.map((opt) => (
+                      {parityOptions.map((opt) => (
                         <SelectItem
                           key={opt.value}
                           value={opt.value}
@@ -322,7 +407,9 @@ export default function AddDeviceModal({
                   color: "#161616",
                 }}
               >
-                Modbus Configuration
+                {intl.formatMessage({
+                  id: "coldStorage.deviceForm.modbusConfiguration",
+                })}
               </FormLabel>
               <p
                 style={{
@@ -331,12 +418,17 @@ export default function AddDeviceModal({
                   marginBottom: "1rem",
                 }}
               >
-                Configure register mappings and data scaling for sensor readings
+                {intl.formatMessage({
+                  id: "coldStorage.deviceForm.modbusDescription",
+                })}
               </p>
               <Stack gap={5}>
                 <NumberInput
                   id="slaveId"
-                  label="Slave ID *"
+                  translateWithId={translateNumberInput}
+                  label={intl.formatMessage({
+                    id: "coldStorage.deviceForm.slaveIdRequired",
+                  })}
                   value={formData.slaveId}
                   onChange={(e, { value }) =>
                     handleFormChange("slaveId", value)
@@ -359,12 +451,17 @@ export default function AddDeviceModal({
                       fontWeight: "500",
                     }}
                   >
-                    Temperature Configuration
+                    {intl.formatMessage({
+                      id: "coldStorage.deviceForm.temperatureConfiguration",
+                    })}
                   </FormLabel>
                   <Stack gap={4}>
                     <NumberInput
                       id="temperatureRegister"
-                      label="Temperature Register *"
+                      translateWithId={translateNumberInput}
+                      label={intl.formatMessage({
+                        id: "coldStorage.deviceForm.temperatureRegisterRequired",
+                      })}
                       value={formData.temperatureRegister}
                       onChange={(e, { value }) =>
                         handleFormChange("temperatureRegister", value)
@@ -375,8 +472,13 @@ export default function AddDeviceModal({
 
                     <NumberInput
                       id="temperatureScale"
-                      label="Temperature Scale"
-                      helperText="Scaling factor (e.g., 0.1 to divide by 10)"
+                      translateWithId={translateNumberInput}
+                      label={intl.formatMessage({
+                        id: "coldStorage.deviceForm.temperatureScale",
+                      })}
+                      helperText={intl.formatMessage({
+                        id: "coldStorage.deviceForm.scaleHelp",
+                      })}
                       value={formData.temperatureScale}
                       onChange={(e, { value }) =>
                         handleFormChange("temperatureScale", value)
@@ -387,8 +489,13 @@ export default function AddDeviceModal({
 
                     <NumberInput
                       id="temperatureOffset"
-                      label="Base Temperature (°C)"
-                      helperText="Base offset (e.g., -80 for ultra-low freezers)"
+                      translateWithId={translateNumberInput}
+                      label={intl.formatMessage({
+                        id: "coldStorage.deviceForm.baseTemperature",
+                      })}
+                      helperText={intl.formatMessage({
+                        id: "coldStorage.deviceForm.temperatureOffsetHelp",
+                      })}
                       value={formData.temperatureOffset}
                       onChange={(e, { value }) =>
                         handleFormChange("temperatureOffset", value)
@@ -412,13 +519,20 @@ export default function AddDeviceModal({
                       fontWeight: "500",
                     }}
                   >
-                    Humidity Configuration (Optional)
+                    {intl.formatMessage({
+                      id: "coldStorage.deviceForm.humidityConfiguration",
+                    })}
                   </FormLabel>
                   <Stack gap={4}>
                     <NumberInput
                       id="humidityRegister"
-                      label="Humidity Register"
-                      helperText="Modbus register address for humidity reading"
+                      translateWithId={translateNumberInput}
+                      label={intl.formatMessage({
+                        id: "coldStorage.deviceForm.humidityRegister",
+                      })}
+                      helperText={intl.formatMessage({
+                        id: "coldStorage.deviceForm.humidityRegisterHelp",
+                      })}
                       value={formData.humidityRegister ?? ""}
                       onChange={(e, { value }) =>
                         handleFormChange("humidityRegister", value ?? 0)
@@ -430,8 +544,13 @@ export default function AddDeviceModal({
 
                     <NumberInput
                       id="humidityScale"
-                      label="Humidity Scale"
-                      helperText="Scaling factor (e.g., 0.1 to divide by 10)"
+                      translateWithId={translateNumberInput}
+                      label={intl.formatMessage({
+                        id: "coldStorage.deviceForm.humidityScale",
+                      })}
+                      helperText={intl.formatMessage({
+                        id: "coldStorage.deviceForm.scaleHelp",
+                      })}
                       value={formData.humidityScale}
                       onChange={(e, { value }) =>
                         handleFormChange("humidityScale", value)
@@ -442,8 +561,13 @@ export default function AddDeviceModal({
 
                     <NumberInput
                       id="humidityOffset"
-                      label="Humidity Offset (%)"
-                      helperText="Base offset for humidity readings"
+                      translateWithId={translateNumberInput}
+                      label={intl.formatMessage({
+                        id: "coldStorage.deviceForm.humidityOffset",
+                      })}
+                      helperText={intl.formatMessage({
+                        id: "coldStorage.deviceForm.humidityOffsetHelp",
+                      })}
                       value={formData.humidityOffset}
                       onChange={(e, { value }) =>
                         handleFormChange("humidityOffset", value)

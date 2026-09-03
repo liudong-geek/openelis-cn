@@ -15,7 +15,8 @@ package org.openelisglobal.reports.action.implementation;
 
 import org.openelisglobal.internationalization.MessageUtil;
 
-public class IndicatorAllTestLNSP extends IndicatorAllTest implements IReportCreator, IReportParameterSetter {
+public class IndicatorAllTestLNSP extends IndicatorAllTest
+        implements IReportCreator, IReportParameterSetter, SafeNonPatientReportCreator {
 
     @Override
     protected String getLabNameLine1() {

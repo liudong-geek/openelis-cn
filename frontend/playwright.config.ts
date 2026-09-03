@@ -4,6 +4,9 @@ import * as dotenv from "dotenv";
 // Load .env from repo root — provides TEST_USER, TEST_PASS, BASE_URL, etc.
 // No manual `set -a && . .env` needed.
 dotenv.config({ path: new URL("../.env", import.meta.url).pathname });
+
+const localChromiumExecutable =
+  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 /**
  * OpenELIS Global Playwright Configuration
  *
@@ -71,19 +74,29 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: process.env.PLAYWRIGHT_VIDEO === "on" ? "on" : "off",
 
-    // CI stability: prevent Chromium renderer crashes ("Target page closed")
-    ...(process.env.CI && {
+    // Local Docker QA runners use Alpine's native Chromium. CI and regular
+    // developer runs continue to use Playwright's managed browser by default.
+    ...(localChromiumExecutable && {
       launchOptions: {
-        args: [
-          "--disable-dev-shm-usage", // use /tmp instead of /dev/shm
-          "--disable-gpu", // skip GPU compositing (no GPU in CI)
-          "--disable-extensions", // no extension overhead
-          "--no-first-run", // skip first-run setup
-          "--js-flags=--max-old-space-size=1024", // cap V8 heap (Carbon doesn't tree-shake)
-        ],
+        executablePath: localChromiumExecutable,
+        args: ["--no-sandbox", "--disable-dev-shm-usage"],
       },
-      serviceWorkers: "block", // block SW registration — self-signed certs cause constant SSL errors
     }),
+
+    // CI stability: prevent Chromium renderer crashes ("Target page closed")
+    ...(process.env.CI &&
+      !localChromiumExecutable && {
+        launchOptions: {
+          args: [
+            "--disable-dev-shm-usage", // use /tmp instead of /dev/shm
+            "--disable-gpu", // skip GPU compositing (no GPU in CI)
+            "--disable-extensions", // no extension overhead
+            "--no-first-run", // skip first-run setup
+            "--js-flags=--max-old-space-size=1024", // cap V8 heap (Carbon doesn't tree-shake)
+          ],
+        },
+        serviceWorkers: "block", // block SW registration — self-signed certs cause constant SSL errors
+      }),
   },
 
   projects: [

@@ -1,34 +1,72 @@
-tr.evenRow {
-  background-color: #c8dada;
+.oe-workplan-page {
+  width: calc(100% - (2 * var(--oe-page-gutter, 1.5rem)));
+  max-width: var(--oe-content-max-width, 88rem);
+  margin: 0 auto 2rem;
 }
 
-tr.evenRowHead {
-  background-color: #b8caca;
-  padding: 20px;
-}
-tr.oddRow {
-  background-color: #f0f3f3;
-}
-
-tr.oddRowHead {
-  background-color: #e0e3e3;
-}
-
-.contentHeader1 {
-  margin-top: 5px;
-  font-weight: bold;
-  font-size: 23px;
-  line-height: normal;
-  color: #235689;
-  background-color: #dadddd;
+.oe-workplan-page .orderLegendBody {
   width: 100%;
-  border: none;
+  margin: 0 !important;
 }
 
-.contentHeader2 {
-  margin-top: 2px;
-  border: none;
-  font-size: 17px;
-  background-color: #e0e3e3;
-  line-height: normal;
+.oe-workplan-filter__heading {
+  margin-bottom: 1rem;
+}
+
+.oe-workplan-filter__heading h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 650;
+}
+
+.oe-workplan-filter__heading p {
+  margin: 0.25rem 0 0;
+  color: var(--oe-text-muted, #667085);
+  font-size: 0.875rem;
+}
+
+.oe-workplan-filter__loading,
+.oe-workplan-api-pagination__controls,
+.oe-workplan-api-pagination__buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.oe-workplan-filter__loading {
+  min-height: 4rem;
+  color: var(--oe-text-muted, #667085);
+  font-size: 0.8125rem;
+}
+
+.oe-workplan-filter__guidance {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px dashed var(--oe-border-strong, #cdd5df);
+  border-radius: var(--oe-control-radius, 0.375rem);
+  color: var(--oe-text-muted, #667085);
+  background: var(--oe-surface-subtle, #f9fafc);
+  text-align: center;
+}
+
+.oe-workplan-api-pagination {
+  margin-top: 1rem;
+}
+
+.oe-workplan-api-pagination__controls {
+  justify-content: flex-end;
+}
+
+.oe-workplan-page .cds--data-table-container {
+  margin-top: 0.75rem;
+}
+
+.oe-workplan-page .cds--pagination {
+  border: 1px solid var(--oe-border, #e4e8ef);
+  border-top: 0;
+}
+
+.oe-workplan-page .evenRow,
+.oe-workplan-page .oddRow {
+  background: #ffffff;
 }

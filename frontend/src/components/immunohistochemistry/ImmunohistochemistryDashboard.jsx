@@ -1,4 +1,5 @@
 import React, { useContext, useState, useEffect, useRef } from "react";
+import { navigateToInternalPath } from "../utils/NavigationUtils";
 import {
   Checkbox,
   Heading,
@@ -237,7 +238,9 @@ function ImmunohistochemistryDashboard() {
   };
 
   const openCaseView = (id) => {
-    window.location.href = "/ImmunohistochemistryCaseView/" + id;
+    navigateToInternalPath(
+      `/ImmunohistochemistryCaseView/${encodeURIComponent(id)}`,
+    );
   };
 
   useEffect(() => {

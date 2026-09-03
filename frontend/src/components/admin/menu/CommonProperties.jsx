@@ -83,7 +83,12 @@ export const CommonProperties = () => {
             </Section>
           </Column>
         </Grid>
-        {loading && <Loading />} {error && <p>Error: {error}</p>}{" "}
+        {loading && <Loading />}{" "}
+        {error && (
+          <p>
+            <FormattedMessage id="error.title" />：{error}
+          </p>
+        )}{" "}
         <div className="orderLegendBody">
           <Grid fullWidth={true}>
             <Column lg={8} md={8} sm={4}>
@@ -164,10 +169,7 @@ export const CommonProperties = () => {
 
           <div style={{ marginLeft: "2em" }} className="inlineDiv">
             <Button type="submit" onClick={handleSubmit}>
-              <FormattedMessage
-                id="label.button.update"
-                defaultMessage="Update"
-              />
+              <FormattedMessage id="label.button.update" />
             </Button>
           </div>
         </div>

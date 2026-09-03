@@ -1,5 +1,6 @@
 import config from "../../config.json";
 import type { IntlShape } from "react-intl";
+import { getRequestLocale } from "./LocaleUtils";
 
 // This utility is the compatibility boundary for hundreds of legacy JavaScript
 // callers whose API response contracts have not yet been migrated.
@@ -29,14 +30,6 @@ interface UserSessionDetails {
 }
 
 const csrfToken = (): string => localStorage.getItem("CSRF") as string;
-
-/**
- * Get the current locale from localStorage for API requests.
- * Falls back to browser language or 'en' if not set.
- */
-const getAcceptLanguageHeader = (): string => {
-  return localStorage.getItem("locale") || navigator.language || "en";
-};
 
 /**
  * Resolve an API error/success payload to user-facing text. Generalised from
@@ -86,14 +79,26 @@ const handleSessionError = (response: Response): Response => {
       .json()
       .then((body: ApiMessagePayload) => {
         if (body && body.message && body.message.includes("CSRF")) {
-          alert(
-            "Your session has expired. The page will reload so you can continue.",
-          );
+          alert("登录会话已过期，页面将重新加载，请重新登录后继续操作。");
           window.location.reload();
         }
       })
       .catch(() => undefined);
   }
+  return response;
+};
+
+// A fetch promise resolves as soon as response headers arrive. Several legacy
+// callers navigate immediately from their callback, which used to cancel the
+// still-streaming response body and surface as ERR_ABORTED even though the
+// server had already committed the write. Wait for the response to complete
+// before signalling success; clone only when the caller still needs the body.
+const consumeResponseBeforeCallback = async (
+  response: Response,
+  preserveBody = false,
+): Promise<Response> => {
+  const readable = preserveBody ? response.clone() : response;
+  await readable.arrayBuffer();
   return response;
 };
 
@@ -111,7 +116,7 @@ export const getFromOpenElisServer = <T = LegacyApiResponse>(
       method: "GET",
       signal: signal,
       headers: {
-        "Accept-Language": getAcceptLanguageHeader(),
+        "Accept-Language": getRequestLocale(),
       },
     },
   )
@@ -154,12 +159,13 @@ export const postToOpenElisServer = <TExtra = unknown>(
       headers: {
         "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken(),
-        "Accept-Language": getAcceptLanguageHeader(),
+        "Accept-Language": getRequestLocale(),
       },
       body: payLoad as BodyInit,
     },
   )
     .then(handleSessionError)
+    .then((response) => consumeResponseBeforeCallback(response))
     .then((response) => response.status)
     .then((status) => {
       callback(status, extraParams);
@@ -186,12 +192,13 @@ export const postToOpenElisServerFullResponse = <TExtra = unknown>(
       headers: {
         "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken(),
-        "Accept-Language": getAcceptLanguageHeader(),
+        "Accept-Language": getRequestLocale(),
       },
       body: payLoad as BodyInit,
     },
   )
     .then(handleSessionError)
+    .then((response) => consumeResponseBeforeCallback(response, true))
     .then((response) => callback(response, extraParams))
     .catch((error) => {
       console.error(error);
@@ -213,7 +220,7 @@ export const postToOpenElisServerFormData = <TExtra = unknown>(
       method: "POST",
       headers: {
         "X-CSRF-Token": csrfToken(),
-        "Accept-Language": getAcceptLanguageHeader(),
+        "Accept-Language": getRequestLocale(),
       },
       body: formData,
     },
@@ -248,7 +255,7 @@ export const postToOpenElisServerJsonResponse = <
       headers: {
         "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken(),
-        "Accept-Language": getAcceptLanguageHeader(),
+        "Accept-Language": getRequestLocale(),
       },
       body: payLoad as BodyInit,
     },
@@ -304,7 +311,7 @@ export const postToOpenElisServerForBlob = (
       headers: {
         "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken(),
-        "Accept-Language": getAcceptLanguageHeader(),
+        "Accept-Language": getRequestLocale(),
       },
       body: payLoad as BodyInit,
     },
@@ -342,7 +349,7 @@ export const postToOpenElisServerForPDF = (
       headers: {
         "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken(),
-        "Accept-Language": getAcceptLanguageHeader(),
+        "Accept-Language": getRequestLocale(),
       },
       body: payLoad as BodyInit,
     },
@@ -377,7 +384,7 @@ export const putToOpenElisServer = (
     headers: {
       "Content-Type": "application/json",
       "X-CSRF-Token": csrfToken(),
-      "Accept-Language": getAcceptLanguageHeader(),
+      "Accept-Language": getRequestLocale(),
     },
   };
 
@@ -411,7 +418,7 @@ export const putToOpenElisServerFullResponse = <TExtra = unknown>(
     headers: {
       "Content-Type": "application/json",
       "X-CSRF-Token": csrfToken(),
-      "Accept-Language": getAcceptLanguageHeader(),
+      "Accept-Language": getRequestLocale(),
     },
     body: payLoad as BodyInit,
   })
@@ -434,7 +441,7 @@ export const deleteFromOpenElisServer = (
     headers: {
       "Content-Type": "application/json",
       "X-CSRF-Token": csrfToken(),
-      "Accept-Language": getAcceptLanguageHeader(),
+      "Accept-Language": getRequestLocale(),
     },
   })
     .then(handleSessionError)
@@ -460,7 +467,7 @@ export const deleteFromOpenElisServerFullResponse = <TExtra = unknown>(
     headers: {
       "Content-Type": "application/json",
       "X-CSRF-Token": csrfToken(),
-      "Accept-Language": getAcceptLanguageHeader(),
+      "Accept-Language": getRequestLocale(),
     },
   })
     .then(handleSessionError)
@@ -518,7 +525,7 @@ export const patchToOpenElisServerJsonResponse = <
       headers: {
         "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken(),
-        "Accept-Language": getAcceptLanguageHeader(),
+        "Accept-Language": getRequestLocale(),
       },
       body: payLoad as BodyInit,
     },
@@ -676,6 +683,7 @@ export const Roles = {
   USER_ACCOUNT_ADMIN: "User Account Administrator",
   AUDIT_TRAIL: "Audit Trail",
   ANALYSER_IMPORT: "Analyser Import",
+  LAB_SUPERVISOR: "Lab Supervisor",
   CYTOPATHOLOGIST: "Cytopathologist",
   PATHOLOGIST: "Pathologist",
   RECEPTION: "Reception",

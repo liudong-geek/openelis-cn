@@ -1,8 +1,17 @@
-import React, { useState, useEffect, useContext } from "react";
-import { Grid, Column, TextInput, Button, Tile, Form } from "@carbon/react";
+import React, { useContext, useEffect, useState } from "react";
+import {
+  Button,
+  Form,
+  InlineLoading,
+  InlineNotification,
+  Search,
+  Tile,
+} from "@carbon/react";
+import { FormattedMessage, useIntl } from "react-intl";
 import { getFromOpenElisServer, postToOpenElisServer } from "../utils/Utils";
 import { ConfigurationContext } from "../layout/Layout";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
+import "./LandingPage.css";
 
 interface DepartmentOption {
   id: string;
@@ -21,13 +30,32 @@ interface LandingUserSessionContext {
   };
 }
 
+const getSafeReturnPath = (): string => {
+  if (!document.referrer) return "/";
+
+  try {
+    const referrer = new URL(document.referrer);
+    if (
+      referrer.origin !== window.location.origin ||
+      referrer.pathname === "/landing"
+    ) {
+      return "/";
+    }
+    return `${referrer.pathname}${referrer.search}${referrer.hash}`;
+  } catch (_error) {
+    return "/";
+  }
+};
+
 const LandingPage: React.FC = () => {
+  const intl = useIntl();
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
-  const [filteredDepartments, setFilteredDepartments] = useState<
-    DepartmentOption[]
-  >([]);
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const { configurationProperties } = useContext(
     ConfigurationContext,
   ) as LandingConfigurationContext;
@@ -40,157 +68,150 @@ const LandingPage: React.FC = () => {
       configurationProperties.REQUIRE_LAB_UNIT_AT_LOGIN === "false" ||
       userSessionDetails.loginLabUnit
     ) {
-      const refererUrl = document.referrer;
-      if (refererUrl.endsWith("/landing")) {
-        window.location.href = "/";
-      } else {
-        window.location.href = refererUrl;
-      }
+      window.location.replace(getSafeReturnPath());
+      return;
     }
-    getFromOpenElisServer("/rest/user-test-sections/ALL", (response) => {
-      setDepartments(response);
-      setFilteredDepartments(response);
-    });
-  }, []);
 
-  const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const term = event.target.value.toLowerCase();
-    setSearchTerm(term);
-    setFilteredDepartments(
-      departments.filter((dept) => dept.value.toLowerCase().includes(term)),
+    getFromOpenElisServer("/rest/user-test-sections/ALL", (response) => {
+      if (Array.isArray(response)) {
+        setDepartments(response);
+        setLoadFailed(false);
+      } else {
+        setDepartments([]);
+        setLoadFailed(true);
+      }
+      setIsLoading(false);
+    });
+  }, [
+    configurationProperties.REQUIRE_LAB_UNIT_AT_LOGIN,
+    userSessionDetails.loginLabUnit,
+  ]);
+
+  const filteredDepartments = departments.filter((department) =>
+    department.value.toLowerCase().includes(searchTerm.trim().toLowerCase()),
+  );
+
+  const handleContinue = () => {
+    if (!selectedDepartment || isSaving) return;
+
+    setIsSaving(true);
+    setSaveFailed(false);
+    postToOpenElisServer(
+      `/rest/setUserLoginLabUnit/${encodeURIComponent(selectedDepartment)}`,
+      {},
+      (status) => {
+        if (status >= 200 && status < 300) {
+          window.location.replace(getSafeReturnPath());
+          return;
+        }
+        setIsSaving(false);
+        setSaveFailed(true);
+      },
     );
   };
 
-  const handleDepartmentSelect = (departmentId: string) => {
-    setSelectedDepartment(departmentId);
-  };
-
-  const handleContinue = () => {
-    if (selectedDepartment) {
-      // if(rememberChoice){
-      //   localStorage.setItem("selectedDepartment", selectedDepartment);
-      // }
-      postToOpenElisServer(
-        "/rest/setUserLoginLabUnit/" + selectedDepartment,
-        {},
-        handlePostLabUbit,
-      );
-    }
-    const refererUrl = document.referrer;
-    if (refererUrl.endsWith("/landing")) {
-      window.location.href = "/";
-    } else {
-      window.location.href = refererUrl;
-    }
-  };
-
-  const handlePostLabUbit = (_status: unknown) => {
-    void _status;
-  };
-
   return (
-    <Grid
-      fullWidth
-      className="landing-page"
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        padding: "1rem",
-        backgroundColor: "#f0f4f8",
-      }}
-    >
-      <Column
-        lg={8}
-        md={6}
-        sm={4}
-        className="landing-page-column"
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          maxWidth: "500px",
-          width: "100%",
-        }}
-      >
-        <Tile
-          style={{
-            padding: "2rem",
-            textAlign: "center",
-            width: "100%",
-            maxWidth: "500px",
-            backgroundColor: "white",
-            borderRadius: "12px",
-            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
+    <main className="landing-page" aria-labelledby="landing-page-title">
+      <Tile className="landing-card">
+        <header className="landing-heading">
+          <span className="landing-kicker">
+            <FormattedMessage id="landing.kicker" />
+          </span>
+          <h1 id="landing-page-title">
+            <FormattedMessage id="landing.title" />
+          </h1>
+          <p>
+            <FormattedMessage id="landing.subtitle" />
+          </p>
+        </header>
+
+        {loadFailed && (
+          <InlineNotification
+            kind="error"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({ id: "landing.load.error.title" })}
+            subtitle={intl.formatMessage({ id: "landing.load.error.message" })}
+          />
+        )}
+        {saveFailed && (
+          <InlineNotification
+            kind="error"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({ id: "landing.save.error.title" })}
+            subtitle={intl.formatMessage({ id: "landing.save.error.message" })}
+          />
+        )}
+
+        <Form
+          className="landing-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleContinue();
           }}
         >
-          <h2>Welcome!</h2>
-          <p>Please select a unit to continue</p>
-          <Form>
-            <TextInput
-              id="department-search"
-              labelText="Search for a department"
-              value={searchTerm}
-              onChange={handleSearch}
-              light
-            />
-            <div
-              className="department-list"
-              style={{
-                maxHeight: "400px",
-                overflowY: "auto",
-                marginTop: "1rem",
-                marginBottom: "1rem",
-                textAlign: "left",
-                border: "1px solid #e0e0e0",
-                borderRadius: "4px",
-                padding: "0.5rem",
-                backgroundColor: "#f9f9f9",
-              }}
-            >
-              {filteredDepartments?.map((dept) => (
-                <div
-                  key={dept.id}
-                  className={`department-item ${
-                    selectedDepartment === dept.id ? "selected" : ""
+          <Search
+            id="department-search"
+            labelText={intl.formatMessage({ id: "landing.search.label" })}
+            placeholder={intl.formatMessage({
+              id: "landing.search.placeholder",
+            })}
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            disabled={isLoading || loadFailed}
+          />
+
+          <div
+            className="department-list"
+            role="listbox"
+            aria-label={intl.formatMessage({ id: "landing.list.label" })}
+          >
+            {isLoading ? (
+              <InlineLoading
+                description={intl.formatMessage({ id: "landing.loading" })}
+              />
+            ) : filteredDepartments.length > 0 ? (
+              filteredDepartments.map((department) => (
+                <button
+                  key={department.id}
+                  type="button"
+                  role="option"
+                  aria-selected={selectedDepartment === department.id}
+                  className={`department-option ${
+                    selectedDepartment === department.id ? "is-selected" : ""
                   }`}
-                  style={{
-                    padding: "0.75rem",
-                    cursor: "pointer",
-                    borderRadius: "4px",
-                    marginBottom: "0.5rem",
-                    backgroundColor:
-                      selectedDepartment === dept.id ? "#c6c6c6" : "inherit",
-                    borderColor:
-                      selectedDepartment === dept.id
-                        ? "#0f62fe"
-                        : "transparent",
-                    transition: "background-color 0.3s, border-color 0.3s",
-                  }}
-                  onClick={() => handleDepartmentSelect(dept.id)}
+                  onClick={() => setSelectedDepartment(department.id)}
                 >
-                  {dept.value}
-                </div>
-              ))}
-            </div>
-            {/* <Checkbox
-              id="remember-choice"
-              labelText="Remember my choice"
-              checked={rememberChoice}
-              onChange={(e) => setRememberChoice(e.target.checked)}
-            /> */}
-            <Button
-              onClick={handleContinue}
-              disabled={!selectedDepartment}
-              style={{ marginTop: "1rem", width: "100%", maxWidth: "100%" }}
-            >
-              Continue
-            </Button>
-          </Form>
-        </Tile>
-      </Column>
-    </Grid>
+                  <span>{department.value}</span>
+                  <span className="department-option-state" aria-hidden="true">
+                    {selectedDepartment === department.id ? "✓" : ""}
+                  </span>
+                </button>
+              ))
+            ) : (
+              !loadFailed && (
+                <p className="landing-empty">
+                  <FormattedMessage id="landing.empty" />
+                </p>
+              )
+            )}
+          </div>
+
+          <Button
+            type="submit"
+            className="landing-continue"
+            disabled={!selectedDepartment || isSaving || loadFailed}
+          >
+            {isSaving ? (
+              <FormattedMessage id="landing.saving" />
+            ) : (
+              <FormattedMessage id="landing.continue" />
+            )}
+          </Button>
+        </Form>
+      </Tile>
+    </main>
   );
 };
 

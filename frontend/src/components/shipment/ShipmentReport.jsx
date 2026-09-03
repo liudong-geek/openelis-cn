@@ -25,8 +25,12 @@ import jsPDF from "jspdf";
 import "jspdf-autotable";
 import ExcelJS from "exceljs";
 import { AlertDialog } from "../common/CustomNotification";
+import {
+  getCarbonDateFormat,
+  getDatePickerPlaceholderMessage,
+} from "../common/dateLocaleUtils";
 import PageBreadCrumb from "../common/PageBreadCrumb";
-import { NotificationContext } from "../layout/Layout";
+import { ConfigurationContext, NotificationContext } from "../layout/Layout";
 import { getFromOpenElisServer } from "../utils/Utils";
 import ShipmentNavigation from "./ShipmentNavigation";
 import "./ShipmentDashboard.css";
@@ -34,6 +38,12 @@ import "./ShipmentDashboard.css";
 const ShipmentReport = () => {
   const intl = useIntl();
   const { addNotification } = useContext(NotificationContext);
+  const { configurationProperties = {} } =
+    useContext(ConfigurationContext) || {};
+  const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "zh-CN";
+  const datePickerPlaceholder = intl.formatMessage(
+    getDatePickerPlaceholderMessage(dateLocale),
+  );
 
   const [boxes, setBoxes] = useState([]);
   const [facilities, setFacilities] = useState([]);
@@ -301,7 +311,9 @@ const ShipmentReport = () => {
   const handleExportExcel = async () => {
     try {
       const wb = new ExcelJS.Workbook();
-      const ws = wb.addWorksheet("Shipment Report");
+      const ws = wb.addWorksheet(
+        intl.formatMessage({ id: "shipment.report.title" }),
+      );
 
       ws.addRow(headers.map((h) => h.header));
       boxes.forEach((box) => {
@@ -422,12 +434,13 @@ const ShipmentReport = () => {
         <Column lg={3} md={4} sm={4}>
           <DatePicker
             datePickerType="single"
+            dateFormat={getCarbonDateFormat(dateLocale)}
             onChange={([date]) => setFilterDateFrom(date)}
             value={filterDateFrom}
           >
             <DatePickerInput
               id="report-date-from"
-              placeholder="mm/dd/yyyy"
+              placeholder={datePickerPlaceholder}
               labelText={intl.formatMessage({ id: "shipment.filter.dateFrom" })}
               size="md"
             />
@@ -436,12 +449,13 @@ const ShipmentReport = () => {
         <Column lg={3} md={4} sm={4}>
           <DatePicker
             datePickerType="single"
+            dateFormat={getCarbonDateFormat(dateLocale)}
             onChange={([date]) => setFilterDateTo(date)}
             value={filterDateTo}
           >
             <DatePickerInput
               id="report-date-to"
-              placeholder="mm/dd/yyyy"
+              placeholder={datePickerPlaceholder}
               labelText={intl.formatMessage({ id: "shipment.filter.dateTo" })}
               size="md"
             />

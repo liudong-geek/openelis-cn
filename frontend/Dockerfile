@@ -21,7 +21,12 @@
 
 # ---- base: shared foundation ----
 FROM node:20.20-alpine AS base
-RUN apk update && apk upgrade && apk add --no-cache bash
+RUN for attempt in 1 2 3 4 5; do \
+      apk add --no-cache bash && exit 0; \
+      echo "Alpine package install failed (attempt ${attempt}/5), retrying..." >&2; \
+      sleep $((attempt * 2)); \
+    done; \
+    exit 1
 WORKDIR /app
 ENV PATH=/app/node_modules/.bin:$PATH
 COPY package.json package-lock.json ./
@@ -44,7 +49,16 @@ FROM nginx:1.27-alpine AS runtime
 USER root
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY --from=build /app/nginx/nginx.conf /etc/nginx/conf.d/default.conf
-RUN apk update && apk upgrade && apk add --no-cache bash curl
+# Install only the runtime tools used by the health check. Avoid upgrading the
+# entire base image during every application build; the pinned nginx digest is
+# the reproducible security boundary and full upgrades made local delivery
+# depend on transient Alpine mirror state.
+RUN for attempt in 1 2 3 4 5; do \
+      apk add --no-cache bash curl && exit 0; \
+      echo "Alpine package install failed (attempt ${attempt}/5), retrying..." >&2; \
+      sleep $((attempt * 2)); \
+    done; \
+    exit 1
 ADD nginx/healthcheck.sh /healthcheck.sh
 RUN chown nginx:nginx /healthcheck.sh && chmod 770 /healthcheck.sh
 EXPOSE 80

@@ -94,7 +94,7 @@ const MappingRetirementModal = ({
           <p className="mapping-retirement-confirmation-message">
             <FormattedMessage
               id="analyzer.fieldMapping.retirementModal.confirmation"
-              defaultMessage="Are you sure you want to retire this mapping? Historical messages will still reference it for audit purposes."
+              defaultMessage="确定要停用此映射吗？历史消息仍会保留该映射信息以便追溯。"
             />
           </p>
 
@@ -134,7 +134,7 @@ const MappingRetirementModal = ({
                 data-testid="retirement-reason-textarea"
               />
               <div className="character-count">
-                {characterCount} / {maxReasonLength} characters
+                已输入 {characterCount} / {maxReasonLength} 个字符
               </div>
             </div>
           )}
@@ -159,7 +159,7 @@ const MappingRetirementModal = ({
         >
           <FormattedMessage
             id="analyzer.fieldMapping.retirementModal.retire"
-            defaultMessage="Retire Mapping"
+            defaultMessage="停用映射"
           />
         </Button>
       </ModalFooter>

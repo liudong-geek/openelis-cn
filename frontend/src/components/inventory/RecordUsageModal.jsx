@@ -49,7 +49,9 @@ const RecordUsageModal = ({ open, onClose, onSave, lot }) => {
         if (response && response.samples) {
           const items = response.samples.map((sample) => ({
             id: sample.accessionNumber,
-            text: `${sample.accessionNumber} - ${sample.patientName || "Unknown"}`,
+            text: `${sample.accessionNumber} - ${
+              sample.patientName || intl.formatMessage({ id: "status.unknown" })
+            }`,
           }));
           setSearchResults(items);
         } else {
@@ -61,7 +63,7 @@ const RecordUsageModal = ({ open, onClose, onSave, lot }) => {
 
   const validate = () => {
     if (!formData.quantityUsed || formData.quantityUsed <= 0) {
-      setError("Quantity must be greater than 0");
+      setError(intl.formatMessage({ id: "usage.validation.quantity" }));
       return false;
     }
 
@@ -71,7 +73,13 @@ const RecordUsageModal = ({ open, onClose, onSave, lot }) => {
       formData.quantityUsed > lot.currentQuantity
     ) {
       setError(
-        `Cannot use ${formData.quantityUsed} units. Only ${lot.currentQuantity} units available.`,
+        intl.formatMessage(
+          { id: "usage.validation.available" },
+          {
+            requested: formData.quantityUsed,
+            available: lot.currentQuantity,
+          },
+        ),
       );
       return false;
     }
@@ -102,7 +110,7 @@ const RecordUsageModal = ({ open, onClose, onSave, lot }) => {
       onSave();
     } catch (err) {
       console.error("Error recording usage:", err);
-      setError(err.message || "Error recording usage");
+      setError(intl.formatMessage({ id: "usage.record.error" }));
     } finally {
       setSaving(false);
     }
@@ -147,7 +155,9 @@ const RecordUsageModal = ({ open, onClose, onSave, lot }) => {
           </FormLabel>
           <p>
             <strong>
-              {lot.currentQuantity} {lot.inventoryItem?.units || "units"}
+              {lot.currentQuantity}{" "}
+              {lot.inventoryItem?.units ||
+                intl.formatMessage({ id: "catalog.item.units" })}
             </strong>
           </p>
         </div>
@@ -176,7 +186,7 @@ const RecordUsageModal = ({ open, onClose, onSave, lot }) => {
           onChange={({ selectedItem }) => {
             handleChange("testResultId", selectedItem ? selectedItem.id : "");
           }}
-          helperText="Start typing an accession number to search, or type manually"
+          helperText={intl.formatMessage({ id: "usage.testResultId.helper" })}
         />
 
         <TextArea

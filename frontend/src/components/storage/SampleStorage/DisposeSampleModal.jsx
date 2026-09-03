@@ -42,18 +42,51 @@ const DisposeSampleModal = ({
   const [confirmed, setConfirmed] = useState(false);
 
   const disposalReasons = [
-    { id: "expired", label: "Expired" },
-    { id: "contaminated", label: "Contaminated" },
-    { id: "patient_request", label: "Patient Request" },
-    { id: "testing_complete", label: "Testing Complete" },
-    { id: "other", label: "Other" },
+    {
+      id: "expired",
+      label: intl.formatMessage({ id: "storage.disposal.reason.expired" }),
+    },
+    {
+      id: "contaminated",
+      label: intl.formatMessage({ id: "storage.disposal.reason.contaminated" }),
+    },
+    {
+      id: "patient_request",
+      label: intl.formatMessage({
+        id: "storage.disposal.reason.patientRequest",
+      }),
+    },
+    {
+      id: "testing_complete",
+      label: intl.formatMessage({
+        id: "storage.disposal.reason.testingComplete",
+      }),
+    },
+    {
+      id: "other",
+      label: intl.formatMessage({ id: "storage.disposal.reason.other" }),
+    },
   ];
 
   const disposalMethods = [
-    { id: "autoclave", label: "Biohazard Autoclave" },
-    { id: "neutralization", label: "Chemical Neutralization" },
-    { id: "incineration", label: "Incineration" },
-    { id: "other", label: "Other" },
+    {
+      id: "autoclave",
+      label: intl.formatMessage({ id: "storage.disposal.method.autoclave" }),
+    },
+    {
+      id: "neutralization",
+      label: intl.formatMessage({
+        id: "storage.disposal.method.neutralization",
+      }),
+    },
+    {
+      id: "incineration",
+      label: intl.formatMessage({ id: "storage.disposal.method.incineration" }),
+    },
+    {
+      id: "other",
+      label: intl.formatMessage({ id: "storage.disposal.method.other" }),
+    },
   ];
 
   const handleConfirm = () => {

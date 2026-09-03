@@ -406,10 +406,15 @@ const EQADistributionDashboard = () => {
                             return (
                               <TableCell key={cell.id}>
                                 <Tag type={statusConfig.color} size="sm">
-                                  {intl.formatMessage({
-                                    id: `eqa.distribution.status.${(cell.value || "draft").toLowerCase()}`,
-                                    defaultMessage: cell.value,
-                                  })}
+                                  {(() => {
+                                    const statusMessageId = `eqa.distribution.status.${(cell.value || "draft").toLowerCase()}`;
+                                    return intl.formatMessage({
+                                      id:
+                                        statusMessageId in intl.messages
+                                          ? statusMessageId
+                                          : "status.unknown",
+                                    });
+                                  })()}
                                 </Tag>
                               </TableCell>
                             );

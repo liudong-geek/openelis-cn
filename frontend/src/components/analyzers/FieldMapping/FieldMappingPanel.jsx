@@ -36,12 +36,52 @@ const FieldMappingPanel = ({
 
   // Table headers
   const headers = [
-    { key: "fieldName", header: "Field Name" },
-    { key: "astmRef", header: "ASTM Ref" },
-    { key: "type", header: "Type" },
-    { key: "unit", header: "Unit" },
-    { key: "action", header: "Action" },
+    {
+      key: "fieldName",
+      header: intl.formatMessage({
+        id: "analyzer.fieldMapping.panel.source.column.fieldName",
+      }),
+    },
+    {
+      key: "astmRef",
+      header: intl.formatMessage({
+        id: "analyzer.fieldMapping.panel.source.column.astmRef",
+      }),
+    },
+    {
+      key: "type",
+      header: intl.formatMessage({
+        id: "analyzer.fieldMapping.panel.source.column.type",
+      }),
+    },
+    {
+      key: "unit",
+      header: intl.formatMessage({
+        id: "analyzer.fieldMapping.panel.source.column.unit",
+      }),
+    },
+    {
+      key: "action",
+      header: intl.formatMessage({
+        id: "analyzer.fieldMapping.panel.source.column.action",
+      }),
+    },
   ];
+
+  const formatFieldType = (fieldType) => {
+    const messageIds = {
+      NUMERIC: "analyzer.fieldMapping.fieldType.numeric",
+      QUALITATIVE: "analyzer.fieldMapping.fieldType.qualitative",
+      CONTROL_TEST: "analyzer.fieldMapping.fieldType.controlTest",
+      MELTING_POINT: "analyzer.fieldMapping.fieldType.meltingPoint",
+      DATE_TIME: "analyzer.fieldMapping.fieldType.dateTime",
+      TEXT: "analyzer.fieldMapping.fieldType.text",
+      CUSTOM: "analyzer.fieldMapping.fieldType.custom",
+    };
+    return messageIds[fieldType]
+      ? intl.formatMessage({ id: messageIds[fieldType] })
+      : fieldType;
+  };
 
   // Calculate mapped/unmapped and draft/active counts
   const { mappedCount, unmappedCount, draftCount, activeCount } =
@@ -131,7 +171,7 @@ const FieldMappingPanel = ({
         <h3>
           <FormattedMessage
             id="analyzer.fieldMapping.panel.source.title"
-            values={{ type: "All" }}
+            values={{ type: "全部" }}
           />
         </h3>
         <div className="panel-header-controls">
@@ -326,7 +366,7 @@ const FieldMappingPanel = ({
                           cellContent = (
                             <div>
                               <Tag type={getFieldTypeColor(cell.value)}>
-                                {cell.value}
+                                {formatFieldType(cell.value)}
                               </Tag>
                               {isCustomType && customFieldType && (
                                 <Tooltip
@@ -337,7 +377,7 @@ const FieldMappingPanel = ({
                                       </strong>
                                       <br />
                                       <span>
-                                        Type: {customFieldType.typeName}
+                                        类型：{customFieldType.typeName}
                                       </span>
                                     </div>
                                   }

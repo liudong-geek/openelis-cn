@@ -39,15 +39,20 @@ import {
   putToOpenElisServer,
 } from "../../../utils/Utils";
 import messages from "../../../../languages/en.json";
+import zhMessages from "../../../../languages/zh.json";
+import zhCnMessages from "../../../../languages/zh_CN.json";
 
-const renderSection = (testId = "42") =>
+const renderSection = (
+  testId = "42",
+  { locale = "en", catalogMessages = messages } = {},
+) =>
   render(
     <MemoryRouter
       initialEntries={[
         `/MasterListsPage/TestCatalogEditor/${testId}/basic-info`,
       ]}
     >
-      <IntlProvider locale="en" messages={messages}>
+      <IntlProvider locale={locale} messages={catalogMessages}>
         <BasicInfoSection testId={testId} />
       </IntlProvider>
     </MemoryRouter>,
@@ -330,4 +335,63 @@ describe("BasicInfoSection create mode (testId=new)", () => {
       expect.anything(),
     );
   });
+});
+
+describe("BasicInfoSection Simplified Chinese UI", () => {
+  it("localizes the basic-info labels and Carbon multi-select chrome", async () => {
+    renderSection("42", {
+      locale: "zh-CN",
+      catalogMessages: zhCnMessages,
+    });
+
+    expect(await screen.findByLabelText("临床检验")).toBeInTheDocument();
+    expect(screen.getByLabelText("环境检验")).toBeInTheDocument();
+    expect(screen.getByLabelText("媒介生物检验")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "显示名称由中文名称配置管理，请在“中文名称”分区中修改。",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("适用标本类型")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "请选择该检验项目可使用的全部标本类型；各标本类型共用本页配置。",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("switch", {
+        name: "抗微生物药物耐药性（AMR）监测项目",
+      }),
+    ).toBeInTheDocument();
+
+    expect(screen.getAllByRole("button", { name: "展开选项" })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "清除" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Clear selected item" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Open" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/已选择项目数：\s*1/)).toBeInTheDocument();
+    expect(screen.getByText(/按删除键或退格键可清除选择/)).toBeInTheDocument();
+
+    // Business master-data names are intentionally not translated in this UI pass.
+    expect(screen.getAllByText("Serum").length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ["zh", zhMessages],
+    ["zh-CN", zhCnMessages],
+  ])(
+    "keeps the editor breadcrumb and targeted resources localized in %s",
+    (_, catalogMessages) => {
+      expect(catalogMessages["label.testCatalog.editor"]).toBe("检验项目配置");
+      expect(catalogMessages["label.testCatalog.specimenType"]).toBe(
+        "选择标本类型",
+      );
+      expect(catalogMessages["label.domain.CLINICAL"]).toBe("临床检验");
+      expect(catalogMessages["label.domain.ENVIRONMENTAL"]).toBe("环境检验");
+      expect(catalogMessages["label.domain.VECTOR"]).toBe("媒介生物检验");
+    },
+  );
 });

@@ -63,6 +63,7 @@ const ProgramForm = ({ program, onClose }) => {
   return (
     <Modal
       open
+      closeButtonLabel={intl.formatMessage({ id: "button.close" })}
       modalHeading={intl.formatMessage({
         id: isEditing
           ? "eqa.admin.form.editHeading"

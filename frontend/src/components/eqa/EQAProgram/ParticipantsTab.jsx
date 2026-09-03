@@ -197,6 +197,17 @@ const ParticipantsTab = ({ programs }) => {
     <div style={{ paddingTop: "1rem" }}>
       {notification && (
         <InlineNotification
+          aria-label={intl.formatMessage({ id: "button.close" })}
+          statusIconDescription={intl.formatMessage({
+            id:
+              notification.kind === "error"
+                ? "carbon.notification.error"
+                : notification.kind === "success"
+                  ? "carbon.notification.success"
+                  : notification.kind === "warning"
+                    ? "carbon.notification.warning"
+                    : "carbon.notification.info",
+          })}
           kind={notification.kind}
           title={notification.message}
           onCloseButtonClick={() => setNotification(null)}
@@ -253,6 +264,9 @@ const ParticipantsTab = ({ programs }) => {
               <Search
                 id="enrollment-search"
                 labelText=""
+                closeButtonLabelText={intl.formatMessage({
+                  id: "carbon.search.clear",
+                })}
                 placeholder={intl.formatMessage({
                   id: "eqa.enrollment.searchPlaceholder",
                 })}
@@ -384,10 +398,15 @@ const ParticipantsTab = ({ programs }) => {
                               return (
                                 <TableCell key={cell.id}>
                                   <Tag type={tagType} size="sm">
-                                    {intl.formatMessage({
-                                      id: `eqa.enrollment.status.${(cell.value || "active").toLowerCase()}`,
-                                      defaultMessage: cell.value,
-                                    })}
+                                    {(() => {
+                                      const statusMessageId = `eqa.enrollment.status.${(cell.value || "active").toLowerCase()}`;
+                                      return intl.formatMessage({
+                                        id:
+                                          statusMessageId in intl.messages
+                                            ? statusMessageId
+                                            : "status.unknown",
+                                      });
+                                    })()}
                                   </Tag>
                                 </TableCell>
                               );
@@ -473,6 +492,7 @@ const ParticipantsTab = ({ programs }) => {
       {/* Enroll Participant Modal */}
       <Modal
         open={enrollModalOpen}
+        closeButtonLabel={intl.formatMessage({ id: "button.close" })}
         modalHeading={intl.formatMessage({
           id: "eqa.enrollment.enrollParticipant",
         })}
@@ -522,6 +542,7 @@ const ParticipantsTab = ({ programs }) => {
       {/* Withdraw Confirmation Modal */}
       <Modal
         open={withdrawModalOpen}
+        closeButtonLabel={intl.formatMessage({ id: "button.close" })}
         danger
         modalHeading={intl.formatMessage({ id: "eqa.enrollment.withdraw" })}
         primaryButtonText={intl.formatMessage({

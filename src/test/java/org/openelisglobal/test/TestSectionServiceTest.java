@@ -116,7 +116,7 @@ public class TestSectionServiceTest extends BaseWebContextSensitiveTest {
     public void getUserLocalizedTesSectionName() {
         TestSection testSection1 = testSectionService.get("1");
         String localizedName = testSectionService.getUserLocalizedTesSectionName(testSection1);
-        assertEquals("", localizedName);
+        assertEquals("TB", localizedName);
     }
 
 }

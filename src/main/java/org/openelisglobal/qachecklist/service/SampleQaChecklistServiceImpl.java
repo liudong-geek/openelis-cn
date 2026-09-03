@@ -109,6 +109,9 @@ public class SampleQaChecklistServiceImpl extends BaseObjectServiceImpl<SampleQa
         }
 
         List<Dictionary> activeItems = getActiveChecklistItems();
+        if (activeItems.isEmpty()) {
+            return false;
+        }
         for (Dictionary item : activeItems) {
             Boolean isVerified = verifiedItems.get(item.getDictEntry());
             if (!Boolean.TRUE.equals(isVerified)) {

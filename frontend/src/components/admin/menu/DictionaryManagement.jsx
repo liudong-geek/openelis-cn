@@ -35,6 +35,7 @@ import {
   postToOpenElisServer,
   postToOpenElisServerFullResponse,
 } from "../../utils/Utils";
+import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 
 function DictionaryManagement() {
   const intl = useIntl();
@@ -159,7 +160,7 @@ function DictionaryManagement() {
             loincCode: item.loincCode || "",
             categoryName: item.dictionaryCategory
               ? item.dictionaryCategory.categoryName
-              : "not available",
+              : intl.formatMessage({ id: "not.available" }),
             lastupdated: item.lastupdated,
           }));
           setDictionaryMenuList(menuList);
@@ -206,7 +207,7 @@ function DictionaryManagement() {
             loincCode: item.loincCode || "",
             categoryName: item.dictionaryCategory
               ? item.dictionaryCategory.categoryName
-              : "not available",
+              : intl.formatMessage({ id: "not.available" }),
             lastupdated: item.lastupdated,
           }));
           setSearchedMenuList(menuList);
@@ -259,7 +260,7 @@ function DictionaryManagement() {
         message: intl.formatMessage({ id: "error.add.edited.msg" }),
       });
     }
-    window.location.reload();
+    refreshCurrentRoute();
   }
 
   const handleSubmitModal = (e) => {
@@ -318,7 +319,9 @@ function DictionaryManagement() {
           id={cell.id}
           checked={selectedRowIds.includes(row.id)}
           name="selectRowRadio"
-          ariaLabel="selectRow"
+          ariaLabel={intl.formatMessage({
+            id: "admin.page.configuration.formEntryConfigMenu.select",
+          })}
           onSelect={(e) => {
             e.stopPropagation();
             if (selectedRowIds.includes(row.id)) {
@@ -338,7 +341,7 @@ function DictionaryManagement() {
         <TableCell key={cell.id}>
           <img
             src={cell.value}
-            alt="Config Image"
+            alt={intl.formatMessage({ id: "dictionary.image.alt" })}
             style={{ maxWidth: "50px" }}
           />
         </TableCell>
@@ -418,7 +421,7 @@ function DictionaryManagement() {
         message: intl.formatMessage({ id: "dictionary.menu.deactivate.fail" }),
       });
     }
-    window.location.reload();
+    refreshCurrentRoute();
   };
 
   const handlePanelSearchChange = (event) => {

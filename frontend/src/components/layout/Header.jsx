@@ -17,12 +17,11 @@ import AdminSideNav from "../admin/AdminSideNav";
 import React, { createRef, useContext, useEffect, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { useLocation, useHistory } from "react-router-dom";
-import { useMenuAutoExpand } from "./useMenuAutoExpand";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import "../Style.css";
 import { ConfigurationContext } from "../layout/Layout";
 import SlideOver from "../notifications/SlideOver";
-import { languages as defaultLanguages } from "../../languages";
+import { defaultLanguages } from "../../languages";
 
 import {
   Header,
@@ -41,6 +40,36 @@ import { getFromOpenElisServer, putToOpenElisServer } from "../utils/Utils";
 import SearchBar from "./search/searchBar";
 import { getBranding } from "../utils/BrandingUtils";
 import config from "../../config.json";
+import { buildTaskFocusedMenu, MENU_PROFILES } from "./taskFocusedMenu";
+
+const expandMenuForRoute = (items, pathname) => {
+  const currentPath = pathname === "/" ? "/Dashboard" : pathname;
+
+  const visit = (menuItems) => {
+    let branchMatches = false;
+    const updatedItems = (menuItems || []).map((item) => {
+      const childResult = visit(item.childMenus || []);
+      const actionPath = (item.menu?.actionURL || "").split(/[?#]/)[0];
+      const selfMatches =
+        actionPath.length > 1 &&
+        (currentPath === actionPath ||
+          currentPath.startsWith(actionPath + "/"));
+
+      branchMatches = branchMatches || selfMatches || childResult.branchMatches;
+
+      return {
+        ...item,
+        expanded:
+          childResult.items.length > 0 ? childResult.branchMatches : false,
+        childMenus: childResult.items,
+      };
+    });
+
+    return { items: updatedItems, branchMatches };
+  };
+
+  return visit(items).items;
+};
 
 function OEHeader({
   onChangeLanguage,
@@ -60,6 +89,12 @@ function OEHeader({
   const { userSessionDetails, logout } = useContext(UserSessionDetailsContext);
   // Use enabled languages from config, fall back to default if not loaded yet
   const languages = enabledLanguages || defaultLanguages;
+  const showLanguageSelector = Object.keys(languages).length > 1;
+  const menuProfile =
+    Object.keys(languages).length === 1 &&
+    Object.keys(languages)[0].toLowerCase().startsWith("zh")
+      ? MENU_PROFILES.CHINA
+      : MENU_PROFILES.GLOBAL;
   const [headerLogoUrl, setHeaderLogoUrl] = useState(null);
   const [logoVersion, setLogoVersion] = useState(0); // Version counter for cache-busting
 
@@ -72,16 +107,12 @@ function OEHeader({
 
   const [switchCollapsed, setSwitchCollapsed] = useState(true);
   const [menus, setMenus] = useState({
-    menu: [{ menu: {}, childMenus: [] }],
+    menu: [],
     menu_billing: { menu: {}, childMenus: [] },
     menu_nonconformity: { menu: {}, childMenus: [] },
   });
-
-  // Auto-expand menu items based on current route
-  const autoExpandedMenus = useMenuAutoExpand(
-    menus["menu"],
-    `${storageKeyPrefix}ExpandedMap`,
-  );
+  const [menuLoadState, setMenuLoadState] = useState("idle");
+  const [menuReloadToken, setMenuReloadToken] = useState(0);
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -168,22 +199,126 @@ function OEHeader({
         }));
       };
 
-      const initializedMenus = initializeExpanded(res);
+      const initializedMenus = initializeExpanded(
+        tag === "menu"
+          ? buildTaskFocusedMenu(res, {
+              roles: userSessionDetails.roles,
+              profile: menuProfile,
+            })
+          : res,
+      );
+      const menusForRoute =
+        tag === "menu"
+          ? expandMenuForRoute(initializedMenus, location.pathname)
+          : initializedMenus;
       const billingMenuAfterInit = findMenu(initializedMenus, "menu_billing");
 
       // IMPORTANT: use functional setState so we never drop other menu buckets due to stale closures
-      setMenus((prev) => ({ ...prev, [tag]: initializedMenus }));
+      setMenus((prev) => ({ ...prev, [tag]: menusForRoute }));
     }
   };
 
   useEffect(() => {
     if (!userSessionDetails.authenticated || navContext !== "main") {
+      setMenuLoadState("idle");
       return;
     }
-    getFromOpenElisServer("/rest/menu", (res) => {
-      handleMenuItems("menu", res);
-    });
-  }, [userSessionDetails.authenticated, navContext]);
+
+    let cancelled = false;
+    let retryTimer;
+    let activeController;
+    let attempt = 0;
+    const maxAttempts = 8;
+
+    const scheduleRetry = () => {
+      attempt += 1;
+      if (cancelled) return;
+      if (attempt >= maxAttempts) {
+        setMenuLoadState("error");
+        return;
+      }
+      setMenuLoadState("retrying");
+      retryTimer = window.setTimeout(loadMenu, Math.min(1000 * attempt, 4000));
+    };
+
+    const loadMenu = () => {
+      if (cancelled) return;
+      setMenuLoadState(attempt === 0 ? "loading" : "retrying");
+      activeController = new AbortController();
+      let settled = false;
+      const finishWithRetry = (error) => {
+        if (settled || cancelled) return;
+        settled = true;
+        activeController.abort();
+        console.warn("Navigation menu is not ready; retrying", error);
+        scheduleRetry();
+      };
+      const timeout = window.setTimeout(
+        () => finishWithRetry(new Error("Menu request timed out")),
+        8000,
+      );
+
+      getFromOpenElisServer(
+        "/rest/menu",
+        (result) => {
+          if (settled || cancelled) return;
+          settled = true;
+          window.clearTimeout(timeout);
+          if (!Array.isArray(result) || result.length === 0) {
+            console.warn(
+              "Navigation menu is not ready; retrying",
+              new Error("Menu request returned no authorized items"),
+            );
+            scheduleRetry();
+            return;
+          }
+          handleMenuItems("menu", result);
+          setMenuLoadState("ready");
+        },
+        activeController.signal,
+      );
+    };
+
+    loadMenu();
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(retryTimer);
+      activeController?.abort();
+    };
+  }, [
+    userSessionDetails.authenticated,
+    navContext,
+    menuReloadToken,
+    intl.locale,
+    menuProfile,
+  ]);
+
+  useEffect(() => {
+    setMenus((prev) => ({
+      ...prev,
+      menu: expandMenuForRoute(prev.menu, location.pathname),
+    }));
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const closeTransientUi = (event) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      setSearchBar(false);
+      setNotificationsOpen(false);
+      setSwitchCollapsed(true);
+      setHelpOpen(false);
+      if (!navPersistent && navOpen) {
+        closeSideNav();
+      }
+    };
+
+    document.addEventListener("keydown", closeTransientUi);
+    return () => document.removeEventListener("keydown", closeTransientUi);
+  }, [closeSideNav, navOpen, navPersistent]);
 
   const handlePanelToggle = (panel) => {
     setSearchBar(panel === "search");
@@ -303,7 +438,7 @@ function OEHeader({
           <img
             className="logo"
             src={logoSrc}
-            alt="logo"
+            alt={intl.formatMessage({ id: "header.logo.alt" })}
             style={{ objectFit: "contain", maxHeight: "71px" }}
             onError={(e) => {
               // Fallback to default logo if custom logo fails to load
@@ -436,6 +571,20 @@ function OEHeader({
       actionPath.length > 1 &&
       currentPath.startsWith(actionPath + "/");
     const hasChildren = menuItem.childMenus.length > 0;
+    const hasAction =
+      typeof menuItem.menu.actionURL === "string" &&
+      menuItem.menu.actionURL.trim().length > 0;
+    const securityRestricted = menuItem.securityRestricted === true;
+
+    const menuTitleId = menuItem.menu.displayKey;
+
+    // Do not render dead-end rows. A menu item must either open a submenu or
+    // navigate somewhere; otherwise it looks interactive but cannot respond.
+    if (!hasChildren && !hasAction) {
+      return (
+        <React.Fragment key={menuItem.menu.elementId || path}></React.Fragment>
+      );
+    }
 
     // Check if this menu item has siblings with paths that start with its own path.
     // If so, only use exact matching to avoid conflicts (e.g., /analyzers vs /analyzers/errors).
@@ -495,8 +644,8 @@ function OEHeader({
       e.preventDefault();
       e.stopPropagation();
 
-      if (hasChildren) {
-        return; // parent handled by SideNavMenu toggle
+      if (hasChildren || securityRestricted) {
+        return;
       }
 
       if (menuItem.menu.actionURL) {
@@ -504,7 +653,10 @@ function OEHeader({
         // even when the menu row was seeded with new_window=true. The flag
         // only fires window.open() for true external URLs (http(s)://, mailto:, etc.).
         const isInternalUrl = menuItem.menu.actionURL.startsWith("/");
-        if (menuItem.menu.openInNewWindow && !isInternalUrl) {
+        const opensSeparateWindow =
+          menuItem.menu.openInNewWindow &&
+          (!isInternalUrl || menuItem.menu.navigationMode === "document");
+        if (opensSeparateWindow) {
           // noopener,noreferrer prevents reverse-tabnabbing — the new tab
           // can't navigate this app's window via window.opener.
           window.open(menuItem.menu.actionURL, "_blank", "noopener,noreferrer");
@@ -523,25 +675,44 @@ function OEHeader({
       // apply active styles to ALL submenu buttons, not just the active one.
       // Instead, use expanded state to show which parent has active children.
       const carbonIsActive = isLeafActive; // Only true if this parent item's own path matches
-      // Use controlled expanded prop instead of defaultExpanded to ensure proper collapse behavior
-      const carbonExpanded = !!menuItem.expanded || hasActiveChild;
+      const carbonExpanded = !!menuItem.expanded;
+      const baseMenuClass =
+        level === 0 ? "top-level-menu-item" : "reduced-padding-nav-menu-item";
+      const menuClassName = [
+        baseMenuClass,
+        carbonExpanded ? "menu-expanded" : "",
+        hasActiveChild ? "menu-active-branch" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
       return (
         // Wrapper span with ID for backward compatibility with Cypress selectors (span#menu_xxx)
-        <span key={itemId} id={menuItem.menu.elementId}>
+        <span
+          key={itemId}
+          id={menuItem.menu.elementId}
+          onClick={(event) => {
+            const toggleButton = event.target.closest(
+              ".cds--side-nav__submenu",
+            );
+            const ownsToggle =
+              toggleButton?.parentElement?.parentElement ===
+              event.currentTarget;
+            if (ownsToggle) {
+              setMenuItemExpanded(menuItem);
+            }
+          }}
+        >
           <SideNavMenu
+            // Carbon owns its internal expanded state. Changing the key only
+            // when our accordion state changes re-syncs defaultExpanded for a
+            // sibling that must close.
+            key={`${itemId}-${carbonExpanded ? "expanded" : "collapsed"}`}
             // IMPORTANT: use stable key (elementId) to prevent React from reusing the wrong subtree
             // when the menu list shape changes (roles/plugins/async load).
-            title={intl.formatMessage({ id: menuItem.menu.displayKey })}
+            title={intl.formatMessage({ id: menuTitleId })}
             defaultExpanded={carbonExpanded}
             isActive={carbonIsActive}
-            onToggle={() => {
-              setMenuItemExpanded(menuItem);
-            }}
-            className={
-              level === 0
-                ? "top-level-menu-item"
-                : "reduced-padding-nav-menu-item"
-            }
+            className={menuClassName}
           >
             <span
               onClick={(e) => {
@@ -565,6 +736,13 @@ function OEHeader({
     }
 
     // Leaf item - wrapped in span for backward compatibility with Cypress selectors
+    const leafClassName = [
+      level === 0 ? "top-level-menu-item" : "reduced-padding-nav-menu-item",
+      securityRestricted ? "oe-sidenav-security-restricted" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
     return (
       <span
         key={itemId}
@@ -573,39 +751,59 @@ function OEHeader({
       >
         <SideNavMenuItem
           id={menuItem.menu.elementId + "_nav"}
-          className={
-            level === 0
-              ? "top-level-menu-item"
-              : "reduced-padding-nav-menu-item"
+          className={leafClassName}
+          isActive={!securityRestricted && isLeafActive}
+          href={
+            securityRestricted
+              ? undefined
+              : menuItem.menu.actionURL || undefined
           }
-          isActive={isLeafActive}
-          href={menuItem.menu.actionURL || undefined}
           target={
+            !securityRestricted &&
             menuItem.menu.openInNewWindow &&
-            !menuItem.menu.actionURL?.startsWith("/")
+            (!menuItem.menu.actionURL?.startsWith("/") ||
+              menuItem.menu.navigationMode === "document")
               ? "_blank"
               : undefined
           }
           rel={
+            !securityRestricted &&
             menuItem.menu.openInNewWindow &&
-            !menuItem.menu.actionURL?.startsWith("/")
+            (!menuItem.menu.actionURL?.startsWith("/") ||
+              menuItem.menu.navigationMode === "document")
               ? "noreferrer"
               : undefined
           }
           onClick={handleLabelClick}
-          aria-current={isLeafActive ? "page" : undefined}
+          aria-current={
+            !securityRestricted && isLeafActive ? "page" : undefined
+          }
+          aria-disabled={securityRestricted ? "true" : undefined}
+          tabIndex={securityRestricted ? -1 : undefined}
+          data-report-availability={
+            securityRestricted ? "security-review" : undefined
+          }
           style={level === 0 ? undefined : { width: "100%" }}
         >
           <span
+            className="oe-sidenav-leaf-content"
             style={{
               display: "flex",
               width: "100%",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.5rem",
               marginLeft: level === 0 ? 0 : `${(level - 1) * 0.5}rem`,
             }}
           >
             <span style={{ fontSize: `${100 - 5 * Math.max(level - 1, 0)}%` }}>
-              <FormattedMessage id={menuItem.menu.displayKey} />
+              <FormattedMessage id={menuTitleId} />
             </span>
+            {securityRestricted && (
+              <span className="oe-sidenav-security-restricted__status">
+                <FormattedMessage id="reports.securityReview.status" />
+              </span>
+            )}
           </span>
         </SideNavMenuItem>
       </span>
@@ -618,23 +816,36 @@ function OEHeader({
       const newMenus = { ...prev };
       const targetId = menuItem?.menu?.elementId;
 
-      // IMPORTANT: toggle expansion by stable elementId, NOT by index-based JSONPath.
-      // Index-based paths can point at the wrong node if the menu shape changes.
-      const toggleById = (items) => {
-        return (items || []).map((it) => {
-          const id = it?.menu?.elementId;
-          if (!id) return it;
-          if (id === targetId) {
-            return { ...it, expanded: !it.expanded };
-          }
-          if (it.childMenus && it.childMenus.length > 0) {
-            return { ...it, childMenus: toggleById(it.childMenus) };
-          }
-          return it;
+      // Toggle by stable elementId and use accordion behavior at the target's
+      // level. This keeps the long laboratory menu scannable without changing
+      // expansion state in unrelated ancestor levels.
+      const toggleAccordionById = (items) => {
+        const currentItems = items || [];
+        const targetAtThisLevel = currentItems.some(
+          (it) => it?.menu?.elementId === targetId,
+        );
+
+        if (targetAtThisLevel) {
+          return currentItems.map((it) => {
+            const id = it?.menu?.elementId;
+            if (!id) return it;
+            return {
+              ...it,
+              expanded: id === targetId ? !it.expanded : false,
+            };
+          });
+        }
+
+        return currentItems.map((it) => {
+          if (!it.childMenus || it.childMenus.length === 0) return it;
+          return {
+            ...it,
+            childMenus: toggleAccordionById(it.childMenus),
+          };
         });
       };
 
-      newMenus.menu = toggleById(newMenus.menu || []);
+      newMenus.menu = toggleAccordionById(newMenus.menu || []);
 
       // Persist expanded state map for this context
       try {
@@ -669,7 +880,11 @@ function OEHeader({
             flexDirection: "column",
           }}
         >
-          <Header id="mainHeader" className="mainHeader" aria-label="">
+          <Header
+            id="mainHeader"
+            className="mainHeader"
+            aria-label={configurationProperties?.BANNER_TEXT || "OpenELIS"}
+          >
             {userSessionDetails.authenticated &&
               !navPersistent &&
               showSideNav && (
@@ -787,7 +1002,7 @@ function OEHeader({
               />
             </HeaderGlobalBar>
             <HeaderPanel
-              aria-label="Header Panel"
+              aria-label={intl.formatMessage({ id: "header.panel.user" })}
               expanded={!switchCollapsed}
               className="headerPanel"
               ref={headerPanelRef}
@@ -814,47 +1029,55 @@ function OEHeader({
                     )}
                   </>
                 )}
-                <li className="userDetails">
-                  {/* Theme wrapper ONLY around Select to make dropdown light */}
-                  <Theme theme="white">
-                    <Select
-                      id="selector"
-                      name="selectLocale"
-                      className="selectLocale"
-                      invalidText="A valid locale value is required"
-                      labelText={
-                        <FormattedMessage id="header.label.selectlocale" />
-                      }
-                      onChange={(event) => {
-                        onChangeLanguage(event.target.value);
-                      }}
-                      value={intl.locale}
-                    >
-                      {Object.entries(languages).map(([code, { label }]) => (
-                        <SelectItem key={code} text={label} value={code} />
-                      ))}
-                    </Select>
-                  </Theme>
-                </li>
+                {showLanguageSelector && (
+                  <li className="userDetails">
+                    {/* Theme wrapper ONLY around Select to make dropdown light */}
+                    <Theme theme="white">
+                      <Select
+                        id="selector"
+                        name="selectLocale"
+                        className="selectLocale"
+                        invalidText="A valid locale value is required"
+                        labelText={
+                          <FormattedMessage id="header.label.selectlocale" />
+                        }
+                        onChange={(event) => {
+                          onChangeLanguage(event.target.value);
+                        }}
+                        value={intl.locale}
+                      >
+                        {Object.entries(languages).map(([code, { label }]) => (
+                          <SelectItem key={code} text={label} value={code} />
+                        ))}
+                      </Select>
+                    </Theme>
+                  </li>
+                )}
                 {userSessionDetails.authenticated && (
                   <>
-                    <li
-                      data-cy="headerChangePassword"
-                      className="userDetails clickableUserDetails"
-                      onClick={() => {
-                        window.location.href = "/ChangePasswordLogin";
-                      }}
-                    >
-                      <Password style={{ marginRight: "3px" }} />
-                      <FormattedMessage id="label.button.changepassword" />
+                    <li className="clickableUserDetails">
+                      <button
+                        type="button"
+                        data-cy="headerChangePassword"
+                        className="oe-header-panel-action"
+                        onClick={() => {
+                          history.push("/ChangePasswordLogin");
+                        }}
+                      >
+                        <Password style={{ marginRight: "3px" }} />
+                        <FormattedMessage id="label.button.changepassword" />
+                      </button>
                     </li>
-                    <li
-                      data-cy="logOut"
-                      className="userDetails clickableUserDetails"
-                      onClick={logout}
-                    >
-                      <Logout style={{ marginRight: "3px" }} />
-                      <FormattedMessage id="header.label.logout" />
+                    <li className="clickableUserDetails">
+                      <button
+                        type="button"
+                        data-cy="logOut"
+                        className="oe-header-panel-action"
+                        onClick={logout}
+                      >
+                        <Logout style={{ marginRight: "3px" }} />
+                        <FormattedMessage id="header.label.logout" />
+                      </button>
                     </li>
                   </>
                 )}
@@ -870,10 +1093,16 @@ function OEHeader({
             {userSessionDetails.authenticated && showSideNav && (
               <>
                 <SideNav
-                  aria-label="Side navigation"
-                  className={
-                    navContext === "admin" ? "admin-shell-side-nav" : undefined
-                  }
+                  aria-label={intl.formatMessage({
+                    id: "header.navigation.main",
+                  })}
+                  className={[
+                    "oe-app-sidenav",
+                    navPersistent ? "oe-app-sidenav--persistent" : "",
+                    navContext === "admin" ? "admin-shell-side-nav" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                   expanded={navOpen}
                   // Pinned desktop: always-rendered fixed nav;
                   // unpinned desktop + small viewports: overlay drawer
@@ -911,15 +1140,49 @@ function OEHeader({
                     />
                   ) : (
                     <SideNavItems>
-                      {autoExpandedMenus.map((childMenuItem, index) => {
-                        return generateMenuItems(
-                          childMenuItem,
-                          index,
-                          0,
-                          "$.menu[" + index + "]",
-                          null, // Top level items have no parent siblings
-                        );
-                      })}
+                      {menuLoadState === "ready" ? (
+                        menus.menu.map((childMenuItem, index) => {
+                          return generateMenuItems(
+                            childMenuItem,
+                            index,
+                            0,
+                            "$.menu[" + index + "]",
+                            null, // Top level items have no parent siblings
+                          );
+                        })
+                      ) : (
+                        <div
+                          className={`oe-sidenav-status oe-sidenav-status--${menuLoadState}`}
+                          role={menuLoadState === "error" ? "alert" : "status"}
+                        >
+                          {menuLoadState === "error" ? (
+                            <>
+                              <p>
+                                <FormattedMessage id="sidenav.menu.loadError" />
+                              </p>
+                              <button
+                                type="button"
+                                className="oe-sidenav-status__retry"
+                                onClick={() =>
+                                  setMenuReloadToken((token) => token + 1)
+                                }
+                              >
+                                <FormattedMessage id="sidenav.menu.retry" />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <span
+                                className="oe-sidenav-status__spinner"
+                                aria-hidden="true"
+                              />
+                              <p>
+                                <FormattedMessage id="sidenav.menu.loading" />
+                              </p>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </SideNavItems>
                   )}
                 </SideNav>
@@ -931,7 +1194,7 @@ function OEHeader({
               open={notificationsOpen}
               setOpen={(open) => setNotificationsOpen(open)}
               slideFrom="right"
-              title="Notifications"
+              title={intl.formatMessage({ id: "header.icon.notifications" })}
             >
               <SlideOverNotifications
                 loading={loading}

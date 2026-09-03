@@ -20,6 +20,7 @@ import {
 } from "../../common/CustomNotification";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 
 let breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -114,7 +115,7 @@ function ResultReportingConfiguration() {
       },
     );
     setTimeout(() => {
-      window.location.reload();
+      refreshCurrentRoute();
     }, 1000);
   }
 

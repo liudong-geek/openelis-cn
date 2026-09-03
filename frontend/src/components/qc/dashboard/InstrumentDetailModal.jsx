@@ -54,6 +54,7 @@ const InstrumentDetailModal = ({ instrument, open, onClose }) => {
       data-testid="instrument-detail-modal"
     >
       <ModalHeader
+        iconDescription={intl.formatMessage({ id: "button.close" })}
         title={instrument.instrumentName}
         label={
           <span className="instrument-detail-subtitle">
@@ -126,7 +127,11 @@ const InstrumentDetailModal = ({ instrument, open, onClose }) => {
           selectedIndex={activeSubTab}
           onChange={({ selectedIndex }) => setActiveSubTab(selectedIndex)}
         >
-          <TabList aria-label="Instrument detail tabs">
+          <TabList
+            aria-label={intl.formatMessage({
+              id: "qc.instrumentDetail.tabs.ariaLabel",
+            })}
+          >
             <Tab>
               {intl.formatMessage({
                 id: "qc.instrumentDetail.tab.activityTimeline",

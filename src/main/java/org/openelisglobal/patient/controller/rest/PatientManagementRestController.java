@@ -15,6 +15,7 @@ import org.openelisglobal.dataexchange.fhir.service.FhirTransformService;
 import org.openelisglobal.patient.action.IPatientUpdate.PatientUpdateStatus;
 import org.openelisglobal.patient.action.bean.PatientIdDocumentInfo;
 import org.openelisglobal.patient.action.bean.PatientManagementInfo;
+import org.openelisglobal.patient.form.PatientListResponse;
 import org.openelisglobal.patient.service.PatientIdDocumentService;
 import org.openelisglobal.patient.service.PatientPhotoService;
 import org.openelisglobal.patient.service.PatientService;
@@ -39,6 +40,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 @Controller
@@ -56,6 +58,13 @@ public class PatientManagementRestController extends BaseRestController {
     PatientPhotoService photoService;
     @Autowired
     PatientIdDocumentService idDocumentService;
+
+    @GetMapping(value = "patient-management-list", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public PatientListResponse getPatientManagementList(@RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return patientService.getPatientManagementList(page, pageSize);
+    }
 
     @PostMapping(value = "PatientManagement", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
@@ -82,6 +91,11 @@ public class PatientManagementRestController extends BaseRestController {
                 String message = fe != null
                         ? fe.getField() + ": " + StringUtils.defaultIfBlank(fe.getDefaultMessage(), "invalid value")
                         : "Validation failed";
+                if (hasDuplicatePatientError(bindingResult)) {
+                    return ResponseEntity.status(HttpStatus.CONFLICT)
+                            .body(Map.of("error", message, "code", "DUPLICATE_PATIENT",
+                                    "errorKey", duplicatePatientErrorKey(bindingResult)));
+                }
                 return ResponseEntity.badRequest().body(Map.of("error", message));
             }
             try {
@@ -128,6 +142,17 @@ public class PatientManagementRestController extends BaseRestController {
             return ResponseEntity.ok(Map.of("status", "success", "patientId", patient.getId()));
         }
         return ResponseEntity.ok(Map.of("status", "success"));
+    }
+
+    private static boolean hasDuplicatePatientError(BindingResult bindingResult) {
+        return bindingResult.getAllErrors().stream().anyMatch(error -> error.getCode() != null
+                && error.getCode().startsWith("error.duplicate."));
+    }
+
+    private static String duplicatePatientErrorKey(BindingResult bindingResult) {
+        return bindingResult.getAllErrors().stream().map(error -> error.getCode())
+                .filter(code -> code != null && code.startsWith("error.duplicate.")).findFirst()
+                .orElse("error.duplicate.patient");
     }
 
     @GetMapping("patient-photos/{id}/{isThumbnail}")

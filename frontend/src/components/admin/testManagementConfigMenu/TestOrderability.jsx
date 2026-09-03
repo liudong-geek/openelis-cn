@@ -20,6 +20,7 @@ import {
 } from "../../common/CustomNotification";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import { navigateToInternalPath } from "../../utils/NavigationUtils";
 
 let breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -267,9 +268,6 @@ function TestOrderability() {
         kind: NotificationKinds.success,
       });
       setNotificationVisible(true);
-      setTimeout(() => {
-        window.location.reload();
-      }, 200);
     } else {
       addNotification({
         kind: NotificationKinds.error,
@@ -277,9 +275,6 @@ function TestOrderability() {
         message: intl.formatMessage({ id: "server.error.msg" }),
       });
       setNotificationVisible(true);
-      setTimeout(() => {
-        window.location.reload();
-      }, 200);
     }
   }
 
@@ -353,7 +348,9 @@ function TestOrderability() {
               </Button>{" "}
               <Button
                 onClick={() =>
-                  window.location.assign("/MasterListsPage/TestOrderability")
+                  navigateToInternalPath("/MasterListsPage/TestOrderability", {
+                    replace: true,
+                  })
                 }
                 kind="tertiary"
                 type="button"
@@ -435,7 +432,9 @@ function TestOrderability() {
               </Button>{" "}
               <Button
                 onClick={() =>
-                  window.location.assign("/MasterListsPage/TestOrderability")
+                  navigateToInternalPath("/MasterListsPage/TestOrderability", {
+                    replace: true,
+                  })
                 }
                 kind="tertiary"
                 type="button"

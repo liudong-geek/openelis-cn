@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import messages from "../../../languages/en.json";
+import zhMessages from "../../../languages/zh.json";
 
 import AcceptUnconditionallyGuard from "../AcceptUnconditionallyGuard";
 
@@ -126,5 +127,27 @@ describe("AcceptUnconditionallyGuard — safety guard for audit-impact override"
     const { onUnaccept } = renderGuard({ accepted: true });
     await user.click(screen.getByRole("button", { name: /undo/i }));
     expect(onUnaccept).toHaveBeenCalledTimes(1);
+  });
+
+  test("Chinese locale keeps the complete acceptance guard in Chinese", async () => {
+    const user = userEvent.setup();
+    render(
+      <IntlProvider locale="zh" messages={zhMessages}>
+        <AcceptUnconditionallyGuard
+          rowId="row-zh"
+          accepted={false}
+          onAccept={vi.fn()}
+          onUnaccept={vi.fn()}
+        />
+      </IntlProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "无条件接受" }));
+
+    expect(screen.getByLabelText("无条件接受原因")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /确认无条件接受$/ }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
   });
 });

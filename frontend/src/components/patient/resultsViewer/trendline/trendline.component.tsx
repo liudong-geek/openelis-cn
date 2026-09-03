@@ -1,15 +1,10 @@
 import React, { useState, useCallback, useMemo, useLayoutEffect } from "react";
-import { useTranslation } from "react-i18next";
-import { Button, InlineLoading, SkeletonText } from "@carbon/react";
+import { useIntl } from "react-intl";
+import { Button, InlineLoading } from "@carbon/react";
 import { ArrowLeft } from "@carbon/react/icons";
 import { LineChart } from "@carbon/charts-react";
-import {
-  formatDate,
-  formatTime,
-  parseDate,
-  ConfigurableLink,
-} from "../commons";
-import { EmptyState, OBSERVATION_INTERPRETATION } from "../commons";
+import { parseDate, ConfigurableLink } from "../commons";
+import { EmptyState, ErrorState, OBSERVATION_INTERPRETATION } from "../commons";
 import { useObstreeData } from "./trendline-resource";
 import CommonDataTable from "../overview/common-datatable.component";
 import RangeSelector from "./range-selector.component";
@@ -29,6 +24,41 @@ enum TickRotations {
   NEVER = "never",
 }
 
+const numericValuePattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+const comparisonValuePattern =
+  /^(?:<=|>=|<|>|≤|≥)\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)$/;
+
+const parseTrendNumber = (candidate: unknown): number | null => {
+  if (typeof candidate === "number") {
+    return Number.isFinite(candidate) ? candidate : null;
+  }
+
+  if (typeof candidate !== "string") {
+    return null;
+  }
+
+  const normalized = candidate.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const numericText = numericValuePattern.test(normalized)
+    ? normalized
+    : comparisonValuePattern.exec(normalized)?.[1];
+  if (!numericText) {
+    return null;
+  }
+
+  const numericValue = Number(numericText);
+  return Number.isFinite(numericValue) ? numericValue : null;
+};
+
+const getTrendValue = (observation: {
+  value?: unknown;
+  rawValue?: unknown;
+}): number | null =>
+  parseTrendNumber(observation.value) ?? parseTrendNumber(observation.rawValue);
+
 const TrendLineBackground = ({ ...props }) => (
   <div {...props} className="background" />
 );
@@ -40,7 +70,7 @@ const TrendlineHeader = ({
   isValidating,
   showBackToTimelineButton,
 }) => {
-  const { t } = useTranslation();
+  const intl = useIntl();
   return (
     <div className="header">
       <div className="backButton">
@@ -49,9 +79,15 @@ const TrendlineHeader = ({
             <Button
               kind="ghost"
               renderIcon={(props) => <ArrowLeft {...props} size={24} />}
-              iconDescription={t("returnToTimeline", "Return to timeline")}
+              iconDescription={intl.formatMessage({
+                id: "patient.resultsViewer.trend.returnToTimeline",
+              })}
             >
-              <span>{t("backToTimeline", "Back to timeline")}</span>
+              <span>
+                {intl.formatMessage({
+                  id: "patient.resultsViewer.trend.backToTimeline",
+                })}
+              </span>
             </Button>
           </ConfigurableLink>
         )}
@@ -80,11 +116,11 @@ const Trendline: React.FC<TrendlineProps> = ({
   hideTrendlineHeader = false,
   showBackToTimelineButton = false,
 }) => {
-  const { trendlineData, isLoading, isValidating } = useObstreeData(
+  const { trendlineData, isLoading, isValidating, error } = useObstreeData(
     patientUuid,
     conceptUuid,
   );
-  const { t } = useTranslation();
+  const intl = useIntl();
   const {
     obs,
     display: chartTitle,
@@ -93,7 +129,9 @@ const Trendline: React.FC<TrendlineProps> = ({
     units: leftAxisTitle,
     range: referenceRange,
   } = trendlineData;
-  const bottomAxisTitle = t("date", "Date");
+  const bottomAxisTitle = intl.formatMessage({
+    id: "patient.resultsViewer.trend.date",
+  });
   const [range, setRange] = useState<[Date, Date]>();
 
   const [upperRange, lowerRange] = useMemo(() => {
@@ -148,27 +186,40 @@ const Trendline: React.FC<TrendlineProps> = ({
   const dataset = chartTitle;
 
   obs.forEach((obs, idx) => {
-    const range =
-      hiNormal && lowNormal
-        ? {
-            max: hiNormal,
-            min: lowNormal,
-          }
-        : {};
+    const numericValue = getTrendValue(obs);
+    if (numericValue === null) {
+      return;
+    }
+
+    const observationLowNormal = obs.lowNormal ?? lowNormal;
+    const observationHighNormal = obs.hiNormal ?? hiNormal;
+    const numericLowNormal = parseTrendNumber(observationLowNormal);
+    const numericHighNormal = parseTrendNumber(observationHighNormal);
+    const normalRange = {
+      ...(numericHighNormal !== null ? { max: numericHighNormal } : {}),
+      ...(numericLowNormal !== null ? { min: numericLowNormal } : {}),
+    };
 
     data.push({
       date: new Date(Date.parse(obs.obsDatetime)),
-      value: parseFloat(obs.value),
+      value: numericValue,
       group: chartTitle,
-      ...range,
+      ...normalRange,
     });
 
     tableData.push({
       id: `${idx}`,
-      date: formatDate(parseDate(obs.obsDatetime)),
-      time: formatTime(parseDate(obs.obsDatetime)),
+      date: intl.formatDate(parseDate(obs.obsDatetime), {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+      }),
+      time: intl.formatTime(parseDate(obs.obsDatetime), {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
       value: {
-        value: parseFloat(obs.value),
+        value: numericValue,
         interpretation: obs.interpretation,
       },
     });
@@ -212,41 +263,126 @@ const Trendline: React.FC<TrendlineProps> = ({
       legend: {
         enabled: false,
       },
+      locale: {
+        code: intl.locale,
+        translations: {
+          group: intl.formatMessage({
+            id: "patient.resultsViewer.chart.group",
+          }),
+          total: intl.formatMessage({
+            id: "patient.resultsViewer.chart.total",
+          }),
+          tabularRep: {
+            title: intl.formatMessage({
+              id: "patient.resultsViewer.chart.table.title",
+            }),
+            downloadAsCSV: intl.formatMessage({
+              id: "patient.resultsViewer.chart.table.downloadCsv",
+            }),
+          },
+          toolbar: {
+            exportAsCSV: intl.formatMessage({
+              id: "patient.resultsViewer.chart.exportCsv",
+            }),
+            exportAsJPG: intl.formatMessage({
+              id: "patient.resultsViewer.chart.exportJpg",
+            }),
+            exportAsPNG: intl.formatMessage({
+              id: "patient.resultsViewer.chart.exportPng",
+            }),
+            zoomIn: intl.formatMessage({
+              id: "patient.resultsViewer.chart.zoomIn",
+            }),
+            zoomOut: intl.formatMessage({
+              id: "patient.resultsViewer.chart.zoomOut",
+            }),
+            resetZoom: intl.formatMessage({
+              id: "patient.resultsViewer.chart.resetZoom",
+            }),
+            moreOptions: intl.formatMessage({
+              id: "patient.resultsViewer.chart.moreOptions",
+            }),
+            makeFullScreen: intl.formatMessage({
+              id: "patient.resultsViewer.chart.fullScreen",
+            }),
+            exitFullScreen: intl.formatMessage({
+              id: "patient.resultsViewer.chart.exitFullScreen",
+            }),
+            showAsTable: intl.formatMessage({
+              id: "patient.resultsViewer.chart.showTable",
+            }),
+          },
+        },
+      },
       tooltip: {
         customHTML: ([{ date, value }]) =>
           `<div class="cds--tooltip cds--tooltip--shown" style="min-width: max-content; font-weight:600">${value} ${leftAxisTitle}<br>
-          <span style="color: #c6c6c6; font-size: 0.75rem; font-weight:400">${formatDate(date)}</span></div>`,
+          <span style="color: #c6c6c6; font-size: 0.75rem; font-weight:400">${intl.formatDate(
+            date,
+            {
+              year: "numeric",
+              month: "short",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+            },
+          )}</span></div>`,
       },
     }),
-    [bottomAxisTitle, leftAxisTitle, range, chartTitle],
+    [bottomAxisTitle, leftAxisTitle, range, chartTitle, intl],
   );
 
   const tableHeaderData = useMemo(
     () => [
       {
-        header: t("date", "Date"),
+        header: intl.formatMessage({
+          id: "patient.resultsViewer.trend.date",
+        }),
         key: "date",
       },
       {
-        header: t("timeOfTest", "Time of Test"),
+        header: intl.formatMessage({
+          id: "patient.resultsViewer.trend.timeOfTest",
+        }),
         key: "time",
       },
       {
-        header: `${t("value", "Value")} (${leftAxisTitle})`,
+        header: `${intl.formatMessage({
+          id: "patient.resultsViewer.trend.value",
+        })} (${leftAxisTitle})`,
         key: "value",
       },
     ],
-    [leftAxisTitle, t],
+    [intl, leftAxisTitle],
   );
 
   if (isLoading) {
-    return <SkeletonText />;
+    return (
+      <InlineLoading
+        description={intl.formatMessage({
+          id: "patient.resultsViewer.trend.loading",
+        })}
+      />
+    );
+  }
+
+  if (error) {
+    return (
+      <ErrorState
+        error={error}
+        headerTitle={intl.formatMessage({
+          id: "patient.resultsViewer.error.title",
+        })}
+      />
+    );
   }
 
   if (obs.length === 0) {
     return (
       <EmptyState
-        displayText={t("observationsDisplayText", "observations")}
+        displayText={intl.formatMessage({
+          id: "patient.resultsViewer.trend.observations",
+        })}
         headerTitle={chartTitle}
       />
     );

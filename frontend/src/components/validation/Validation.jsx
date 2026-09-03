@@ -14,7 +14,7 @@ import DataTable from "react-data-table-component";
 import { FormattedMessage, useIntl } from "react-intl";
 import ValidationSearchFormValues from "../formModel/innitialValues/ValidationSearchFormValues";
 import { NotificationKinds } from "../common/CustomNotification";
-import { postToOpenElisServer } from "../utils/Utils";
+import { hasRole, postToOpenElisServer, Roles } from "../utils/Utils";
 import { NotificationContext } from "../layout/Layout";
 import { ConfigurationContext } from "../layout/Layout";
 import { convertAlphaNumLabNumForDisplay } from "../utils/Utils";
@@ -23,13 +23,17 @@ import config from "../../config.json";
 import ESignatureButton, {
   SignatureMeaning,
 } from "../esignature/ESignatureButton";
+import UserSessionDetailsContext from "../../UserSessionDetailsContext";
+import { useHistory } from "react-router-dom";
 
 const Validation = (props) => {
   const componentMounted = useRef(false);
+  const history = useHistory();
 
   const { setNotificationVisible, addNotification } =
     useContext(NotificationContext);
   const { configurationProperties } = useContext(ConfigurationContext);
+  const { userSessionDetails } = useContext(UserSessionDetailsContext);
 
   const intl = useIntl();
 
@@ -170,7 +174,7 @@ const Validation = (props) => {
     if (status == 200) {
       message = intl.formatMessage({ id: "validation.save.success" });
       kind = NotificationKinds.success;
-      window.location.href = "/validation" + props.params;
+      history.replace(`/validation${props.params || ""}`);
     }
     addNotification({
       kind: kind,
@@ -253,20 +257,22 @@ const Validation = (props) => {
                 hasIconOnly
                 renderIcon={Copy}
               />
-              <Button
-                kind="ghost"
-                hasIconOnly
-                renderIcon={Launch}
-                iconDescription={intl.formatMessage({
-                  id: "label.validation.viewPatient",
-                })}
-                href={`/PatientManagement?labNumber=${encodeURIComponent(
-                  row.accessionNumber,
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                as="a"
-              />
+              {hasRole(userSessionDetails, Roles.RECEPTION) && (
+                <Button
+                  kind="ghost"
+                  hasIconOnly
+                  renderIcon={Launch}
+                  iconDescription={intl.formatMessage({
+                    id: "label.validation.viewPatient",
+                  })}
+                  href={`/PatientManagement?labNumber=${encodeURIComponent(
+                    row.accessionNumber,
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  as="a"
+                />
+              )}
             </div>
             <div className="sampleInfo" data-testid="LabNo">
               <br></br>
@@ -283,7 +289,9 @@ const Validation = (props) => {
               <picture>
                 <img
                   src={config.serverBaseUrl + "/images/nonconforming.gif"}
-                  alt="nonconforming"
+                  alt={intl.formatMessage({
+                    id: "label.validation.nonconforming",
+                  })}
                   width="20"
                   height="15"
                 />
@@ -427,7 +435,9 @@ const Validation = (props) => {
             <picture>
               <img
                 src={config.serverBaseUrl + "/images/nonconforming.gif"}
-                alt="nonconforming"
+                alt={intl.formatMessage({
+                  id: "label.validation.nonconforming",
+                })}
                 width="25" // Set your desired width
                 height="20" // Set your desired height
               />
@@ -492,86 +502,91 @@ const Validation = (props) => {
           </Column>
         </Grid>
       )}
-      <Formik
-        initialValues={ValidationSearchFormValues}
-        //validationSchema={}
-        onSubmit
-        onChange
-      >
-        {({ values, errors, touched, handleChange }) => (
-          <Form onChange={handleChange}>
-            <DataTable
-              data={
-                props.results
-                  ? props?.results?.resultList?.slice(
-                      (page - 1) * pageSize,
-                      page * pageSize,
-                    )
-                  : []
-              }
-              columns={columns}
-              isSortable
-            ></DataTable>
-            <Pagination
-              onChange={handlePageChange}
-              page={page}
-              pageSize={pageSize}
-              pageSizes={[10, 20, 30, 50, 100]}
-              totalItems={
-                props.results
-                  ? props.results.resultList
-                    ? props.results.resultList.length
-                    : 0
-                  : 0
-              }
-              forwardText={intl.formatMessage({ id: "pagination.forward" })}
-              backwardText={intl.formatMessage({ id: "pagination.backward" })}
-              itemRangeText={(min, max, total) =>
-                intl.formatMessage(
-                  { id: "pagination.item-range" },
-                  { min: min, max: max, total: total },
-                )
-              }
-              itemsPerPageText={intl.formatMessage({
-                id: "pagination.items-per-page",
-              })}
-              itemText={(min, max) =>
-                intl.formatMessage(
-                  { id: "pagination.item" },
-                  { min: min, max: max },
-                )
-              }
-              pageNumberText={intl.formatMessage({
-                id: "pagination.page-number",
-              })}
-              pageRangeText={(_current, total) =>
-                intl.formatMessage(
-                  { id: "pagination.page-range" },
-                  { total: total },
-                )
-              }
-              pageText={(page, pagesUnknown) =>
-                intl.formatMessage(
-                  { id: "pagination.page" },
-                  { page: pagesUnknown ? "" : page },
-                )
-              }
-            />
+      {props.results?.resultList?.length > 0 ? (
+        <Formik
+          initialValues={ValidationSearchFormValues}
+          //validationSchema={}
+          onSubmit
+          onChange
+        >
+          {({ handleChange }) => (
+            <Form onChange={handleChange}>
+              <div className="validation-results-table">
+                <DataTable
+                  data={props.results.resultList.slice(
+                    (page - 1) * pageSize,
+                    page * pageSize,
+                  )}
+                  columns={columns}
+                  isSortable
+                />
+              </div>
+              <Pagination
+                onChange={handlePageChange}
+                page={page}
+                pageSize={pageSize}
+                pageSizes={[10, 20, 30, 50, 100]}
+                totalItems={props.results.resultList.length}
+                forwardText={intl.formatMessage({ id: "pagination.forward" })}
+                backwardText={intl.formatMessage({
+                  id: "pagination.backward",
+                })}
+                itemRangeText={(min, max, total) =>
+                  intl.formatMessage(
+                    { id: "pagination.item-range" },
+                    { min: min, max: max, total: total },
+                  )
+                }
+                itemsPerPageText={intl.formatMessage({
+                  id: "pagination.items-per-page",
+                })}
+                itemText={(min, max) =>
+                  intl.formatMessage(
+                    { id: "pagination.item" },
+                    { min: min, max: max },
+                  )
+                }
+                pageNumberText={intl.formatMessage({
+                  id: "pagination.page-number",
+                })}
+                pageRangeText={(_current, total) =>
+                  intl.formatMessage(
+                    { id: "pagination.page-range" },
+                    { total: total },
+                  )
+                }
+                pageText={(page, pagesUnknown) =>
+                  intl.formatMessage(
+                    { id: "pagination.page" },
+                    { page: pagesUnknown ? "" : page },
+                  )
+                }
+              />
 
-            <ESignatureButton
-              meaning={SignatureMeaning.VALIDATED_AND_RELEASED}
-              context={buildSignContext()}
-              recordType="VALIDATION_BATCH"
-              recordId={getFirstAnalysisId()}
-              onSign={handleSave}
-              disabled={isSubmitting}
-              style={{ marginTop: "16px" }}
-            >
-              <FormattedMessage id="label.button.validate" />
-            </ESignatureButton>
-          </Form>
-        )}
-      </Formik>
+              <ESignatureButton
+                meaning={SignatureMeaning.VALIDATED_AND_RELEASED}
+                context={buildSignContext()}
+                recordType="VALIDATION_BATCH"
+                recordId={getFirstAnalysisId()}
+                onSign={handleSave}
+                disabled={isSubmitting}
+                style={{ marginTop: "16px" }}
+              >
+                <FormattedMessage id="label.button.validate" />
+              </ESignatureButton>
+            </Form>
+          )}
+        </Formik>
+      ) : (
+        <div className="validation-empty-state" role="status">
+          <h3>
+            <FormattedMessage id="validation.empty.title" />
+          </h3>
+          <p>
+            <FormattedMessage id="validation.empty.message" />
+          </p>
+        </div>
+      )}
     </>
   );
 };

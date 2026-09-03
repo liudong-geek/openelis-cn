@@ -184,7 +184,7 @@ const ErrorDetailsModal = ({ error, open, onClose, onAcknowledge }) => {
                   <p>
                     <FormattedMessage
                       id="analyzer.errorDetails.noLogsAvailable"
-                      defaultMessage="No logs available"
+                      defaultMessage="暂无可用日志"
                     />
                   </p>
                 )}

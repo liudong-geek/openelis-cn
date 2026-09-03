@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+  <!--
+    China delivery core-laboratory master-data overlay.
+
+    Adds zh-only values for exact clinical section, specimen, panel and common
+    CBC/biochemistry names. Canonical English values, local codes and analyzer
+    mappings remain unchanged. Reporting-name localization is copied only when
+    its English value exactly equals the test-name English value.
+  -->
+  <changeSet author="local-chinese-edition" id="3.5.0-072-cn-core-lab-master-data-localization">
+    <preConditions onFail="MARK_RAN">
+      <and>
+        <tableExists tableName="localization_value" schemaName="clinlims"/>
+        <sequenceExists sequenceName="localization_value_seq" schemaName="clinlims"/>
+        <columnExists tableName="test_section" schemaName="clinlims" columnName="name_localization_id"/>
+        <columnExists tableName="type_of_sample" schemaName="clinlims" columnName="name_localization_id"/>
+        <columnExists tableName="panel" schemaName="clinlims" columnName="name_localization_id"/>
+        <columnExists tableName="test" schemaName="clinlims" columnName="name_localization_id"/>
+        <columnExists tableName="test" schemaName="clinlims" columnName="reporting_name_localization_id"/>
+      </and>
+    </preConditions>
+    <sqlFile path="072-cn-core-lab-master-data-localization.sql" relativeToChangelogFile="true"
+      encoding="UTF-8" splitStatements="true" stripComments="true"/>
+  </changeSet>
+
+</databaseChangeLog>

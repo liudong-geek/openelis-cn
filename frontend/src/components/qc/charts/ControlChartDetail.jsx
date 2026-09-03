@@ -298,6 +298,10 @@ const ControlChartDetail = () => {
       {/* Error notification */}
       {error && (
         <InlineNotification
+          aria-label={intl.formatMessage({ id: "button.close" })}
+          statusIconDescription={intl.formatMessage({
+            id: "carbon.notification.error",
+          })}
           kind="error"
           title={intl.formatMessage({ id: "qc.chart.error.title" })}
           subtitle={error}

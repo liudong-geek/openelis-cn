@@ -27,7 +27,8 @@ import org.openelisglobal.sampleproject.valueholder.SampleProject;
 import org.openelisglobal.spring.util.SpringContext;
 
 public class PatientIndeterminateByLocationReport extends PatientIndeterminateReport
-        implements IReportParameterSetter, IReportCreator {
+        implements IReportParameterSetter, IReportCreator,
+        ResultsScopedReportCreator.IndeterminateByLocationSelection {
 
     private String lowDateStr;
     private String highDateStr;

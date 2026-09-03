@@ -32,4 +32,9 @@ public class LuceneSearchResultsServiceImpl implements SearchResultsService {
         return searchResultsDAO.getSearchResultsExact(lastName, firstName, STNumber, subjectNumber, nationalID,
                 externalID, patientID, guid, dateOfBirth, gender);
     }
+
+    @Override
+    public List<PatientSearchResults> getQuickSearchResults(String query) {
+        return searchResultsDAO.getQuickSearchResults(query);
+    }
 }

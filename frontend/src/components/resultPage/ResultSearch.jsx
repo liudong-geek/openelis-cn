@@ -2,8 +2,8 @@ import React, { useEffect, useState } from "react";
 import "../Style.css";
 import { injectIntl, FormattedMessage } from "react-intl";
 import ResultSearchPage from "./SearchResultForm";
-import { Heading, Grid, Column, Section } from "@carbon/react";
 import PageBreadCrumb from "../common/PageBreadCrumb";
+import ProductPageHeader from "../common/ProductPageHeader";
 
 function ResultSearch() {
   const [source, setSource] = useState("");
@@ -36,17 +36,11 @@ function ResultSearch() {
         }
       />
 
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          <Section>
-            <Section>
-              <Heading>
-                <FormattedMessage id="sidenav.label.results" />
-              </Heading>
-            </Section>
-          </Section>
-        </Column>
-      </Grid>
+      <ProductPageHeader
+        titleId="results-page-title"
+        title={<FormattedMessage id="sidenav.label.results" />}
+        subtitle={<FormattedMessage id="label.results.search" />}
+      />
       <div className="orderLegendBody">
         <ResultSearchPage />
       </div>

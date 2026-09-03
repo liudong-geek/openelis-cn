@@ -37,7 +37,10 @@ describe("TATExport", () => {
 
   test("renders OverflowMenu", () => {
     renderWithIntl(
-      <TATExport filters={mockFilters} buildQueryString={mockBuildQueryString} />,
+      <TATExport
+        filters={mockFilters}
+        buildQueryString={mockBuildQueryString}
+      />,
     );
 
     // The overflow menu button should be present
@@ -46,7 +49,10 @@ describe("TATExport", () => {
 
   test("renders overflow menu with items", () => {
     const { container } = renderWithIntl(
-      <TATExport filters={mockFilters} buildQueryString={mockBuildQueryString} />,
+      <TATExport
+        filters={mockFilters}
+        buildQueryString={mockBuildQueryString}
+      />,
     );
 
     // Carbon OverflowMenu should render as a wrapper div
@@ -56,7 +62,10 @@ describe("TATExport", () => {
 
   test("export menu button is present and clickable", () => {
     renderWithIntl(
-      <TATExport filters={mockFilters} buildQueryString={mockBuildQueryString} />,
+      <TATExport
+        filters={mockFilters}
+        buildQueryString={mockBuildQueryString}
+      />,
     );
 
     const button = screen.getByRole("button");
@@ -67,7 +76,10 @@ describe("TATExport", () => {
 
   test("CSV export opens URL with serverBaseUrl prefix", () => {
     renderWithIntl(
-      <TATExport filters={mockFilters} buildQueryString={mockBuildQueryString} />,
+      <TATExport
+        filters={mockFilters}
+        buildQueryString={mockBuildQueryString}
+      />,
     );
 
     // Open the overflow menu
@@ -79,8 +91,6 @@ describe("TATExport", () => {
 
     expect(window.open).toHaveBeenCalledTimes(1);
     const url = windowOpenSpy.mock.calls[0][0];
-    expect(url).toMatch(
-      /^\/api\/OpenELIS-Global\/rest\/reports\/tat\/export/,
-    );
+    expect(url).toMatch(/^\/api\/OpenELIS-Global\/rest\/reports\/tat\/export/);
   });
 });

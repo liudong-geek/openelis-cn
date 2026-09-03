@@ -40,7 +40,9 @@ const ShipmentSettings = () => {
   // FHIR mapping config
   const [fhirConfig, setFhirConfig] = useState({
     containerTypeCode: "434711009",
-    containerTypeDisplay: "Specimen container",
+    containerTypeDisplay: intl.formatMessage({
+      id: "shipment.settings.defaultContainer",
+    }),
     nonConformityCodes: {
       RECEIVED_DAMAGED: "281411007",
       RECEIVED_LEAKED: "281412000",
@@ -210,10 +212,17 @@ const ShipmentSettings = () => {
           } catch {
             ncCodes = {};
           }
+          const configuredContainerDisplay =
+            response.containerTypeDisplay?.trim();
           const cfg = {
             containerTypeCode: response.containerTypeCode || "434711009",
             containerTypeDisplay:
-              response.containerTypeDisplay || "Specimen container",
+              !configuredContainerDisplay ||
+              configuredContainerDisplay.toLowerCase() === "specimen container"
+                ? intl.formatMessage({
+                    id: "shipment.settings.defaultContainer",
+                  })
+                : configuredContainerDisplay,
             nonConformityCodes: {
               RECEIVED_DAMAGED: ncCodes.RECEIVED_DAMAGED || "281411007",
               RECEIVED_LEAKED: ncCodes.RECEIVED_LEAKED || "281412000",

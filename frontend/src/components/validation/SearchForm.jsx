@@ -45,9 +45,15 @@ const SearchForm = (props) => {
   const [url, setUrl] = useState("");
 
   const validationResults = (data) => {
+    setPagination(false);
+    setCurrentApiPage(null);
+    setTotalApiPages(null);
+    setNextPage(null);
+    setPreviousPage(null);
+    setIsLoading(false);
+
     if (data) {
       setSearchResults(data);
-      setIsLoading(false);
       if (data.paging) {
         var { totalPages, currentPage } = data.paging;
         if (totalPages > 1) {
@@ -77,7 +83,6 @@ const SearchForm = (props) => {
           resultList: newResultsList,
         }));
       } else {
-        setIsLoading(false);
         setSearchResults((prevState) => ({
           ...prevState,
           resultList: [],
@@ -90,6 +95,14 @@ const SearchForm = (props) => {
         });
         setNotificationVisible(true);
       }
+    } else {
+      setSearchResults({ resultList: [] });
+      addNotification({
+        kind: NotificationKinds.error,
+        title: intl.formatMessage({ id: "notification.title" }),
+        message: intl.formatMessage({ id: "validation.search.error" }),
+      });
+      setNotificationVisible(true);
     }
   };
 
@@ -107,7 +120,11 @@ const SearchForm = (props) => {
     props.setResults(searchResults);
   }, [searchResults]);
 
-  const handleSubmit = (values) => {
+  const handleSubmit = (
+    values,
+    requestedSearchBy = searchBy,
+    requestedDoRange = doRange,
+  ) => {
     setNextPage(null);
     setPreviousPage(null);
     setPagination(false);
@@ -118,32 +135,45 @@ const SearchForm = (props) => {
     var unitType = values.unitType ? values.unitType : "";
     var defaultDate = values.defaultDate ? values.defaultDate : "";
     var date = testDate ? testDate : defaultDate;
-    let searchEndPoint =
-      "/rest/AccessionValidation?" +
-      "accessionNumber=" +
-      accessionNumber +
-      "&unitType=" +
-      unitType +
-      "&date=" +
-      date +
-      "&doRange=" +
-      doRange;
+    const query = new URLSearchParams({
+      accessionNumber,
+      unitType,
+      date,
+      doRange: String(requestedDoRange),
+    });
+    const searchEndPoint = `/rest/AccessionValidation?${query.toString()}`;
     setUrl(searchEndPoint);
-    switch (searchBy) {
+    switch (requestedSearchBy) {
       case "routine":
-        props.setParams("?type=" + searchBy + "&testSectionId=" + unitType);
+        props.setParams(
+          `?${new URLSearchParams({
+            type: requestedSearchBy,
+            testSectionId: unitType,
+          }).toString()}`,
+        );
         break;
       case "order":
         props.setParams(
-          "?type=" + searchBy + "&accessionNumber=" + accessionNumber,
+          `?${new URLSearchParams({
+            type: requestedSearchBy,
+            accessionNumber,
+          }).toString()}`,
         );
         break;
       case "testDate":
-        props.setParams("?type=" + searchBy + "&date=" + date);
+        props.setParams(
+          `?${new URLSearchParams({
+            type: requestedSearchBy,
+            date,
+          }).toString()}`,
+        );
         break;
       case "range":
         props.setParams(
-          "?type=" + searchBy + "&accessionNumber=" + accessionNumber,
+          `?${new URLSearchParams({
+            type: requestedSearchBy,
+            accessionNumber,
+          }).toString()}`,
         );
         break;
     }
@@ -180,7 +210,8 @@ const SearchForm = (props) => {
   useEffect(() => {
     var param = "";
     if (window.location.pathname == "/validation") {
-      param = new URLSearchParams(window.location.search).get("type");
+      param =
+        new URLSearchParams(window.location.search).get("type") || "routine";
     } else if (window.location.pathname == "/ResultValidation") {
       param = "routine";
     } else if (window.location.pathname == "/AccessionValidation") {
@@ -191,10 +222,9 @@ const SearchForm = (props) => {
       param = "testDate";
     }
     setSearchBy(param);
-    if (param === "order") {
-      setDoRagnge(false);
-    }
-    switch (searchBy) {
+    const rangeSearch = param !== "order";
+    setDoRagnge(rangeSearch);
+    switch (param) {
       case "routine": {
         let testSectionId = new URLSearchParams(window.location.search).get(
           "testSectionId",
@@ -203,18 +233,21 @@ const SearchForm = (props) => {
         getFromOpenElisServer(
           "/rest/user-test-sections/" + Roles.VALIDATION,
           (fetchedTestSections) => {
-            let testSection = fetchedTestSections.find(
+            const availableTestSections = Array.isArray(fetchedTestSections)
+              ? fetchedTestSections
+              : [];
+            let testSection = availableTestSections.find(
               (testSection) => testSection.id === testSectionId,
             );
             let testSectionLabel = testSection ? testSection.value : "";
             setDefaultTestSectionId(testSectionId);
             setDefaultTestSectionLabel(testSectionLabel);
-            fetchTestSections(fetchedTestSections);
+            fetchTestSections(availableTestSections);
           },
         );
         if (testSectionId) {
           let values = { unitType: testSectionId };
-          handleSubmit(values);
+          handleSubmit(values, param, rangeSearch);
         }
         break;
       }
@@ -229,7 +262,7 @@ const SearchForm = (props) => {
             ...searchFormValues,
             accessionNumber: accessionNumber,
           };
-          handleSubmit(searchValues);
+          handleSubmit(searchValues, param, rangeSearch);
           setSearchFormValues(searchValues);
         }
         break;
@@ -238,7 +271,7 @@ const SearchForm = (props) => {
         let date = new URLSearchParams(window.location.search).get("date");
         if (date) {
           setTestDate(date);
-          handleSubmit({ defaultDate: date });
+          handleSubmit({ defaultDate: date }, param, rangeSearch);
         }
         break;
       }
@@ -247,7 +280,7 @@ const SearchForm = (props) => {
     setNextPage(null);
     setPreviousPage(null);
     setPagination(false);
-  }, [searchBy, doRange]);
+  }, []);
   return (
     <>
       {isLoading && <Loading></Loading>}
@@ -286,7 +319,9 @@ const SearchForm = (props) => {
                       <Field name="accessionNumber">
                         {({ field }) => (
                           <CustomLabNumberInput
-                            placeholder={"Enter Lab No"}
+                            placeholder={intl.formatMessage({
+                              id: "placeholder.accession.number",
+                            })}
                             name={field.name}
                             id={field.name}
                             value={values[field.name]}
@@ -389,7 +424,6 @@ const SearchForm = (props) => {
                 flexDirection: "column",
                 alignItems: "center",
                 gap: "10px",
-                width: "110%",
               }}
             >
               <Link>
@@ -402,7 +436,9 @@ const SearchForm = (props) => {
                   onClick={loadPreviousResultsPage}
                   disabled={previousPage != null ? false : true}
                   renderIcon={ArrowLeft}
-                  iconDescription="previous"
+                  iconDescription={intl.formatMessage({
+                    id: "pagination.backward",
+                  })}
                 ></Button>
                 <Button
                   hasIconOnly
@@ -410,7 +446,9 @@ const SearchForm = (props) => {
                   onClick={loadNextResultsPage}
                   disabled={nextPage != null ? false : true}
                   renderIcon={ArrowRight}
-                  iconDescription="next"
+                  iconDescription={intl.formatMessage({
+                    id: "pagination.forward",
+                  })}
                 ></Button>
               </div>
             </Column>

@@ -1,3 +1,4 @@
+import { pushWithListContext } from "../../common/listWorkspace";
 import React, { useContext, useState, useEffect, useRef } from "react";
 import { useHistory, useLocation } from "react-router-dom";
 import { useIntl, FormattedMessage } from "react-intl";
@@ -21,6 +22,7 @@ import {
 } from "@carbon/react";
 import { Printer, Checkmark } from "@carbon/icons-react";
 import OrderWorkflowLayout from "../OrderWorkflowLayout";
+import OrderTaskStartState from "../OrderTaskStartState";
 import { useOrderContext } from "../OrderContext";
 import { NotificationContext } from "../../layout/Layout";
 import {
@@ -37,6 +39,8 @@ import {
   postToOpenElisServerJsonResponse,
   patchToOpenElisServerJsonResponse,
 } from "../../utils/Utils";
+import { localizeSampleType } from "../sampleTypeIntl";
+import { buildLabelMakerUrl } from "../../barcodeWorkflow/labelMakerUrl";
 
 /**
  * OrderLabel - Step 3: Label & Store
@@ -81,17 +85,25 @@ const OrderLabel = () => {
   // (dashboard widgets, tests) land directly on Step 3 without walking the
   // wizard.
   const urlLabNumber = new URLSearchParams(location.search).get("labNumber");
+  const attemptedUrlLabNumberRef = useRef(null);
 
   useEffect(() => {
-    if (orderId || labNumber || isLoading) return;
-    if (urlLabNumber) {
-      loadOrder(urlLabNumber).catch(() => {
-        history.replace("/order/enter");
-      });
+    if (
+      orderId ||
+      labNumber ||
+      isLoading ||
+      !urlLabNumber ||
+      attemptedUrlLabNumberRef.current === urlLabNumber
+    ) {
       return;
     }
-    history.replace("/order/enter");
-  }, [orderId, labNumber, isLoading, urlLabNumber, loadOrder, history]);
+
+    attemptedUrlLabNumberRef.current = urlLabNumber;
+    loadOrder(urlLabNumber).catch(() => {
+      // Stay on the task page. The scanner above is the recovery path for an
+      // invalid or stale deep link.
+    });
+  }, [orderId, labNumber, isLoading, urlLabNumber, loadOrder]);
 
   // Label printing state - order label + one entry per sample
   const [labelQuantities, setLabelQuantities] = useState(() => {
@@ -181,7 +193,13 @@ const OrderLabel = () => {
         id: "label.type.order",
         defaultMessage: "Order Label",
       }),
-      content: `Lab Nr: ${labNumber || "---"} | Patient: ${patientName}`,
+      content: `${intl.formatMessage({
+        id: "order.labNumber",
+        defaultMessage: "Lab Number",
+      })}: ${labNumber || "---"} | ${intl.formatMessage({
+        id: "patient.label",
+        defaultMessage: "Patient",
+      })}: ${patientName}`,
       barcode: labNumber || "---",
     },
     // Add a row for each sample
@@ -191,7 +209,10 @@ const OrderLabel = () => {
         id: "label.type.sample",
         defaultMessage: "Sample Label",
       })} ${index + 1}`,
-      content: `${sample.sampleTypeName || "Sample"} | ${sample.collectionDate || "---"}`,
+      content: `${
+        localizeSampleType(intl, sample.sampleTypeName) ||
+        intl.formatMessage({ id: "sample.type", defaultMessage: "Sample" })
+      } | ${sample.collectionDate || "---"}`,
       barcode: sample.sampleItemId || `${labNumber}-${index + 1}`,
     })),
   ];
@@ -212,7 +233,11 @@ const OrderLabel = () => {
     // Quantity flows through; the BarcodeLabelInfo.numPrinted cap stays in
     // effect so the servlet's Override prompt fires when reached.
     if (labelType === "order") {
-      url = `/LabelMakerServlet?labNo=${encodeURIComponent(labNumber)}&type=order&quantity=${quantity}`;
+      url = buildLabelMakerUrl({
+        labNo: labNumber,
+        type: "order",
+        quantity,
+      });
     } else if (labelType.startsWith("sample-")) {
       // Specimen URL uses labNo.<sortOrder> (1-based) so the servlet targets
       // a single sample item rather than every item on the order.
@@ -221,9 +246,17 @@ const OrderLabel = () => {
       const sortOrder = sample?.sortOrder || sampleIndex + 1;
       const specimenLabNo = `${labNumber}.${sortOrder}`;
 
-      url = `/LabelMakerServlet?labNo=${encodeURIComponent(specimenLabNo)}&type=specimen&quantity=${quantity}`;
+      url = buildLabelMakerUrl({
+        labNo: specimenLabNo,
+        type: "specimen",
+        quantity,
+      });
     } else {
-      url = `/LabelMakerServlet?labNo=${encodeURIComponent(labNumber)}&type=default&quantity=${quantity}`;
+      url = buildLabelMakerUrl({
+        labNo: labNumber,
+        type: "default",
+        quantity,
+      });
     }
 
     if (!openPrintWindow(url)) {
@@ -272,7 +305,11 @@ const OrderLabel = () => {
     // type=default prints the order label and one specimen label per sample
     // item in one PDF. Honors the same numPrinted cap as the per-row buttons.
     const totalQuantity = Math.max(labelQuantities.order || 1, 1);
-    const url = `/LabelMakerServlet?labNo=${encodeURIComponent(labNumber)}&type=default&quantity=${totalQuantity}`;
+    const url = buildLabelMakerUrl({
+      labNo: labNumber,
+      type: "default",
+      quantity: totalQuantity,
+    });
     if (!openPrintWindow(url)) {
       return;
     }
@@ -507,7 +544,7 @@ const OrderLabel = () => {
 
       markStepComplete("label");
       setCurrentStep(3);
-      history.push("/order/qa");
+      pushWithListContext(history, "/order/qa");
     } catch (error) {
       addNotification({
         kind: NotificationKinds.error,
@@ -531,9 +568,19 @@ const OrderLabel = () => {
     (printedLabels.has("order") || printedLabels.has("sample")) &&
     (allSamplesHaveStorage || storageSkipped);
 
-  // Don't render if no order loaded (will redirect)
+  // A main-menu entry is a standalone task. Keep the page available until the
+  // operator selects an order using the scanner in the shared header.
   if (!orderId && !labNumber) {
-    return null;
+    return (
+      <OrderWorkflowLayout
+        currentStep={2}
+        title="order.step.label"
+        showSaveButtons={false}
+        showWorkflowProgress={false}
+      >
+        <OrderTaskStartState taskLabel="order.step.label" />
+      </OrderWorkflowLayout>
+    );
   }
 
   return (
@@ -645,6 +692,11 @@ const OrderLabel = () => {
                           size="sm"
                           hideSteppers={false}
                           className="quantity-input"
+                          translateWithId={(messageId) =>
+                            intl.formatMessage({
+                              id: `carbon.${messageId}`,
+                            })
+                          }
                         />
                       </TableCell>
                       <TableCell>
@@ -712,7 +764,16 @@ const OrderLabel = () => {
                 const isAssigned =
                   sample.storageLocationId || assignedStorage[idx];
                 if (!isAssigned) {
-                  return sample.sampleTypeName || `Sample ${idx + 1}`;
+                  return (
+                    localizeSampleType(intl, sample.sampleTypeName) ||
+                    intl.formatMessage(
+                      {
+                        id: "sample.number",
+                        defaultMessage: "Sample {number}",
+                      },
+                      { number: idx + 1 },
+                    )
+                  );
                 }
                 return null;
               })
@@ -789,8 +850,19 @@ const OrderLabel = () => {
                 <SelectItem
                   key={index}
                   value={index}
-                  text={`${sample.sampleTypeName || "Sample"} ${index + 1}${
-                    assignedStorage[index] ? " (Assigned)" : ""
+                  text={`${
+                    localizeSampleType(intl, sample.sampleTypeName) ||
+                    intl.formatMessage({
+                      id: "label.button.sample",
+                      defaultMessage: "Sample",
+                    })
+                  } ${index + 1}${
+                    assignedStorage[index]
+                      ? ` (${intl.formatMessage({
+                          id: "storage.assigned",
+                          defaultMessage: "Assigned",
+                        })})`
+                      : ""
                   }`}
                 />
               ))}
@@ -804,7 +876,7 @@ const OrderLabel = () => {
             <span>
               <strong>
                 <FormattedMessage
-                  id="sample.item.id"
+                  id="storage.sampleitem.id"
                   defaultMessage="Sample Item ID"
                 />
                 :
@@ -819,7 +891,7 @@ const OrderLabel = () => {
                 />
                 :
               </strong>{" "}
-              {currentSample.sampleTypeName || "---"}
+              {localizeSampleType(intl, currentSample.sampleTypeName) || "---"}
             </span>
             <span>
               <strong>

@@ -488,10 +488,8 @@ const FieldMapping = () => {
             if (data.error) {
               setErrorNotification({
                 kind: "error",
-                title: "Query Failed",
-                subtitle:
-                  data.error ||
-                  "Failed to query analyzer fields. Please try again.",
+                title: "查询分析仪失败",
+                subtitle: data.error || "未能读取分析仪字段，请稍后重试。",
               });
             } else {
               if (
@@ -513,9 +511,8 @@ const FieldMapping = () => {
                     } else {
                       setErrorNotification({
                         kind: "error",
-                        title: "Failed to Load Fields",
-                        subtitle:
-                          "Query completed but could not reload fields from database.",
+                        title: "分析仪字段加载失败",
+                        subtitle: "查询已完成，但无法从数据库重新加载字段。",
                       });
                     }
                   });
@@ -526,9 +523,9 @@ const FieldMapping = () => {
                     if (fieldsData.length === 0) {
                       setErrorNotification({
                         kind: "warning",
-                        title: "No Fields Retrieved",
+                        title: "未获取到分析仪字段",
                         subtitle:
-                          "The query completed but no fields were saved. Check backend logs for errors.",
+                          "查询已完成，但没有保存任何字段，请检查接口服务日志。",
                       });
                     } else {
                       setFields(fieldsData);
@@ -537,8 +534,8 @@ const FieldMapping = () => {
                   } else {
                     setErrorNotification({
                       kind: "error",
-                      title: "Failed to Load Fields",
-                      subtitle: "Query completed but could not load fields.",
+                      title: "分析仪字段加载失败",
+                      subtitle: "查询已完成，但无法加载分析仪字段。",
                     });
                   }
                 });
@@ -547,10 +544,8 @@ const FieldMapping = () => {
           } else if (data && data.state === "failed") {
             setErrorNotification({
               kind: "error",
-              title: "Query Failed",
-              subtitle:
-                data.error ||
-                "Failed to query analyzer. Please check the analyzer connection and try again.",
+              title: "查询分析仪失败",
+              subtitle: data.error || "无法连接分析仪，请检查接口连接后重试。",
             });
           }
         }}

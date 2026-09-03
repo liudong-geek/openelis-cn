@@ -53,6 +53,7 @@ import {
   Add,
   Edit,
   Save,
+  Renew,
   CheckmarkFilled,
   WarningFilled,
 } from "@carbon/react/icons";
@@ -133,13 +134,13 @@ function SampleTypeManagement({ intl }) {
   // Data state
   const [sampleTypes, setSampleTypes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
+  const [loadError, setLoadError] = useState(false);
+  const [loadRevision, setLoadRevision] = useState(0);
 
   // Form validation and state
   const [formErrors, setFormErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [showEditSuccess, setShowEditSuccess] = useState(false);
   const nameInputRef = useRef(null);
 
   // Associated tests for the sample type currently being edited
@@ -152,7 +153,7 @@ function SampleTypeManagement({ intl }) {
     const fetchSampleTypes = async () => {
       try {
         setIsLoading(true);
-        setLoadError(null);
+        setLoadError(false);
 
         await new Promise((resolve, reject) => {
           getFromOpenElisServer("/rest/sample-types", (response) => {
@@ -177,9 +178,14 @@ function SampleTypeManagement({ intl }) {
           if (Array.isArray(sampleTypeList)) {
             const sampleTypeData = sampleTypeList.map((item, index) => ({
               id: item.id || index + 1,
-              name: item.name || item.description || "Unknown Sample Type",
+              name:
+                item.name ||
+                item.description ||
+                intl.formatMessage({ id: "label.sampleType.unnamed" }),
               description:
-                item.description || item.name || "Sample type from database",
+                item.description ||
+                item.name ||
+                intl.formatMessage({ id: "label.sampleType.noDescription" }),
               domain: item.domain || "CLINICAL", // Use the domain directly from the new endpoint
               active: item.isActive !== undefined ? item.isActive : true,
               testCount: item.testCount || 0, // Use actual test count from backend
@@ -192,9 +198,7 @@ function SampleTypeManagement({ intl }) {
           }
         });
       } catch (error) {
-        setLoadError(
-          `Database connection failed: ${error.message}. Please ensure you are logged into OpenELIS with admin permissions and try refreshing the page.`,
-        );
+        setLoadError(true);
         setSampleTypes([]);
       } finally {
         setIsLoading(false);
@@ -202,6 +206,10 @@ function SampleTypeManagement({ intl }) {
     };
 
     fetchSampleTypes();
+  }, [intl, loadRevision]);
+
+  const retryLoad = useCallback(() => {
+    setLoadRevision((revision) => revision + 1);
   }, []);
 
   // Focus management for add form
@@ -262,23 +270,28 @@ function SampleTypeManagement({ intl }) {
     return counts;
   }, [sampleTypes, domains]);
 
-  const loadAssociatedTests = useCallback((id) => {
-    setAssociatedTests([]);
-    setAssociatedTestsError(null);
-    setAssociatedTestsLoading(true);
-    getFromOpenElisServer(
-      `/rest/AllTestsForSampleTypeProvider?sampleTypeId=${encodeURIComponent(id)}`,
-      (response) => {
-        if (response && Array.isArray(response.tests)) {
-          setAssociatedTests(response.tests);
-        } else {
-          setAssociatedTests([]);
-          setAssociatedTestsError("Unable to load associated tests");
-        }
-        setAssociatedTestsLoading(false);
-      },
-    );
-  }, []);
+  const loadAssociatedTests = useCallback(
+    (id) => {
+      setAssociatedTests([]);
+      setAssociatedTestsError(null);
+      setAssociatedTestsLoading(true);
+      getFromOpenElisServer(
+        `/rest/AllTestsForSampleTypeProvider?sampleTypeId=${encodeURIComponent(id)}`,
+        (response) => {
+          if (response && Array.isArray(response.tests)) {
+            setAssociatedTests(response.tests);
+          } else {
+            setAssociatedTests([]);
+            setAssociatedTestsError(
+              intl.formatMessage({ id: "label.sampleType.tests.loadError" }),
+            );
+          }
+          setAssociatedTestsLoading(false);
+        },
+      );
+    },
+    [intl],
+  );
 
   // Hydrate editingType from the URL id whenever we're on the editor route.
   // The list may not be loaded yet on a deep link, so we tolerate an empty
@@ -374,9 +387,13 @@ function SampleTypeManagement({ intl }) {
 
       // Required field validations
       if (!formData.name?.trim()) {
-        errors.name = "Sample type name is required";
+        errors.name = intl.formatMessage({
+          id: "validation.sampleType.name.required",
+        });
       } else if (formData.name.trim().length < 2) {
-        errors.name = "Name must be at least 2 characters long";
+        errors.name = intl.formatMessage({
+          id: "validation.sampleType.name.minLength",
+        });
       } else if (
         sampleTypes.some(
           (st) =>
@@ -384,25 +401,33 @@ function SampleTypeManagement({ intl }) {
             st.id !== formData.id,
         )
       ) {
-        errors.name = "This sample type name already exists";
+        errors.name = intl.formatMessage({
+          id: "validation.sampleType.name.duplicate",
+        });
       }
 
       if (!formData.description?.trim()) {
-        errors.description = "Description is required";
+        errors.description = intl.formatMessage({
+          id: "validation.sampleType.description.required",
+        });
       }
 
       if (!formData.domain) {
-        errors.domain = "Sample domain is required";
+        errors.domain = intl.formatMessage({
+          id: "validation.sampleType.domain.required",
+        });
       }
 
       // Optional field validations
       if (formData.abbreviation && formData.abbreviation.length > 10) {
-        errors.abbreviation = "Abbreviation must be 10 characters or less";
+        errors.abbreviation = intl.formatMessage({
+          id: "validation.sampleType.abbreviation.maxLength",
+        });
       }
 
       return errors;
     },
-    [sampleTypes],
+    [sampleTypes, intl],
   );
 
   const refreshSampleTypes = useCallback(async () => {
@@ -550,14 +575,35 @@ function SampleTypeManagement({ intl }) {
         setFormErrors({});
       }
     } catch (error) {
-      const operation = view === "add" ? "create" : "update";
       setFormErrors({
-        submit: `Failed to ${operation} sample type: ${error.message}`,
+        submit: intl.formatMessage({
+          id:
+            view === "add"
+              ? "message.sampleType.create.error"
+              : "message.sampleType.update.error",
+        }),
       });
     } finally {
       setIsSubmitting(false);
     }
-  }, [editingType, view, validateForm, history, listUrl, refreshSampleTypes]);
+  }, [
+    editingType,
+    view,
+    validateForm,
+    history,
+    listUrl,
+    refreshSampleTypes,
+    intl,
+    sampleTypes,
+  ]);
+
+  const editorRecord = useMemo(
+    () =>
+      view === "editor"
+        ? sampleTypes.find((item) => String(item.id) === String(sampleTypeId))
+        : null,
+    [view, sampleTypeId, sampleTypes],
+  );
 
   // ─── LIST VIEW ────────────────────────────────────────────────
   if (view === "list") {
@@ -576,36 +622,41 @@ function SampleTypeManagement({ intl }) {
                 gap: "var(--cds-spacing-03)",
               }}
             >
-              <Loading />
-              <span>Loading sample types...</span>
+              <Loading small withOverlay={false} />
+              <FormattedMessage id="label.sampleType.list.loading" />
             </div>
           )}
 
           {/* Error State */}
           {loadError && (
-            <InlineNotification
-              kind="error"
-              title="Error loading sample types"
-              subtitle={loadError}
-              lowContrast
-              hideCloseButton={false}
-              onCloseButtonClick={() => setLoadError(null)}
-            />
+            <Tile>
+              <Stack gap={4}>
+                <InlineNotification
+                  kind="error"
+                  title={intl.formatMessage({
+                    id: "message.sampleType.load.error.title",
+                  })}
+                  subtitle={intl.formatMessage({
+                    id: "message.sampleType.load.error.description",
+                  })}
+                  lowContrast
+                  hideCloseButton
+                />
+                <div>
+                  <Button
+                    kind="tertiary"
+                    size="sm"
+                    renderIcon={Renew}
+                    onClick={retryLoad}
+                  >
+                    <FormattedMessage id="button.retry" />
+                  </Button>
+                </div>
+              </Stack>
+            </Tile>
           )}
 
-          {/* Edit Success State */}
-          {showEditSuccess && (
-            <InlineNotification
-              kind="success"
-              title="Sample Type Updated"
-              subtitle="The sample type has been successfully updated and saved to the database."
-              lowContrast
-              hideCloseButton={false}
-              onCloseButtonClick={() => setShowEditSuccess(false)}
-            />
-          )}
-
-          {!isLoading && (
+          {!isLoading && !loadError && (
             <>
               {/* Page Header */}
               <Tile style={{ padding: "var(--cds-spacing-06)" }}>
@@ -703,8 +754,10 @@ function SampleTypeManagement({ intl }) {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: "var(--cds-spacing-04)",
                     padding: "0 var(--cds-spacing-05)",
-                    height: "48px",
+                    minHeight: "56px",
                     background: "var(--cds-layer)",
                     borderBottom: "1px solid var(--cds-border-subtle-01)",
                   }}
@@ -724,15 +777,16 @@ function SampleTypeManagement({ intl }) {
                     onChange={(e) => setSearchText(e.target.value)}
                     size="sm"
                     style={{
-                      flex: "0 0 280px",
-                      marginRight: "var(--cds-spacing-05)",
+                      flex: "1 1 240px",
+                      maxWidth: "360px",
                     }}
                   />
                   <div
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: "80px",
+                      flexWrap: "wrap",
+                      gap: "var(--cds-spacing-04)",
                     }}
                   >
                     <Select
@@ -899,9 +953,35 @@ function SampleTypeManagement({ intl }) {
                         >
                           <div style={{ color: "var(--cds-text-secondary)" }}>
                             <FormattedMessage
-                              id="message.sampleType.noResults"
-                              defaultMessage="No sample types found matching your criteria"
+                              id={
+                                searchText || domainFilter
+                                  ? "message.sampleType.noResults"
+                                  : "message.sampleType.empty"
+                              }
                             />
+                            <div style={{ marginTop: "var(--cds-spacing-04)" }}>
+                              {searchText || domainFilter ? (
+                                <Button
+                                  kind="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSearchText("");
+                                    setDomainFilter("");
+                                  }}
+                                >
+                                  <FormattedMessage id="button.sampleType.clearFilters" />
+                                </Button>
+                              ) : (
+                                <Button
+                                  kind="tertiary"
+                                  size="sm"
+                                  renderIcon={Add}
+                                  onClick={openAddForm}
+                                >
+                                  <FormattedMessage id="button.sampleType.add" />
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -911,41 +991,51 @@ function SampleTypeManagement({ intl }) {
               </TableContainer>
 
               {/* Repository Pattern Pagination */}
-              <div style={{ overflowX: "auto" }}>
-                <Pagination
-                  onChange={handlePageChange}
-                  page={page}
-                  pageSize={pageSize}
-                  pageSizes={[10, 20, 30, 50, 100]}
-                  totalItems={filteredTypes.length}
-                  forwardText={intl.formatMessage({ id: "pagination.forward" })}
-                  backwardText={intl.formatMessage({
-                    id: "pagination.backward",
-                  })}
-                  itemRangeText={(min, max, total) =>
-                    intl.formatMessage(
-                      { id: "pagination.item-range" },
-                      { min: min, max: max, total: total },
-                    )
-                  }
-                  itemsPerPageText={intl.formatMessage({
-                    id: "pagination.items-per-page",
-                  })}
-                  pageNumberText={intl.formatMessage({
-                    id: "pagination.page-number",
-                  })}
-                  pageRangeText={(current, total) =>
-                    intl.formatMessage(
-                      { id: "pagination.page-range" },
-                      { current: current, total: total },
-                    )
-                  }
-                  pageText={intl.formatMessage({
-                    id: "pagination.page",
-                  })}
-                  size="md"
-                />
-              </div>
+              {filteredTypes.length > 0 && (
+                <div style={{ overflowX: "auto" }}>
+                  <Pagination
+                    onChange={handlePageChange}
+                    page={page}
+                    pageSize={pageSize}
+                    pageSizes={[10, 20, 30, 50, 100]}
+                    totalItems={filteredTypes.length}
+                    forwardText={intl.formatMessage({
+                      id: "pagination.forward",
+                    })}
+                    backwardText={intl.formatMessage({
+                      id: "pagination.backward",
+                    })}
+                    itemRangeText={(min, max, total) =>
+                      intl.formatMessage(
+                        { id: "pagination.item-range" },
+                        { min: min, max: max, total: total },
+                      )
+                    }
+                    itemsPerPageText={intl.formatMessage({
+                      id: "pagination.items-per-page",
+                    })}
+                    pageRangeText={(_current, total) =>
+                      intl.formatMessage(
+                        { id: "pagination.page-range" },
+                        { total },
+                      )
+                    }
+                    pageSelectLabelText={(total) =>
+                      intl.formatMessage(
+                        { id: "pagination.page-select" },
+                        { total },
+                      )
+                    }
+                    pageText={(selectedPage) =>
+                      intl.formatMessage(
+                        { id: "pagination.page" },
+                        { page: selectedPage },
+                      )
+                    }
+                    size="md"
+                  />
+                </div>
+              )}
             </>
           )}
         </Stack>
@@ -994,11 +1084,16 @@ function SampleTypeManagement({ intl }) {
                         id="heading.sampleType.add"
                         defaultMessage="Add New Sample Type"
                       />
-                    ) : (
+                    ) : editingType?.name ? (
                       <FormattedMessage
                         id="heading.sampleType.editing"
                         defaultMessage="Editing: {name}"
-                        values={{ name: editingType?.name }}
+                        values={{ name: editingType.name }}
+                      />
+                    ) : (
+                      <FormattedMessage
+                        id="heading.sampleType.editingGeneric"
+                        defaultMessage="Sample type details"
                       />
                     )}
                   </p>
@@ -1008,6 +1103,7 @@ function SampleTypeManagement({ intl }) {
                     </Tag>
                   )}
                   {view === "editor" &&
+                    editingType &&
                     (editingType?.active ? (
                       <Tag type="green" size="md">
                         <FormattedMessage
@@ -1056,10 +1152,7 @@ function SampleTypeManagement({ intl }) {
                 the Carbon Active Toggle) would mount with undefined and not
                 reflect the saved status, mirroring the Test Catalog editor's
                 load-then-render pattern. */}
-            {view === "editor" &&
-            !(
-              editingType && String(editingType.id) === String(sampleTypeId)
-            ) ? (
+            {view === "editor" && isLoading ? (
               <div
                 style={{
                   display: "flex",
@@ -1073,6 +1166,63 @@ function SampleTypeManagement({ intl }) {
                   id="label.sampleType.loading"
                   defaultMessage="Loading sample type..."
                 />
+              </div>
+            ) : view === "editor" && loadError ? (
+              <Tile>
+                <Stack gap={4}>
+                  <InlineNotification
+                    kind="error"
+                    title={intl.formatMessage({
+                      id: "message.sampleType.load.error.title",
+                    })}
+                    subtitle={intl.formatMessage({
+                      id: "message.sampleType.load.error.description",
+                    })}
+                    lowContrast
+                    hideCloseButton
+                  />
+                  <div>
+                    <Button
+                      kind="tertiary"
+                      size="sm"
+                      renderIcon={Renew}
+                      onClick={retryLoad}
+                    >
+                      <FormattedMessage id="button.retry" />
+                    </Button>
+                  </div>
+                </Stack>
+              </Tile>
+            ) : view === "editor" && !editorRecord ? (
+              <Tile>
+                <Stack gap={4}>
+                  <InlineNotification
+                    kind="warning"
+                    title={intl.formatMessage({
+                      id: "message.sampleType.notFound.title",
+                    })}
+                    subtitle={intl.formatMessage({
+                      id: "message.sampleType.notFound.description",
+                    })}
+                    lowContrast
+                    hideCloseButton
+                  />
+                </Stack>
+              </Tile>
+            ) : view === "editor" &&
+              !(
+                editingType && String(editingType.id) === String(sampleTypeId)
+              ) ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "var(--cds-spacing-03)",
+                  padding: "var(--cds-spacing-07)",
+                }}
+              >
+                <Loading small withOverlay={false} />
+                <FormattedMessage id="label.sampleType.loading" />
               </div>
             ) : (
               <>

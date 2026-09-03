@@ -32,16 +32,6 @@ import type {
   PatientSelectHandler,
 } from "../types";
 
-const patientSearchHeaders = [
-  { key: "lastName", header: "Last Name" },
-  { key: "firstName", header: "First Name" },
-  { key: "gender", header: "Gender" },
-  { key: "dob", header: "Date of Birth" },
-  { key: "subjectNumber", header: "Unique Health ID" },
-  { key: "nationalId", header: "National ID" },
-  { key: "dataSourceName", header: "Data Source" },
-];
-
 interface PatientSearchPanelProps {
   panelId: string;
   title: React.ReactNode;
@@ -63,6 +53,33 @@ function PatientSearchPanel({
 }: PatientSearchPanelProps) {
   const intl = useIntl();
   const { configurationProperties } = useContext(ConfigurationContext);
+  const patientSearchHeaders = [
+    {
+      key: "lastName",
+      header: intl.formatMessage({ id: "patient.last.name" }),
+    },
+    {
+      key: "firstName",
+      header: intl.formatMessage({ id: "patient.first.name" }),
+    },
+    {
+      key: "gender",
+      header: intl.formatMessage({ id: "patient.gender" }),
+    },
+    { key: "dob", header: intl.formatMessage({ id: "patient.dob" }) },
+    {
+      key: "subjectNumber",
+      header: intl.formatMessage({ id: "patient.subject.number" }),
+    },
+    {
+      key: "nationalId",
+      header: intl.formatMessage({ id: "patient.natioanalid" }),
+    },
+    {
+      key: "dataSourceName",
+      header: intl.formatMessage({ id: "patient.dataSourceName" }),
+    },
+  ];
 
   const [searchResults, setSearchResults] = useState<PatientRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -320,10 +337,7 @@ function PatientSearchPanel({
                           key={header.key}
                           {...getHeaderProps({ header })}
                         >
-                          <FormattedMessage
-                            id={`patient.${header.key === "dob" ? "dob" : header.key === "subjectNumber" ? "subject.number" : header.key === "nationalId" ? "natioanalid" : header.key === "dataSourceName" ? "dataSourceName" : header.key === "firstName" ? "first.name" : header.key === "lastName" ? "last.name" : "gender"}`}
-                            defaultMessage={header.header}
-                          />
+                          {header.header}
                         </TableHeader>
                       ))}
                     </TableRow>
@@ -352,7 +366,11 @@ function PatientSearchPanel({
                                     cell.value === "OpenElis" ? "red" : "green"
                                   }
                                 >
-                                  {cell.value}
+                                  {cell.value === "OpenElis"
+                                    ? intl.formatMessage({
+                                        id: "patient.dataSource.local",
+                                      })
+                                    : cell.value}
                                 </Tag>
                               ) : (
                                 cell.value
@@ -372,6 +390,38 @@ function PatientSearchPanel({
             pageSizes={[5, 10, 20, 50]}
             totalItems={searchResults.length}
             onChange={handlePageChange}
+            forwardText={intl.formatMessage({ id: "pagination.forward" })}
+            backwardText={intl.formatMessage({ id: "pagination.backward" })}
+            itemRangeText={(min, max, total) =>
+              intl.formatMessage(
+                { id: "pagination.item-range" },
+                { min, max, total },
+              )
+            }
+            itemsPerPageText={intl.formatMessage({
+              id: "pagination.items-per-page",
+            })}
+            itemText={(min, max) =>
+              intl.formatMessage(
+                { id: "pagination.item" },
+                { min, max },
+              )
+            }
+            pageNumberText={intl.formatMessage({
+              id: "pagination.page-number",
+            })}
+            pageRangeText={(_current, total) =>
+              intl.formatMessage(
+                { id: "pagination.page-range" },
+                { total },
+              )
+            }
+            pageText={(selectedPage, pagesUnknown) =>
+              intl.formatMessage(
+                { id: "pagination.page" },
+                { page: pagesUnknown ? "" : selectedPage },
+              )
+            }
           />
         </div>
       )}

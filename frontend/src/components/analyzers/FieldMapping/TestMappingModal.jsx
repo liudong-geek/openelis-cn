@@ -389,7 +389,7 @@ const TestMappingModal = ({
                 <h4>
                   <FormattedMessage id="analyzer.testMapping.entityPreview" />
                 </h4>
-                <CodeSnippet type="multi" feedback="Copied to clipboard">
+                <CodeSnippet type="multi" feedback="已复制到剪贴板">
                   {JSON.stringify(previewResult.entityPreview, null, 2)}
                 </CodeSnippet>
               </div>
@@ -404,7 +404,7 @@ const TestMappingModal = ({
                 <h4>
                   <FormattedMessage id="analyzer.testMapping.pluginConfigSnapshot" />
                 </h4>
-                <CodeSnippet type="multi" feedback="Copied to clipboard">
+                <CodeSnippet type="multi" feedback="已复制到剪贴板">
                   {JSON.stringify(previewResult.pluginConfigSnapshot, null, 2)}
                 </CodeSnippet>
               </div>

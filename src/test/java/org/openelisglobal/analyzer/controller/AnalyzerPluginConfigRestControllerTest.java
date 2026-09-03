@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
-import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -23,7 +22,6 @@ import org.openelisglobal.analyzer.service.AnalyzerPluginConfigService;
 import org.openelisglobal.analyzer.valueholder.AnalyzerPendingCode;
 import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 public class AnalyzerPluginConfigRestControllerTest extends BaseWebContextSensitiveTest {
 
@@ -36,7 +34,6 @@ public class AnalyzerPluginConfigRestControllerTest extends BaseWebContextSensit
     @Before
     public void setUp() throws Exception {
         super.setUp();
-        mockMvc = MockMvcBuilders.webAppContextSetup(this.webApplicationContext).apply(springSecurity()).build();
         MockitoAnnotations.initMocks(this);
         AnalyzerPluginConfigRestController controller = webApplicationContext
                 .getBean(AnalyzerPluginConfigRestController.class);

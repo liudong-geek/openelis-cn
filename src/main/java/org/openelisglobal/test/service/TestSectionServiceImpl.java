@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
 import org.openelisglobal.common.exception.LIMSDuplicateRecordException;
 import org.openelisglobal.common.service.AuditableBaseObjectServiceImpl;
 import org.openelisglobal.common.util.LocaleChangeListener;
@@ -86,7 +87,16 @@ public class TestSectionServiceImpl extends AuditableBaseObjectServiceImpl<TestS
         if (testSection == null) {
             return "";
         }
-
+        // The ID-to-name map is built at application startup and therefore reflects
+        // only the process default locale. Prefer the entity localization here so
+        // request-scoped Accept-Language values are honored and concurrent users do
+        // not overwrite one another's display language.
+        if (testSection.getLocalization() != null) {
+            String localizedName = testSection.getLocalization().getLocalizedValue();
+            if (StringUtils.isNotBlank(localizedName)) {
+                return localizedName;
+            }
+        }
         return getUserLocalizedTestSectionName(testSection.getId());
     }
 

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Modal, TextArea } from "@carbon/react";
 import { useIntl } from "react-intl";
+import { formatAlertMessage } from "./alertLocalization";
 
 const AlertAcknowledgeModal = ({ open, alert, onClose, onSubmit }) => {
   const intl = useIntl();
@@ -26,16 +27,17 @@ const AlertAcknowledgeModal = ({ open, alert, onClose, onSubmit }) => {
   return (
     <Modal
       open={open}
+      closeButtonLabel={intl.formatMessage({ id: "button.close" })}
       modalHeading={intl.formatMessage({ id: "alerts.acknowledge.title" })}
       primaryButtonText={intl.formatMessage({
         id: "alerts.acknowledge.button",
       })}
-      secondaryButtonText="Cancel"
+      secondaryButtonText={intl.formatMessage({ id: "button.cancel" })}
       onRequestClose={handleClose}
       onRequestSubmit={handleSubmit}
       primaryButtonDisabled={isCritical && !comment.trim()}
     >
-      <p style={{ marginBottom: "1rem" }}>{alert.message}</p>
+      <p style={{ marginBottom: "1rem" }}>{formatAlertMessage(alert, intl)}</p>
       {isCritical && (
         <p
           style={{

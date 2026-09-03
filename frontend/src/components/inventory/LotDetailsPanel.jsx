@@ -50,15 +50,27 @@ const LotDetailsPanel = ({ open, onClose, lot }) => {
 
   const formatDate = (dateString) => {
     if (!dateString) return "-";
-    return new Date(dateString).toLocaleString();
+    return new Date(dateString).toLocaleString("zh-CN");
   };
 
   const getQCStatusTag = (status) => {
     const statusMap = {
-      PASSED: { type: "green", label: "Passed" },
-      FAILED: { type: "red", label: "Failed" },
-      PENDING: { type: "gray", label: "Pending" },
-      NOT_REQUIRED: { type: "outline", label: "Not Required" },
+      PASSED: {
+        type: "green",
+        label: intl.formatMessage({ id: "qc.status.passed" }),
+      },
+      FAILED: {
+        type: "red",
+        label: intl.formatMessage({ id: "qc.status.failed" }),
+      },
+      PENDING: {
+        type: "gray",
+        label: intl.formatMessage({ id: "qc.status.pending" }),
+      },
+      NOT_REQUIRED: {
+        type: "outline",
+        label: intl.formatMessage({ id: "qc.status.notRequired" }),
+      },
     };
     const config = statusMap[status] || statusMap.PENDING;
     return <Tag type={config.type}>{config.label}</Tag>;
@@ -74,7 +86,7 @@ const LotDetailsPanel = ({ open, onClose, lot }) => {
           kind="ghost"
           size="sm"
           renderIcon={Close}
-          iconDescription="Close"
+          iconDescription={intl.formatMessage({ id: "label.button.close" })}
           onClick={onClose}
           hasIconOnly
         />
@@ -82,10 +94,15 @@ const LotDetailsPanel = ({ open, onClose, lot }) => {
 
       <div className="panel-content">
         {loading ? (
-          <Loading description="Loading lot details..." withOverlay={false} />
+          <Loading
+            description={intl.formatMessage({ id: "lot.details.loading" })}
+            withOverlay={false}
+          />
         ) : (
           <Tabs>
-            <TabList aria-label="Lot details tabs">
+            <TabList
+              aria-label={intl.formatMessage({ id: "lot.details.title" })}
+            >
               <Tab>
                 <FormattedMessage id="lot.details.tab.info" />
               </Tab>
@@ -126,7 +143,10 @@ const LotDetailsPanel = ({ open, onClose, lot }) => {
                           <FormattedMessage id="catalog.item.type" />
                         </StructuredListCell>
                         <StructuredListCell>
-                          {lot.inventoryItem?.itemType}
+                          {intl.formatMessage({
+                            id: `inventory.itemType.${lot.inventoryItem?.itemType}`,
+                            defaultMessage: lot.inventoryItem?.itemType,
+                          })}
                         </StructuredListCell>
                       </StructuredListRow>
                       <StructuredListRow>
@@ -249,7 +269,10 @@ const LotDetailsPanel = ({ open, onClose, lot }) => {
                               {formatDate(txn.transactionDate)}
                             </StructuredListCell>
                             <StructuredListCell>
-                              {txn.transactionType}
+                              {intl.formatMessage({
+                                id: `inventory.transaction.${txn.transactionType}`,
+                                defaultMessage: txn.transactionType,
+                              })}
                             </StructuredListCell>
                             <StructuredListCell>
                               {txn.quantityChange > 0 ? "+" : ""}

@@ -15,6 +15,7 @@ import {
   Section,
   FileUploader,
   Tag,
+  DismissibleTag,
   Loading,
   RadioButtonGroup,
   RadioButton,
@@ -1005,9 +1006,7 @@ function CytologyCaseView() {
                         {pathologySampleInfo.specimenAdequacy &&
                           pathologySampleInfo.specimenAdequacy.values.map(
                             (adequacy, index) => (
-                              <Tag key={index} onClose={() => {}}>
-                                {adequacy.value}
-                              </Tag>
+                              <Tag key={index}>{adequacy.value}</Tag>
                             ),
                           )}
                       </Column>
@@ -1163,9 +1162,8 @@ function CytologyCaseView() {
                                   ),
                                 )
                                 ?.map((result, index) => (
-                                  <Tag
+                                  <DismissibleTag
                                     key={index}
-                                    filter
                                     onClose={() => {
                                       var diagnosisResultsMap =
                                         filterDiagnosisResultsByCategory(
@@ -1202,9 +1200,14 @@ function CytologyCaseView() {
                                         diagnosis: newDiagnosis,
                                       });
                                     }}
-                                  >
-                                    {result.value}
-                                  </Tag>
+                                    text={result.value}
+                                    title={intl.formatMessage({
+                                      id: "label.button.remove",
+                                    })}
+                                    dismissTooltipLabel={intl.formatMessage({
+                                      id: "label.button.remove",
+                                    })}
+                                  />
                                 ))}
                             </Column>
                           </>
@@ -1227,9 +1230,8 @@ function CytologyCaseView() {
                                   ),
                                 )
                                 ?.map((result, index) => (
-                                  <Tag
+                                  <DismissibleTag
                                     key={index}
-                                    filter
                                     onClose={() => {
                                       var diagnosisResultsMap =
                                         filterDiagnosisResultsByCategory(
@@ -1266,9 +1268,14 @@ function CytologyCaseView() {
                                         diagnosis: newDiagnosis,
                                       });
                                     }}
-                                  >
-                                    {result.value}
-                                  </Tag>
+                                    text={result.value}
+                                    title={intl.formatMessage({
+                                      id: "label.button.remove",
+                                    })}
+                                    dismissTooltipLabel={intl.formatMessage({
+                                      id: "label.button.remove",
+                                    })}
+                                  />
                                 ))}
                             </Column>
                           </>
@@ -1404,9 +1411,8 @@ function CytologyCaseView() {
                           "NON_NEOPLASTIC_CELLULAR_VARIATIONS",
                           "DICTIONARY",
                         )?.results.map((result, index) => (
-                          <Tag
+                          <DismissibleTag
                             key={index}
-                            filter
                             onClose={() => {
                               var diagnosisResultsMap =
                                 filterDiagnosisResultsByCategory(
@@ -1434,9 +1440,14 @@ function CytologyCaseView() {
                                 diagnosis: newDiagnosis,
                               });
                             }}
-                          >
-                            {result.value}
-                          </Tag>
+                            text={result.value}
+                            title={intl.formatMessage({
+                              id: "label.button.remove",
+                            })}
+                            dismissTooltipLabel={intl.formatMessage({
+                              id: "label.button.remove",
+                            })}
+                          />
                         ))}
                       </Column>
                     </Grid>
@@ -1508,9 +1519,8 @@ function CytologyCaseView() {
                           "REACTIVE_CELLULAR_CHANGES",
                           "DICTIONARY",
                         )?.results.map((result, index) => (
-                          <Tag
+                          <DismissibleTag
                             key={index}
-                            filter
                             onClose={() => {
                               var diagnosisResultsMap =
                                 filterDiagnosisResultsByCategory(
@@ -1537,9 +1547,14 @@ function CytologyCaseView() {
                                 diagnosis: newDiagnosis,
                               });
                             }}
-                          >
-                            {result.value}
-                          </Tag>
+                            text={result.value}
+                            title={intl.formatMessage({
+                              id: "label.button.remove",
+                            })}
+                            dismissTooltipLabel={intl.formatMessage({
+                              id: "label.button.remove",
+                            })}
+                          />
                         ))}
                       </Column>
                     </Grid>
@@ -1608,9 +1623,8 @@ function CytologyCaseView() {
                           "ORGANISMS",
                           "DICTIONARY",
                         )?.results.map((result, index) => (
-                          <Tag
+                          <DismissibleTag
                             key={index}
-                            filter
                             onClose={() => {
                               var diagnosisResultsMap =
                                 filterDiagnosisResultsByCategory(
@@ -1636,9 +1650,14 @@ function CytologyCaseView() {
                                 diagnosis: newDiagnosis,
                               });
                             }}
-                          >
-                            {result.value}
-                          </Tag>
+                            text={result.value}
+                            title={intl.formatMessage({
+                              id: "label.button.remove",
+                            })}
+                            dismissTooltipLabel={intl.formatMessage({
+                              id: "label.button.remove",
+                            })}
+                          />
                         ))}
                       </Column>
                     </Grid>
@@ -1707,9 +1726,8 @@ function CytologyCaseView() {
                           "OTHER",
                           "DICTIONARY",
                         )?.results.map((result, index) => (
-                          <Tag
+                          <DismissibleTag
                             key={index}
-                            filter
                             onClose={() => {
                               var diagnosisResultsMap =
                                 filterDiagnosisResultsByCategory(
@@ -1735,9 +1753,14 @@ function CytologyCaseView() {
                                 diagnosis: newDiagnosis,
                               });
                             }}
-                          >
-                            {result.value}
-                          </Tag>
+                            text={result.value}
+                            title={intl.formatMessage({
+                              id: "label.button.remove",
+                            })}
+                            dismissTooltipLabel={intl.formatMessage({
+                              id: "label.button.remove",
+                            })}
+                          />
                         ))}
                       </Column>
                     </Grid>

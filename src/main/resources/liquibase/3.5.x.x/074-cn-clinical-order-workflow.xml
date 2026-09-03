@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+  <changeSet author="local-chinese-edition" id="3.5.0-074-cn-clinical-order-workflow-update">
+    <comment>Converge an existing China-profile order workflow setting to the clinical laboratory flow.</comment>
+    <update schemaName="clinlims" tableName="site_information">
+      <column name="value" value="Clinical"/>
+      <column name="lastupdated" valueComputed="now()"/>
+      <where>name = 'orderEntryWorkflowType'</where>
+    </update>
+  </changeSet>
+
+  <changeSet author="local-chinese-edition" id="3.5.0-074-cn-clinical-order-workflow-insert">
+    <preConditions onFail="MARK_RAN">
+      <sqlCheck expectedResult="0">
+        SELECT COUNT(*) FROM clinlims.site_information WHERE name = 'orderEntryWorkflowType'
+      </sqlCheck>
+    </preConditions>
+    <comment>Seed the clinical laboratory order workflow when older installations do not have the setting.</comment>
+    <insert schemaName="clinlims" tableName="site_information">
+      <column name="id" valueSequenceNext="site_information_seq"/>
+      <column name="name" value="orderEntryWorkflowType"/>
+      <column name="lastupdated" valueComputed="now()"/>
+      <column name="value" value="Clinical"/>
+      <column name="encrypted" valueBoolean="false"/>
+      <column name="domain_id" valueComputed="(SELECT id FROM clinlims.site_information_domain WHERE name = 'sampleEntryConfig')"/>
+      <column name="value_type" value="text"/>
+      <column name="group" valueNumeric="0"/>
+    </insert>
+  </changeSet>
+
+</databaseChangeLog>

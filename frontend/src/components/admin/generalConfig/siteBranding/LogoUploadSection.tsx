@@ -373,10 +373,7 @@ const LogoUploadSection = forwardRef<
                 color: "#0f62fe",
               }}
             >
-              <FormattedMessage
-                id="site.branding.file.pending"
-                defaultMessage="File selected - click Save Changes to upload"
-              />
+              <FormattedMessage id="site.branding.file.pending" />
             </p>
           )}
 

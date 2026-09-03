@@ -8,13 +8,18 @@ import org.dom4j.Element;
 import org.openelisglobal.common.util.validator.CustomDateValidator.DateRelation;
 import org.openelisglobal.common.validator.ValidationHelper;
 import org.openelisglobal.internationalization.MessageUtil;
+import org.openelisglobal.sample.validator.RequesterMasterDataValidator;
 import org.openelisglobal.samplebatchentry.form.SampleBatchEntryForm;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.Errors;
 import org.springframework.validation.Validator;
 
 @Component
 public class SampleBatchEntryFormValidator implements Validator {
+
+    @Autowired
+    RequesterMasterDataValidator requesterMasterDataValidator;
 
     @Override
     public boolean supports(Class<?> clazz) {
@@ -27,10 +32,15 @@ public class SampleBatchEntryFormValidator implements Validator {
 
         validateSampleXML(form.getSampleXML(), errors);
 
+        requesterMasterDataValidator.validate(form.getFacilityID(),
+                form.getSampleOrderItems() != null ? form.getSampleOrderItems().getReferringSiteDepartmentId() : null,
+                form.getSampleOrderItems() != null ? form.getSampleOrderItems().getNewRequesterName() : null, errors);
+
         ValidationHelper.validateOptionField(form.getProgramCode(), "programCode", errors,
                 new String[] { MessageUtil.getMessage("sample.entry.project.LDBS"),
                         MessageUtil.getMessage("sample.entry.project.LART"), "", null });
     }
+
 
     @SuppressWarnings("unchecked")
     private void validateSampleXML(String sampleXML, Errors errors) {

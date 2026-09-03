@@ -69,25 +69,18 @@ const getDeviceColumns = (intl) => [
   },
 ];
 
-const DEVICE_TYPE_OPTIONS = [
-  { value: "freezer", label: "Freezer" },
-  { value: "refrigerator", label: "Refrigerator" },
-  { value: "cabinet", label: "Cabinet" },
-  { value: "other", label: "Other" },
-];
-
-const PROTOCOL_OPTIONS = [
-  { value: "TCP", label: "Modbus TCP" },
-  { value: "RTU", label: "Modbus RTU" },
-];
-
-const PARITY_OPTIONS = [
-  { value: "NONE", label: "None" },
-  { value: "EVEN", label: "Even" },
-  { value: "ODD", label: "Odd" },
-  { value: "MARK", label: "Mark" },
-  { value: "SPACE", label: "Space" },
-];
+const getDeviceTypeLabel = (type, intl) => {
+  const messageIds = {
+    FREEZER: "coldStorage.device.type.freezer",
+    REFRIGERATOR: "coldStorage.device.type.refrigerator",
+    CABINET: "coldStorage.device.type.cabinet",
+    OTHER: "coldStorage.device.type.other",
+  };
+  const normalizedType = (type || "OTHER").toUpperCase();
+  return intl.formatMessage({
+    id: messageIds[normalizedType] || "coldStorage.device.type.other",
+  });
+};
 
 function DeviceManagement() {
   const intl = useIntl();
@@ -146,6 +139,20 @@ function DeviceManagement() {
     humidityScale: 1.0,
     humidityOffset: 0.0,
   });
+  const filterOptions = [
+    {
+      id: "all",
+      label: intl.formatMessage({ id: "coldStorage.filter.all" }),
+    },
+    {
+      id: "active",
+      label: intl.formatMessage({ id: "coldStorage.filter.activeOnly" }),
+    },
+    {
+      id: "inactive",
+      label: intl.formatMessage({ id: "coldStorage.filter.inactiveOnly" }),
+    },
+  ];
 
   const loadLocations = useCallback(async () => {
     try {
@@ -156,12 +163,10 @@ function DeviceManagement() {
       notify({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "error.title" }),
-        subtitle:
-          intl.formatMessage({ id: "coldStorage.error.loadLocations" }) +
-          err.message,
+        subtitle: intl.formatMessage({ id: "coldStorage.error.loadLocations" }),
       });
     }
-  }, [notify]);
+  }, [notify, intl]);
 
   const loadDevices = useCallback(async () => {
     try {
@@ -170,14 +175,11 @@ function DeviceManagement() {
       const response = await fetchDevices(searchTerm);
       setDevices(response || []);
     } catch (err) {
-      setError(
-        intl.formatMessage({ id: "coldStorage.error.loadDevices" }) +
-          err.message,
-      );
+      setError(intl.formatMessage({ id: "coldStorage.error.loadDevices" }));
     } finally {
       setLoading(false);
     }
-  }, [searchTerm]);
+  }, [searchTerm, intl]);
 
   useEffect(() => {
     loadLocations();
@@ -275,9 +277,7 @@ function DeviceManagement() {
       notify({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "error.title" }),
-        subtitle:
-          intl.formatMessage({ id: "coldStorage.error.toggleStatus" }) +
-          err.message,
+        subtitle: intl.formatMessage({ id: "coldStorage.error.toggleStatus" }),
       });
     }
   };
@@ -317,9 +317,7 @@ function DeviceManagement() {
       notify({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "error.title" }),
-        subtitle:
-          intl.formatMessage({ id: "coldStorage.error.deleteDevice" }) +
-          err.message,
+        subtitle: intl.formatMessage({ id: "coldStorage.error.deleteDevice" }),
       });
     }
   };
@@ -402,12 +400,11 @@ function DeviceManagement() {
       notify({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "error.title" }),
-        subtitle:
-          intl.formatMessage({
-            id: editingDevice
-              ? "coldStorage.error.updateDevice"
-              : "coldStorage.error.createDevice",
-          }) + err.message,
+        subtitle: intl.formatMessage({
+          id: editingDevice
+            ? "coldStorage.error.updateDevice"
+            : "coldStorage.error.createDevice",
+        }),
       });
     }
   };
@@ -449,9 +446,7 @@ function DeviceManagement() {
       notify({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "error.title" }),
-        subtitle:
-          intl.formatMessage({ id: "coldStorage.error.createRoom" }) +
-          err.message,
+        subtitle: intl.formatMessage({ id: "coldStorage.error.createRoom" }),
       });
     }
   };
@@ -480,7 +475,7 @@ function DeviceManagement() {
       </Tag>
     ),
     name: device.name,
-    deviceType: device.storageDevice?.type || "—",
+    deviceType: getDeviceTypeLabel(device.storageDevice?.type, intl),
     host: device.host || "—",
     port: device.port || "—",
     protocol: device.protocol || "—",
@@ -539,6 +534,9 @@ function DeviceManagement() {
             <TableToolbar>
               <TableToolbarContent>
                 <TableToolbarSearch
+                  closeButtonLabelText={intl.formatMessage({
+                    id: "carbon.search.clear",
+                  })}
                   placeholder={intl.formatMessage({
                     id: "coldStorage.search.placeholder",
                   })}
@@ -548,28 +546,15 @@ function DeviceManagement() {
                 <Dropdown
                   id="filter-status"
                   titleText=""
-                  label={intl.formatMessage({ id: "coldStorage.filter.all" })}
-                  items={[
-                    {
-                      id: "all",
-                      label: intl.formatMessage({
-                        id: "coldStorage.filter.all",
-                      }),
-                    },
-                    {
-                      id: "active",
-                      label: intl.formatMessage({
-                        id: "coldStorage.filter.activeOnly",
-                      }),
-                    },
-                    {
-                      id: "inactive",
-                      label: intl.formatMessage({
-                        id: "coldStorage.filter.inactiveOnly",
-                      }),
-                    },
-                  ]}
+                  label={
+                    filterOptions.find((item) => item.id === filterStatus)
+                      ?.label || filterOptions[0].label
+                  }
+                  items={filterOptions}
                   itemToString={(item) => (item ? item.label : "")}
+                  selectedItem={filterOptions.find(
+                    (item) => item.id === filterStatus,
+                  )}
                   onChange={({ selectedItem }) =>
                     setFilterStatus(selectedItem?.id || "all")
                   }
@@ -598,6 +583,20 @@ function DeviceManagement() {
                 </TableRow>
               </TableHead>
               <TableBody>
+                {(loading || error || rows.length === 0) && (
+                  <TableRow>
+                    <TableCell colSpan={getDeviceColumns(intl).length}>
+                      {loading
+                        ? intl.formatMessage({
+                            id: "coldStorage.loadingDevices",
+                          })
+                        : error ||
+                          intl.formatMessage({
+                            id: "coldStorage.noDevicesConfigured",
+                          })}
+                    </TableCell>
+                  </TableRow>
+                )}
                 {rows.map((row) => (
                   <TableRow key={row.id} {...getRowProps({ row })}>
                     {row.cells.map((cell) => (
@@ -639,6 +638,7 @@ function DeviceManagement() {
 
       <Modal
         open={isAddRoomModalOpen}
+        closeButtonLabel={intl.formatMessage({ id: "button.close" })}
         onRequestClose={() => {
           setIsAddRoomModalOpen(false);
           setIsModalOpen(true);
@@ -689,6 +689,7 @@ function DeviceManagement() {
 
       <Modal
         open={isStatusModalOpen}
+        closeButtonLabel={intl.formatMessage({ id: "button.close" })}
         onRequestClose={cancelToggleStatus}
         onRequestSubmit={confirmToggleStatus}
         modalHeading={intl.formatMessage({
@@ -729,6 +730,7 @@ function DeviceManagement() {
 
       <Modal
         open={isDeleteModalOpen}
+        closeButtonLabel={intl.formatMessage({ id: "button.close" })}
         onRequestClose={cancelDeleteDevice}
         onRequestSubmit={confirmDeleteDevice}
         modalHeading={intl.formatMessage({ id: "coldStorage.device.delete" })}

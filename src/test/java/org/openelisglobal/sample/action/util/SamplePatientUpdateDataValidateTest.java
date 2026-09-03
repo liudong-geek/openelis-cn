@@ -95,4 +95,5 @@ public class SamplePatientUpdateDataValidateTest extends BaseWebContextSensitive
                 + "(not a global ObjectError) so it lands in fieldErrors[]", err);
         assertEquals("errors.samples.with.no.tests", err.getCode());
     }
+
 }

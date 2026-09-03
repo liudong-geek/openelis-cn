@@ -164,6 +164,10 @@ public class ReportImplementationFactory {
 
     public static IReportCreator getReportCreator(String report) {
         if (!GenericValidator.isBlankOrNull(report)) {
+            Class<? extends IReportCreator> resultsScopedCreatorClass = getAdditionalResultsScopedCreatorClass(report);
+            if (resultsScopedCreatorClass != null) {
+                return instantiateAdditionalResultsScopedCreator(resultsScopedCreatorClass);
+            }
             if (report.equals("patientARV1")) {
                 return new PatientARVVersion1Report();
             } else if (report.equals("retroCINonConformityByLabno")) {
@@ -245,8 +249,6 @@ public class ReportImplementationFactory {
                 return new RetroCINonConformityNotification();
             } else if (report.equals("patientCollection")) {
                 return new RetroCIPatientCollectionReport();
-            } else if (report.equals("patientAssociated")) {
-                return new RetroCIPatientAssociatedReport();
             } else if (report.equals("indicatorCDILNSPHIV")) {
                 return new IndicatorCDIHIVLNSP();
             } else if (report.equals("validationBacklog")) {
@@ -277,25 +279,52 @@ public class ReportImplementationFactory {
                 return new MauritiusProtocolSheet();
             } else if (report.equals("ExportWHONETReportByDate")) {
                 return new WHONETExportRoutineByDate();
-            } else if (report.equals("covidResultsReport")) {
-                return new CovidResultsReport();
             } else if (report.equals("statisticsReport")) {
                 return new StatisticsReport();
             } else if (report.equals("sampleRejectionReport")) {
                 return new CSVSampleRejectionReport();
-            } else if (report.equals("PatientPathologyReport")) {
-                return new PatientPathologyReport();
-            } else if (report.equals("PatientCytologyReport")) {
-                return new PatientCytologyReport();
-            } else if (report.equals("PatientImmunoChemistryReport")) {
-                return new PatientImmunoChemistryReport();
-            } else if (report.equals("DualInSituHybridizationReport")) {
-                return new DualInSituHybridizationReport();
-            } else if (report.equals("BreastCancerHormoneReceptorReport")) {
-                return new BreastCancerHormoneReceptorReport();
             }
         }
 
         return null;
+    }
+
+    static Class<? extends IReportCreator> getAdditionalResultsScopedCreatorClass(String report) {
+        if ("covidResultsReport".equals(report)) {
+            return CovidResultsReport.class;
+        } else if ("PatientPathologyReport".equals(report)) {
+            return PatientPathologyReport.class;
+        } else if ("PatientCytologyReport".equals(report)) {
+            return PatientCytologyReport.class;
+        } else if ("PatientImmunoChemistryReport".equals(report)) {
+            return PatientImmunoChemistryReport.class;
+        } else if ("DualInSituHybridizationReport".equals(report)) {
+            return DualInSituHybridizationReport.class;
+        } else if ("BreastCancerHormoneReceptorReport".equals(report)) {
+            return BreastCancerHormoneReceptorReport.class;
+        } else if ("patientAssociated".equals(report)) {
+            return RetroCIPatientAssociatedReport.class;
+        }
+        return null;
+    }
+
+    private static IReportCreator instantiateAdditionalResultsScopedCreator(
+            Class<? extends IReportCreator> creatorClass) {
+        if (CovidResultsReport.class.equals(creatorClass)) {
+            return new CovidResultsReport();
+        } else if (PatientPathologyReport.class.equals(creatorClass)) {
+            return new PatientPathologyReport();
+        } else if (PatientCytologyReport.class.equals(creatorClass)) {
+            return new PatientCytologyReport();
+        } else if (PatientImmunoChemistryReport.class.equals(creatorClass)) {
+            return new PatientImmunoChemistryReport();
+        } else if (DualInSituHybridizationReport.class.equals(creatorClass)) {
+            return new DualInSituHybridizationReport();
+        } else if (BreastCancerHormoneReceptorReport.class.equals(creatorClass)) {
+            return new BreastCancerHormoneReceptorReport();
+        } else if (RetroCIPatientAssociatedReport.class.equals(creatorClass)) {
+            return new RetroCIPatientAssociatedReport();
+        }
+        throw new IllegalArgumentException("Unsupported results-scoped report creator: " + creatorClass.getName());
     }
 }

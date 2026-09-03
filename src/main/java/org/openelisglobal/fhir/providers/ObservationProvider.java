@@ -45,6 +45,7 @@ import org.openelisglobal.common.services.registration.ResultUpdateRegister;
 import org.openelisglobal.common.services.registration.interfaces.IResultUpdate;
 import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.ConfigurationProperties.Property;
+import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.dataexchange.fhir.FhirUtil;
 import org.openelisglobal.dataexchange.fhir.service.FhirTransformService;
 import org.openelisglobal.dictionary.service.DictionaryService;
@@ -76,21 +77,29 @@ import org.springframework.validation.ObjectError;
  * FHIR search parameter set.
  *
  * <p>
- * Note: {@code @Create} is not yet supported because creating an Observation
- * requires a full Result chain (Analysis → SampleItem → Sample → Patient).
- * TODO: implement in a follow-up PR via Bundle transaction endpoint.
+ * Creation accepts a single quantitative result for an existing, collected and
+ * received clinical specimen. External final status never approves a result
+ * inside LIS; the local validation workflow remains mandatory.
  *
  * <p>
  * Supported operations:
  * <ul>
  * <li>READ: GET /fhir/Observation/{uuid}</li>
+ * <li>CREATE: POST /fhir/Observation</li>
  * <li>SEARCH: GET /fhir/Observation?patient={uuid}&amp;...</li>
  * <li>UPDATE: PUT /fhir/Observation/{uuid}</li>
- * <li>DELETE: DELETE /fhir/Observation/{uuid}</li>
+ * <li>DELETE is rejected; results require the controlled LIS correction
+ * workflow.</li>
  * </ul>
  */
 @Component
 public class ObservationProvider implements IResourceProvider {
+
+    @Autowired
+    private org.openelisglobal.fhir.service.FhirObservationIntakeGuard intakeGuard;
+
+    @Autowired
+    private org.openelisglobal.fhir.service.FhirClinicalTestReadiness testReadiness;
 
     @Autowired
     private FhirTransformService fhirTransformService;
@@ -165,7 +174,11 @@ public class ObservationProvider implements IResourceProvider {
 
         try {
 
+            var analysis = intakeGuard.validate(observation, FhirProviderUtils.getSysUserId(request), null);
             TestResultItem item = fhirTransformService.createResultFromObservation(observation);
+            item.setTestId(analysis.getTest().getId());
+            testReadiness.configureResult(analysis.getTest(), item);
+            item.setAnalysisStatusId(statusService.getStatusID(AnalysisStatus.TechnicalAcceptance));
 
             ResultsUpdateDataSet actionDataSet = handleObservationPersistence(item, observation, null, request, method);
 
@@ -192,11 +205,12 @@ public class ObservationProvider implements IResourceProvider {
                 Observation fhirObservation = fhirTransformService.transformResultToObservation(resultSet.result);
 
                 outcome.setResource(fhirObservation);
+                outcome.setId(fhirObservation.getIdElement());
             }
 
             return outcome;
 
-        } catch (UnprocessableEntityException e) {
+        } catch (ca.uhn.fhir.rest.server.exceptions.BaseServerResponseException e) {
 
             throw e;
 
@@ -249,7 +263,12 @@ public class ObservationProvider implements IResourceProvider {
             LogEvent.logInfo(getClass().getSimpleName(), method,
                     "Existing Result found with ID=" + existingResult.getId());
 
+            var analysis = intakeGuard.validate(fhirObservation, FhirProviderUtils.getSysUserId(request),
+                    existingResult);
             TestResultItem item = fhirTransformService.createResultFromObservation(fhirObservation);
+            item.setTestId(analysis.getTest().getId());
+            testReadiness.configureResult(analysis.getTest(), item);
+            item.setAnalysisStatusId(statusService.getStatusID(AnalysisStatus.TechnicalAcceptance));
 
             ResultsUpdateDataSet actionDataSet = handleObservationPersistence(item, fhirObservation, existingResult,
                     request, method);
@@ -291,7 +310,7 @@ public class ObservationProvider implements IResourceProvider {
 
             return outcome;
 
-        } catch (UnprocessableEntityException | ResourceNotFoundException | InvalidRequestException e) {
+        } catch (ca.uhn.fhir.rest.server.exceptions.BaseServerResponseException e) {
 
             LogEvent.logError(getClass().getSimpleName(), method, "Handled exception: " + e.getMessage());
 
@@ -312,46 +331,7 @@ public class ObservationProvider implements IResourceProvider {
 
     @Delete
     public MethodOutcome delete(@IdParam IdType theId, HttpServletRequest request) {
-        String method = "delete";
-        LogEvent.logDebug(this.getClass().getSimpleName(), method,
-                "Received FHIR DELETE request for Observation ID: " + (theId != null ? theId.getIdPart() : "null"));
-        try {
-            FhirProviderUtils.validateIdParam(theId, "Observation", this.getClass().getSimpleName(), method);
-
-            Result result = resultService.getResultByFhirUuid(theId.getIdPart());
-
-            if (result == null) {
-                throw new ResourceNotFoundException("Observation/" + theId.getIdPart());
-            }
-
-            ResultsUpdateDataSet actionDataSet = handleObservationDeletePersistence(result, request, method);
-
-            String sysUserId = FhirProviderUtils.getSysUserId(request);
-
-            List<IResultUpdate> updaters = ResultUpdateRegister.getRegisteredUpdaters();
-
-            LogEvent.logInfo(getClass().getSimpleName(), method,
-                    "Persisting dataset with updaters count=" + updaters.size());
-
-            logbookResultsPersistService.persistDataSet(actionDataSet, updaters, sysUserId);
-
-            fhirTransformService.transformPersistResultsEntryFhirObjects(actionDataSet);
-
-            LogEvent.logInfo(getClass().getSimpleName(), method,
-                    "Deleting Observation from FHIR store with ID: " + theId.getIdPart());
-
-            LogEvent.logInfo(this.getClass().getSimpleName(), method,
-                    "Successfully deleted Observation with ID: " + theId.getIdPart());
-
-            return FhirProviderUtils.buildDeleteOutcome(theId, "Observation");
-
-        } catch (ResourceNotFoundException | InvalidRequestException e) {
-            throw e;
-        } catch (Exception e) {
-            LogEvent.logError(this.getClass().getSimpleName(), method,
-                    "Unexpected error deleting observation: " + e.getMessage());
-            throw new InternalErrorException("Unexpected server error deleting Observation", e);
-        }
+        throw new ca.uhn.fhir.rest.server.exceptions.MethodNotAllowedException("检验结果不允许通过设备接口删除，请使用 LIS 受控结果更正流程");
     }
 
     @Search
@@ -523,8 +503,9 @@ public class ObservationProvider implements IResourceProvider {
         boolean useTechnicianName = ConfigurationProperties.getInstance()
                 .isPropertyValueEqual(Property.resultTechnicianName, "true");
 
-        boolean alwaysValidate = ConfigurationProperties.getInstance()
-                .isPropertyValueEqual(Property.ALWAYS_VALIDATE_RESULTS, "true");
+        // Instrument completion is not LIS approval, even if interactive
+        // auto-validation is configured.
+        boolean alwaysValidate = true;
 
         boolean supportReferrals = FormFields.getInstance().useField(Field.ResultsReferral);
 
@@ -567,11 +548,7 @@ public class ObservationProvider implements IResourceProvider {
         item.setAccessionNumber(result.getAnalysis().getSampleItem().getSample().getAccessionNumber());
         item.setAnalysisStatusId(statusService.getStatusID(AnalysisStatus.TechnicalRejected));
 
-        String locale = ConfigurationProperties.getInstance()
-                .getPropertyValue(ConfigurationProperties.Property.DEFAULT_DATE_LOCALE);
-
-        String pattern = "en-US".equals(locale) ? "MM/dd/yyyy" : "dd/MM/yyyy";
-        String formattedDate = new SimpleDateFormat(pattern).format(new Date());
+        String formattedDate = new SimpleDateFormat(DateUtil.getDateFormat()).format(new Date());
         item.setTestDate(formattedDate);
 
         String sysUserId = FhirProviderUtils.getSysUserId(request);

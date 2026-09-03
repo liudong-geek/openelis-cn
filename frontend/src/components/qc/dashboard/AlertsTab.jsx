@@ -46,16 +46,16 @@ import {
 } from "./qcDashboardUtils";
 import "./AlertsTab.css";
 
-const AlertsTab = () => {
+const AlertsTab = ({ refreshToken = 0 }) => {
   const intl = useIntl();
   const intlRef = useRef(intl);
   intlRef.current = intl;
 
-  console.log("Rendered alerts tab");
   const [violations, setViolations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [timePeriod, setTimePeriod] = useState("72h");
+  const [acknowledgingId, setAcknowledgingId] = useState(null);
 
   const timePeriodOptions = [
     {
@@ -85,24 +85,39 @@ const AlertsTab = () => {
     setError(null);
 
     getFromOpenElisServer("/rest/qc/violations", (response) => {
-      if (response && response.data) {
-        setViolations(response.data.violations || response.data || []);
-      } else if (Array.isArray(response)) {
-        setViolations(response);
+      const responseData = response?.data ?? response;
+      const rawViolations = Array.isArray(responseData)
+        ? responseData
+        : Array.isArray(responseData?.violations)
+          ? responseData.violations
+          : null;
+      const nextViolations = rawViolations?.filter(
+        (violation) =>
+          violation &&
+          typeof violation === "object" &&
+          !Array.isArray(violation),
+      );
+
+      if (nextViolations) {
+        setViolations(nextViolations);
       } else {
-        setError(
-          intlRef.current.formatMessage({
+        setError({
+          title: intlRef.current.formatMessage({
+            id: "qc.dashboard.error.title",
+          }),
+          message: intlRef.current.formatMessage({
             id: "qc.dashboard.error.loadFailed",
           }),
-        );
+        });
       }
+      setAcknowledgingId(null);
       setLoading(false);
     });
   }, []);
 
   useEffect(() => {
     loadViolations();
-  }, [loadViolations]);
+  }, [loadViolations, refreshToken]);
 
   // Filter by time period
   const filteredViolations = useMemo(() => {
@@ -127,21 +142,47 @@ const AlertsTab = () => {
   }, [filteredViolations]);
 
   const handleAcknowledge = (violationId) => {
-    const endpoint = `/rest/qc/violations/${violationId}/acknowledge`;
+    if (violationId == null || acknowledgingId != null) return;
+    setAcknowledgingId(violationId);
+    setError(null);
+    const endpoint = `/rest/qc/violations/${encodeURIComponent(
+      violationId,
+    )}/acknowledge`;
     postToOpenElisServerFullResponse(
       endpoint,
       JSON.stringify({}),
       (response) => {
-        if (response.ok) {
+        if (response?.ok) {
           loadViolations();
         } else {
-          setError(
-            intl.formatMessage({ id: "qc.violations.error.acknowledgeFailed" }),
-          );
+          setAcknowledgingId(null);
+          setError({
+            title: intl.formatMessage({
+              id: "qc.violations.error.acknowledgeTitle",
+            }),
+            message: intl.formatMessage({
+              id: "qc.violations.error.acknowledgeFailed",
+            }),
+          });
         }
       },
     );
   };
+
+  const formatSeverity = (severity) => {
+    const normalizedSeverity = String(severity || "WARNING").toLowerCase();
+    const knownSeverities = ["warning", "rejection"];
+    return knownSeverities.includes(normalizedSeverity)
+      ? intl.formatMessage({
+          id: `qc.dashboard.alerts.severity.${normalizedSeverity}`,
+        })
+      : severity || "-";
+  };
+  const translateMenu = (messageId) =>
+    intl.formatMessage({ id: `carbon.${messageId}` });
+  const translateTable = (messageId) => intl.formatMessage({ id: messageId });
+  const translateTableHeader = (messageId, args) =>
+    intl.formatMessage({ id: messageId }, { header: args?.header || "" });
 
   // Acknowledged violations table headers
   const acknowledgedHeaders = [
@@ -220,17 +261,27 @@ const AlertsTab = () => {
           onChange={({ selectedItem }) =>
             setTimePeriod(selectedItem?.id || "72h")
           }
+          translateWithId={translateMenu}
           data-testid="alerts-time-period-filter"
         />
       </div>
 
       {error && (
-        <InlineNotification
-          kind="error"
-          title={intl.formatMessage({ id: "qc.dashboard.error.title" })}
-          subtitle={error}
-          onClose={() => setError(null)}
-        />
+        <div className="alerts-tab__error" data-testid="alerts-tab-error">
+          <InlineNotification
+            aria-label={intl.formatMessage({ id: "button.close" })}
+            statusIconDescription={intl.formatMessage({
+              id: "carbon.notification.error",
+            })}
+            kind="error"
+            title={error.title}
+            subtitle={error.message}
+            onClose={() => setError(null)}
+          />
+          <Button kind="ghost" size="sm" onClick={loadViolations}>
+            {intl.formatMessage({ id: "qc.dashboard.alerts.retry" })}
+          </Button>
+        </div>
       )}
 
       {/* Active Violations Section */}
@@ -265,7 +316,7 @@ const AlertsTab = () => {
               >
                 <div className="alerts-tab__card-header">
                   <Tag type={getSeverityTagType(violation.severity)}>
-                    {violation.severity}
+                    {formatSeverity(violation.severity)}
                   </Tag>
                   <span className="alerts-tab__card-rule">
                     {violation.ruleCode}
@@ -284,10 +335,14 @@ const AlertsTab = () => {
                     kind="tertiary"
                     size="sm"
                     onClick={() => handleAcknowledge(violation.id)}
+                    disabled={acknowledgingId != null}
                     data-testid={`alert-acknowledge-${violation.id}`}
                   >
                     {intl.formatMessage({
-                      id: "qc.dashboard.alerts.acknowledge",
+                      id:
+                        acknowledgingId === violation.id
+                          ? "qc.dashboard.alerts.acknowledging"
+                          : "qc.dashboard.alerts.acknowledge",
                     })}
                   </Button>
                 </div>
@@ -327,6 +382,7 @@ const AlertsTab = () => {
               rows={acknowledgedRows}
               headers={acknowledgedHeaders}
               isSortable
+              translateWithId={translateTable}
             >
               {({
                 rows,
@@ -345,6 +401,7 @@ const AlertsTab = () => {
                         <TableHeader
                           key={header.key}
                           {...getHeaderProps({ header })}
+                          translateWithId={translateTableHeader}
                         >
                           {header.header}
                         </TableHeader>
@@ -360,7 +417,7 @@ const AlertsTab = () => {
                           if (cell.info.header === "severity") {
                             cellContent = (
                               <Tag type={getSeverityTagType(cell.value)}>
-                                {cell.value}
+                                {formatSeverity(cell.value)}
                               </Tag>
                             );
                           }

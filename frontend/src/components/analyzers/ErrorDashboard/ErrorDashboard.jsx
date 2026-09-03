@@ -379,6 +379,38 @@ const ErrorDashboard = () => {
     };
   });
 
+  const errorTypeOptions = [
+    {
+      id: "",
+      text: intl.formatMessage({
+        id: "analyzer.errorDashboard.filter.type.all",
+      }),
+    },
+    ...["MAPPING", "VALIDATION", "TIMEOUT", "PROTOCOL", "CONNECTION"].map(
+      (id) => ({
+        id,
+        text: intl.formatMessage({
+          id: `analyzer.errorDashboard.errorType.${id.toLowerCase()}`,
+        }),
+      }),
+    ),
+  ];
+
+  const severityOptions = [
+    {
+      id: "",
+      text: intl.formatMessage({
+        id: "analyzer.errorDashboard.filter.severity.all",
+      }),
+    },
+    ...["CRITICAL", "ERROR", "WARNING"].map((id) => ({
+      id,
+      text: intl.formatMessage({
+        id: `analyzer.errorDashboard.severity.${id.toLowerCase()}`,
+      }),
+    })),
+  ];
+
   return (
     <div className="error-dashboard" data-testid="error-dashboard">
       {/* Header */}
@@ -492,42 +524,15 @@ const ErrorDashboard = () => {
               label={intl.formatMessage({
                 id: "analyzer.errorDashboard.filter.type.all",
               })}
-              items={[
-                intl.formatMessage({
-                  id: "analyzer.errorDashboard.filter.type.all",
-                }),
-                intl.formatMessage({
-                  id: "analyzer.errorDashboard.errorType.mapping",
-                }),
-                intl.formatMessage({
-                  id: "analyzer.errorDashboard.errorType.validation",
-                }),
-                intl.formatMessage({
-                  id: "analyzer.errorDashboard.errorType.timeout",
-                }),
-                intl.formatMessage({
-                  id: "analyzer.errorDashboard.errorType.protocol",
-                }),
-                intl.formatMessage({
-                  id: "analyzer.errorDashboard.errorType.connection",
-                }),
-              ]}
+              items={errorTypeOptions}
+              itemToString={(item) => (item ? item.text : "")}
               selectedItem={
-                filters.errorType ||
-                intl.formatMessage({
-                  id: "analyzer.errorDashboard.filter.type.all",
-                })
+                errorTypeOptions.find(
+                  (option) => option.id === filters.errorType,
+                ) || errorTypeOptions[0]
               }
               onChange={({ selectedItem }) =>
-                handleFilterChange(
-                  "errorType",
-                  selectedItem ===
-                    intl.formatMessage({
-                      id: "analyzer.errorDashboard.filter.type.all",
-                    })
-                    ? ""
-                    : selectedItem,
-                )
+                handleFilterChange("errorType", selectedItem?.id || "")
               }
             />
           </Column>
@@ -541,36 +546,15 @@ const ErrorDashboard = () => {
               label={intl.formatMessage({
                 id: "analyzer.errorDashboard.filter.severity.all",
               })}
-              items={[
-                intl.formatMessage({
-                  id: "analyzer.errorDashboard.filter.severity.all",
-                }),
-                intl.formatMessage({
-                  id: "analyzer.errorDashboard.severity.critical",
-                }),
-                intl.formatMessage({
-                  id: "analyzer.errorDashboard.severity.error",
-                }),
-                intl.formatMessage({
-                  id: "analyzer.errorDashboard.severity.warning",
-                }),
-              ]}
+              items={severityOptions}
+              itemToString={(item) => (item ? item.text : "")}
               selectedItem={
-                filters.severity ||
-                intl.formatMessage({
-                  id: "analyzer.errorDashboard.filter.severity.all",
-                })
+                severityOptions.find(
+                  (option) => option.id === filters.severity,
+                ) || severityOptions[0]
               }
               onChange={({ selectedItem }) =>
-                handleFilterChange(
-                  "severity",
-                  selectedItem ===
-                    intl.formatMessage({
-                      id: "analyzer.errorDashboard.filter.severity.all",
-                    })
-                    ? ""
-                    : selectedItem,
-                )
+                handleFilterChange("severity", selectedItem?.id || "")
               }
             />
           </Column>

@@ -135,6 +135,9 @@ const EQAResultsPage = () => {
                 <TableToolbar>
                   <TableToolbarContent>
                     <TableToolbarSearch
+                      closeButtonLabelText={intl.formatMessage({
+                        id: "carbon.search.clear",
+                      })}
                       onChange={(e) => setSearchTerm(e.target.value || "")}
                       placeholder={intl.formatMessage({
                         id: "eqa.results.search.placeholder",

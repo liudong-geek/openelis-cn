@@ -230,6 +230,9 @@ function AlertSettings() {
           <FormattedMessage id="coldStorage.emailSmsNotifications" />
         </Heading>
         <InlineNotification
+          statusIconDescription={intl.formatMessage({
+            id: "carbon.notification.info",
+          })}
           kind="info"
           title={intl.formatMessage({
             id: "coldStorage.granularNotificationControl",
@@ -362,6 +365,9 @@ function AlertSettings() {
 
         <div style={{ marginTop: "1.5rem" }}>
           <InlineNotification
+            statusIconDescription={intl.formatMessage({
+              id: "carbon.notification.warning",
+            })}
             kind="warning"
             title={intl.formatMessage({
               id: "coldStorage.howNotificationsWork",

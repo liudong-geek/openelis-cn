@@ -35,6 +35,9 @@ const StatisticsDisplay = ({ statistics }) => {
 
       {!hasEnoughParticipants && (
         <InlineNotification
+          statusIconDescription={intl.formatMessage({
+            id: "carbon.notification.warning",
+          })}
           kind="warning"
           title={intl.formatMessage({ id: "eqa.results.minimum.participants" })}
           hideCloseButton
@@ -101,10 +104,15 @@ const StatisticsDisplay = ({ statistics }) => {
                       }
                       size="sm"
                     >
-                      {intl.formatMessage({
-                        id: `eqa.results.${r.performanceStatus.toLowerCase()}`,
-                        defaultMessage: r.performanceStatus,
-                      })}
+                      {(() => {
+                        const performanceMessageId = `eqa.results.${r.performanceStatus.toLowerCase()}`;
+                        return intl.formatMessage({
+                          id:
+                            performanceMessageId in intl.messages
+                              ? performanceMessageId
+                              : "status.unknown",
+                        });
+                      })()}
                     </Tag>
                   ) : (
                     "—"

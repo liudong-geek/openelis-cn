@@ -43,7 +43,8 @@ import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.test.service.TestServiceImpl;
 import org.openelisglobal.test.valueholder.Test;
 
-public class PatientClinicalReport extends PatientReport implements IReportCreator, IReportParameterSetter {
+public class PatientClinicalReport extends PatientReport
+        implements IReportCreator, IReportParameterSetter, ResultsScopedReportCreator.ClinicalPatientSelection {
 
     private static Set<String> analysisStatusIds;
     private boolean isLNSP = false;

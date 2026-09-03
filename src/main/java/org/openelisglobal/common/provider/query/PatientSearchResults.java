@@ -16,8 +16,6 @@
 package org.openelisglobal.common.provider.query;
 
 import java.math.BigDecimal;
-import org.openelisglobal.common.util.ConfigurationProperties;
-import org.openelisglobal.common.util.ConfigurationProperties.Property;
 import org.openelisglobal.common.util.DateUtil;
 
 public class PatientSearchResults {
@@ -230,12 +228,6 @@ public class PatientSearchResults {
     }
 
     public String getFormatedBirthDate() {
-        String format1 = "dd/MM/yyyy";
-        String format2 = "MM/dd/yyyy";
-        birthdate = ConfigurationProperties.getInstance().getPropertyValue(Property.DEFAULT_DATE_LOCALE).equals("fr-FR")
-                ? DateUtil.formatStringDate(birthdate, format1)
-                : DateUtil.formatStringDate(birthdate, format2);
-
-        return birthdate;
+        return DateUtil.formatStringDateForConfiguredLocale(birthdate);
     }
 }

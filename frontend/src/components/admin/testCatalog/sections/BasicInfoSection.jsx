@@ -10,11 +10,11 @@ import {
   Button,
   ComboBox,
   FilterableMultiSelect,
-  Tag,
   Loading,
   InlineNotification,
   Modal,
 } from "@carbon/react";
+import Tag from "../../../common/LocalizedTag";
 import { FormattedMessage, useIntl } from "react-intl";
 import {
   getFromOpenElisServer,
@@ -114,6 +114,20 @@ const BasicInfoSection = ({ testId }) => {
   const [labUnits, setLabUnits] = useState([]);
   const [sampleTypes, setSampleTypes] = useState([]);
 
+  const translateMultiSelect = (messageId) => {
+    switch (messageId) {
+      case "clear.all":
+      case "clear.selection":
+        return intl.formatMessage({ id: "label.button.clear" });
+      case "close.menu":
+        return intl.formatMessage({ id: "label.button.close" });
+      case "open.menu":
+        return intl.formatMessage({ id: "carbon.open.menu" });
+      default:
+        return messageId;
+    }
+  };
+
   const cancelDomainChange = () => {
     setPendingDomain(null);
     setDomainRadioKey((k) => k + 1);
@@ -193,6 +207,14 @@ const BasicInfoSection = ({ testId }) => {
           placeholder={intl.formatMessage({
             id: "label.testCatalog.specimenType",
           })}
+          clearSelectionDescription={intl.formatMessage({
+            id: "carbon.multiselect.totalSelected",
+          })}
+          clearSelectionText={intl.formatMessage({
+            id: "carbon.multiselect.clearSelection",
+          })}
+          translateWithId={translateMultiSelect}
+          locale={intl.locale}
           items={offered}
           itemToString={(item) => (item ? item.name : "")}
           selectedItems={selectedItems}
@@ -407,6 +429,7 @@ const BasicInfoSection = ({ testId }) => {
           titleText={intl.formatMessage({
             id: "label.testCatalog.basicInfo.labUnit",
           })}
+          translateWithId={translateMultiSelect}
           items={labUnits}
           itemToString={(item) => (item ? item.name : "")}
           selectedItem={labUnits.find((u) => u.id === createForm.labUnitId)}
@@ -561,6 +584,7 @@ const BasicInfoSection = ({ testId }) => {
         titleText={intl.formatMessage({
           id: "label.testCatalog.basicInfo.labUnit",
         })}
+        translateWithId={translateMultiSelect}
         items={labUnits}
         itemToString={(item) => (item ? item.name : "")}
         selectedItem={labUnits.find((u) => u.id === form.labUnitId) || null}

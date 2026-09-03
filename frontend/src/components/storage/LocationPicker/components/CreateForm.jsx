@@ -92,8 +92,24 @@ const LEVELS = [
   },
 ];
 
+const DEVICE_TYPE_MESSAGE_IDS = {
+  COLD_STORAGE_UNIT: "coldStorage.device.type.coldStorageUnit",
+  FREEZER: "coldStorage.device.type.freezer",
+  REFRIGERATOR: "coldStorage.device.type.refrigerator",
+  ULTRA_LOW_FREEZER: "coldStorage.device.type.ultraLowFreezer",
+  CABINET: "coldStorage.device.type.cabinet",
+  OTHER: "coldStorage.device.type.other",
+};
+
+const normalizeDeviceType = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/[\s-]+/g, "_")
+    .toUpperCase();
+
 export default function CreateForm({ selection, onLevelChange }) {
   const intl = useIntl();
+  const isChineseLocale = intl.locale?.toLowerCase().startsWith("zh");
   const createLocation = useCreateLocation();
   const [options, setOptions] = useState({
     room: [],
@@ -270,11 +286,16 @@ export default function CreateForm({ selection, onLevelChange }) {
       // Keep the modal open so the user can correct the input and retry. The
       // message is already user-facing (see useCreateLocation).
       setCreateError(
-        error?.message ||
-          intl.formatMessage({
-            id: "storage.picker.inlineCreate.error",
-            defaultMessage: "Failed to create location",
-          }),
+        isChineseLocale
+          ? intl.formatMessage({
+              id: "storage.picker.inlineCreate.error",
+              defaultMessage: "Failed to create location",
+            })
+          : error?.message ||
+              intl.formatMessage({
+                id: "storage.picker.inlineCreate.error",
+                defaultMessage: "Failed to create location",
+              }),
       );
     }
   };
@@ -349,7 +370,14 @@ export default function CreateForm({ selection, onLevelChange }) {
               defaultMessage: "Select device type",
             })}
             items={deviceTypes}
-            itemToString={(item) => item || ""}
+            itemToString={(item) => {
+              if (!item) return "";
+              const messageId =
+                DEVICE_TYPE_MESSAGE_IDS[normalizeDeviceType(item)];
+              return messageId
+                ? intl.formatMessage({ id: messageId })
+                : String(item);
+            }}
             selectedItem={inlineCreate.type || null}
             onChange={({ selectedItem }) =>
               setInlineCreate({

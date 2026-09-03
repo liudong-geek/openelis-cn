@@ -17,6 +17,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.openelisglobal.BaseWebContextSensitiveTest;
 import org.openelisglobal.common.util.ConfigurationProperties;
+import org.openelisglobal.patient.form.PatientListResponse;
 import org.openelisglobal.patient.valueholder.Patient;
 import org.openelisglobal.patienttype.valueholder.PatientType;
 import org.openelisglobal.person.service.PersonService;
@@ -73,6 +74,18 @@ public class PatientServiceTest extends BaseWebContextSensitiveTest {
         Assert.assertEquals(firstName, savedPatient.getPerson().getFirstName());
         Assert.assertEquals(lastname, savedPatient.getPerson().getLastName());
         Assert.assertEquals(gender, savedPatient.getGender());
+    }
+
+    @Test
+    public void getPatientManagementList_shouldReturnNewestPatientsWithPagingMetadata() {
+        PatientListResponse response = patientService.getPatientManagementList(1, 10);
+
+        assertEquals(4, response.totalItems());
+        assertEquals(1, response.totalPages());
+        assertEquals(4, response.patients().size());
+        assertEquals("4", response.patients().get(0).patientId());
+        assertEquals("Norah", response.patients().get(0).firstName());
+        assertEquals("10000002", response.patients().get(0).phoneNumber());
     }
 
     @Test
@@ -540,7 +553,7 @@ public class PatientServiceTest extends BaseWebContextSensitiveTest {
         Patient pat = createPatient(firstName, lastname, dob, gender);
         patientService.insert(pat);
 
-        Assert.assertEquals(dob, patientService.getBirthdayForDisplay(pat).toString());
+        Assert.assertEquals("1992/12/12", patientService.getBirthdayForDisplay(pat).toString());
     }
 
     @Test

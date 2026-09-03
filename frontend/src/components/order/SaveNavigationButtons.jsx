@@ -1,6 +1,7 @@
+import { pushWithListContext } from "../common/listWorkspace";
 import React from "react";
 import { Button } from "@carbon/react";
-import { FormattedMessage } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import { useHistory } from "react-router-dom";
 import { useOrderContext } from "./OrderContext";
 import { ORDER_STEPS } from "./OrderStepper";
@@ -23,6 +24,7 @@ const SaveNavigationButtons = ({
   showBack = true,
   className = "",
 }) => {
+  const intl = useIntl();
   const history = useHistory();
   const { isSubmitting, isReadOnly, isEditMode, saveOrder } = useOrderContext();
 
@@ -43,14 +45,22 @@ const SaveNavigationButtons = ({
     } else {
       await saveOrder();
       if (currentStep < ORDER_STEPS.length - 1) {
-        history.push(ORDER_STEPS[currentStep + 1].path);
+        pushWithListContext(history, ORDER_STEPS[currentStep + 1].path);
       }
     }
   };
 
+  const handleComplete = async () => {
+    if (onSaveAndNext) {
+      await onSaveAndNext();
+      return;
+    }
+    await handleSave();
+  };
+
   const handleBack = () => {
     if (!isFirstStep) {
-      history.push(ORDER_STEPS[currentStep - 1].path);
+      pushWithListContext(history, ORDER_STEPS[currentStep - 1].path);
     }
   };
 
@@ -67,7 +77,9 @@ const SaveNavigationButtons = ({
           <Button
             kind="primary"
             className="forward-button"
-            onClick={() => history.push(ORDER_STEPS[currentStep + 1].path)}
+            onClick={() =>
+              pushWithListContext(history, ORDER_STEPS[currentStep + 1].path)
+            }
           >
             <FormattedMessage id="next.action.button" />
           </Button>
@@ -86,7 +98,7 @@ const SaveNavigationButtons = ({
 
       <div className="save-buttons-group">
         <Button kind="secondary" onClick={handleSave} disabled={isSubmitting}>
-          <FormattedMessage id="button.save.stay" />
+          <FormattedMessage id="button.save.currentStep" />
         </Button>
 
         {!isLastStep && (
@@ -96,7 +108,14 @@ const SaveNavigationButtons = ({
             onClick={handleSaveAndNext}
             disabled={isSubmitting || !canProceed}
           >
-            <FormattedMessage id="button.save.next" />
+            <FormattedMessage
+              id="button.save.nextStep"
+              values={{
+                step: intl.formatMessage({
+                  id: ORDER_STEPS[currentStep + 1].label,
+                }),
+              }}
+            />
           </Button>
         )}
 
@@ -104,10 +123,17 @@ const SaveNavigationButtons = ({
           <Button
             kind="primary"
             className="forward-button"
-            onClick={handleSave}
+            onClick={handleComplete}
             disabled={isSubmitting || !canProceed}
           >
-            <FormattedMessage id="label.button.submit" />
+            <FormattedMessage
+              id="button.completeStep"
+              values={{
+                step: intl.formatMessage({
+                  id: ORDER_STEPS[currentStep].label,
+                }),
+              }}
+            />
           </Button>
         )}
       </div>

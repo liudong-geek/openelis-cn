@@ -42,7 +42,10 @@ const ReferredOut = () => {
 
   useEffect(() => {
     componentMounted.current = true;
-    getFromOpenElisServer("/rest/displayList/REFERRAL_ORGANIZATIONS", fetchLocationCodes);
+    getFromOpenElisServer(
+      "/rest/displayList/REFERRAL_ORGANIZATIONS",
+      fetchLocationCodes,
+    );
     return () => {
       componentMounted.current = false;
     };
@@ -124,7 +127,6 @@ const ReferredOut = () => {
                   id={"startDate"}
                   labelText={intl.formatMessage({
                     id: "select.start.date.referredTests",
-                    defaultMessage: "Start Date",
                   })}
                   autofillDate={true}
                   value={reportFormValues.startDate}
@@ -138,7 +140,6 @@ const ReferredOut = () => {
                   id={"endDate"}
                   labelText={intl.formatMessage({
                     id: "select.end.date.referredTests",
-                    defaultMessage: "End Date",
                   })}
                   className="inputDate"
                   autofillDate={true}
@@ -166,7 +167,6 @@ const ReferredOut = () => {
                     onChange={handleSelectionChange}
                     labelText={intl.formatMessage({
                       id: "select.referral.centre",
-                      defaultMessage: "Laboratory",
                     })}
                   >
                     <SelectItem value="" text="" />
@@ -189,10 +189,7 @@ const ReferredOut = () => {
                 type="button"
                 onClick={handlePrinting}
               >
-                <FormattedMessage
-                  id="label.button.generatePrintableVersion"
-                  defaultMessage="Generate printable version"
-                />
+                <FormattedMessage id="label.button.generatePrintableVersion" />
               </Button>
             </Section>
           </Form>

@@ -61,8 +61,30 @@ public class AnalyzerResultsAcceptHoldIntegrationTest extends BaseWebContextSens
                 + " iscontrol, test_id, last_updated) VALUES (?::numeric, ?, ?, 'HoldIT 1145', '42', false,"
                 + " ?, NOW())", stagedRowId, ANALYZER_ID, ACCESSION, MULTI_TYPE_TEST);
         seedUnknownPatient();
+        ensureCanonicalRecordHistoryTypes();
         ensureCanonicalStatuses();
         typeOfSampleService.clearCache();
+    }
+
+    /**
+     * Full-suite fixtures may replace observation_history_type with a narrow test
+     * subset. The analyzer acceptance path persists both sample and patient record
+     * statuses, so restore these immutable canonical types before refreshing the
+     * status cache. Use their production IDs when available and otherwise allocate
+     * a non-conflicting ID.
+     */
+    private void ensureCanonicalRecordHistoryTypes() {
+        ensureRecordHistoryType(15L, "SampleRecordStatus", "Sample Record Status");
+        ensureRecordHistoryType(16L, "PatientRecordStatus", "Patient Record Status");
+    }
+
+    private void ensureRecordHistoryType(long preferredId, String typeName, String description) {
+        jdbc.update("INSERT INTO clinlims.observation_history_type (id, type_name, description, lastupdated) "
+                + "SELECT CASE WHEN EXISTS (SELECT 1 FROM clinlims.observation_history_type WHERE id = ?) "
+                + "THEN (SELECT COALESCE(MAX(id), 0) + 1 FROM clinlims.observation_history_type) ELSE ? END, "
+                + "?, ?, NOW() WHERE NOT EXISTS "
+                + "(SELECT 1 FROM clinlims.observation_history_type WHERE type_name = ?)", preferredId,
+                preferredId, typeName, description, typeName);
     }
 
     /**

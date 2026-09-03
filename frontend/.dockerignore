@@ -10,6 +10,7 @@ node_modules
 # from the Create React App era; `dist/` is the current Vite output.
 build
 dist
+!dist
 .vite
 
 # Test + report artifacts
@@ -28,6 +29,11 @@ playwright/.auth
 *.log
 *.swp
 current_failures.txt
+
+# Stale local conflict copies. The canonical files have already absorbed the
+# safe routing and error-state fixes; these copies must not enter an image.
+src/components/home/LandingPage 2.tsx
+src/components/reports/Index 2.jsx
 
 # Local env (image consumers wire env via compose/runtime, not bake-time)
 .env

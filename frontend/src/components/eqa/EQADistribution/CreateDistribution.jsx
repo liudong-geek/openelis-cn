@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   Button,
   TextInput,
@@ -20,6 +20,12 @@ import {
   postToOpenElisServerJsonResponse,
 } from "../../utils/Utils";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import { ConfigurationContext } from "../../layout/Layout";
+import {
+  formatDateForLocale,
+  getCarbonDateFormat,
+  getDatePickerPlaceholderMessage,
+} from "../../common/dateLocaleUtils";
 
 const breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -31,6 +37,12 @@ const breadcrumbs = [
 const CreateDistribution = () => {
   const intl = useIntl();
   const history = useHistory();
+  const { configurationProperties = {} } =
+    useContext(ConfigurationContext) || {};
+  const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "zh-CN";
+  const datePickerPlaceholder = intl.formatMessage(
+    getDatePickerPlaceholderMessage(dateLocale),
+  );
   const [currentStep, setCurrentStep] = useState(0);
   const [name, setName] = useState("");
   const [programId, setProgramId] = useState("");
@@ -112,6 +124,17 @@ const CreateDistribution = () => {
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
       {notification && (
         <InlineNotification
+          aria-label={intl.formatMessage({ id: "button.close" })}
+          statusIconDescription={intl.formatMessage({
+            id:
+              notification.kind === "error"
+                ? "carbon.notification.error"
+                : notification.kind === "success"
+                  ? "carbon.notification.success"
+                  : notification.kind === "warning"
+                    ? "carbon.notification.warning"
+                    : "carbon.notification.info",
+          })}
           kind={notification.kind}
           title={notification.message}
           onCloseButtonClick={() => setNotification(null)}
@@ -171,6 +194,7 @@ const CreateDistribution = () => {
           <Column lg={8} md={8} sm={4}>
             <DatePicker
               datePickerType="single"
+              dateFormat={getCarbonDateFormat(dateLocale)}
               onChange={([date]) => {
                 if (date) {
                   const y = date.getFullYear();
@@ -186,7 +210,7 @@ const CreateDistribution = () => {
                 labelText={intl.formatMessage({
                   id: "eqa.distribution.deadline",
                 })}
-                placeholder="mm/dd/yyyy"
+                placeholder={datePickerPlaceholder}
                 disabled={created}
               />
             </DatePicker>
@@ -267,7 +291,12 @@ const CreateDistribution = () => {
               <strong>
                 {intl.formatMessage({ id: "eqa.distribution.deadline" })}:
               </strong>{" "}
-              {deadline}
+              {deadline
+                ? formatDateForLocale(
+                    new Date(`${deadline}T12:00:00`),
+                    dateLocale,
+                  )
+                : ""}
             </p>
             <p>
               <strong>

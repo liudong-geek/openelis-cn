@@ -30,8 +30,12 @@ import userEvent from "@testing-library/user-event";
 import { IntlProvider } from "react-intl";
 import { BrowserRouter } from "react-router-dom";
 import AnalyzerForm from "./AnalyzerForm";
-import { createAnalyzer } from "../../../services/analyzerService";
+import {
+  createAnalyzer,
+  getAnalyzerTypes,
+} from "../../../services/analyzerService";
 import messages from "../../../languages/en.json";
+import zhMessages from "../../../languages/zh_CN.json";
 
 // ========== TEST SETUP ==========
 
@@ -39,6 +43,16 @@ const renderWithIntl = (component) => {
   return render(
     <BrowserRouter>
       <IntlProvider locale="en" messages={messages}>
+        {component}
+      </IntlProvider>
+    </BrowserRouter>,
+  );
+};
+
+const renderWithChinese = (component) => {
+  return render(
+    <BrowserRouter>
+      <IntlProvider locale="zh-CN" messages={zhMessages}>
         {component}
       </IntlProvider>
     </BrowserRouter>,
@@ -177,5 +191,24 @@ describe("AnalyzerForm", () => {
 
     // Assert: Verify test connection modal opens
     await screen.findByTestId("test-connection-modal", {}, { timeout: 2000 });
+  });
+
+  test("shows a clear Chinese onboarding workflow and bridge readiness warning", async () => {
+    getAnalyzerTypes.mockImplementation((_filters, callback) => callback([]));
+
+    renderWithChinese(<AnalyzerForm />);
+
+    expect(
+      await screen.findByRole("heading", { name: "设备接入流程" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("选择接口模板")).toBeInTheDocument();
+    expect(screen.getByText("设置通信参数")).toBeInTheDocument();
+    expect(screen.getByText("测试设备连接")).toBeInTheDocument();
+    expect(screen.getByText("配置项目映射")).toBeInTheDocument();
+    expect(screen.getByText("设备基本信息")).toBeInTheDocument();
+    expect(screen.getByText("接口与消息协议")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("analyzer-bridge-unavailable"),
+    ).toHaveTextContent("接口服务未就绪");
   });
 });

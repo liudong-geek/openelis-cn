@@ -77,7 +77,7 @@ public class SampleTypeManagementRestController extends BaseRestController {
 
             String nameValue = typeOfSample.getDescription();
             if (typeOfSample.getLocalization() != null) {
-                String localizedValue = typeOfSample.getLocalization().getLocalizedValue("en");
+                String localizedValue = typeOfSample.getLocalization().getLocalizedValue();
                 if (localizedValue != null && !localizedValue.trim().isEmpty()) {
                     nameValue = localizedValue;
                 }

@@ -34,6 +34,7 @@ import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import ActionPaginationButtonType from "../../common/ActionPaginationButtonType";
 import { getPhoneFormatHint } from "../../patient/phoneFormatHint";
+import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 
 interface ProviderPerson {
   lastName: string;
@@ -70,7 +71,7 @@ interface ProviderTableRow {
 
 interface YesNoOption {
   id: "yes" | "no";
-  value: "Yes" | "No";
+  value: string;
 }
 
 interface ValidationResult {
@@ -153,7 +154,7 @@ function ProviderMenu() {
   const [email, setEmail] = useState("");
   const [isActive, setIsActive] = useState<YesNoOption>({
     id: "yes",
-    value: "Yes",
+    value: intl.formatMessage({ id: "label.yes" }),
   });
   const [phoneValidation, setPhoneValidation] = useState<ValidationResult>({
     body: "",
@@ -165,8 +166,8 @@ function ProviderMenu() {
   });
 
   const yesOrNo: YesNoOption[] = [
-    { id: "yes", value: "Yes" },
-    { id: "no", value: "No" },
+    { id: "yes", value: intl.formatMessage({ id: "label.yes" }) },
+    { id: "no", value: intl.formatMessage({ id: "label.no" }) },
   ];
 
   const handleMenuItems = (res?: ProviderMenuResponse) => {
@@ -271,7 +272,7 @@ function ProviderMenu() {
       providerMenuListShow,
       setLoading(false),
       setTimeout(() => {
-        window.location.reload();
+        refreshCurrentRoute();
       }, 1),
     );
   }
@@ -315,7 +316,10 @@ function ProviderMenu() {
     setTelephone("");
     setFax("");
     setEmail("");
-    setIsActive({ id: "yes", value: "Yes" });
+    setIsActive({
+      id: "yes",
+      value: intl.formatMessage({ id: "label.yes" }),
+    });
     setIsAddModalOpen(true);
   };
 
@@ -332,7 +336,9 @@ function ProviderMenu() {
     setFax(provider.fax);
     setEmail(provider.email || "");
     setIsActive(
-      provider.active ? { id: "yes", value: "Yes" } : { id: "no", value: "No" },
+      provider.active
+        ? { id: "yes", value: intl.formatMessage({ id: "label.yes" }) }
+        : { id: "no", value: intl.formatMessage({ id: "label.no" }) },
     );
     setIsUpdateModalOpen(true);
   };
@@ -359,7 +365,7 @@ function ProviderMenu() {
     );
 
     closeAddModal();
-    window.location.reload();
+    refreshCurrentRoute();
   };
 
   const handleUpdateProvider = () => {
@@ -381,7 +387,7 @@ function ProviderMenu() {
     );
 
     closeUpdateModal();
-    window.location.reload();
+    refreshCurrentRoute();
   };
 
   const handleLastNameChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -442,7 +448,7 @@ function ProviderMenu() {
           id={cell.id}
           checked={selectedRowIds.includes(row.id)}
           name="selectRowCheckbox"
-          ariaLabel="selectRows"
+          ariaLabel={intl.formatMessage({ id: "provider.select" })}
           onSelect={(e) => {
             e.stopPropagation();
             if (selectedRowIds.includes(row.id)) {
@@ -454,7 +460,13 @@ function ProviderMenu() {
         />
       );
     } else if (cell.info.header === "active") {
-      return <TableCell key={cell.id}>{cell.value!.toString()}</TableCell>;
+      return (
+        <TableCell key={cell.id}>
+          {cell.value
+            ? intl.formatMessage({ id: "label.yes" })
+            : intl.formatMessage({ id: "label.no" })}
+        </TableCell>
+      );
     } else {
       return <TableCell key={cell.id}>{cell.value}</TableCell>;
     }
@@ -529,7 +541,6 @@ function ProviderMenu() {
             labelText={intl.formatMessage(
               {
                 id: "patient.label.primaryphone",
-                defaultMessage: "Phone: {PHONE_FORMAT}",
               },
               { PHONE_FORMAT: "" },
             )}
@@ -601,7 +612,6 @@ function ProviderMenu() {
             labelText={intl.formatMessage(
               {
                 id: "patient.label.primaryphone",
-                defaultMessage: "Phone: {PHONE_FORMAT}",
               },
               { PHONE_FORMAT: "" },
             )}

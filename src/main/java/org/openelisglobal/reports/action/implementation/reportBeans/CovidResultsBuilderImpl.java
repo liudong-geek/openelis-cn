@@ -4,11 +4,9 @@ import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.apache.commons.validator.GenericValidator;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.Bundle.BundleEntryComponent;
@@ -18,9 +16,6 @@ import org.hl7.fhir.r4.model.Task;
 import org.json.JSONObject;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
-import org.openelisglobal.common.services.IStatusService;
-import org.openelisglobal.common.services.StatusService.AnalysisStatus;
-import org.openelisglobal.common.services.StatusService.OrderStatus;
 import org.openelisglobal.dataexchange.fhir.FhirConfig;
 import org.openelisglobal.dataexchange.fhir.FhirUtil;
 import org.openelisglobal.dictionary.service.DictionaryService;
@@ -29,8 +24,6 @@ import org.openelisglobal.reports.action.implementation.Report.DateRange;
 import org.openelisglobal.result.valueholder.Result;
 import org.openelisglobal.samplehuman.service.SampleHumanService;
 import org.openelisglobal.spring.util.SpringContext;
-import org.openelisglobal.test.service.TestService;
-import org.openelisglobal.test.valueholder.Test;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl;
 
 public abstract class CovidResultsBuilderImpl implements CovidResultsBuilder {
@@ -39,16 +32,12 @@ public abstract class CovidResultsBuilderImpl implements CovidResultsBuilder {
         JSON, CSV
     }
 
-    private IStatusService statusService = SpringContext.getBean(IStatusService.class);
     protected AnalysisService analysisService = SpringContext.getBean(AnalysisService.class);
-    protected TestService testService = SpringContext.getBean(TestService.class);
     protected FhirContext fhirContext = SpringContext.getBean(FhirContext.class);
     protected FhirConfig fhirConfig = SpringContext.getBean(FhirConfig.class);
     protected FhirUtil fhirUtil = SpringContext.getBean(FhirUtil.class);
     protected DictionaryService dictionaryService = SpringContext.getBean(DictionaryService.class);
     protected SampleHumanService sampleHumanService = SpringContext.getBean(SampleHumanService.class);
-
-    private static final String[] COVID_LOINC_CODES = { "94547-7", "94500-6" };
 
     protected static final String DATE_PROPERTY_NAME = "date of test";
     protected static final String RESULT_PROPERTY_NAME = "result";
@@ -66,28 +55,16 @@ public abstract class CovidResultsBuilderImpl implements CovidResultsBuilder {
 
     protected static final String EMPTY_VALUE = "";
 
-    protected final List<String> ANALYSIS_STATUS_IDS;
-    protected final List<String> SAMPLE_STATUS_IDS;
-
     protected DateRange dateRange;
+    private final List<Analysis> authorizedCandidates;
 
-    public CovidResultsBuilderImpl(DateRange dateRange) {
-        ANALYSIS_STATUS_IDS = Arrays.asList(statusService.getStatusID(AnalysisStatus.Finalized),
-                statusService.getStatusID(AnalysisStatus.TechnicalAcceptance));
-        SAMPLE_STATUS_IDS = Arrays.asList(statusService.getStatusID(OrderStatus.Started),
-                statusService.getStatusID(OrderStatus.Finished));
+    public CovidResultsBuilderImpl(DateRange dateRange, List<Analysis> authorizedCandidates) {
         this.dateRange = dateRange;
+        this.authorizedCandidates = List.copyOf(authorizedCandidates);
     }
 
     protected List<Analysis> getCovidAnalysisWithinDate() {
-
-        List<Test> tests = testService.getActiveTestsByLoinc(COVID_LOINC_CODES);
-
-        List<Analysis> analysises = analysisService.getAllAnalysisByTestsAndStatusAndCompletedDateRange(
-                tests.stream().map(test -> test.getId()).collect(Collectors.toList()), ANALYSIS_STATUS_IDS,
-                SAMPLE_STATUS_IDS, this.dateRange.getLowDate(), this.dateRange.getHighDate());
-
-        return analysises;
+        return authorizedCandidates;
 
         // return analysises.stream().filter(analysis ->
         // analysis.getStartedDate().after(this.dateRange.getLowDate())

@@ -64,7 +64,8 @@ import org.openelisglobal.test.service.TestServiceImpl;
 import org.openelisglobal.test.valueholder.Test;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl;
 
-public abstract class PatientProgramReport extends Report implements IReportCreator {
+public abstract class PatientProgramReport extends Report
+        implements IReportCreator, ResultsScopedReportCreator.UnresolvedProgramSampleSelection {
 
     private ImageService imageService = SpringContext.getBean(ImageService.class);
 

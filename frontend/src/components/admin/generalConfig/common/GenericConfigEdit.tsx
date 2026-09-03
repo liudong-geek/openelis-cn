@@ -26,6 +26,7 @@ import {
 import { NotificationContext } from "../../../layout/Layout";
 
 import { FormattedMessage, useIntl } from "react-intl";
+import { refreshCurrentRoute } from "../../../utils/NavigationUtils";
 
 interface GenericConfigEditProps {
   menuType: string;
@@ -220,7 +221,7 @@ const GenericConfigEdit = ({ menuType, ID }: GenericConfigEditProps) => {
         intl.formatMessage({ id: "save.config.success.msg" }),
         NotificationKinds.success,
       );
-      window.location.reload();
+      refreshCurrentRoute();
     } else {
       showAlertMessage(
         intl.formatMessage({ id: "server.error.msg" }),
@@ -331,14 +332,18 @@ const GenericConfigEdit = ({ menuType, ID }: GenericConfigEditProps) => {
                       {!removeImage && (
                         <>
                           <FileUploader
-                            buttonLabel="Choose file"
+                            buttonLabel={intl.formatMessage({
+                              id: "import.selectFile",
+                            })}
                             buttonKind="primary"
                             size="sm"
                             filenameStatus="edit"
                             accept={[".jpg", ".png", ".gif"]}
                             multiple={false}
                             disabled={false}
-                            iconDescription="Delete file"
+                            iconDescription={intl.formatMessage({
+                              id: "label.button.delete",
+                            })}
                             onChange={handleFileUpload}
                           />
                           <p
@@ -360,7 +365,9 @@ const GenericConfigEdit = ({ menuType, ID }: GenericConfigEditProps) => {
                       <Column lg={3}>
                         <img
                           src={img}
-                          alt="Logo"
+                          alt={intl.formatMessage({
+                            id: "site.branding.current.logo",
+                          })}
                           style={{ maxWidth: "100px" }}
                         />
                       </Column>
@@ -440,10 +447,7 @@ const GenericConfigEdit = ({ menuType, ID }: GenericConfigEditProps) => {
                   </Button>
                 </Column>
                 <Column lg={2}>
-                  <Button
-                    data-cy="exit-Button"
-                    onClick={() => window.location.reload()}
-                  >
+                  <Button data-cy="exit-Button" onClick={refreshCurrentRoute}>
                     <FormattedMessage id="admin.page.configuration.formEntryConfigMenu.button.exit" />
                   </Button>
                 </Column>

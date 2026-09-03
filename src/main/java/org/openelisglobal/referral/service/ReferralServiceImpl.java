@@ -5,12 +5,14 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.validator.GenericValidator;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.service.AuditableBaseObjectServiceImpl;
+import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.dictionary.service.DictionaryService;
 import org.openelisglobal.dictionary.valueholder.Dictionary;
@@ -26,6 +28,7 @@ import org.openelisglobal.result.valueholder.Result;
 import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.samplehuman.service.SampleHumanService;
+import org.openelisglobal.systemuser.service.UserService;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -44,6 +47,8 @@ public class ReferralServiceImpl extends AuditableBaseObjectServiceImpl<Referral
     private DictionaryService dictionaryService;
     @Autowired
     private AnalysisService analysisService;
+    @Autowired
+    private UserService userService;
 
     ReferralServiceImpl() {
         super(Referral.class);
@@ -128,26 +133,56 @@ public class ReferralServiceImpl extends AuditableBaseObjectServiceImpl<Referral
     @Override
     @Transactional(readOnly = true)
     public List<ReferralDisplayItem> getReferralItems(ReferredOutTestsForm form) {
-        List<ReferralDisplayItem> referralItems = new ArrayList<>();
-        List<Referral> referrals;
+        return convertToDisplayItems(getReferrals(form));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ReferralDisplayItem> getReferralItems(ReferredOutTestsForm form, String systemUserId) {
+        List<Referral> referrals = getReferrals(form);
+        return convertToDisplayItems(filterReferralsByLabUnitRoles(systemUserId, referrals));
+    }
+
+    private List<Referral> getReferrals(ReferredOutTestsForm form) {
         switch (form.getSearchType()) {
         case TEST_AND_DATES:
-            referrals = getReferralsByTestAndDate(form);
-            break;
+            return getReferralsByTestAndDate(form);
         case LAB_NUMBER:
-            referrals = getReferralsByLabNumber(form);
-            break;
+            return getReferralsByLabNumber(form);
         case PATIENT:
-            referrals = getReferralsByPatient(form);
-            break;
+            return getReferralsByPatient(form);
         default:
-            referrals = new ArrayList<>();
+            return new ArrayList<>();
+        }
+    }
+
+    List<Referral> filterReferralsByLabUnitRoles(String systemUserId, List<Referral> referrals) {
+        if (referrals == null || referrals.isEmpty() || GenericValidator.isBlankOrNull(systemUserId)) {
+            return new ArrayList<>();
         }
 
+        List<Analysis> analyses = referrals.stream().map(Referral::getAnalysis).filter(java.util.Objects::nonNull)
+                .collect(Collectors.toList());
+        List<Analysis> authorizedAnalyses = userService.filterAnalysesByLabUnitRoles(systemUserId, analyses,
+                Constants.ROLE_RESULTS);
+        if (authorizedAnalyses == null || authorizedAnalyses.isEmpty()) {
+            return new ArrayList<>();
+        }
+        Set<String> authorizedAnalysisIds = authorizedAnalyses.stream().map(Analysis::getId)
+                .collect(Collectors.toSet());
+        return referrals.stream().filter(referral -> referral.getAnalysis() != null)
+                .filter(referral -> authorizedAnalysisIds.contains(referral.getAnalysis().getId()))
+                .collect(Collectors.toList());
+    }
+
+    private List<ReferralDisplayItem> convertToDisplayItems(List<Referral> referrals) {
+        List<ReferralDisplayItem> referralItems = new ArrayList<>();
+        if (referrals == null) {
+            return referralItems;
+        }
         for (Referral referral : referrals) {
             referralItems.add(convertToDisplayItem(referral));
         }
-
         return referralItems;
     }
 
@@ -188,7 +223,7 @@ public class ReferralServiceImpl extends AuditableBaseObjectServiceImpl<Referral
         referralItem.setAccessionNumber(analysis.getSampleItem().getSample().getAccessionNumber());
         referralItem.setReferredSendDate(DateUtil.convertTimestampToStringDate(referral.getSentDate()));
         referralItem.setReferralStatus(referral.getStatus());
-        referralItem.setReferralStatusDisplay(referral.getStatus().toString());
+        referralItem.setReferralStatusDisplay(referral.getStatus() == null ? "" : referral.getStatus().toString());
         referralItem.setPatientLastName(patient.getPerson().getLastName());
         referralItem.setPatientFirstName(patient.getPerson().getFirstName());
         referralItem.setReferringTestName(analysis.getTest().getLocalizedTestName().getLocalizedValue());
@@ -208,32 +243,25 @@ public class ReferralServiceImpl extends AuditableBaseObjectServiceImpl<Referral
 
     private String getAppropriateResultValue(List<Result> results) {
         Result result = results.get(0);
-        if (TypeOfTestResultServiceImpl.ResultType.isDictionaryVariant(result.getResultType())) {
+        if (TypeOfTestResultServiceImpl.ResultType.isMultiSelectVariant(result.getResultType())) {
+            List<String> localizedResults = new ArrayList<>();
+            for (Result subResult : results) {
+                if (GenericValidator.isBlankOrNull(subResult.getValue()) || "0".equals(subResult.getValue())) {
+                    continue;
+                }
+                Dictionary dictionary = dictionaryService.get(subResult.getValue());
+                if (dictionary != null && !GenericValidator.isBlankOrNull(dictionary.getLocalizedName())) {
+                    localizedResults.add(dictionary.getLocalizedName());
+                }
+            }
+            return String.join(", ", localizedResults);
+        } else if (TypeOfTestResultServiceImpl.ResultType.isDictionaryVariant(result.getResultType())) {
             if (!GenericValidator.isBlankOrNull(result.getValue()) && !"0".equals(result.getValue())) {
                 Dictionary dictionary = dictionaryService.get(result.getValue());
                 if (dictionary != null) {
                     return dictionary.getLocalizedName();
                 }
             }
-        } else if (TypeOfTestResultServiceImpl.ResultType.isMultiSelectVariant(result.getResultType())) {
-            StringBuilder multiResult = new StringBuilder();
-
-            for (Result subResult : results) {
-                if (!GenericValidator.isBlankOrNull(result.getValue()) && !"0".equals(result.getValue())) {
-                    Dictionary dictionary = dictionaryService.get(subResult.getValue());
-
-                    if (dictionary.getId() != null) {
-                        multiResult.append(dictionary.getLocalizedName());
-                        multiResult.append(", ");
-                    }
-                }
-            }
-
-            if (multiResult.length() > 0) {
-                multiResult.setLength(multiResult.length() - 2); // remove last ", "
-            }
-
-            return multiResult.toString();
         } else {
             String resultValue = GenericValidator.isBlankOrNull(result.getValue()) ? "" : result.getValue();
 

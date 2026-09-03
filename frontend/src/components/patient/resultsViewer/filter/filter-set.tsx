@@ -1,13 +1,11 @@
-import React, { useContext, useState } from "react";
-import { useTranslation } from "react-i18next";
+import React, { useContext, useMemo, useState } from "react";
+import { useIntl } from "react-intl";
 import {
   TreeView,
   TreeNode as CarbonTreeNode,
   Checkbox,
-  Button,
   Search,
 } from "@carbon/react";
-import { Close } from "@carbon/react/icons";
 import type { FilterNodeProps, FilterLeafProps } from "./filter-types";
 import FilterContext from "./filter-context";
 import "./filter-set.styles.scss";
@@ -28,51 +26,93 @@ interface FilterSetProps {
   hideFilterSetHeader?: boolean;
 }
 
+export interface FilterTreeNode {
+  display?: string;
+  flatName?: string;
+  subSets?: FilterTreeNode[];
+  [key: string]: unknown;
+}
+
+export const filterTreeNodes = <T extends FilterTreeNode>(
+  roots: T[],
+  searchTerm: string,
+): T[] => {
+  const normalizedTerm = searchTerm.trim().toLocaleLowerCase();
+  if (!normalizedTerm) return roots;
+
+  const filterNode = (node: T): T | null => {
+    const ownMatch = String(node.display || "")
+      .toLocaleLowerCase()
+      .includes(normalizedTerm);
+
+    if (ownMatch) return node;
+
+    const matchingChildren = (node.subSets || [])
+      .map((child) => filterNode(child as T))
+      .filter((child): child is T => child !== null);
+
+    return matchingChildren.length
+      ? ({ ...node, subSets: matchingChildren } as T)
+      : null;
+  };
+
+  return roots.map(filterNode).filter((node): node is T => node !== null);
+};
+
 const FilterSet: React.FC<FilterSetProps> = ({
   hideFilterSetHeader = false,
 }) => {
   const { roots } = useContext(FilterContext);
-  const { t } = useTranslation();
+  const intl = useIntl();
   const [searchTerm, setSearchTerm] = useState("");
-  const [showSearchInput, setShowSearchInput] = useState(false);
+  const filteredRoots = useMemo(
+    () => filterTreeNodes(roots || [], searchTerm),
+    [roots, searchTerm],
+  );
 
   return (
     <div className="stickyFilterSet">
-      {!hideFilterSetHeader && !showSearchInput && (
+      {!hideFilterSetHeader && (
         <h4 className="filterTreeLabel">
-          {t("Filter by test category", "Filter by test category")}
+          {intl.formatMessage({
+            id: "patient.resultsViewer.filter.heading",
+          })}
         </h4>
       )}
-      {!hideFilterSetHeader && showSearchInput && (
-        <div className="filterTreeSearchHeader">
-          <Search
-            size="sm"
-            value={searchTerm}
-            onChange={(evt) => setSearchTerm(evt.target.value)}
-            light
-          />
-          <Button kind="secondary" size="sm" onClick={() => {}}>
-            {t("search", "Search")}
-          </Button>
-          <Button
-            hasIconOnly
-            renderIcon={Close}
-            size="sm"
-            kind="ghost"
-            onClick={() => setShowSearchInput(false)}
-          />
-        </div>
-      )}
-      <div className="filterSetContent">
-        <TreeView
-          label={t("Test categories", "Test categories")}
-          hideLabel
+      <div className="filterTreeSearchHeader">
+        <Search
           size="sm"
-        >
-          {roots?.map((root, index) => (
-            <FilterNode root={root} level={0} key={`root-${index}`} />
-          ))}
-        </TreeView>
+          value={searchTerm}
+          onChange={(evt) => setSearchTerm(evt.target.value)}
+          labelText={intl.formatMessage({
+            id: "patient.resultsViewer.filter.searchLabel",
+          })}
+          placeholder={intl.formatMessage({
+            id: "patient.resultsViewer.filter.searchPlaceholder",
+          })}
+        />
+      </div>
+      <div className="filterSetContent">
+        {filteredRoots.length ? (
+          <TreeView
+            label={intl.formatMessage({
+              id: "patient.resultsViewer.filter.categories",
+            })}
+            hideLabel
+            size="sm"
+          >
+            {filteredRoots.map((root, index) => (
+              <FilterNode root={root} level={0} key={`root-${index}`} />
+            ))}
+          </TreeView>
+        ) : (
+          <p role="status">
+            {intl.formatMessage({
+              id: "patient.resultsViewer.filter.noMatches",
+              defaultMessage: "No test categories match this search.",
+            })}
+          </p>
+        )}
       </div>
     </div>
   );

@@ -33,6 +33,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class NotificationRestController extends BaseRestController {
 
+    public record PushSubscriptionStatus(boolean subscribed, String pfEndpoint) {
+    }
+
     private final NotificationDAO notificationDAO;
     private final SystemUserService systemUserService;
     private final NotificationSubscriptionDAO notificationSubscriptionDAO;
@@ -130,16 +133,19 @@ public class NotificationRestController extends BaseRestController {
     }
 
     @GetMapping("/notification/pnconfig")
-    public ResponseEntity<?> getSubscriptionDetails(HttpServletRequest request) {
+    public ResponseEntity<PushSubscriptionStatus> getSubscriptionDetails(HttpServletRequest request) {
         String sysUserId = getSysUserId(request);
+        if (sysUserId == null || sysUserId.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         NotificationSubscriptions ns = notificationSubscriptionDAO
                 .getNotificationSubscriptionByUserId(Long.valueOf(sysUserId));
 
         if (ns == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Subscription not found");
+            return ResponseEntity.ok(new PushSubscriptionStatus(false, null));
         }
 
-        return ResponseEntity.ok().body(ns);
+        return ResponseEntity.ok(new PushSubscriptionStatus(true, ns.getPfEndpoint()));
 
     }
 

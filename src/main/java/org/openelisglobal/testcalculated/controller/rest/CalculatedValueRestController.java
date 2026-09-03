@@ -8,6 +8,7 @@ import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.dictionary.service.DictionaryService;
 import org.openelisglobal.patient.service.PatientService;
 import org.openelisglobal.result.service.ResultService;
+import org.openelisglobal.testcalculated.action.util.SafeCalculationExpressionEvaluator;
 import org.openelisglobal.testcalculated.service.ResultCalculationService;
 import org.openelisglobal.testcalculated.service.TestCalculationService;
 import org.openelisglobal.testcalculated.valueholder.Calculation;
@@ -53,13 +54,21 @@ public class CalculatedValueRestController {
 
     @PostMapping(value = "test-calculation", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
-    public void saveReflexRule(HttpServletRequest request, @RequestBody Calculation calculation) {
-        if (calculation.getId() != null) {
-            if (testCalculationService.get(calculation.getId()) != null) {
+    public ResponseEntity<Void> saveReflexRule(HttpServletRequest request, @RequestBody Calculation calculation) {
+        try {
+            SafeCalculationExpressionEvaluator.validateDefinition(calculation);
+            if (calculation.getId() != null) {
+                if (testCalculationService.get(calculation.getId()) == null) {
+                    return ResponseEntity.notFound().build();
+                }
                 testCalculationService.update(calculation);
+            } else {
+                testCalculationService.save(calculation);
             }
-        } else {
-            testCalculationService.save(calculation);
+            return ResponseEntity.ok().build();
+        } catch (IllegalArgumentException exception) {
+            logger.warn("Rejected invalid calculated-test definition: {}", exception.getMessage());
+            return ResponseEntity.badRequest().build();
         }
     }
 

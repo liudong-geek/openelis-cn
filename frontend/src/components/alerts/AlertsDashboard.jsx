@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Grid, Column, Select, SelectItem, Search } from "@carbon/react";
+import {
+  Grid,
+  Column,
+  Select,
+  SelectItem,
+  Search,
+  Loading,
+  InlineNotification,
+} from "@carbon/react";
 import { useIntl } from "react-intl";
 import { getFromOpenElisServer, putToOpenElisServer } from "../utils/Utils";
 import AlertSummaryTiles from "./AlertSummaryTiles";
@@ -22,6 +30,8 @@ const AlertsDashboard = () => {
   const [searchText, setSearchText] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState(null);
+  const [loadingAlerts, setLoadingAlerts] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const fetchSummary = useCallback(() => {
     getFromOpenElisServer("/rest/alerts/dashboard/summary", (data) => {
@@ -32,6 +42,7 @@ const AlertsDashboard = () => {
   }, []);
 
   const fetchAlerts = useCallback(() => {
+    setLoadingAlerts(true);
     let url = `/rest/alerts/dashboard?page=${page}&pageSize=${pageSize}`;
     if (typeFilter) url += `&type=${typeFilter}`;
     if (severityFilter) url += `&severity=${severityFilter}`;
@@ -42,7 +53,13 @@ const AlertsDashboard = () => {
       if (data) {
         setAlerts(data.alerts || []);
         setTotalCount(data.totalCount || 0);
+        setLoadError(false);
+      } else {
+        setAlerts([]);
+        setTotalCount(0);
+        setLoadError(true);
       }
+      setLoadingAlerts(false);
     });
   }, [page, pageSize, typeFilter, severityFilter, statusFilter, searchText]);
 
@@ -102,7 +119,10 @@ const AlertsDashboard = () => {
               setPage(0);
             }}
           >
-            <SelectItem value="" text="" />
+            <SelectItem
+              value=""
+              text={intl.formatMessage({ id: "alerts.filter.allTypes" })}
+            />
             <SelectItem
               value="EQA_DEADLINE"
               text={intl.formatMessage({ id: "alerts.type.eqa_deadline" })}
@@ -121,6 +141,34 @@ const AlertsDashboard = () => {
                 id: "alerts.type.critical_unacknowledged",
               })}
             />
+            <SelectItem
+              value="FREEZER_TEMPERATURE"
+              text={intl.formatMessage({
+                id: "alerts.type.freezer_temperature",
+              })}
+            />
+            <SelectItem
+              value="EQUIPMENT_FAILURE"
+              text={intl.formatMessage({
+                id: "alerts.type.equipment_failure",
+              })}
+            />
+            <SelectItem
+              value="INVENTORY_LOW"
+              text={intl.formatMessage({ id: "alerts.type.inventory_low" })}
+            />
+            <SelectItem
+              value="SAMPLE_TRACKING"
+              text={intl.formatMessage({ id: "alerts.type.sample_tracking" })}
+            />
+            <SelectItem
+              value="STAT_UPCOMING"
+              text={intl.formatMessage({ id: "alerts.type.stat_upcoming" })}
+            />
+            <SelectItem
+              value="OTHER"
+              text={intl.formatMessage({ id: "alerts.type.other" })}
+            />
           </Select>
         </Column>
         <Column lg={4} md={4} sm={4}>
@@ -133,7 +181,12 @@ const AlertsDashboard = () => {
               setPage(0);
             }}
           >
-            <SelectItem value="" text="" />
+            <SelectItem
+              value=""
+              text={intl.formatMessage({
+                id: "alerts.filter.allSeverities",
+              })}
+            />
             <SelectItem
               value="WARNING"
               text={intl.formatMessage({ id: "alerts.severity.warning" })}
@@ -154,7 +207,10 @@ const AlertsDashboard = () => {
               setPage(0);
             }}
           >
-            <SelectItem value="" text="" />
+            <SelectItem
+              value=""
+              text={intl.formatMessage({ id: "alerts.filter.allStatuses" })}
+            />
             <SelectItem
               value="OPEN"
               text={intl.formatMessage({ id: "alerts.status.open" })}
@@ -172,6 +228,9 @@ const AlertsDashboard = () => {
         <Column lg={4} md={4} sm={4}>
           <Search
             id="alert-search"
+            closeButtonLabelText={intl.formatMessage({
+              id: "carbon.search.clear",
+            })}
             labelText={intl.formatMessage({ id: "alerts.filter.search" })}
             placeholder={intl.formatMessage({ id: "alerts.filter.search" })}
             value={searchText}
@@ -183,14 +242,33 @@ const AlertsDashboard = () => {
         </Column>
       </Grid>
 
-      <AlertsTable
-        alerts={alerts}
-        totalCount={totalCount}
-        page={page}
-        pageSize={pageSize}
-        onPageChange={handlePageChange}
-        onAcknowledge={handleAcknowledge}
-      />
+      {loadError && (
+        <InlineNotification
+          kind="error"
+          hideCloseButton
+          statusIconDescription={intl.formatMessage({
+            id: "carbon.notification.error",
+          })}
+          title={intl.formatMessage({ id: "alerts.error.load" })}
+          lowContrast
+        />
+      )}
+
+      {loadingAlerts ? (
+        <Loading
+          withOverlay={false}
+          description={intl.formatMessage({ id: "alerts.loading" })}
+        />
+      ) : (
+        <AlertsTable
+          alerts={alerts}
+          totalCount={totalCount}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={handlePageChange}
+          onAcknowledge={handleAcknowledge}
+        />
+      )}
 
       <EQADeadlineSummary
         alerts={alerts}

@@ -1,0 +1,3 @@
+FROM openelis-cn-fhir-test:local AS tested
+FROM openelis-cn-webapp:local
+COPY --from=tested /build/target/OpenELIS-Global.war /usr/local/tomcat/webapps/OpenELIS-Global.war

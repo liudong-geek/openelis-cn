@@ -178,6 +178,10 @@ public interface AnalysisService extends BaseObjectService<Analysis, String> {
     List<Analysis> getAllAnalysisByTestsAndStatusAndCompletedDateRange(List<String> nfsTestIdList,
             List<String> analysisStatusList, List<String> sampleStatusList, Date lowDate, Date highDate);
 
+    List<Analysis> getAllAnalysisByTestsAndStatusAndCompletedDateRangeExclusive(List<String> testIdList,
+            List<String> analysisStatusList, List<String> sampleStatusList, Timestamp startInclusive,
+            Timestamp endExclusive);
+
     List<Analysis> getPageAnalysisByTestSectionAndStatus(String testSectionId, List<String> analysisStatusList,
             List<String> sampleStatusList);
 

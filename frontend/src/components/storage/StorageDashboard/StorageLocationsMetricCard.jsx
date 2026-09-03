@@ -70,7 +70,9 @@ const StorageLocationsMetricCard = () => {
         <h3>
           <FormattedMessage id="storage.metrics.storage.locations" />
         </h3>
-        <p className="metric-value">Loading...</p>
+        <p className="metric-value">
+          <FormattedMessage id="label.loading" defaultMessage="正在加载…" />
+        </p>
       </div>
     );
   }

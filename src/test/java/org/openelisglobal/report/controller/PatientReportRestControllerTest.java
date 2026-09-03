@@ -4,6 +4,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -78,14 +79,20 @@ public class PatientReportRestControllerTest extends BaseWebContextSensitiveTest
         ReportingData data = super.mapFromJson(content, ReportingData.class);
 
         assertThat(data, notNullValue());
-        assertThat(data.getColumns().size(), is(13));
+        assertThat(data.getColumns().size(), is(20));
         assertThat(data.getRows().size(), is(1));
+
+        assertThat(data.getColumns().get(0).getHeader(), is("实验室编号"));
 
         assertThat(data.getRows().get(0).getDataMap().get("accessionNumber"), is("24-00001"));
 
         assertThat(data.getRows().get(0).getDataMap().get("patientExternalId"), is("EXT-PAT-001"));
 
+        assertThat(data.getRows().get(0).getDataMap().get("patientGender"), is("男"));
+
         assertThat(data.getRows().get(0).getDataMap().get("resultValue"), is("5.5"));
+
+        assertThat(data.getRows().get(0).getDataMap().get("analysisStatus"), is("已审核"));
     }
 
     @Test
@@ -114,5 +121,16 @@ public class PatientReportRestControllerTest extends BaseWebContextSensitiveTest
                 .with(mockAuthUser()).accept(MediaType.APPLICATION_JSON_VALUE)).andReturn();
 
         assertEquals(MediaType.APPLICATION_JSON_VALUE, mvcResult.getResponse().getContentType());
+    }
+
+    @Test
+    public void getPatientResultsPdf_shouldReturnChinesePdfPreview() throws Exception {
+        MvcResult mvcResult = super.mockMvc.perform(get("/rest/reports/patient-results.pdf?patientId=1")
+                .with(mockAuthUser()).accept(MediaType.APPLICATION_PDF_VALUE)).andReturn();
+
+        assertEquals(200, mvcResult.getResponse().getStatus());
+        assertEquals(MediaType.APPLICATION_PDF_VALUE, mvcResult.getResponse().getContentType());
+        assertEquals("PREVIEW-1", mvcResult.getResponse().getHeader("X-Report-Version"));
+        assertTrue(mvcResult.getResponse().getContentAsByteArray().length > 10_000);
     }
 }

@@ -1,3 +1,4 @@
+import { pushWithListContext } from "../../common/listWorkspace";
 import React, { useContext, useState, useEffect, useRef } from "react";
 import { useHistory } from "react-router-dom";
 import { useIntl, FormattedMessage } from "react-intl";
@@ -12,7 +13,8 @@ import {
   Switch,
   Accordion,
   AccordionItem,
-  Link,
+  Checkbox,
+  Tag,
 } from "@carbon/react";
 import { Printer } from "@carbon/icons-react";
 import OrderWorkflowLayout from "../OrderWorkflowLayout";
@@ -75,6 +77,7 @@ const OrderEnter = () => {
   ); // "clinical" | "environmental"
   const [labUnitConfig, setLabUnitConfig] = useState(null);
   const [isGeneratingLabNo, setIsGeneratingLabNo] = useState(false);
+  const [usesExternalLabNumber, setUsesExternalLabNumber] = useState(false);
   const [printLabelsExpanded, setPrintLabelsExpanded] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -126,28 +129,48 @@ const OrderEnter = () => {
     };
   }, []);
 
-  // Generate lab number
-  const handleGenerateLabNumber = () => {
-    setIsGeneratingLabNo(true);
-    getFromOpenElisServer(
-      "/rest/SampleEntryGenerateScanProvider",
-      (response) => {
-        if (componentMounted.current) {
-          setIsGeneratingLabNo(false);
-          if (response?.body) {
-            const newLabNo = response.body;
-            setLocalLabNumber(newLabNo);
-            setOrderData({
-              ...orderData,
-              sampleOrderItems: {
-                ...orderData.sampleOrderItems,
-                labNo: newLabNo,
-              },
-            });
+  // Generate the number only when the user saves. The backend generator advances
+  // the accession sequence, so generating on page load would create gaps for
+  // abandoned drafts.
+  const generateLabNumber = () =>
+    new Promise((resolve, reject) => {
+      setIsGeneratingLabNo(true);
+      getFromOpenElisServer(
+        "/rest/SampleEntryGenerateScanProvider",
+        (response) => {
+          if (componentMounted.current) {
+            setIsGeneratingLabNo(false);
+            if (response?.body) {
+              const newLabNo = response.body;
+              setLocalLabNumber(newLabNo);
+              setOrderData((prev) => ({
+                ...prev,
+                sampleOrderItems: {
+                  ...prev.sampleOrderItems,
+                  labNo: newLabNo,
+                },
+              }));
+              resolve(newLabNo);
+              return;
+            }
+            reject(
+              new Error(
+                intl.formatMessage({ id: "order.labNumber.generate.failed" }),
+              ),
+            );
           }
-        }
-      },
-    );
+        },
+      );
+    });
+
+  const ensureLabNumber = async () => {
+    if (localLabNumber) return localLabNumber;
+    if (usesExternalLabNumber) {
+      throw new Error(
+        intl.formatMessage({ id: "order.blocker.externalLabNumber" }),
+      );
+    }
+    return generateLabNumber();
   };
 
   // Handle lab number change
@@ -206,12 +229,62 @@ const OrderEnter = () => {
           orderData?.patientProperties?.nationalId
         );
   const hasSampleTypes = samples.some((s) => s.sampleTypeId);
-  const canSave = localLabNumber && hasPatientOrSite && hasSampleTypes;
+  const hasRequester = !!orderData?.sampleOrderItems?.referringSiteId;
+  const hasRequestedTests = samples.some(
+    (sample) =>
+      (sample.tests && sample.tests.length > 0) ||
+      (sample.panels && sample.panels.length > 0),
+  );
+  const canSave =
+    !isGeneratingLabNo &&
+    (!usesExternalLabNumber || !!localLabNumber) &&
+    hasPatientOrSite &&
+    hasRequester &&
+    hasSampleTypes &&
+    hasRequestedTests;
 
   // canProceed gates the Save / Save & Next buttons in the layout
   const canProceed =
     canSave &&
     Object.values(phoneValidation).every((item) => item.status !== false);
+
+  const blockingReasons = [
+    usesExternalLabNumber &&
+      !localLabNumber &&
+      "order.blocker.externalLabNumber",
+    !hasPatientOrSite &&
+      (workflowType === "environmental"
+        ? "order.blocker.samplingSite"
+        : "order.blocker.patient"),
+    !hasRequester && "order.blocker.requester",
+    !hasSampleTypes && "order.blocker.sampleType",
+    hasSampleTypes && !hasRequestedTests && "order.blocker.test",
+    !Object.values(phoneValidation).every((item) => item.status !== false) &&
+      "order.blocker.validContact",
+  ].filter(Boolean);
+
+  const formatSaveError = (error) => {
+    const errorKey = error?.details?.errorKey;
+    if (errorKey?.startsWith("error.duplicate.")) {
+      return intl.formatMessage({
+        id: errorKey,
+        defaultMessage:
+          error?.message || "The patient identifier is already in use.",
+      });
+    }
+
+    if (error?.message && error.message !== "Failed to save order") {
+      return intl.formatMessage(
+        {
+          id: "order.save.failed.detail",
+          defaultMessage: "The order could not be saved: {detail}",
+        },
+        { detail: error.message },
+      );
+    }
+
+    return intl.formatMessage({ id: "server.error.msg" });
+  };
 
   // Save handler - uses saveOrderEntry which creates sample_type_requests (not sample_items)
   const handleSave = async () => {
@@ -229,7 +302,8 @@ const OrderEnter = () => {
       return;
     }
     try {
-      await saveOrderEntry(false); // silent=false
+      const effectiveLabNumber = await ensureLabNumber();
+      await saveOrderEntry(false, effectiveLabNumber); // silent=false
       addNotification({
         kind: NotificationKinds.success,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -240,7 +314,7 @@ const OrderEnter = () => {
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "server.error.msg" }),
+        message: formatSaveError(error),
       });
       setNotificationVisible(true);
     }
@@ -250,14 +324,15 @@ const OrderEnter = () => {
   const handleSaveAndNext = async () => {
     if (!canSave) return; // canProceed gate on the button already covers this, but be safe
     try {
-      await saveOrderEntry(false); // silent=false
+      const effectiveLabNumber = await ensureLabNumber();
+      await saveOrderEntry(false, effectiveLabNumber); // silent=false
       markStepComplete("enter");
-      history.push("/order/collect");
+      pushWithListContext(history, "/order/collect");
     } catch (error) {
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "server.error.msg" }),
+        message: formatSaveError(error),
       });
       setNotificationVisible(true);
     }
@@ -279,7 +354,8 @@ const OrderEnter = () => {
       return;
     }
     try {
-      await saveOrderEntry(true); // silent=true
+      const effectiveLabNumber = await ensureLabNumber();
+      await saveOrderEntry(true, effectiveLabNumber); // silent=true
       addNotification({
         kind: NotificationKinds.success,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -293,7 +369,7 @@ const OrderEnter = () => {
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "server.error.msg" }),
+        message: formatSaveError(error),
       });
       setNotificationVisible(true);
     }
@@ -308,9 +384,11 @@ const OrderEnter = () => {
     <OrderWorkflowLayout
       currentStep={0}
       title="order.step.enter"
+      showBarcodeScanner={false}
       canProceed={canProceed}
       onSave={handleSave}
       onSaveAndNext={handleSaveAndNext}
+      blockingReasons={blockingReasons}
       extraButtons={
         <Button
           kind="tertiary"
@@ -327,18 +405,62 @@ const OrderEnter = () => {
     >
       {notificationVisible && <AlertDialog />}
 
-      <Stack gap={7}>
+      <Stack gap={5} className="order-entry-sections">
         {/* Section 1: Lab Number */}
-        <Tile className="order-section">
-          <h4 className="section-title">
-            <FormattedMessage
-              id="order.labNumber"
-              defaultMessage="Lab Number"
-            />
-          </h4>
+        <Tile className="order-section lab-number-section">
+          <div className="order-section-heading order-section-heading--compact">
+            <div className="order-section-heading__copy">
+              <h4 className="section-title">
+                <FormattedMessage id="order.entry.number.title" />
+              </h4>
+              <p>
+                <FormattedMessage id="order.entry.number.helper" />
+              </p>
+            </div>
+          </div>
 
-          <Grid>
-            <Column lg={12} md={6} sm={4}>
+          <div className="lab-number-master-data">
+            <div className="lab-number-master-data__status">
+              <Tag type={localLabNumber ? "green" : "blue"} size="sm">
+                <FormattedMessage
+                  id={
+                    localLabNumber
+                      ? "order.labNumber.assigned"
+                      : "order.labNumber.auto"
+                  }
+                />
+              </Tag>
+              <strong>
+                {localLabNumber || (
+                  <FormattedMessage id="order.labNumber.generatedOnSave" />
+                )}
+              </strong>
+            </div>
+
+            {!labNumber && !isReadOnly && (
+              <Checkbox
+                id="usesExternalLabNumber"
+                checked={usesExternalLabNumber}
+                labelText={intl.formatMessage({
+                  id: "order.labNumber.useExternal",
+                })}
+                onChange={(_event, { checked }) => {
+                  setUsesExternalLabNumber(checked);
+                  if (!checked) {
+                    setLocalLabNumber("");
+                    setOrderData((prev) => ({
+                      ...prev,
+                      sampleOrderItems: {
+                        ...prev.sampleOrderItems,
+                        labNo: "",
+                      },
+                    }));
+                  }
+                }}
+              />
+            )}
+
+            {usesExternalLabNumber && !labNumber && (
               <div className="lab-number-field">
                 <TextInput
                   id="labNumber"
@@ -354,97 +476,81 @@ const OrderEnter = () => {
                   value={localLabNumber}
                   onChange={handleLabNumberChange}
                   placeholder={intl.formatMessage({
-                    id: "order.labNumber.placeholder",
-                    defaultMessage: "Enter or generate lab number",
+                    id: "order.labNumber.external.placeholder",
                   })}
-                  disabled={isReadOnly && !isEditMode}
+                  disabled={isReadOnly}
                 />
-                <Link
-                  className="generate-link"
-                  onClick={handleGenerateLabNumber}
-                  disabled={isGeneratingLabNo || (isReadOnly && !isEditMode)}
-                >
-                  {isGeneratingLabNo ? (
-                    <FormattedMessage
-                      id="generating"
-                      defaultMessage="Generating..."
-                    />
-                  ) : (
-                    <FormattedMessage
-                      id="order.labNumber.generate"
-                      defaultMessage="Generate"
-                    />
-                  )}
-                </Link>
               </div>
-              <p className="helper-text">
-                <FormattedMessage
-                  id="order.labNumber.helper"
-                  defaultMessage="Auto-generated per existing lab number rules. Assigned here to enable tracking across all steps."
-                />
-              </p>
-            </Column>
-          </Grid>
+            )}
 
-          {/* Print Labels Accordion */}
-          <Accordion>
-            <AccordionItem
-              title={
-                <span className="print-labels-title">
-                  <Printer size={16} />
-                  <FormattedMessage
-                    id="order.printLabels"
-                    defaultMessage="Print Labels"
-                  />
-                </span>
-              }
-              open={printLabelsExpanded}
-              onHeadingClick={() =>
-                setPrintLabelsExpanded(!printLabelsExpanded)
-              }
-            >
-              <div className="print-labels-content">
-                <p className="helper-text">
-                  <FormattedMessage
-                    id="order.printLabels.info"
-                    defaultMessage="Labels can be printed here or from Step 3 (Label & Store)."
-                  />
-                </p>
-                <div className="label-buttons">
-                  <Button kind="tertiary" size="sm" disabled={!localLabNumber}>
+            <p className="helper-text">
+              <FormattedMessage id="order.labNumber.masterData.helper" />
+            </p>
+          </div>
+
+          {/* Printing is intentionally unavailable before a traceable number
+              exists. Hiding the disabled control keeps the creation form
+              focused on the data required to save the request. */}
+          {localLabNumber && (
+            <Accordion>
+              <AccordionItem
+                title={
+                  <span className="print-labels-title">
+                    <Printer size={16} />
                     <FormattedMessage
-                      id="label.order"
-                      defaultMessage="Order Label"
+                      id="order.printLabels"
+                      defaultMessage="Print Labels"
                     />
-                  </Button>
-                  <Button kind="tertiary" size="sm" disabled>
+                  </span>
+                }
+                open={printLabelsExpanded}
+                onHeadingClick={() =>
+                  setPrintLabelsExpanded(!printLabelsExpanded)
+                }
+              >
+                <div className="print-labels-content">
+                  <p className="helper-text">
                     <FormattedMessage
-                      id="label.sample"
-                      defaultMessage="Sample Label"
+                      id="order.printLabels.info"
+                      defaultMessage="Labels can be printed here or from Step 3 (Label & Store)."
                     />
-                  </Button>
-                  <Button kind="tertiary" size="sm" disabled={!localLabNumber}>
-                    <FormattedMessage
-                      id="label.slide"
-                      defaultMessage="Slide Label"
-                    />
-                  </Button>
-                  <Button kind="tertiary" size="sm" disabled={!localLabNumber}>
-                    <FormattedMessage
-                      id="label.block"
-                      defaultMessage="Block Label"
-                    />
-                  </Button>
-                  <Button kind="tertiary" size="sm" disabled={!localLabNumber}>
-                    <FormattedMessage
-                      id="label.freezer"
-                      defaultMessage="Freezer Label"
-                    />
-                  </Button>
+                  </p>
+                  <div className="label-buttons">
+                    <Button kind="tertiary" size="sm">
+                      <FormattedMessage
+                        id="label.order"
+                        defaultMessage="Order Label"
+                      />
+                    </Button>
+                    <Button kind="tertiary" size="sm" disabled>
+                      <FormattedMessage
+                        id="label.sample"
+                        defaultMessage="Sample Label"
+                      />
+                    </Button>
+                    <Button kind="tertiary" size="sm">
+                      <FormattedMessage
+                        id="label.slide"
+                        defaultMessage="Slide Label"
+                      />
+                    </Button>
+                    <Button kind="tertiary" size="sm">
+                      <FormattedMessage
+                        id="label.block"
+                        defaultMessage="Block Label"
+                      />
+                    </Button>
+                    <Button kind="tertiary" size="sm">
+                      <FormattedMessage
+                        id="label.freezer"
+                        defaultMessage="Freezer Label"
+                      />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            </AccordionItem>
-          </Accordion>
+              </AccordionItem>
+            </Accordion>
+          )}
         </Tile>
 
         {/* Section 2: Sample Category Toggle */}
@@ -501,22 +607,6 @@ const OrderEnter = () => {
           />
         )}
 
-        {/* Section 4: Program Selection */}
-        <ProgramSection
-          orderData={orderData}
-          setOrderData={setOrderData}
-          isReadOnly={isReadOnly && !isEditMode}
-        />
-
-        {/* Section 5: Clinical Information (Clinical workflow only) */}
-        {workflowType === "clinical" && (
-          <ClinicalInfoSection
-            orderData={orderData}
-            setOrderData={setOrderData}
-            isReadOnly={isReadOnly && !isEditMode}
-          />
-        )}
-
         {/* Section 6: Requester / Ordering Provider */}
         <RequesterSection
           orderData={orderData}
@@ -532,6 +622,36 @@ const OrderEnter = () => {
           setOrderData={setOrderData}
           isReadOnly={isReadOnly && !isEditMode}
         />
+
+        {/* Optional fields are intentionally kept after the required clinical
+            path so routine requests are completed from top to bottom. */}
+        <Tile className="order-section order-optional-details">
+          <Accordion>
+            <AccordionItem
+              title={intl.formatMessage({
+                id: "order.entry.optional.title",
+              })}
+            >
+              <p className="order-optional-details__helper">
+                <FormattedMessage id="order.entry.optional.helper" />
+              </p>
+              <div className="order-optional-sections">
+                <ProgramSection
+                  orderData={orderData}
+                  setOrderData={setOrderData}
+                  isReadOnly={isReadOnly && !isEditMode}
+                />
+                {workflowType === "clinical" && (
+                  <ClinicalInfoSection
+                    orderData={orderData}
+                    setOrderData={setOrderData}
+                    isReadOnly={isReadOnly && !isEditMode}
+                  />
+                )}
+              </div>
+            </AccordionItem>
+          </Accordion>
+        </Tile>
       </Stack>
     </OrderWorkflowLayout>
   );

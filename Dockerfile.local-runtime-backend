@@ -1,0 +1,6 @@
+# Fast local delivery image: reuse the provisioned Tomcat runtime and replace
+# only the application WAR that already passed the Java 21 P1 test target.
+FROM openelis-cn-p1-test:latest AS tested-build
+
+FROM openelis-cn-webapp:local
+COPY --from=tested-build /build/target/OpenELIS-Global.war /usr/local/tomcat/webapps/OpenELIS-Global.war

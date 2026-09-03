@@ -4,6 +4,7 @@ import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import messages from "../../../../languages/en.json";
 import TATFilterBar from "../TATFilterBar";
+import { ConfigurationContext } from "../../../layout/Layout";
 
 // Mock the API utility — filter dropdowns load options on mount
 vi.mock("../../../utils/Utils", () => ({
@@ -28,11 +29,19 @@ vi.mock("../../../utils/Utils", () => ({
   }),
 }));
 
-const renderWithIntl = (component) => {
+const renderWithIntl = (
+  component,
+  dateLocale = "en-US",
+  localeMessages = messages,
+) => {
   return render(
-    <IntlProvider locale="en" messages={messages}>
-      {component}
-    </IntlProvider>,
+    <ConfigurationContext.Provider
+      value={{ configurationProperties: { DEFAULT_DATE_LOCALE: dateLocale } }}
+    >
+      <IntlProvider locale={dateLocale} messages={localeMessages}>
+        {component}
+      </IntlProvider>
+    </ConfigurationContext.Provider>,
   );
 };
 
@@ -51,17 +60,13 @@ describe("TATFilterBar", () => {
     expect(screen.getByLabelText(/Date Range \(To\)/)).toBeInTheDocument();
 
     // Generate button
-    expect(
-      screen.getByTestId("generate-report-button"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("generate-report-button")).toBeInTheDocument();
 
     // Clear Filters button
     expect(screen.getByText("Clear Filters")).toBeInTheDocument();
 
     // Include cancelled checkbox
-    expect(
-      screen.getByLabelText(/Include cancelled/),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/Include cancelled/)).toBeInTheDocument();
   });
 
   test("renders Generate Report button", () => {
@@ -176,8 +181,8 @@ describe("TATFilterBar", () => {
 
     const fromInput = screen.getByLabelText(/Date Range \(From\)/);
     const toInput = screen.getByLabelText(/Date Range \(To\)/);
-    expect(fromInput.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(toInput.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(fromInput.value).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
+    expect(toInput.value).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
 
     const visibleDiffDays = Math.round(
       (new Date(toInput.value) - new Date(fromInput.value)) / 86400000,
@@ -187,8 +192,32 @@ describe("TATFilterBar", () => {
     fireEvent.click(screen.getByTestId("generate-report-button"));
     expect(mockOnGenerate).toHaveBeenCalledTimes(1);
     const filters = mockOnGenerate.mock.calls[0][0];
-    expect(filters.fromDate).toBe(fromInput.value);
-    expect(filters.toDate).toBe(toInput.value);
+    expect(filters.fromDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(filters.toDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  test("China profile displays year-first dates but submits ISO dates", () => {
+    const zhMessages = {
+      ...messages,
+      "datepicker.placeholder.ymd": "年/月/日",
+    };
+    renderWithIntl(
+      <TATFilterBar onGenerate={mockOnGenerate} />,
+      "zh-CN",
+      zhMessages,
+    );
+
+    const fromInput = document.getElementById("tat-from-date");
+    const toInput = document.getElementById("tat-to-date");
+    expect(fromInput).toHaveAttribute("placeholder", "年/月/日");
+    expect(toInput).toHaveAttribute("placeholder", "年/月/日");
+    expect(fromInput.value).toMatch(/^\d{4}\/\d{2}\/\d{2}$/);
+    expect(toInput.value).toMatch(/^\d{4}\/\d{2}\/\d{2}$/);
+
+    fireEvent.click(screen.getByTestId("generate-report-button"));
+    const filters = mockOnGenerate.mock.calls[0][0];
+    expect(filters.fromDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(filters.toDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   test("onGenerate includes new filter fields", () => {

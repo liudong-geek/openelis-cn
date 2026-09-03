@@ -186,6 +186,17 @@ const SystemSettingsTab = () => {
     <div style={{ paddingTop: "1rem" }}>
       {notification && (
         <InlineNotification
+          aria-label={intl.formatMessage({ id: "button.close" })}
+          statusIconDescription={intl.formatMessage({
+            id:
+              notification.kind === "error"
+                ? "carbon.notification.error"
+                : notification.kind === "success"
+                  ? "carbon.notification.success"
+                  : notification.kind === "warning"
+                    ? "carbon.notification.warning"
+                    : "carbon.notification.info",
+          })}
           kind={notification.kind}
           title={notification.message}
           onCloseButtonClick={() => setNotification(null)}

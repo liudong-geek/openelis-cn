@@ -20,6 +20,7 @@ import java.sql.Date;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.beanutils.PropertyUtils;
 import org.hibernate.HibernateException;
 import org.hibernate.Session;
@@ -345,6 +346,49 @@ public class ResultDAOImpl extends BaseDAOImpl<Result, String> implements Result
             handleException(e, "getResultsForSample");
         }
         return null;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Result> getFinalizedReportableResultsForPatient(String patientId, String finalizedStatusId,
+            String testId) throws LIMSRuntimeException {
+        if (StringUtils.isBlank(patientId) || StringUtils.isBlank(finalizedStatusId)
+                || "-1".equals(finalizedStatusId)) {
+            return new ArrayList<>();
+        }
+
+        StringBuilder hql = new StringBuilder("SELECT r FROM Result r ")
+                .append("JOIN FETCH r.analysis a ")
+                .append("JOIN FETCH a.test t ")
+                .append("LEFT JOIN FETCH t.testSection ts ")
+                .append("LEFT JOIN FETCH a.testSection ats ")
+                .append("JOIN FETCH a.sampleItem si ")
+                .append("JOIN FETCH si.typeOfSample sampleType ")
+                .append("LEFT JOIN FETCH t.unitOfMeasure uom ")
+                .append("LEFT JOIN FETCH r.testResult configuredResult ")
+                .append("WHERE a.sampleItem.sample.id IN ")
+                .append("(SELECT sh.sampleId FROM SampleHuman sh WHERE sh.patientId = :patientId) ")
+                .append("AND a.statusId = :finalizedStatusId ")
+                .append("AND a.isReportable = :reportable ")
+                .append("AND r.isReportable = :reportable ");
+        if (StringUtils.isNotBlank(testId)) {
+            hql.append("AND t.id = :testId ");
+        }
+        hql.append("ORDER BY CASE WHEN a.completedDate IS NULL THEN 1 ELSE 0 END, a.completedDate DESC, r.id DESC");
+
+        try {
+            Query<Result> query = entityManager.unwrap(Session.class).createQuery(hql.toString(), Result.class);
+            query.setParameter("patientId", patientId);
+            query.setParameter("finalizedStatusId", finalizedStatusId);
+            query.setParameter("reportable", YES);
+            if (StringUtils.isNotBlank(testId)) {
+                query.setParameter("testId", testId);
+            }
+            return query.list();
+        } catch (HibernateException e) {
+            handleException(e, "getFinalizedReportableResultsForPatient");
+            return new ArrayList<>();
+        }
     }
 
     @Override

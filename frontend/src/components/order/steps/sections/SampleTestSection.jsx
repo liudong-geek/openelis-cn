@@ -8,12 +8,13 @@ import {
   SelectItem,
   Button,
   Checkbox,
-  Tag,
+  DismissibleTag,
   Search,
   Link,
 } from "@carbon/react";
 import { Add } from "@carbon/icons-react";
 import { getFromOpenElisServer } from "../../../utils/Utils";
+import { localizeSampleType } from "../../sampleTypeIntl";
 
 /**
  * SampleTestSection - Sample type and test/panel selection
@@ -308,9 +309,17 @@ const SampleTestSection = ({
 
   return (
     <Tile className="order-section sample-test-section">
-      <h4 className="section-title">
-        <FormattedMessage id="label.button.sample" defaultMessage="Sample" />
-      </h4>
+      <div className="order-section-heading">
+        <span className="order-section-heading__step">3</span>
+        <div className="order-section-heading__copy">
+          <h4 className="section-title">
+            <FormattedMessage id="order.entry.sample.title" />
+          </h4>
+          <p>
+            <FormattedMessage id="order.entry.sample.helper" />
+          </p>
+        </div>
+      </div>
 
       {/* Sample Cards */}
       {samples.map((sample, sampleIndex) => (
@@ -353,7 +362,11 @@ const SampleTestSection = ({
               >
                 <SelectItem value="" text="" />
                 {sampleTypes.map((type) => (
-                  <SelectItem key={type.id} value={type.id} text={type.value} />
+                  <SelectItem
+                    key={type.id}
+                    value={type.id}
+                    text={localizeSampleType(intl, type.value)}
+                  />
                 ))}
               </Select>
             </Column>
@@ -371,15 +384,19 @@ const SampleTestSection = ({
                   {/* Selected Panels Tags */}
                   <div className="selected-tags">
                     {sample.panels?.map((panel) => (
-                      <Tag
+                      <DismissibleTag
                         key={panel.id}
                         type="blue"
-                        filter
                         onClose={() => handleRemovePanel(sampleIndex, panel.id)}
                         disabled={isReadOnly}
-                      >
-                        {panel.name}
-                      </Tag>
+                        text={panel.name}
+                        title={intl.formatMessage({
+                          id: "label.button.remove",
+                        })}
+                        dismissTooltipLabel={intl.formatMessage({
+                          id: "label.button.remove",
+                        })}
+                      />
                     ))}
                   </div>
 
@@ -421,7 +438,9 @@ const SampleTestSection = ({
                       </div>
                     </>
                   ) : loadingPerSample[sampleIndex] ? (
-                    <p className="no-items-message">Loading panels...</p>
+                    <p className="no-items-message">
+                      <FormattedMessage id="sample.loadingPanels" />
+                    </p>
                   ) : (
                     <p className="no-items-message">
                       <FormattedMessage
@@ -448,15 +467,19 @@ const SampleTestSection = ({
                   {/* Selected Tests Tags */}
                   <div className="selected-tags">
                     {sample.tests?.map((test) => (
-                      <Tag
+                      <DismissibleTag
                         key={test.id}
                         type="teal"
-                        filter
                         onClose={() => handleRemoveTest(sampleIndex, test.id)}
                         disabled={isReadOnly}
-                      >
-                        {test.name}
-                      </Tag>
+                        text={test.name}
+                        title={intl.formatMessage({
+                          id: "label.button.remove",
+                        })}
+                        dismissTooltipLabel={intl.formatMessage({
+                          id: "label.button.remove",
+                        })}
+                      />
                     ))}
                   </div>
 
@@ -509,7 +532,9 @@ const SampleTestSection = ({
                       </span>
                     </>
                   ) : loadingPerSample[sampleIndex] ? (
-                    <p className="no-items-message">Loading tests...</p>
+                    <p className="no-items-message">
+                      <FormattedMessage id="sample.loadingTests" />
+                    </p>
                   ) : (
                     <p className="no-items-message">
                       <FormattedMessage

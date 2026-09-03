@@ -1,50 +1,61 @@
-import React, { useContext, useState, useEffect } from "react";
+import React, { useContext } from "react";
 import { AlertDialog } from "../common/CustomNotification";
 import { NotificationContext } from "../layout/Layout";
-import { injectIntl, useIntl } from "react-intl";
-import { useLocation } from "react-router-dom";
+import { FormattedMessage, injectIntl, useIntl } from "react-intl";
+import { Redirect, useLocation } from "react-router-dom";
+import { InlineNotification } from "@carbon/react";
 import PageBreadCrumb from "../common/PageBreadCrumb";
+import ProductPageHeader from "../common/ProductPageHeader";
 import { StudyReports } from "./study/index";
 import { RoutineReports } from "./routine/Index";
-import { Loading } from "@carbon/react";
+import { isSecurityRestrictedReport } from "./reportAvailability";
 
 const ReportIndex = () => {
   const intl = useIntl();
   const location = useLocation();
-  const { setNotificationVisible, addNotification, notificationVisible } =
-    useContext(NotificationContext);
+  const { notificationVisible } = useContext(NotificationContext);
+  const params = new URLSearchParams(location.search);
+  const type = params.get("type");
+  const report = params.get("report");
 
-  const [type, setType] = useState("");
-  const [report, setReport] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  // /Report is a report renderer, not a report picker. Old bookmarks and
+  // dashboard links without a template should land in the report centre.
+  if (!type || !report) {
+    return <Redirect to="/RoutineReports" />;
+  }
 
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const paramType = params.get("type");
-    const paramReport = params.get("report");
-    setType(paramType);
-    setReport(paramReport);
-
-    if (paramType && paramReport) {
-      setIsLoading(false);
-    } else {
-      window.location.href = "/";
-    }
-  }, [location.search]);
+  if (isSecurityRestrictedReport(report)) {
+    return (
+      <>
+        <PageBreadCrumb breadcrumbs={[{ label: "home.label", link: "/" }]} />
+        <ProductPageHeader
+          title={<FormattedMessage id="reports.securityReview.title" />}
+          subtitle={
+            <FormattedMessage id="reports.securityReview.description" />
+          }
+        />
+        <div className="orderLegendBody">
+          <InlineNotification
+            kind="warning"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({ id: "reports.securityReview.title" })}
+            subtitle={intl.formatMessage({
+              id: "reports.securityReview.description",
+            })}
+          />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
-      <br />
       <PageBreadCrumb breadcrumbs={[{ label: "home.label", link: "/" }]} />
       <div className="orderLegendBody">
         {notificationVisible === true && <AlertDialog />}
-        {isLoading && <Loading />}
-        {!isLoading && (
-          <>
-            <RoutineReports type={type} report={report} />
-            <StudyReports type={type} report={report} />
-          </>
-        )}
+        <RoutineReports type={type} report={report} />
+        <StudyReports type={type} report={report} />
       </div>
     </>
   );

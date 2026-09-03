@@ -8,6 +8,7 @@ import {
 } from "@carbon/icons-react";
 import config from "../../config.json";
 import PageBreadCrumb from "../common/PageBreadCrumb";
+import ProductPageHeader from "../common/ProductPageHeader";
 
 let breadcrumbs = [{ label: "home.label", link: "/" }];
 export const RoutineReportsMenu = {
@@ -48,6 +49,7 @@ export const RoutineReportsMenu = {
         {
           link: "/RoutineReport?type=indicator&report=sampleRejectionReport",
           label: <FormattedMessage id="sideNav.label.rejectionreport" />,
+          securityRestricted: true,
         },
       ],
     },
@@ -58,24 +60,22 @@ export const RoutineReportsMenu = {
         {
           link: "/RoutineReport?type=indicator&report=activityReportByTest",
           label: <FormattedMessage id="sideNav.label.bytesttype" />,
+          securityRestricted: true,
         },
         {
           link: "/RoutineReport?type=indicator&report=activityReportByPanel",
           label: <FormattedMessage id="sideNav.label.bypaneltype" />,
+          securityRestricted: true,
         },
         {
           link: "/RoutineReport?type=indicator&report=activityReportByTestSection",
           label: <FormattedMessage id="sideNav.label.byunit" />,
+          securityRestricted: true,
         },
       ],
     },
     {
-      title: (
-        <FormattedMessage
-          id="sideNav.title.referredtestreport"
-          defaultMessage="Referred Out Tests Report"
-        />
-      ),
+      title: <FormattedMessage id="sideNav.title.referredtestreport" />,
       icon: IbmWatsonNaturalLanguageUnderstanding,
       SideNavMenuItem: [
         {
@@ -93,6 +93,7 @@ export const RoutineReportsMenu = {
           label: (
             <FormattedMessage id="sideNav.label.noncomformityreportsbydate" />
           ),
+          securityRestricted: true,
         },
         {
           link: "/RoutineReport?type=patient&report=haitiNonConformityBySectionReason",
@@ -122,6 +123,7 @@ export const RoutineReportsMenu = {
         {
           link: "/RoutineReport?type=routine&report=CISampleRoutineExport",
           label: <FormattedMessage id="sideNav.label.exportcsvfile" />,
+          securityRestricted: true,
         },
       ],
     },
@@ -131,9 +133,15 @@ export const RoutineReportsMenu = {
 const Routine = () => {
   return (
     <>
-      <div style={{ marginLeft: "1%" }}>
-        <PageBreadCrumb breadcrumbs={breadcrumbs} />
-      </div>
+      <PageBreadCrumb breadcrumbs={breadcrumbs} />
+      <ProductPageHeader
+        title={
+          <>
+            <FormattedMessage id="sidenav.label.reports" /> ·{" "}
+            <FormattedMessage id="sidenav.label.reports.routine" />
+          </>
+        }
+      />
       <GlobalSideBar sideNav={RoutineReportsMenu} />
     </>
   );

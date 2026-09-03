@@ -256,7 +256,11 @@ const ProgramManagement = () => {
         }}
       >
         <Tabs>
-          <TabList aria-label="EQA Admin tabs">
+          <TabList
+            aria-label={intl.formatMessage({
+              id: "eqa.admin.tabs.ariaLabel",
+            })}
+          >
             <Tab renderIcon={DataCheck}>
               {intl.formatMessage({ id: "eqa.admin.tab.programs" })}
             </Tab>

@@ -42,7 +42,8 @@ import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.test.service.TestServiceImpl;
 import org.openelisglobal.test.valueholder.Test;
 
-public class PatientCILNSPClinical extends PatientReport implements IReportCreator, IReportParameterSetter {
+public class PatientCILNSPClinical extends PatientReport
+        implements IReportCreator, IReportParameterSetter, ResultsScopedReportCreator.ClinicalPatientSelection {
 
     private static Set<String> analysisStatusIds;
     protected List<ClinicalPatientData> clinicalReportItems;

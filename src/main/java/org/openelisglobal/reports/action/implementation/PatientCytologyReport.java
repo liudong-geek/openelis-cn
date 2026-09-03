@@ -13,7 +13,8 @@ import org.openelisglobal.program.valueholder.cytology.CytologySpecimenAdequacy.
 import org.openelisglobal.reports.form.ReportForm;
 import org.openelisglobal.spring.util.SpringContext;
 
-public class PatientCytologyReport extends PatientProgramReport {
+public class PatientCytologyReport extends PatientProgramReport
+        implements ResultsScopedReportCreator.CytologyProgramSampleSelection {
 
     protected CytologyDisplayService cytologySampleService = SpringContext.getBean(CytologyDisplayService.class);
 

@@ -1,3 +1,4 @@
+import { pushWithListContext } from "../../common/listWorkspace";
 import React, { useContext, useState, useEffect, useCallback } from "react";
 import { useHistory } from "react-router-dom";
 import { useIntl, FormattedMessage } from "react-intl";
@@ -16,7 +17,9 @@ import {
 } from "@carbon/react";
 import { Checkmark } from "@carbon/icons-react";
 import OrderWorkflowLayout from "../OrderWorkflowLayout";
+import OrderTaskStartState from "../OrderTaskStartState";
 import { useOrderContext } from "../OrderContext";
+import { localizeSampleType } from "../sampleTypeIntl";
 import { NotificationContext } from "../../layout/Layout";
 import {
   AlertDialog,
@@ -34,6 +37,10 @@ import {
  * Shows complete order summary and QA checklist.
  * Checklist items are configured via Dictionary (category: QAChecklistItem).
  */
+
+export const isQaChecklistComplete = (checklistItems, verifiedItems) =>
+  checklistItems.length > 0 &&
+  checklistItems.every((item) => verifiedItems[item.itemKey] === true);
 
 const OrderQA = () => {
   const intl = useIntl();
@@ -63,19 +70,7 @@ const OrderQA = () => {
   // Load QA checklist config and status from backend on mount
   const loadChecklist = useCallback(() => {
     if (!displayLabNumber) {
-      // If no lab number, just load the config
-      getFromOpenElisServer("/rest/qa-checklist/config", (response) => {
-        if (response && Array.isArray(response)) {
-          setChecklistItems(response);
-          // Initialize all items as unchecked
-          const initialState = {};
-          response.forEach((item) => {
-            initialState[item.itemKey] = false;
-          });
-          setVerifiedItems(initialState);
-        }
-        setIsLoading(false);
-      });
+      setIsLoading(false);
       return;
     }
 
@@ -119,9 +114,8 @@ const OrderQA = () => {
   };
 
   // Check if all items are verified
-  const allItemsComplete = checklistItems.every(
-    (item) => verifiedItems[item.itemKey] === true,
-  );
+  const isChecklistConfigured = checklistItems.length > 0;
+  const allItemsComplete = isQaChecklistComplete(checklistItems, verifiedItems);
 
   // Save checklist to backend
   const saveChecklist = async () => {
@@ -153,9 +147,9 @@ const OrderQA = () => {
       // Save order data first
       await saveOrder();
       // Then save checklist
-      await saveChecklist();
+      const checklistResponse = await saveChecklist();
       // Mark QA step complete if all checks are done
-      if (allItemsComplete) {
+      if (allItemsComplete && checklistResponse?.allRequiredVerified === true) {
         markStepComplete("qa");
       }
       addNotification({
@@ -180,8 +174,17 @@ const OrderQA = () => {
   const handleSubmit = async () => {
     setIsSaving(true);
     try {
+      if (!isChecklistConfigured) {
+        throw new Error("QA_CHECKLIST_NOT_CONFIGURED");
+      }
+      if (!allItemsComplete) {
+        throw new Error("QA_CHECKLIST_INCOMPLETE");
+      }
       await saveOrder();
-      await saveChecklist();
+      const checklistResponse = await saveChecklist();
+      if (checklistResponse?.allRequiredVerified !== true) {
+        throw new Error("QA_CHECKLIST_INCOMPLETE");
+      }
       markStepComplete("qa");
       setIsSubmitted(true);
       addNotification({
@@ -208,18 +211,39 @@ const OrderQA = () => {
 
   const handleStartNewOrder = () => {
     resetOrder();
-    history.push("/order/enter");
+    pushWithListContext(history, "/order/enter");
   };
 
   const patientName = orderData?.patientProperties
     ? `${orderData.patientProperties.firstName || ""} ${orderData.patientProperties.lastName || ""}`.trim()
     : "---";
+  const patientGender = orderData?.patientProperties?.gender;
+  const patientGenderDisplay =
+    patientGender === "M"
+      ? intl.formatMessage({ id: "patient.male" })
+      : patientGender === "F"
+        ? intl.formatMessage({ id: "patient.female" })
+        : patientGender || "---";
 
   // Get label for checklist item - use localizedName or label from dictionary
   const getItemLabel = (item) => {
-    // Prefer localizedName, fall back to label (localAbbreviation), then itemKey
-    return item.localizedName || item.label || item.itemKey;
+    // China delivery seeds a localized operator label in localAbbreviation.
+    // Keep localizedName as the fallback for installations using DB localization.
+    return item.label || item.localizedName || item.itemKey;
   };
+
+  if (!displayLabNumber) {
+    return (
+      <OrderWorkflowLayout
+        currentStep={3}
+        title="order.step.qa"
+        showSaveButtons={false}
+        showWorkflowProgress={false}
+      >
+        <OrderTaskStartState taskLabel="order.step.qa" />
+      </OrderWorkflowLayout>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -228,7 +252,10 @@ const OrderQA = () => {
         title="order.step.qa"
         showSaveButtons={false}
       >
-        <Loading withOverlay={false} description="Loading checklist..." />
+        <Loading
+          withOverlay={false}
+          description={intl.formatMessage({ id: "loading.description" })}
+        />
       </OrderWorkflowLayout>
     );
   }
@@ -251,7 +278,7 @@ const OrderQA = () => {
             </h3>
             <p>
               <FormattedMessage
-                id="order.submit.labNumber"
+                id="order.submit.success.labNumber"
                 defaultMessage="Lab Number: {labNumber}"
                 values={{ labNumber: displayLabNumber || "---" }}
               />
@@ -280,7 +307,12 @@ const OrderQA = () => {
       onSaveAndNext={handleSubmit}
     >
       {notificationVisible && <AlertDialog />}
-      {isSaving && <Loading withOverlay description="Saving..." />}
+      {isSaving && (
+        <Loading
+          withOverlay
+          description={intl.formatMessage({ id: "label.button.saving" })}
+        />
+      )}
 
       <div className="qa-review-container">
         {/* QA Checklist */}
@@ -299,6 +331,22 @@ const OrderQA = () => {
           </p>
 
           <div className="qa-checklist-items">
+            {!isChecklistConfigured && (
+              <InlineNotification
+                kind="error"
+                title={intl.formatMessage({
+                  id: "qa.checklist.notConfigured.title",
+                  defaultMessage: "QA checklist is not configured",
+                })}
+                subtitle={intl.formatMessage({
+                  id: "qa.checklist.notConfigured",
+                  defaultMessage:
+                    "Configure at least one QA control before this order can be submitted.",
+                })}
+                hideCloseButton
+                lowContrast
+              />
+            )}
             {checklistItems.map((item) => (
               <Checkbox
                 key={item.itemKey}
@@ -311,7 +359,7 @@ const OrderQA = () => {
             ))}
           </div>
 
-          {!allItemsComplete && (
+          {isChecklistConfigured && !allItemsComplete && (
             <InlineNotification
               kind="warning"
               title={intl.formatMessage({
@@ -361,7 +409,7 @@ const OrderQA = () => {
                     />
                   </StructuredListCell>
                   <StructuredListCell>
-                    {orderData?.patientProperties?.gender || "---"}
+                    {patientGenderDisplay}
                   </StructuredListCell>
                 </StructuredListRow>
               </StructuredListBody>
@@ -379,9 +427,17 @@ const OrderQA = () => {
               samples.map((sample, index) => (
                 <div key={index} className="qa-sample-item">
                   <Tag type="blue" size="sm">
-                    {sample.name ||
-                      sample.sampleTypeName ||
-                      `Sample ${index + 1}`}
+                    {localizeSampleType(
+                      intl,
+                      sample.name || sample.sampleTypeName,
+                    ) ||
+                      intl.formatMessage(
+                        {
+                          id: "sample.number",
+                          defaultMessage: "Sample {number}",
+                        },
+                        { number: index + 1 },
+                      )}
                   </Tag>
                   <ul className="qa-test-list">
                     {sample.tests?.map((test, testIndex) => (

@@ -13,6 +13,15 @@
   padding: 3rem 0;
 }
 
+.alerts-tab__error {
+  margin-bottom: 1.5rem;
+}
+
+.alerts-tab__error .cds--inline-notification {
+  max-width: none;
+  margin-bottom: 0;
+}
+
 .alerts-tab__header {
   display: flex;
   justify-content: space-between;

@@ -1,0 +1,5 @@
+# Fast local delivery image: reuse the already provisioned nginx runtime and
+# replace only the production bundle that has passed local delivery checks.
+# The full Dockerfile remains the source of truth for clean CI/release builds.
+FROM openelis-cn-frontend:local
+COPY dist/ /usr/share/nginx/html/

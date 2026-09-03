@@ -168,7 +168,7 @@ function LabelPresetList() {
       </span>
     ),
     barcodeType: preset.barcodeType,
-    dimensions: `${preset.heightMm} x ${preset.widthMm} mm`,
+    dimensions: `${preset.heightMm} × ${preset.widthMm} 毫米`,
     scope: [
       preset.printsPerOrder &&
         intl.formatMessage({ id: "admin.labelPresets.scope.order" }),

@@ -5,16 +5,32 @@ import { useIntl } from "react-intl";
 import PropTypes from "prop-types";
 
 const RULE_TYPE_OPTIONS = [
-  { id: "FIELD_EQUALS", text: "Field Equals" },
-  { id: "SPECIMEN_ID_PREFIX", text: "Specimen ID Prefix" },
-  { id: "SPECIMEN_ID_PATTERN", text: "Specimen ID Pattern" },
-  { id: "FIELD_CONTAINS", text: "Field Contains" },
+  {
+    id: "FIELD_EQUALS",
+    labelId: "analyzer.qcRules.ruleType.fieldEquals",
+  },
+  {
+    id: "SPECIMEN_ID_PREFIX",
+    labelId: "analyzer.qcRules.ruleType.specimenIdPrefix",
+  },
+  {
+    id: "SPECIMEN_ID_PATTERN",
+    labelId: "analyzer.qcRules.ruleType.specimenIdPattern",
+  },
+  {
+    id: "FIELD_CONTAINS",
+    labelId: "analyzer.qcRules.ruleType.fieldContains",
+  },
 ];
 
 const NEEDS_TARGET_FIELD = ["FIELD_EQUALS", "FIELD_CONTAINS"];
 
 const QcRuleRow = ({ rule, index, onChange, onDelete, disabled }) => {
   const intl = useIntl();
+  const ruleTypeOptions = RULE_TYPE_OPTIONS.map((option) => ({
+    ...option,
+    text: intl.formatMessage({ id: option.labelId }),
+  }));
 
   const handleChange = (field, value) => {
     onChange(index, { ...rule, [field]: value });
@@ -44,9 +60,9 @@ const QcRuleRow = ({ rule, index, onChange, onDelete, disabled }) => {
               : ""
           }
           label={intl.formatMessage({ id: "analyzer.qcRules.ruleType" })}
-          items={RULE_TYPE_OPTIONS}
+          items={ruleTypeOptions}
           itemToString={(item) => (item ? item.text : "")}
-          selectedItem={RULE_TYPE_OPTIONS.find((o) => o.id === rule.ruleType)}
+          selectedItem={ruleTypeOptions.find((o) => o.id === rule.ruleType)}
           onChange={({ selectedItem }) =>
             handleChange("ruleType", selectedItem?.id || "")
           }

@@ -6,10 +6,13 @@ FROM maven:3-eclipse-temurin-21 AS build
 RUN --mount=target=/var/lib/apt/lists,type=cache,sharing=locked \
     --mount=target=/var/cache/apt,type=cache,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean \
-    && sed -i 's|http://archive.ubuntu.com|http://azure.archive.ubuntu.com|g; s|http://security.ubuntu.com|http://azure.archive.ubuntu.com|g' \
-        /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true \
-    && apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=60 \
-        --allow-releaseinfo-change -y update \
+    && for attempt in 1 2 3 4 5; do \
+        apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=60 \
+            --allow-releaseinfo-change update && break; \
+        if [ "${attempt}" = "5" ]; then exit 1; fi; \
+        rm -rf /var/lib/apt/lists/*; \
+        sleep $((attempt * 2)); \
+    done \
     && apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=60 \
         -y --no-install-recommends install \
         git apache2-utils
@@ -55,9 +58,40 @@ RUN --mount=type=cache,target=/root/.m2,sharing=locked \
 
 ARG SKIP_SPOTLESS="false"
 COPY ./src /build/src
+# Analyzer vendor/protocol profiles are runtime assets as well as test
+# fixtures. Keep them in the build context so the full backend gate exercises
+# the same profiles that are shipped to local installations.
+COPY ./projects/analyzer-profiles /build/projects/analyzer-profiles
 RUN --mount=type=cache,target=/root/.m2,sharing=locked \
     [ -d /root/.m2/repository/org/itech ] || { mkdir -p /root/.m2/repository/org && cp -r /build/dataexport-m2/org/itech /root/.m2/repository/org/; } \
     && mvn clean install -Dmaven.test.skip=true -DskipITs=true -Dspotless.check.skip=${SKIP_SPOTLESS}
+
+# Optional fast backend regression target. The runtime image remains the final
+# stage, while local delivery/CI can run the P1 controller tests with:
+#   docker build --target p1-unit-test .
+FROM build AS p1-unit-test
+RUN --mount=type=cache,target=/root/.m2,sharing=locked \
+    [ -d /root/.m2/repository/org/itech ] || { mkdir -p /root/.m2/repository/org && cp -r /build/dataexport-m2/org/itech /root/.m2/repository/org/; } \
+    && mvn test -DskipITs=true \
+        -Dtest=SampleQaChecklistRestControllerTest,SampleTypeRequestRestControllerTest,ResultEntryWorklistServiceTest,SamplePatientErrorMergeTest,RequesterMasterDataValidatorTest,OrganizationRestControllerReferringSiteTest,BarcodeInfoServiceImplTest,ResultsTreeProviderRestControllerTest,PatientResultHistoryServiceImplTest,PatientServiceImplManagementListTest,ResultDAOImplPatientHistoryTest,PatientSearchResultsDateLocaleTest,DateUtilLocaleTest,ValidatePatientInfoLocaleTest,DBSearchResultsDAOImplDateLocaleTest,DBSearchResultsDAOImplQuickSearchTest,TestConfigurationHandlerTest,TestConfigurationHandlerIdempotencyTest,LocalizationLocaleResolutionTest,GlobalLocaleResolverTest,TestSectionServiceImplLocaleTest,ReferralServiceImplUnitTest,ReferredOutTestsRestControllerSecurityTest,ReportAnalysisAuthorizationServiceTest,ReportPrintAuthorizationControllerTest,CovidResultsCandidateServiceTest,AnalysisDAOImplUnitTest,ReportImplementationFactoryResultsScopedTest,UserServiceImplUnitTest,SampleTypeManagementRestControllerLocalizationTest,StatisticsReportTest,ControllerSetupLoggingTest,NotificationRestControllerTest,FhirPersistanceServiceImplDisabledTest
+
+# Reproducible full backend unit-test runner. Tests use Testcontainers, so they
+# must run after the image is built with access to the host Docker socket. The
+# Maven repository is copied out of the BuildKit cache so the runner also keeps
+# the locally built org.itech dataexport artifacts, which are not published to
+# Maven Central.
+#
+#   docker build --target full-unit-test -t openelis-full-unit-test .
+#   docker run --rm \
+#     -v /var/run/docker.sock:/var/run/docker.sock \
+#     -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal \
+#     openelis-full-unit-test
+FROM build AS full-unit-test
+RUN --mount=type=cache,target=/root/.m2,sharing=locked \
+    [ -d /root/.m2/repository/org/itech ] || { mkdir -p /root/.m2/repository/org && cp -r /build/dataexport-m2/org/itech /root/.m2/repository/org/; } \
+    && mkdir -p /opt/openelis-maven-repository \
+    && cp -a /root/.m2/repository/. /opt/openelis-maven-repository/
+CMD ["mvn", "-Dmaven.repo.local=/opt/openelis-maven-repository", "test", "-DskipITs=true", "-Dspotless.check.skip=true"]
 
 ##
 # Run Stage
@@ -83,6 +117,11 @@ COPY --from=build /build/target/OpenELIS-Global.war /usr/local/tomcat/webapps/Op
 #    org.apache.coyote.USE_CUSTOM_STATUS_MSG_IN_HEADER=false
 COPY install/tomcat-resources/catalina.properties /usr/local/tomcat/conf/catalina.properties
 COPY install/tomcat-resources/logging.properties /usr/local/tomcat/conf/logging.properties
+
+# Built-in vendor templates for ASTM, HL7 and file-based analyzer adapters.
+# Administrators may still replace this directory with a read-only bind mount
+# in a managed deployment, but the product must work out of the box.
+COPY ./projects/analyzer-profiles /data/analyzer-profiles
 
 #replace ServerInfo.properties with a less informative one
 RUN mkdir -p /usr/local/tomcat/lib/org/apache/catalina/util

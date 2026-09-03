@@ -316,7 +316,8 @@ public class SamplePatientEntryForm extends BaseForm {
     }
 
     public Boolean getRememberSiteAndRequester() {
-        return rememberSiteAndRequester;
+        // Optional UI preference: omitted/null must not fail after saving a specimen.
+        return Boolean.TRUE.equals(rememberSiteAndRequester);
     }
 
     public void setRememberSiteAndRequester(Boolean rememberSiteAndRequester) {

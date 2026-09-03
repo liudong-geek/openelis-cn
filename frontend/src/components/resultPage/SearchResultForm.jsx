@@ -54,6 +54,7 @@ import ESignatureButton, {
   SignatureMeaning,
 } from "../esignature/ESignatureButton";
 import AcceptUnconditionallyGuard from "./AcceptUnconditionallyGuard";
+import { navigateToInternalPath } from "../utils/NavigationUtils";
 
 /**
  * Value for `labNumber` on /rest/LogbookResults. Strips only the legacy
@@ -529,7 +530,9 @@ export function SearchResultForm(props) {
                       <Field name="accessionNumber">
                         {({ field }) => (
                           <CustomLabNumberInput
-                            placeholder="Enter Accession No."
+                            placeholder={intl.formatMessage({
+                              id: "placeholder.accession.number",
+                            })}
                             name={field.name}
                             id={field.name}
                             data-cy="enterAccession"
@@ -554,7 +557,9 @@ export function SearchResultForm(props) {
                       <Field name="startLabNo">
                         {({ field }) => (
                           <CustomLabNumberInput
-                            placeholder="Enter Accession No."
+                            placeholder={intl.formatMessage({
+                              id: "placeholder.accession.number",
+                            })}
                             name={field.name}
                             id={field.name}
                             data-cy="startAccession"
@@ -573,7 +578,9 @@ export function SearchResultForm(props) {
                       <Field name="endLabNo">
                         {({ field }) => (
                           <CustomLabNumberInput
-                            placeholder="Enter Accession No."
+                            placeholder={intl.formatMessage({
+                              id: "placeholder.accession.number",
+                            })}
                             name={field.name}
                             id={field.name}
                             data-cy="endAccession"
@@ -813,7 +820,9 @@ export function SearchResultForm(props) {
                   onClick={loadPreviousResultsPage}
                   disabled={previousPage != null ? false : true}
                   renderIcon={ArrowLeft}
-                  iconDescription="previous"
+                  iconDescription={intl.formatMessage({
+                    id: "pagination.previous",
+                  })}
                 ></Button>
                 <Button
                   hasIconOnly
@@ -821,7 +830,9 @@ export function SearchResultForm(props) {
                   onClick={loadNextResultsPage}
                   disabled={nextPage != null ? false : true}
                   renderIcon={ArrowRight}
-                  iconDescription="next"
+                  iconDescription={intl.formatMessage({
+                    id: "pagination.next",
+                  })}
                 ></Button>
               </div>
             </Column>
@@ -1169,7 +1180,9 @@ export function SearchResults(props) {
               <picture>
                 <img
                   src={config.serverBaseUrl + "/images/nonconforming.gif"}
-                  alt="nonconforming"
+                  alt={intl.formatMessage({
+                    id: "validation.label.nonconform",
+                  })}
                   width="20"
                   height="15"
                 />
@@ -1816,9 +1829,7 @@ export function SearchResults(props) {
                       : "storage.location.assign"
                   }
                   defaultMessage={
-                    currentLocationPath
-                      ? "Move storage location"
-                      : "Assign storage location"
+                    currentLocationPath ? "Move specimen" : "Store specimen"
                   }
                 />
               </Button>
@@ -2173,12 +2184,14 @@ export function SearchResults(props) {
         kind: NotificationKinds.success,
       });
       if (props.refreshOnSubmit) {
-        window.location.href =
+        navigateToInternalPath(
           "/result?type=" +
-          props.searchBy.type +
-          "&doRange=" +
-          props.searchBy.doRange +
-          props.extraParams;
+            props.searchBy.type +
+            "&doRange=" +
+            props.searchBy.doRange +
+            props.extraParams,
+          { replace: true },
+        );
       }
     } else {
       addNotification({
@@ -2231,7 +2244,9 @@ export function SearchResults(props) {
               <picture>
                 <img
                   src={config.serverBaseUrl + "/images/nonconforming.gif"}
-                  alt="nonconforming"
+                  alt={intl.formatMessage({
+                    id: "validation.label.nonconform",
+                  })}
                   width="25"
                   height="20"
                 />
@@ -2270,6 +2285,9 @@ export function SearchResults(props) {
                 isSortable
                 expandableRows
                 expandableRowsComponent={renderReferral}
+                noDataComponent={intl.formatMessage({
+                  id: "validation.no.records.display",
+                })}
               ></DataTable>
               <Pagination
                 style={{ marginTop: "1.5rem" }}

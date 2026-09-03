@@ -41,7 +41,18 @@ import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.samplehuman.service.SampleHumanService;
 import org.openelisglobal.spring.util.SpringContext;
 
-public abstract class RetroCIPatientReport extends RetroCIReport {
+public abstract class RetroCIPatientReport extends RetroCIReport
+        implements ResultsScopedReportCreator.StudyPatientSelection {
+
+    @Override
+    public List<String> getResultsAuthorizationProjectIds() {
+        return getProjIdsList(getProjectId());
+    }
+
+    @Override
+    public List<String> getResultsAuthorizationSampleStatusIds() {
+        return new ArrayList<>(READY_FOR_REPORT_STATUS_IDS);
+    }
 
     protected static String ANALYSIS_FINALIZED_STATUS_ID;
 

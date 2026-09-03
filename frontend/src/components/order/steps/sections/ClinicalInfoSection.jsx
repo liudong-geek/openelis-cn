@@ -118,7 +118,10 @@ const ClinicalInfoSection = ({ orderData, setOrderData, isReadOnly }) => {
               <SelectItem
                 key={status.id}
                 value={status.id}
-                text={status.value}
+                text={intl.formatMessage({
+                  id: `order.paymentStatus.${status.value}`,
+                  defaultMessage: status.value,
+                })}
               />
             ))}
           </Select>

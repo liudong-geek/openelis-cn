@@ -1,21 +1,23 @@
-import React from "react";
+import React, { useRef } from "react";
 import { FormattedMessage, injectIntl } from "react-intl";
-import { useHistory, useParams } from "react-router-dom";
+import { useHistory, useLocation, useParams } from "react-router-dom";
 import "../Style.css";
 import {
-  Heading,
   Grid,
   Column,
-  Section,
   Button,
   Loading,
   InlineNotification,
 } from "@carbon/react";
-import SearchPatientForm from "./SearchPatientForm";
+import { Add, ArrowLeft } from "@carbon/react/icons";
 import CreatePatientForm from "./CreatePatientForm";
+import PatientMasterList from "./PatientMasterList";
+import type { PatientListViewState } from "./PatientMasterList";
 import PageBreadCrumb from "../common/PageBreadCrumb";
 import usePatientDetails from "./usePatientDetails";
 import type { PatientRecord } from "./types";
+import ProductPageHeader from "../common/ProductPageHeader";
+import { fromList, listReturnLocation } from "../common/listWorkspace";
 
 const breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -24,6 +26,14 @@ const breadcrumbs = [
 
 function PatientManagement() {
   const history = useHistory();
+  const location = useLocation<{
+    listState?: PatientListViewState;
+    listOrigin?: {
+      pathname: string;
+      state?: { listState?: PatientListViewState };
+    };
+  }>();
+  const listState = useRef(location.state?.listState);
   const { patientId } = useParams<{ patientId?: string }>();
 
   const isNewMode = patientId === "new";
@@ -36,57 +46,72 @@ function PatientManagement() {
     isEditMode ? patientId : null,
   );
 
-  const goToSearch = () => history.push("/PatientManagement");
-  const goToNewPatient = () => history.push("/PatientManagement/new");
+  const goToSearch = () =>
+    history.push(listReturnLocation(location.state, "/PatientManagement"));
+  const openFromList = (pathname: string) => {
+    history.replace({
+      ...location,
+      state: { ...location.state, listState: listState.current },
+    });
+    history.push({
+      pathname,
+      state: fromList("/PatientManagement", listState.current),
+    });
+  };
+  const goToNewPatient = () => openFromList("/PatientManagement/new");
   const goToEditPatient = (selected: PatientRecord) =>
-    history.push(`/PatientManagement/${selected.patientPK}`);
+    openFromList(`/PatientManagement/${selected.patientPK}`);
+  const goToPatientResults = (selected: PatientRecord) =>
+    openFromList(`/PatientResults/${selected.patientPK}`);
+
+  const titleId = isSearchMode
+    ? "patient.management.title"
+    : isNewMode
+      ? "patient.management.new.title"
+      : "patient.management.edit.title";
 
   return (
     <>
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          <Section>
-            <Section>
-              <Heading>
-                <FormattedMessage id="patient.label.modify" />
-              </Heading>
-            </Section>
-          </Section>
-        </Column>
-      </Grid>
-      <br></br>
-      <div className="orderLegendBody">
+      <ProductPageHeader
+        titleId="patient-management-title"
+        title={<FormattedMessage id={titleId} />}
+        subtitle={
+          <FormattedMessage
+            id={
+              isSearchMode
+                ? "patient.management.search.subtitle"
+                : isNewMode
+                  ? "patient.management.new.subtitle"
+                  : "patient.management.edit.subtitle"
+            }
+          />
+        }
+        actions={
+          isSearchMode ? (
+            <Button renderIcon={Add} onClick={goToNewPatient}>
+              <FormattedMessage id="new.patient.label" />
+            </Button>
+          ) : (
+            <Button kind="tertiary" renderIcon={ArrowLeft} onClick={goToSearch}>
+              <FormattedMessage id="patient.management.backToList" />
+            </Button>
+          )
+        }
+      />
+      <div className="orderLegendBody patient-management-surface">
         <Grid>
-          <Column lg={4} md={3} sm={2}>
-            <Button
-              id="searchPatient"
-              kind={isSearchMode ? "primary" : "tertiary"}
-              onClick={goToSearch}
-            >
-              <FormattedMessage
-                id="search.patient.label"
-                defaultMessage="Search for Patient"
-              />
-            </Button>
-          </Column>
-          <Column lg={4} md={3} sm={2}>
-            <Button
-              id="newPatient"
-              kind={isNewMode || isEditMode ? "primary" : "tertiary"}
-              onClick={goToNewPatient}
-              disabled={isNewMode || isEditMode}
-            >
-              <FormattedMessage
-                id="new.patient.label"
-                defaultMessage="New Patient"
-              />
-            </Button>
-          </Column>
-
           {isSearchMode && (
             <Column lg={16} md={8} sm={4}>
-              <SearchPatientForm getSelectedPatient={goToEditPatient} />
+              <PatientMasterList
+                initialState={listState.current}
+                onStateChange={(state) => {
+                  listState.current = state;
+                }}
+                onOpenPatient={goToEditPatient}
+                onOpenResults={goToPatientResults}
+                onNewPatient={goToNewPatient}
+              />
             </Column>
           )}
 

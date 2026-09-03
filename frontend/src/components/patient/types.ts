@@ -90,6 +90,9 @@ export interface PatientRecord {
   contact?: PatientContact;
   photo?: string;
   patientUpdateStatus?: string;
+  merged?: boolean;
+  isMerged?: boolean;
+  mergedIntoPatientId?: string;
   [key: string]: unknown;
 }
 

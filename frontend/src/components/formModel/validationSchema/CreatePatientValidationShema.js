@@ -1,4 +1,5 @@
 import * as Yup from "yup";
+import { parseDateForLocale } from "../../common/dateLocaleUtils";
 
 export const createPatientValidationSchema = (configurationProperties = {}) => {
   const nationalIdValidator =
@@ -11,18 +12,12 @@ export const createPatientValidationSchema = (configurationProperties = {}) => {
     birthDateForDisplay: Yup.string()
       .required("Patient Birth date Required")
       .test("valid-date", "Invalid date format", function (value) {
-        const dateFormat = /^\d{2}\/\d{2}\/\d{4}$/;
-        if (!value || !value.match(dateFormat)) {
-          return false;
-        }
-        const [day, month, year] = value.split("/");
-        const date = new Date(`${year}-${month}-${day}`);
-        const date2 = new Date(`${year}-${day}-${month}`);
-
-        const validDate1 = date instanceof Date && !isNaN(date);
-        const validDate2 = date2 instanceof Date && !isNaN(date2);
-
-        return validDate1 || validDate2;
+        return Boolean(
+          parseDateForLocale(
+            value,
+            configurationProperties.DEFAULT_DATE_LOCALE || "en-US",
+          ),
+        );
       }),
     email: Yup.string().email("Patient Email Must Be Valid"),
     patientContact: Yup.object().shape({

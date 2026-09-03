@@ -785,7 +785,19 @@ public class FhirTransformServiceImpl implements FhirTransformService {
             strDate = strDate.replaceFirst(DateUtil.AMBIGUOUS_DATE_SEGMENT, "01");
             monthAmbiguous = true;
         }
-        Date birthDate = new SimpleDateFormat(DateUtil.getDateFormat()).parse(strDate);
+        Date birthDate;
+        SimpleDateFormat configuredFormat = new SimpleDateFormat(DateUtil.getDateFormat());
+        configuredFormat.setLenient(false);
+        try {
+            birthDate = configuredFormat.parse(strDate);
+        } catch (ParseException configuredFormatError) {
+            // Historical imports may contain an ISO date while the Chinese UI uses
+            // yyyy/MM/dd. FHIR always serializes dates as ISO, so read both exact
+            // representations at this boundary without changing the UI contract.
+            SimpleDateFormat isoFormat = new SimpleDateFormat("yyyy-MM-dd");
+            isoFormat.setLenient(false);
+            birthDate = isoFormat.parse(strDate);
+        }
 
         DateType dateType = new DateType();
         if (monthAmbiguous) {
@@ -807,14 +819,15 @@ public class FhirTransformServiceImpl implements FhirTransformService {
     public PatientManagementInfo createOePatientManagementInfo(org.hl7.fhir.r4.model.Patient fhirPatient) {
         PatientManagementInfo patient = new PatientManagementInfo();
         LogEvent.logTrace(this.getClass().getSimpleName(), "setOePatientIdentifiers", "setOePatientIdentifiers called");
+        String patientSystem = fhirConfig.getOeFhirSystem();
         for (Identifier identifier : fhirPatient.getIdentifier()) {
-            if (identifier.getSystem().equals(fhirConfig.getOeFhirSystem() + "/pat_nationalId")) {
+            if ((patientSystem + "/pat_nationalId").equals(identifier.getSystem())) {
                 patient.setNationalId(identifier.getValue());
-            } else if (identifier.getSystem().equals(fhirConfig.getOeFhirSystem() + "/pat_subjectNumber")) {
+            } else if ((patientSystem + "/pat_subjectNumber").equals(identifier.getSystem())) {
                 patient.setSubjectNumber(identifier.getValue());
-            } else if (identifier.getSystem().equals(fhirConfig.getOeFhirSystem() + "/pat_stNumber")) {
+            } else if ((patientSystem + "/pat_stNumber").equals(identifier.getSystem())) {
                 patient.setSTnumber(identifier.getValue());
-            } else if (identifier.getSystem().equals(fhirConfig.getOeFhirSystem() + "/pat_guid")) {
+            } else if ((patientSystem + "/pat_guid").equals(identifier.getSystem())) {
                 patient.setGuid(identifier.getValue());
             }
         }
@@ -910,11 +923,11 @@ public class FhirTransformServiceImpl implements FhirTransformService {
             String system = identifier.getSystem();
             String value = identifier.getValue();
 
-            if ("http://openelis-global.org/pat_nationalId".equals(system)) {
+            if ((fhirConfig.getOeFhirSystem() + "/pat_nationalId").equals(system)) {
                 patientSearchResults.setNationalId(value);
-            } else if ("http://openelis-global.org/pat_guid".equals(system)) {
+            } else if ((fhirConfig.getOeFhirSystem() + "/pat_guid").equals(system)) {
                 patientSearchResults.setExternalId(value);
-            } else if ("http://openelis-global.org/pat_uuid".equals(system)) {
+            } else if ((fhirConfig.getOeFhirSystem() + "/pat_uuid").equals(system)) {
                 patientSearchResults.setGUID(value);
             }
         }
@@ -1178,6 +1191,11 @@ public class FhirTransformServiceImpl implements FhirTransformService {
         if (!GenericValidator.isBlankOrNull(test.getLoinc())) {
             bySystem.computeIfAbsent("http://loinc.org", k -> new ArrayList<>())
                     .add(new Candidate(test.getLoinc(), true, display));
+        }
+
+        // A local catalog item must remain identifiable without inventing LOINC.
+        if (bySystem.isEmpty() && !GenericValidator.isBlankOrNull(test.getGuid())) {
+            codeableConcept.addCoding(new Coding(fhirConfig.getOeFhirSystem() + "/test-guid", test.getGuid(), display));
         }
 
         // Emit one system's codings at a time. Within a system the SAME_AS mapping is
@@ -1751,12 +1769,7 @@ public class FhirTransformServiceImpl implements FhirTransformService {
         bean.setIsModified(true);
         bean.setResultId(null);
         bean.setReportable(true);
-        String locale = ConfigurationProperties.getInstance()
-                .getPropertyValue(ConfigurationProperties.Property.DEFAULT_DATE_LOCALE);
-
-        String pattern = "en-US".equals(locale) ? "MM/dd/yyyy" : "dd/MM/yyyy";
-
-        String formattedDate = new SimpleDateFormat(pattern).format(new Date());
+        String formattedDate = new SimpleDateFormat(DateUtil.getDateFormat()).format(new Date());
         bean.setTestDate(formattedDate);
 
         if (bean.getTechnician() == null) {
@@ -1775,30 +1788,16 @@ public class FhirTransformServiceImpl implements FhirTransformService {
         }
 
         if (observation.hasCode()) {
-            boolean matchedLoinc = false;
-
-            for (Coding code : observation.getCode().getCoding()) {
-                if ("http://loinc.org".equals(code.getSystem())) {
-                    matchedLoinc = true;
-
-                    List<Test> tests = testService.getTestsByLoincCode(code.getCode());
-                    if (tests.isEmpty()) {
-                        throw new InternalErrorException("No test with loinc code " + code.getCode());
-                    }
-
-                    if (tests.getFirst().getLoinc().equals(code.getCode())) {
-                        bean.setTestId(tests.getFirst().getId());
-                    } else {
-                        throw new InternalErrorException("Observation code " + code.getCode()
-                                + " does not match test loinc code " + tests.getFirst().getLoinc());
-                    }
-
-                    break;
-                }
-            }
-
-            if (!matchedLoinc) {
-                throw new InternalErrorException("Observation has code but no LOINC code was found");
+            // The referenced analysis is authoritative; never switch to the
+            // first catalog entry sharing a LOINC.
+            Test targetTest = bean.getTestId() == null ? null : testService.get(bean.getTestId());
+            boolean matched = targetTest != null && observation.getCode().getCoding().stream().anyMatch(code -> code
+                    .hasCode()
+                    && (("http://loinc.org".equals(code.getSystem()) && code.getCode().equals(targetTest.getLoinc()))
+                            || ((fhirConfig.getOeFhirSystem() + "/test-guid").equals(code.getSystem())
+                                    && code.getCode().equals(targetTest.getGuid()))));
+            if (!matched) {
+                throw new UnprocessableEntityException("结果编码与所引用的检验项目不一致");
             }
         }
 
@@ -2260,6 +2259,10 @@ public class FhirTransformServiceImpl implements FhirTransformService {
         this.setFhirOrganizationIdentifiers(fhirOrganization, organization);
         this.setFhirAddressInfo(fhirOrganization, organization);
         this.setFhirOrganizationTypes(fhirOrganization, organization);
+        if (organization.getOrganization() != null && organization.getOrganization().getFhirUuid() != null) {
+            fhirOrganization
+                    .setPartOf(new Reference("Organization/" + organization.getOrganization().getFhirUuidAsString()));
+        }
         return fhirOrganization;
     }
 

@@ -14,12 +14,30 @@ const LotAdjustmentModal = ({ open, onClose, onSave, lot }) => {
   const intl = useIntl();
 
   const adjustmentReasons = [
-    { id: "INVENTORY_COUNT", text: "Physical Inventory Count" },
-    { id: "DAMAGED", text: "Damaged Items" },
-    { id: "FOUND", text: "Items Found" },
-    { id: "ERROR_CORRECTION", text: "Data Entry Error Correction" },
-    { id: "EXPIRED_DISPOSAL", text: "Expired Item Disposal" },
-    { id: "OTHER", text: "Other" },
+    {
+      id: "INVENTORY_COUNT",
+      text: intl.formatMessage({ id: "adjustment.reason.inventoryCount" }),
+    },
+    {
+      id: "DAMAGED",
+      text: intl.formatMessage({ id: "adjustment.reason.damaged" }),
+    },
+    {
+      id: "FOUND",
+      text: intl.formatMessage({ id: "adjustment.reason.found" }),
+    },
+    {
+      id: "ERROR_CORRECTION",
+      text: intl.formatMessage({ id: "adjustment.reason.errorCorrection" }),
+    },
+    {
+      id: "EXPIRED_DISPOSAL",
+      text: intl.formatMessage({ id: "adjustment.reason.expiredDisposal" }),
+    },
+    {
+      id: "OTHER",
+      text: intl.formatMessage({ id: "adjustment.reason.other" }),
+    },
   ];
 
   const [formData, setFormData] = useState({
@@ -43,17 +61,17 @@ const LotAdjustmentModal = ({ open, onClose, onSave, lot }) => {
 
   const validate = () => {
     if (formData.newQuantity < 0) {
-      setError("Quantity cannot be negative");
+      setError(intl.formatMessage({ id: "adjustment.validation.quantity" }));
       return false;
     }
 
     if (!formData.reason) {
-      setError("Please select a reason for adjustment");
+      setError(intl.formatMessage({ id: "adjustment.validation.reason" }));
       return false;
     }
 
     if (formData.reason === "OTHER" && !formData.notes?.trim()) {
-      setError("Please provide notes when selecting 'Other' as reason");
+      setError(intl.formatMessage({ id: "adjustment.validation.notes" }));
       return false;
     }
 
@@ -82,7 +100,7 @@ const LotAdjustmentModal = ({ open, onClose, onSave, lot }) => {
       onSave();
     } catch (err) {
       console.error("Error adjusting lot:", err);
-      setError(err.message || "Error adjusting lot quantity");
+      setError(intl.formatMessage({ id: "adjustment.error" }));
     } finally {
       setSaving(false);
     }
@@ -130,7 +148,9 @@ const LotAdjustmentModal = ({ open, onClose, onSave, lot }) => {
           </FormLabel>
           <p>
             <strong>
-              {lot.currentQuantity} {lot.inventoryItem?.units || "units"}
+              {lot.currentQuantity}{" "}
+              {lot.inventoryItem?.units ||
+                intl.formatMessage({ id: "catalog.item.units" })}
             </strong>
           </p>
         </div>
@@ -147,7 +167,10 @@ const LotAdjustmentModal = ({ open, onClose, onSave, lot }) => {
           invalid={!!error}
           helperText={
             quantityDifference !== 0
-              ? `${quantityDifference > 0 ? "+" : ""}${quantityDifference} ${lot.inventoryItem?.units || "units"}`
+              ? `${quantityDifference > 0 ? "+" : ""}${quantityDifference} ${
+                  lot.inventoryItem?.units ||
+                  intl.formatMessage({ id: "catalog.item.units" })
+                }`
               : ""
           }
         />

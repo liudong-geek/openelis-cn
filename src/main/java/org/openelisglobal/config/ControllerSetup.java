@@ -20,6 +20,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -53,6 +54,13 @@ public class ControllerSetup extends ResponseEntityExceptionHandler {
                 HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
+    @ExceptionHandler(value = { AccessDeniedException.class })
+    protected ResponseEntity<Object> handleAccessDeniedException(AccessDeniedException ex, WebRequest request) {
+        LogEvent.logWarn(ex);
+        return new ResponseEntity<>(buildGenericErrorBody(HttpStatus.FORBIDDEN), new HttpHeaders(),
+                HttpStatus.FORBIDDEN);
+    }
+
     @ExceptionHandler(value = { LIMSRuntimeException.class })
     protected ResponseEntity<Object> handleLIMSRuntimeException(RuntimeException ex, WebRequest request) {
         LogEvent.logError(ex);
@@ -71,14 +79,14 @@ public class ControllerSetup extends ResponseEntityExceptionHandler {
     @Override
     protected ResponseEntity<Object> handleHttpMessageNotReadable(HttpMessageNotReadableException ex,
             HttpHeaders headers, HttpStatusCode status, WebRequest request) {
-        LogEvent.logError(ex);
+        LogEvent.logWarn(ex);
         return super.handleHttpMessageNotReadable(ex, headers, status, request);
     }
 
     @Override
     protected ResponseEntity<Object> handleMissingServletRequestParameter(MissingServletRequestParameterException ex,
             HttpHeaders headers, HttpStatusCode status, WebRequest request) {
-        LogEvent.logError(ex);
+        LogEvent.logWarn(ex);
         return super.handleMissingServletRequestParameter(ex, headers, status, request);
     }
 
@@ -115,7 +123,7 @@ public class ControllerSetup extends ResponseEntityExceptionHandler {
     @Override
     protected ResponseEntity<Object> handleHttpMediaTypeNotSupported(HttpMediaTypeNotSupportedException ex,
             HttpHeaders headers, HttpStatusCode status, WebRequest request) {
-        LogEvent.logError(ex);
+        LogEvent.logWarn(ex);
         return super.handleHttpMediaTypeNotSupported(ex, headers, status, request);
     }
 }

@@ -2,6 +2,7 @@ package org.openelisglobal.sampletyperequest.service;
 
 import java.util.List;
 import org.openelisglobal.common.service.BaseObjectService;
+import org.openelisglobal.sampleitem.valueholder.SampleItem;
 import org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest;
 
 public interface SampleTypeRequestService extends BaseObjectService<SampleTypeRequest, Integer> {
@@ -24,7 +25,15 @@ public interface SampleTypeRequestService extends BaseObjectService<SampleTypeRe
     /**
      * Mark a request as fulfilled by linking it to a collected sample_item.
      */
-    void fulfillRequest(Integer requestId, String sampleItemId);
+    SampleTypeRequest fulfillRequest(Integer requestId, String sampleItemId);
+
+    /**
+     * Link newly persisted specimen rows to pending requests of the same sample
+     * and specimen type.  Called inside the order save transaction.
+     *
+     * @return number of requests fulfilled by this call
+     */
+    int fulfillMatchingRequests(String sampleId, List<SampleItem> sampleItems);
 
     /**
      * Cancel a pending request.

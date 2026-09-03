@@ -1,5 +1,5 @@
 import React, { useContext, useState, useEffect, useRef } from "react";
-import { FormattedMessage, injectIntl, useIntl } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import "../Style.css";
 import { getFromOpenElisServer, postToOpenElisServer } from "../utils/Utils";
 import {
@@ -22,7 +22,6 @@ import {
   Loading,
   Toggle,
   Tag,
-  Link,
 } from "@carbon/react";
 import { Person, ArrowLeft, ArrowRight } from "@carbon/react/icons";
 import CustomLabNumberInput from "../common/CustomLabNumberInput";
@@ -42,7 +41,7 @@ import type {
   PatientSearchResponse,
 } from "./types";
 
-interface SearchPatientFormProps {
+export interface SearchPatientFormProps {
   getSelectedPatient?: (patient: PatientRecord) => void;
   setOrderFormValues?: React.Dispatch<
     React.SetStateAction<Record<string, unknown>>
@@ -50,17 +49,37 @@ interface SearchPatientFormProps {
   orderFormValues?: Record<string, unknown>;
   showPatientSearch?: boolean;
   patientSearchStatus?: boolean;
+  selectionMode?: "radio" | "button";
+  allowExternalSearch?: boolean;
+  allowExternalImport?: boolean;
+  disableMergedSelection?: boolean;
+  emptyPromptMessageId?: string;
+  emptyResultsMessageId?: string;
+  resultsTitleMessageId?: string;
+  compactSearch?: boolean;
+  selectionButtonMessageId?: string;
   [key: string]: unknown;
 }
 
 type ImportStatus = Record<string, boolean>;
 
-function SearchPatientForm(props: SearchPatientFormProps) {
+export function SearchPatientForm(props: SearchPatientFormProps) {
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
   const { configurationProperties } = useContext(ConfigurationContext);
 
   const intl = useIntl();
+  const {
+    selectionMode = "radio",
+    allowExternalSearch = true,
+    allowExternalImport = true,
+    disableMergedSelection = false,
+    emptyPromptMessageId = "patient.search.empty.prompt",
+    emptyResultsMessageId = "patient.search.empty.results",
+    resultsTitleMessageId = "patient.results",
+    compactSearch = false,
+    selectionButtonMessageId = "label.button.select",
+  } = props;
 
   const [dob, setDob] = useState("");
   const [patientSearchResults, setPatientSearchResults] = useState<
@@ -70,6 +89,7 @@ function SearchPatientForm(props: SearchPatientFormProps) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
   const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [nextPage, setNextPage] = useState<Nullable<string>>(null);
   const [isToggled, setIsToggled] = useState(false);
   const [previousPage, setPreviousPage] = useState<Nullable<string>>(null);
@@ -77,11 +97,34 @@ function SearchPatientForm(props: SearchPatientFormProps) {
   const [currentApiPage, setCurrentApiPage] = useState<Nullable<number>>(null);
   const [totalApiPages, setTotalApiPages] = useState<Nullable<number>>(null);
   const [url, setUrl] = useState("");
+  const [quickQuery, setQuickQuery] = useState("");
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false);
   const [searchFormValues, setSearchFormValues] = useState(
     SearchPatientFormValues,
   );
   const [prevfirstName, setPrevfirstName] = useState("");
   const [prevlastName, setPrevlastName] = useState("");
+
+  const getDataSourceLabel = (dataSource?: unknown) => {
+    const normalized = String(dataSource || "").toLowerCase();
+    if (normalized === "openelis" || normalized === "local") {
+      return intl.formatMessage({ id: "patient.dataSource.local" });
+    }
+    if (normalized.includes("client registry")) {
+      return intl.formatMessage({ id: "patient.dataSource.external" });
+    }
+    return String(dataSource || "");
+  };
+
+  const getGenderLabel = (gender?: unknown) => {
+    if (gender === "M") {
+      return intl.formatMessage({ id: "patient.male" });
+    }
+    if (gender === "F") {
+      return intl.formatMessage({ id: "patient.female" });
+    }
+    return String(gender || "—");
+  };
   // When a lab-number deep link drives the search, auto-select the matched
   // patient once results arrive (so the user lands on the patient page, not the
   // search results). Manual searches leave this false and just list results.
@@ -166,6 +209,7 @@ function SearchPatientForm(props: SearchPatientFormProps) {
   };
 
   const handleSubmit = (values: PatientSearchCriteria) => {
+    setHasSearched(true);
     setNextPage(null);
     setPreviousPage(null);
     setPagination(false);
@@ -204,6 +248,28 @@ function SearchPatientForm(props: SearchPatientFormProps) {
     setUrl(searchEndPoint);
   };
 
+  const handleQuickSearch = () => {
+    const normalizedQuery = quickQuery.trim();
+    if (!normalizedQuery) return;
+
+    setHasSearched(true);
+    setNextPage(null);
+    setPreviousPage(null);
+    setPagination(false);
+    setPage(1);
+    setPatientSearchResults([]);
+    setLoading(true);
+
+    const searchEndPoint =
+      "/rest/patient-search-results?" +
+      new URLSearchParams({
+        quickQuery: normalizedQuery,
+        suppressExternalSearch: "true",
+      }).toString();
+    getFromOpenElisServer(searchEndPoint, fetchPatientResults);
+    setUrl(searchEndPoint);
+  };
+
   const loadNextResultsPage = () => {
     setLoading(true);
     getFromOpenElisServer(url + "&page=" + nextPage, fetchPatientResults);
@@ -218,9 +284,10 @@ function SearchPatientForm(props: SearchPatientFormProps) {
     setIsToggled((prev) => !prev);
   };
 
-  const fetchPatientResults = (res: PatientSearchResponse) => {
+  const fetchPatientResults = (res: PatientSearchResponse | undefined) => {
     if (!res || !res.patientSearchResults) {
       setPatientSearchResults([]);
+      setLoading(false);
       return;
     }
     let patientsResults = res.patientSearchResults;
@@ -285,7 +352,7 @@ function SearchPatientForm(props: SearchPatientFormProps) {
         }
       },
     );
-    props.getSelectedPatient!(patientDetails);
+    props.getSelectedPatient?.(patientDetails);
   };
 
   const handleDatePickerChange = (date: string) => {
@@ -318,13 +385,20 @@ function SearchPatientForm(props: SearchPatientFormProps) {
     setPrevlastName(event.target.value);
   }
 
-  const patientSelected = (e: React.MouseEvent<HTMLElement>) => {
+  const selectPatientById = (patientId: string) => {
     const patientSelected = patientSearchResults.find((patient) => {
-      return patient.patientID == (e.target as HTMLElement).id;
+      return patient.patientID === patientId;
     });
+
+    if (!patientSelected) return;
+
     const searchEndPoint =
-      "/rest/patient-details?patientID=" + patientSelected!.patientID;
+      "/rest/patient-details?patientID=" + patientSelected.patientID;
     getFromOpenElisServer(searchEndPoint, fetchPatientDetails);
+  };
+
+  const patientSelected = (e: React.MouseEvent<HTMLElement>) => {
+    selectPatientById(e.currentTarget.id);
   };
 
   const handlePageChange = (pageInfo: { page: number; pageSize: number }) => {
@@ -374,424 +448,540 @@ function SearchPatientForm(props: SearchPatientFormProps) {
           handleSubmit,
         }) => (
           <Form
+            className="patient-search-form"
             onSubmit={handleSubmit}
             onChange={handleChange}
             onBlur={handleBlur}
           >
-            <Grid>
-              <Field name="guid">
-                {({ field }) => (
-                  <input type="hidden" name={field.name} id={field.name} />
-                )}
-              </Field>
-              <Column lg={16} md={8} sm={4}>
-                {" "}
-                <br />{" "}
-              </Column>
-              <Column lg={8} md={4} sm={4}>
-                <Field name="patientId">
-                  {({ field }) => (
-                    <TextInput
-                      name={field.name}
-                      value={values[field.name]}
-                      placeholder={intl.formatMessage({
-                        id: "input.placeholder.patientId",
-                      })}
-                      labelText={intl.formatMessage({
-                        id: "patient.id",
-                        defaultMessage: "Patient Id",
-                      })}
-                      id={field.name}
-                    />
-                  )}
-                </Field>
-              </Column>
-              <Column lg={8} md={4} sm={4}>
-                <Field name="labNumber">
-                  {({ field }) => (
-                    <CustomLabNumberInput
-                      name={field.name}
-                      placeholder={intl.formatMessage({
-                        id: "input.placeholder.prevLabNumber",
-                      })}
-                      labelText={intl.formatMessage({
-                        id: "patient.prev.lab.no",
-                        defaultMessage: "Previous Lab Number",
-                      })}
-                      id={field.name}
-                      value={values[field.name]}
-                      onChange={(e, rawValue) => {
-                        setFieldValue(field.name, rawValue);
-                      }}
-                    />
-                  )}
-                </Field>
-              </Column>
-              <Column lg={16} md={8} sm={4}>
-                {" "}
-                <br />{" "}
-              </Column>
-              <Column lg={8} md={4} sm={4}>
-                <Field name="lastName">
-                  {({ field }) => (
-                    <TextInput
-                      name={field.name}
-                      placeholder={intl.formatMessage({
-                        id: "input.placeholder.patientLastName",
-                      })}
-                      labelText={intl.formatMessage({
-                        id: "patient.last.name",
-                        defaultMessage: "Last Name",
-                      })}
-                      id={field.name}
-                      onChange={(e) => handleLastNameChange(e)}
-                    />
-                  )}
-                </Field>
-              </Column>
-              <Column lg={8} md={4} sm={4}>
-                <Field name="firstName">
-                  {({ field }) => (
-                    <TextInput
-                      name={field.name}
-                      placeholder={intl.formatMessage({
-                        id: "input.placeholder.patientFirstName",
-                      })}
-                      labelText={intl.formatMessage({
-                        id: "patient.first.name",
-                        defaultMessage: "First Name",
-                      })}
-                      id={field.name}
-                      onChange={(e) => handleFirstNameChange(e)}
-                    />
-                  )}
-                </Field>
-              </Column>
-              <Column lg={16} md={8} sm={4}>
-                {" "}
-                <br />{" "}
-              </Column>
-              <Column lg={8} md={4} sm={4}>
-                <Field name="dateOfBirth">
-                  {({ field }) => (
-                    <CustomDatePicker
-                      id={"date-picker-default-id"}
-                      labelText={intl.formatMessage({
-                        id: "patient.dob",
-                        defaultMessage: "Date of Birth",
-                      })}
-                      autofillDate={true}
-                      value={values.birthDateForDisplay || ""}
-                      onChange={(date) => handleDatePickerChange(date)}
-                      name={field.name}
-                      disallowFutureDate={true}
-                    />
-                  )}
-                </Field>
-              </Column>
-              <Column lg={8} md={4} sm={4}>
-                <Field name="gender">
-                  {({ field }) => (
-                    <RadioButtonGroup
-                      defaultSelected=""
-                      legendText={intl.formatMessage({
-                        id: "patient.gender",
-                        defaultMessage: "Gender",
-                      })}
-                      name={field.name}
-                      id="search_patient_gender"
+            {compactSearch && !showAdvancedSearch ? (
+              <div className="patient-compact-search">
+                <TextInput
+                  id="patientManagementQuickQuery"
+                  labelText={intl.formatMessage({
+                    id: "patient.quickSearch.label",
+                  })}
+                  placeholder={intl.formatMessage({
+                    id: "patient.quickSearch.placeholder",
+                  })}
+                  value={quickQuery}
+                  onChange={(event) => setQuickQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      handleQuickSearch();
+                    }
+                  }}
+                />
+                <div className="patient-compact-search__actions">
+                  <Button
+                    type="button"
+                    kind="primary"
+                    onClick={handleQuickSearch}
+                    disabled={loading || !quickQuery.trim()}
+                  >
+                    <FormattedMessage id="label.button.search" />
+                  </Button>
+                  <Button
+                    type="button"
+                    kind="ghost"
+                    onClick={() => setShowAdvancedSearch(true)}
+                  >
+                    <FormattedMessage id="advanced.search" />
+                  </Button>
+                </div>
+                <p className="patient-compact-search__helper">
+                  <FormattedMessage id="patient.management.quickSearch.helper" />
+                </p>
+              </div>
+            ) : (
+              <>
+                {compactSearch && (
+                  <div className="patient-advanced-search__header">
+                    <strong>
+                      <FormattedMessage id="advanced.search" />
+                    </strong>
+                    <Button
+                      type="button"
+                      kind="ghost"
+                      size="sm"
+                      onClick={() => setShowAdvancedSearch(false)}
                     >
-                      <RadioButton
-                        id="search-radio-1"
-                        labelText={intl.formatMessage({
-                          id: "patient.male",
-                          defaultMessage: "Male",
-                        })}
-                        value="M"
-                      />
-                      <RadioButton
-                        id="search-radio-2"
-                        labelText={intl.formatMessage({
-                          id: "patient.female",
-                          defaultMessage: "Female",
-                        })}
-                        value="F"
-                      />
-                    </RadioButtonGroup>
-                  )}
-                </Field>
-              </Column>
-              <Column lg={16} md={8} sm={4}>
-                {" "}
-                <br />{" "}
-              </Column>
-              <Column lg={4} md={4} sm={2}>
-                <Button
-                  id="local_search"
-                  kind="tertiary"
-                  type="submit"
-                  data-cy="searchPatientButton"
-                  onClick={() => setFieldValue("suppressExternalSearch", true)}
-                >
-                  <FormattedMessage id="label.button.search" />
-                </Button>
-              </Column>
-              <Column lg={4} md={4} sm={2}>
-                <Button
-                  id="external_search"
-                  type="submit"
-                  disabled={
-                    configurationProperties.UseExternalPatientInfo === "false"
-                  }
-                  kind="tertiary"
-                  onClick={() => setFieldValue("suppressExternalSearch", false)}
-                >
-                  <FormattedMessage
-                    id="label.button.externalsearch"
-                    defaultMessage="External Search"
-                  />
-                </Button>
-              </Column>
-              {configurationProperties.ENABLE_CLIENT_REGISTRY === "true" && (
-                <Column lg={4} md={4} sm={2}>
-                  <Toggle
-                    labelText="Client Registry Search"
-                    labelA="false"
-                    labelB="true"
-                    id="toggle-cr"
-                    toggled={isToggled}
-                    onClick={() => {
-                      toggle();
-                      setFieldValue("crSearch", !isToggled);
-                    }}
-                  />
-                </Column>
-              )}
-              <Column lg={16}>
-                {" "}
-                <br />
-                <br />
-              </Column>
-            </Grid>
+                      <FormattedMessage id="patient.search.advanced.hide" />
+                    </Button>
+                  </div>
+                )}
+                <Grid className="patient-search-grid">
+                  <Field name="guid">
+                    {({ field }) => (
+                      <input type="hidden" name={field.name} id={field.name} />
+                    )}
+                  </Field>
+                  <Column lg={8} md={4} sm={4}>
+                    <Field name="patientId">
+                      {({ field }) => (
+                        <TextInput
+                          name={field.name}
+                          value={values[field.name]}
+                          placeholder={intl.formatMessage({
+                            id: "input.placeholder.patientId",
+                          })}
+                          labelText={intl.formatMessage({
+                            id: "patient.id",
+                            defaultMessage: "Patient Id",
+                          })}
+                          id={field.name}
+                        />
+                      )}
+                    </Field>
+                  </Column>
+                  <Column lg={8} md={4} sm={4}>
+                    <Field name="labNumber">
+                      {({ field }) => (
+                        <CustomLabNumberInput
+                          name={field.name}
+                          placeholder={intl.formatMessage({
+                            id: "input.placeholder.prevLabNumber",
+                          })}
+                          labelText={intl.formatMessage({
+                            id: "patient.prev.lab.no",
+                            defaultMessage: "Previous Lab Number",
+                          })}
+                          id={field.name}
+                          value={values[field.name]}
+                          onChange={(e, rawValue) => {
+                            setFieldValue(field.name, rawValue);
+                          }}
+                        />
+                      )}
+                    </Field>
+                  </Column>
+                  <Column lg={8} md={4} sm={4}>
+                    <Field name="lastName">
+                      {({ field }) => (
+                        <TextInput
+                          name={field.name}
+                          placeholder={intl.formatMessage({
+                            id: "input.placeholder.patientLastName",
+                          })}
+                          labelText={intl.formatMessage({
+                            id: "patient.last.name",
+                            defaultMessage: "Last Name",
+                          })}
+                          id={field.name}
+                          onChange={(e) => handleLastNameChange(e)}
+                        />
+                      )}
+                    </Field>
+                  </Column>
+                  <Column lg={8} md={4} sm={4}>
+                    <Field name="firstName">
+                      {({ field }) => (
+                        <TextInput
+                          name={field.name}
+                          placeholder={intl.formatMessage({
+                            id: "input.placeholder.patientFirstName",
+                          })}
+                          labelText={intl.formatMessage({
+                            id: "patient.first.name",
+                            defaultMessage: "First Name",
+                          })}
+                          id={field.name}
+                          onChange={(e) => handleFirstNameChange(e)}
+                        />
+                      )}
+                    </Field>
+                  </Column>
+                  <Column lg={8} md={4} sm={4}>
+                    <Field name="dateOfBirth">
+                      {({ field }) => (
+                        <CustomDatePicker
+                          id={"date-picker-default-id"}
+                          labelText={intl.formatMessage({
+                            id: "patient.dob",
+                            defaultMessage: "Date of Birth",
+                          })}
+                          autofillDate={true}
+                          value={values.birthDateForDisplay || ""}
+                          onChange={(date) => handleDatePickerChange(date)}
+                          name={field.name}
+                          disallowFutureDate={true}
+                        />
+                      )}
+                    </Field>
+                  </Column>
+                  <Column lg={8} md={4} sm={4}>
+                    <Field name="gender">
+                      {({ field }) => (
+                        <RadioButtonGroup
+                          defaultSelected=""
+                          legendText={intl.formatMessage({
+                            id: "patient.gender",
+                            defaultMessage: "Gender",
+                          })}
+                          name={field.name}
+                          id="search_patient_gender"
+                        >
+                          <RadioButton
+                            id="search-radio-1"
+                            labelText={intl.formatMessage({
+                              id: "patient.male",
+                              defaultMessage: "Male",
+                            })}
+                            value="M"
+                          />
+                          <RadioButton
+                            id="search-radio-2"
+                            labelText={intl.formatMessage({
+                              id: "patient.female",
+                              defaultMessage: "Female",
+                            })}
+                            value="F"
+                          />
+                        </RadioButtonGroup>
+                      )}
+                    </Field>
+                  </Column>
+                  <Column lg={16} md={8} sm={4}>
+                    <div className="patient-search-actions">
+                      <Button
+                        id="local_search"
+                        kind="primary"
+                        type="submit"
+                        data-cy="searchPatientButton"
+                        onClick={() =>
+                          setFieldValue("suppressExternalSearch", true)
+                        }
+                      >
+                        <FormattedMessage id="label.button.search" />
+                      </Button>
+                      {allowExternalSearch && (
+                        <Button
+                          id="external_search"
+                          type="submit"
+                          disabled={
+                            configurationProperties.UseExternalPatientInfo ===
+                            "false"
+                          }
+                          kind="tertiary"
+                          onClick={() =>
+                            setFieldValue("suppressExternalSearch", false)
+                          }
+                        >
+                          <FormattedMessage
+                            id="label.button.externalsearch"
+                            defaultMessage="External Search"
+                          />
+                        </Button>
+                      )}
+                      {allowExternalSearch &&
+                        configurationProperties.ENABLE_CLIENT_REGISTRY ===
+                          "true" && (
+                          <Toggle
+                            labelText={intl.formatMessage({
+                              id: "patient.search.client.registry",
+                            })}
+                            labelA={intl.formatMessage({ id: "label.no" })}
+                            labelB={intl.formatMessage({ id: "label.yes" })}
+                            id="toggle-cr"
+                            toggled={isToggled}
+                            onClick={() => {
+                              toggle();
+                              setFieldValue("crSearch", !isToggled);
+                            }}
+                          />
+                        )}
+                    </div>
+                  </Column>
+                </Grid>
+              </>
+            )}
           </Form>
         )}
       </Formik>
-      {pagination && (
-        <Grid>
-          <Column lg={8}>
-            {" "}
-            <div></div>
-          </Column>
-          <Column lg={14} />
-          <Column
-            lg={2}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "10px",
-              width: "110%",
-            }}
-          >
-            <Link>
-              {currentApiPage} / {totalApiPages}
-            </Link>
-            <div style={{ display: "flex", gap: "10px" }}>
-              <Button
-                hasIconOnly
-                id="loadpreviousresults"
-                onClick={loadPreviousResultsPage}
-                disabled={previousPage != null ? false : true}
-                renderIcon={ArrowLeft}
-                iconDescription="previous"
-              ></Button>
-              <Button
-                hasIconOnly
-                id="loadnextresults"
-                onClick={loadNextResultsPage}
-                disabled={nextPage != null ? false : true}
-                renderIcon={ArrowRight}
-                iconDescription="next"
-              ></Button>
-            </div>
-          </Column>
-        </Grid>
-      )}
-      <DataTable
-        rows={patientSearchResults}
-        headers={patientSearchHeaderData}
-        isSortable
-      >
-        {({ rows, headers, getHeaderProps, getTableProps }) => (
-          <TableContainer title="Patient Results" data-cy="patientResultsTable">
-            <Table {...getTableProps()}>
-              <TableHead>
-                <TableRow>
-                  <TableHeader />
-                  {headers.map((header) => (
-                    <TableHeader
-                      key={header.key}
-                      {...getHeaderProps({ header })}
-                    >
-                      {header.header}
-                    </TableHeader>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {rows
-                  .slice((page - 1) * pageSize, page * pageSize)
-                  .map((row) => {
-                    const dataSourceName = row.cells.find(
-                      (cell) => cell.info.header === "dataSourceName",
-                    )?.value;
-                    const firstName =
-                      row.cells.find((cell) => cell.info.header === "firstName")
-                        ?.value || "";
-                    const lastName =
-                      row.cells.find((cell) => cell.info.header === "lastName")
-                        ?.value || "";
-                    const patientName =
-                      `${firstName} ${lastName}`.trim() || "Patient";
-                    const sourcePatient = patientSearchResults.find(
-                      (p) => p.patientID === row.id,
-                    );
-                    const isMerged = sourcePatient?.isMerged === true;
-                    const mergedIntoLabel =
-                      sourcePatient?.mergedIntoNationalId ||
-                      sourcePatient?.mergedIntoPatientId;
+      <div className="patient-search-results" aria-live="polite">
+        {patientSearchResults.length === 0 ? (
+          <div className="oe-empty-state">
+            <p>
+              <FormattedMessage
+                id={hasSearched ? emptyResultsMessageId : emptyPromptMessageId}
+              />
+            </p>
+          </div>
+        ) : (
+          <>
+            {pagination && (
+              <Grid className="patient-api-pagination">
+                <Column lg={16} md={8} sm={4}>
+                  <div className="patient-api-pagination__controls">
+                    <span className="patient-api-pagination__count">
+                      {currentApiPage} / {totalApiPages}
+                    </span>
+                    <Button
+                      hasIconOnly
+                      kind="ghost"
+                      id="loadpreviousresults"
+                      onClick={loadPreviousResultsPage}
+                      disabled={previousPage != null ? false : true}
+                      renderIcon={ArrowLeft}
+                      iconDescription={intl.formatMessage({
+                        id: "pagination.backward",
+                      })}
+                    ></Button>
+                    <Button
+                      hasIconOnly
+                      kind="ghost"
+                      id="loadnextresults"
+                      onClick={loadNextResultsPage}
+                      disabled={nextPage != null ? false : true}
+                      renderIcon={ArrowRight}
+                      iconDescription={intl.formatMessage({
+                        id: "pagination.forward",
+                      })}
+                    ></Button>
+                  </div>
+                </Column>
+              </Grid>
+            )}
+            <DataTable
+              rows={patientSearchResults}
+              headers={patientSearchHeaderData}
+              isSortable
+            >
+              {({ rows, headers, getHeaderProps, getTableProps }) => (
+                <TableContainer
+                  title={intl.formatMessage({ id: resultsTitleMessageId })}
+                  data-cy="patientResultsTable"
+                >
+                  <Table {...getTableProps()}>
+                    <TableHead>
+                      <TableRow>
+                        <TableHeader>
+                          {selectionMode === "button" ? (
+                            <FormattedMessage id="label.results.actions" />
+                          ) : null}
+                        </TableHeader>
+                        {headers.map((header) => (
+                          <TableHeader
+                            key={header.key}
+                            {...getHeaderProps({ header })}
+                          >
+                            {header.header}
+                          </TableHeader>
+                        ))}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {rows
+                        .slice((page - 1) * pageSize, page * pageSize)
+                        .map((row) => {
+                          const dataSourceName = row.cells.find(
+                            (cell) => cell.info.header === "dataSourceName",
+                          )?.value;
+                          const firstName =
+                            row.cells.find(
+                              (cell) => cell.info.header === "firstName",
+                            )?.value || "";
+                          const lastName =
+                            row.cells.find(
+                              (cell) => cell.info.header === "lastName",
+                            )?.value || "";
+                          const patientName =
+                            `${firstName} ${lastName}`.trim() ||
+                            intl.formatMessage({ id: "patient.label" });
+                          const sourcePatient = patientSearchResults.find(
+                            (p) => p.patientID === row.id,
+                          );
+                          const isMerged = sourcePatient?.isMerged === true;
+                          const mergedIntoLabel =
+                            sourcePatient?.mergedIntoNationalId ||
+                            sourcePatient?.mergedIntoPatientId;
 
-                    return (
-                      <TableRow
-                        key={row.id}
-                        data-cy={`patient-result-row-${row.id}`}
-                      >
-                        <TableCell>
-                          {dataSourceName === "OpenElis" ? (
-                            <div
-                              style={{ display: "flex", flexDirection: "row" }}
+                          return (
+                            <TableRow
+                              key={row.id}
+                              data-cy={`patient-result-row-${row.id}`}
                             >
-                              <RadioButton
-                                data-cy="radioButton"
-                                name="radio-group"
-                                onClick={patientSelected}
-                                labelText=""
-                                id={row.id}
-                              />
-                              <AsyncAvatar
-                                patientId={row.id}
-                                hasPhoto={true}
-                                patientName={patientName}
-                              />
-                              {isMerged && (
-                                <Tag
-                                  type="magenta"
-                                  size="sm"
-                                  title={
-                                    mergedIntoLabel
-                                      ? `Merged into ${mergedIntoLabel}`
-                                      : "Merged"
-                                  }
-                                  style={{ marginLeft: "0.5rem" }}
-                                >
-                                  <FormattedMessage
-                                    id="patient.search.merged.tag"
-                                    defaultMessage="Merged"
-                                  />
-                                </Tag>
-                              )}
-                            </div>
-                          ) : (
-                            <span></span>
-                          )}
-                        </TableCell>
-
-                        {row.cells.map((cell) => (
-                          <TableCell key={cell.id}>
-                            {cell.info.header === "dataSourceName" ? (
-                              <>
-                                <Tag
-                                  type={
-                                    cell.value === "OpenElis"
-                                      ? "red"
-                                      : cell.value === "Open Client Registry"
-                                        ? "green"
-                                        : "gray"
-                                  }
-                                >
-                                  {cell.value}
-                                </Tag>
-                                &nbsp;&nbsp; &nbsp;&nbsp; &nbsp;&nbsp;
-                                {dataSourceName === "Open Client Registry" ? (
-                                  <Button
-                                    id={row.id}
-                                    kind="tertiary"
-                                    onClick={() => handlePatientImport(row.id)}
-                                    size="md"
-                                    disabled={importStatus[row.id]}
+                              <TableCell>
+                                {dataSourceName === "OpenElis" ? (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      flexDirection: "row",
+                                    }}
                                   >
-                                    <Person size={16} />
-                                    {importStatus[row.id] ? (
-                                      <span>
-                                        &nbsp;&nbsp;Patient Imported
-                                        Successfully
-                                      </span>
+                                    {selectionMode === "button" ? (
+                                      <Button
+                                        kind="ghost"
+                                        size="sm"
+                                        id={row.id}
+                                        onClick={() =>
+                                          selectPatientById(row.id)
+                                        }
+                                        disabled={
+                                          disableMergedSelection && isMerged
+                                        }
+                                      >
+                                        <FormattedMessage
+                                          id={selectionButtonMessageId}
+                                        />
+                                      </Button>
                                     ) : (
-                                      <span>&nbsp;&nbsp;Import Patient</span>
+                                      <RadioButton
+                                        data-cy="radioButton"
+                                        name="radio-group"
+                                        onClick={patientSelected}
+                                        labelText={`${intl.formatMessage({
+                                          id: "label.button.select",
+                                        })} ${patientName}`}
+                                        hideLabel
+                                        id={row.id}
+                                      />
                                     )}
-                                  </Button>
+                                    <AsyncAvatar
+                                      patientId={row.id}
+                                      hasPhoto={true}
+                                      patientName={patientName}
+                                    />
+                                    {isMerged && (
+                                      <Tag
+                                        type="magenta"
+                                        size="sm"
+                                        title={
+                                          mergedIntoLabel
+                                            ? intl.formatMessage(
+                                                {
+                                                  id: "patient.search.merged.into",
+                                                },
+                                                { identifier: mergedIntoLabel },
+                                              )
+                                            : intl.formatMessage({
+                                                id: "patient.search.merged.tag",
+                                              })
+                                        }
+                                        style={{ marginLeft: "0.5rem" }}
+                                      >
+                                        <FormattedMessage
+                                          id="patient.search.merged.tag"
+                                          defaultMessage="Merged"
+                                        />
+                                      </Tag>
+                                    )}
+                                  </div>
                                 ) : (
                                   <span></span>
                                 )}
-                              </>
-                            ) : (
-                              cell.value
-                            )}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    );
-                  })}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                              </TableCell>
+
+                              {row.cells.map((cell) => (
+                                <TableCell key={cell.id}>
+                                  {cell.info.header === "dataSourceName" ? (
+                                    <>
+                                      <Tag
+                                        type={
+                                          cell.value === "OpenElis"
+                                            ? "red"
+                                            : cell.value ===
+                                                "Open Client Registry"
+                                              ? "green"
+                                              : "gray"
+                                        }
+                                      >
+                                        {getDataSourceLabel(cell.value)}
+                                      </Tag>
+                                      &nbsp;&nbsp; &nbsp;&nbsp; &nbsp;&nbsp;
+                                      {allowExternalImport &&
+                                      dataSourceName ===
+                                        "Open Client Registry" ? (
+                                        <Button
+                                          id={row.id}
+                                          kind="tertiary"
+                                          onClick={() =>
+                                            handlePatientImport(row.id)
+                                          }
+                                          size="md"
+                                          disabled={importStatus[row.id]}
+                                        >
+                                          <Person size={16} />
+                                          <span>
+                                            &nbsp;&nbsp;
+                                            <FormattedMessage
+                                              id={
+                                                importStatus[row.id]
+                                                  ? "patient.search.imported"
+                                                  : "patient.search.import"
+                                              }
+                                            />
+                                          </span>
+                                        </Button>
+                                      ) : (
+                                        <span></span>
+                                      )}
+                                    </>
+                                  ) : cell.info.header === "gender" ? (
+                                    getGenderLabel(cell.value)
+                                  ) : (
+                                    cell.value
+                                  )}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          );
+                        })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </DataTable>
+            <Pagination
+              onChange={handlePageChange}
+              page={page}
+              pageSize={pageSize}
+              pageSizes={[10, 20, 30, 50, 100]}
+              totalItems={patientSearchResults.length}
+              forwardText={intl.formatMessage({ id: "pagination.forward" })}
+              backwardText={intl.formatMessage({ id: "pagination.backward" })}
+              itemRangeText={(min, max, total) =>
+                intl.formatMessage(
+                  { id: "pagination.item-range" },
+                  { min: min, max: max, total: total },
+                )
+              }
+              itemsPerPageText={intl.formatMessage({
+                id: "pagination.items-per-page",
+              })}
+              itemText={(min, max) =>
+                intl.formatMessage(
+                  { id: "pagination.item" },
+                  { min: min, max: max },
+                )
+              }
+              pageNumberText={intl.formatMessage({
+                id: "pagination.page-number",
+              })}
+              pageRangeText={(_current, total) =>
+                intl.formatMessage(
+                  { id: "pagination.page-range" },
+                  { total: total },
+                )
+              }
+              pageSelectLabelText={(total) =>
+                intl.formatMessage(
+                  { id: "pagination.page-select" },
+                  { total },
+                )
+              }
+              pageText={(page, pagesUnknown) =>
+                intl.formatMessage(
+                  { id: "pagination.page" },
+                  { page: pagesUnknown ? "" : page },
+                )
+              }
+            />
+          </>
         )}
-      </DataTable>
-      <Pagination
-        onChange={handlePageChange}
-        page={page}
-        pageSize={pageSize}
-        pageSizes={[10, 20, 30, 50, 100]}
-        totalItems={patientSearchResults.length}
-        forwardText={intl.formatMessage({ id: "pagination.forward" })}
-        backwardText={intl.formatMessage({ id: "pagination.backward" })}
-        itemRangeText={(min, max, total) =>
-          intl.formatMessage(
-            { id: "pagination.item-range" },
-            { min: min, max: max, total: total },
-          )
-        }
-        itemsPerPageText={intl.formatMessage({
-          id: "pagination.items-per-page",
-        })}
-        itemText={(min, max) =>
-          intl.formatMessage({ id: "pagination.item" }, { min: min, max: max })
-        }
-        pageNumberText={intl.formatMessage({
-          id: "pagination.page-number",
-        })}
-        pageRangeText={(_current, total) =>
-          intl.formatMessage({ id: "pagination.page-range" }, { total: total })
-        }
-        pageText={(page, pagesUnknown) =>
-          intl.formatMessage(
-            { id: "pagination.page" },
-            { page: pagesUnknown ? "" : page },
-          )
-        }
-      />
+      </div>
     </>
   );
 }
 
-export default injectIntl(SearchPatientForm);
+export default SearchPatientForm;

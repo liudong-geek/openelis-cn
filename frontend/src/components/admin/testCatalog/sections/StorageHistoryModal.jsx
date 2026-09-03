@@ -146,7 +146,12 @@ const StorageHistoryModal = ({ open, onClose, testId }) => {
             onChange={(e) => setFilter(e.target.value)}
           />
           <TableContainer>
-            <Table size="sm" aria-label="storage-history">
+            <Table
+              size="sm"
+              aria-label={intl.formatMessage({
+                id: "label.testCatalog.storage.history.title",
+              })}
+            >
               <TableHead>
                 <TableRow>
                   <TableHeader>

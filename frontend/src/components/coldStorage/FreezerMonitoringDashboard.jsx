@@ -55,30 +55,62 @@ import { toDate, formatDuration } from "./shared/timeUtils";
 import { AlertDialog, NotificationKinds } from "../common/CustomNotification";
 import { NotificationContext } from "../layout/Layout";
 
-const COLUMNS = [
-  { key: "id", header: "Unit ID" },
-  { key: "status", header: "Status" },
-  { key: "unitName", header: "Unit Name" },
-  { key: "deviceType", header: "Device Type" },
-  { key: "location", header: "Location" },
-  { key: "currentTemp", header: "Current Temp" },
-  { key: "targetTemp", header: "Target Temp" },
-  { key: "protocol", header: "Protocol" },
-  { key: "lastReading", header: "Last Reading" },
+const getColumns = (intl) => [
+  { key: "id", header: intl.formatMessage({ id: "coldStorage.unit.id" }) },
+  {
+    key: "status",
+    header: intl.formatMessage({ id: "coldStorage.status" }),
+  },
+  {
+    key: "unitName",
+    header: intl.formatMessage({ id: "coldStorage.unit.name" }),
+  },
+  {
+    key: "deviceType",
+    header: intl.formatMessage({ id: "coldStorage.device.type" }),
+  },
+  {
+    key: "location",
+    header: intl.formatMessage({ id: "coldStorage.location" }),
+  },
+  {
+    key: "currentTemp",
+    header: intl.formatMessage({ id: "coldStorage.temperature.current" }),
+  },
+  {
+    key: "targetTemp",
+    header: intl.formatMessage({ id: "coldStorage.targetTemperature" }),
+  },
+  {
+    key: "protocol",
+    header: intl.formatMessage({ id: "coldStorage.device.protocol" }),
+  },
+  {
+    key: "lastReading",
+    header: intl.formatMessage({ id: "coldStorage.reading.last" }),
+  },
 ];
 
-function statusTag(status) {
+function statusTag(status, intl) {
   switch (status) {
     case "NORMAL":
-      return <Tag type="green">Normal</Tag>;
+      return (
+        <Tag type="green">
+          {intl.formatMessage({ id: "coldStorage.status.normal" })}
+        </Tag>
+      );
     case "WARNING":
       return (
         <Tag type="warm-gray" className="oe-coldStorage-tag--warning">
-          Warning
+          {intl.formatMessage({ id: "coldStorage.status.warning" })}
         </Tag>
       );
     case "CRITICAL":
-      return <Tag type="red">Critical</Tag>;
+      return (
+        <Tag type="red">
+          {intl.formatMessage({ id: "coldStorage.status.critical" })}
+        </Tag>
+      );
     default:
       return <Tag>{status}</Tag>;
   }
@@ -95,16 +127,41 @@ function temperatureColor(value, target) {
 }
 
 const breadcrumbs = [
-  { label: "home.label", link: "/", defaultMessage: "Home" },
+  { label: "home.label", link: "/" },
   {
     label: "coldstorage.label.dashboard",
     link: "/FreezerMonitoring",
-    defaultMessage: "Cold Storage Monitoring",
   },
 ];
 
-const STATUS_OPTIONS = ["All Status", "NORMAL", "WARNING", "CRITICAL"];
-const DEFAULT_DEVICE_TYPE = "Cold Storage Unit";
+const STATUS_OPTIONS = ["ALL", "NORMAL", "WARNING", "CRITICAL"];
+const ALL_DEVICE_TYPES = "__ALL_DEVICE_TYPES__";
+const DEFAULT_DEVICE_TYPE = "COLD_STORAGE_UNIT";
+
+const getStatusLabel = (status, intl) => {
+  const messageIds = {
+    ALL: "coldStorage.filter.allStatuses",
+    NORMAL: "coldStorage.status.normal",
+    WARNING: "coldStorage.status.warning",
+    CRITICAL: "coldStorage.status.critical",
+  };
+  return messageIds[status]
+    ? intl.formatMessage({ id: messageIds[status] })
+    : status;
+};
+
+const getDeviceTypeLabel = (deviceType, intl) => {
+  const messageIds = {
+    [ALL_DEVICE_TYPES]: "coldStorage.filter.allDeviceTypes",
+    COLD_STORAGE_UNIT: "coldStorage.device.type.coldStorageUnit",
+    Freezer: "coldStorage.device.type.freezer",
+    Refrigerator: "coldStorage.device.type.refrigerator",
+    "Ultra-low Freezer": "coldStorage.device.type.ultraLowFreezer",
+  };
+  return messageIds[deviceType]
+    ? intl.formatMessage({ id: messageIds[deviceType] })
+    : deviceType;
+};
 
 const toNumber = (value) => {
   if (value === null || value === undefined || value === "") {
@@ -119,21 +176,26 @@ const formatDateTime = (value) => {
   return date ? date.toLocaleString() : "—";
 };
 
-const normalizeUnit = (unit) => ({
+const normalizeUnit = (unit, intl) => ({
   id: unit.freezerId?.toString() ?? unit.freezerName ?? "UNKNOWN",
   status: unit.status ?? "NORMAL",
-  unitName: unit.freezerName ?? unit.freezerId ?? "Unnamed Freezer",
+  unitName:
+    unit.freezerName ??
+    unit.freezerId ??
+    intl.formatMessage({ id: "coldStorage.device.unnamed" }),
   deviceType: unit.deviceType ?? DEFAULT_DEVICE_TYPE,
-  location: unit.locationName ?? "Unknown location",
+  location:
+    unit.locationName ??
+    intl.formatMessage({ id: "coldStorage.location.unknown" }),
   currentTemp: toNumber(unit.temperatureCelsius),
   targetTemp: toNumber(
     unit.targetTemperatureCelsius ?? unit.temperatureCelsius,
   ),
-  protocol: unit.protocol ?? "Unknown",
+  protocol: unit.protocol ?? intl.formatMessage({ id: "not.specified" }),
   lastReading: unit.recordedAt,
 });
 
-const normalizeAlert = (alert) => {
+const normalizeAlert = (alert, intl) => {
   let contextData = {};
   try {
     contextData = alert.contextData ? JSON.parse(alert.contextData) : {};
@@ -153,8 +215,15 @@ const normalizeAlert = (alert) => {
     id: alert.id,
     severity: alert.severity ?? "WARNING",
     status: alert.status ?? "OPEN",
-    unitName: alert.freezer?.name ?? `Freezer ${alert.alertEntityId}`,
-    location: alert.freezer?.code ?? "Unknown location",
+    unitName:
+      alert.freezer?.name ??
+      intl.formatMessage(
+        { id: "coldStorage.device.fallbackName" },
+        { id: alert.alertEntityId },
+      ),
+    location:
+      alert.freezer?.code ??
+      intl.formatMessage({ id: "coldStorage.location.unknown" }),
     currentTemp,
     durationSeconds,
     startedAt: alert.startTime,
@@ -179,8 +248,8 @@ function FreezerMonitoringDashboard({ intl }) {
     },
     [addNotification, setNotificationVisible],
   );
-  const [statusFilter, setStatusFilter] = useState("All Status");
-  const [deviceFilter, setDeviceFilter] = useState("All Device Types");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [deviceFilter, setDeviceFilter] = useState(ALL_DEVICE_TYPES);
   const [searchTerm, setSearchTerm] = useState("");
   const [isMobile, setIsMobile] = useState(window.innerWidth < 720);
   const [storageUnits, setStorageUnits] = useState([]);
@@ -212,16 +281,16 @@ function FreezerMonitoringDashboard({ intl }) {
         storageUnits.map((unit) => unit.deviceType || DEFAULT_DEVICE_TYPE),
       ),
     );
-    return ["All Device Types", ...unique];
+    return [ALL_DEVICE_TYPES, ...unique];
   }, [storageUnits]);
 
   const filteredUnits = useMemo(() => {
     return storageUnits.filter((unit) => {
-      if (statusFilter !== "All Status" && unit.status !== statusFilter) {
+      if (statusFilter !== "ALL" && unit.status !== statusFilter) {
         return false;
       }
       if (
-        deviceFilter !== "All Device Types" &&
+        deviceFilter !== ALL_DEVICE_TYPES &&
         unit.deviceType !== deviceFilter
       ) {
         return false;
@@ -278,20 +347,21 @@ function FreezerMonitoringDashboard({ intl }) {
           alertsPayload?.items ||
           [];
 
-      setStorageUnits(unitsArray.map(normalizeUnit));
-      setActiveAlerts(alertsArray.map(normalizeAlert));
+      setStorageUnits(unitsArray.map((unit) => normalizeUnit(unit, intl)));
+      setActiveAlerts(alertsArray.map((alert) => normalizeAlert(alert, intl)));
       setLastUpdated(new Date().toISOString());
     } catch (error) {
       notify({
         kind: NotificationKinds.error,
-        title: "Unable to update cold storage data",
-        subtitle:
-          error.message || "Unable to load cold storage monitoring data.",
+        title: intl.formatMessage({ id: "coldStorage.error.dashboard.title" }),
+        subtitle: intl.formatMessage({
+          id: "coldStorage.error.dashboard.load",
+        }),
       });
     } finally {
       setDashboardLoading(false);
     }
-  }, [notify]);
+  }, [intl, notify]);
 
   useEffect(() => {
     loadDashboardData();
@@ -310,28 +380,42 @@ function FreezerMonitoringDashboard({ intl }) {
           await acknowledgeAlert(
             alertId,
             1,
-            "Acknowledged via Cold Storage dashboard",
+            intl.formatMessage({ id: "coldStorage.alert.audit.acknowledged" }),
           );
         } else {
-          await resolveAlert(alertId, 1, "Resolved via Cold Storage dashboard");
+          await resolveAlert(
+            alertId,
+            1,
+            intl.formatMessage({ id: "coldStorage.alert.audit.resolved" }),
+          );
         }
         await loadDashboardData();
         notify({
           kind: NotificationKinds.success,
-          title: "Success",
-          subtitle: `Alert ${action === "acknowledge" ? "acknowledged" : "resolved"} successfully`,
+          title: intl.formatMessage({ id: "notification.success" }),
+          subtitle: intl.formatMessage({
+            id:
+              action === "acknowledge"
+                ? "coldStorage.alert.acknowledgeSuccess"
+                : "coldStorage.alert.resolveSuccess",
+          }),
         });
       } catch (error) {
         notify({
           kind: NotificationKinds.error,
-          title: "Error",
-          subtitle: error.message || `Unable to ${action} alert ${alertId}`,
+          title: intl.formatMessage({ id: "notification.error" }),
+          subtitle: intl.formatMessage({
+            id:
+              action === "acknowledge"
+                ? "coldStorage.alert.acknowledgeFailed"
+                : "coldStorage.alert.resolveFailed",
+          }),
         });
       } finally {
         setActionInFlight(null);
       }
     },
-    [loadDashboardData, notify],
+    [intl, loadDashboardData, notify],
   );
 
   const handleAcknowledgeAlert = useCallback(
@@ -368,21 +452,35 @@ function FreezerMonitoringDashboard({ intl }) {
               <Heading>
                 {intl.formatMessage({
                   id: "coldstorage.label.dashboard",
-                  defaultMessage: "Cold Storage Monitoring",
                 })}
               </Heading>
             </Section>
             <p className="oe-coldStorage-pageSubtitle">
-              Real-time temperature monitoring & compliance
+              {intl.formatMessage({ id: "coldStorage.dashboard.subtitle" })}
             </p>
           </Section>
           <Section>
             <div className="oe-coldStorage-statusRow">
               <InlineNotification
-                title={`System Status: ${
-                  dashboardLoading ? "Refreshing" : "Online"
-                }`}
-                subtitle={`Last update: ${lastUpdateLabel}`}
+                statusIconDescription={intl.formatMessage({
+                  id: dashboardLoading
+                    ? "carbon.notification.info"
+                    : "carbon.notification.success",
+                })}
+                title={intl.formatMessage(
+                  { id: "coldStorage.dashboard.systemStatus" },
+                  {
+                    status: intl.formatMessage({
+                      id: dashboardLoading
+                        ? "coldStorage.dashboard.refreshing"
+                        : "coldStorage.dashboard.online",
+                    }),
+                  },
+                )}
+                subtitle={intl.formatMessage(
+                  { id: "coldStorage.dashboard.lastUpdate" },
+                  { time: lastUpdateLabel },
+                )}
                 kind={dashboardLoading ? "info" : "success"}
                 lowContrast
                 hideCloseButton
@@ -394,7 +492,11 @@ function FreezerMonitoringDashboard({ intl }) {
                 disabled={dashboardLoading}
                 onClick={loadDashboardData}
               >
-                {dashboardLoading ? "Refreshing..." : "Refresh"}
+                {intl.formatMessage({
+                  id: dashboardLoading
+                    ? "coldStorage.dashboard.refreshing"
+                    : "coldStorage.dashboard.refresh",
+                })}
               </Button>
             </div>
           </Section>
@@ -414,12 +516,31 @@ function FreezerMonitoringDashboard({ intl }) {
                   }
                 }}
               >
-                <TabList aria-label="Cold storage sections" contained>
-                  <Tab>Dashboard</Tab>
-                  <Tab>Corrective Actions</Tab>
-                  <Tab>Historical Trends</Tab>
-                  <Tab>Reports</Tab>
-                  <Tab>Settings</Tab>
+                <TabList
+                  aria-label={intl.formatMessage({
+                    id: "coldStorage.dashboard.tabs.ariaLabel",
+                  })}
+                  contained
+                >
+                  <Tab>
+                    {intl.formatMessage({ id: "coldStorage.tab.dashboard" })}
+                  </Tab>
+                  <Tab>
+                    {intl.formatMessage({
+                      id: "coldStorage.tab.correctiveActions",
+                    })}
+                  </Tab>
+                  <Tab>
+                    {intl.formatMessage({
+                      id: "coldStorage.tab.historicalTrends",
+                    })}
+                  </Tab>
+                  <Tab>
+                    {intl.formatMessage({ id: "coldStorage.tab.reports" })}
+                  </Tab>
+                  <Tab>
+                    {intl.formatMessage({ id: "coldStorage.tab.settings" })}
+                  </Tab>
                 </TabList>
                 <TabPanels>
                   <TabPanel>
@@ -427,9 +548,19 @@ function FreezerMonitoringDashboard({ intl }) {
                       {criticalUnits > 0 && (
                         <Column lg={16} md={8} sm={4}>
                           <InlineNotification
+                            statusIconDescription={intl.formatMessage({
+                              id: "carbon.notification.error",
+                            })}
                             kind="error"
-                            title="CRITICAL ALERT"
-                            subtitle={`${criticalUnits} storage unit(s) experiencing critical temperature excursions`}
+                            title={intl.formatMessage({
+                              id: "coldStorage.dashboard.criticalAlert",
+                            })}
+                            subtitle={intl.formatMessage(
+                              {
+                                id: "coldStorage.dashboard.criticalAlertCount",
+                              },
+                              { count: criticalUnits },
+                            )}
                             hideCloseButton
                             lowContrast={false}
                             size="sm"
@@ -442,7 +573,9 @@ function FreezerMonitoringDashboard({ intl }) {
                           <Column lg={4} md={4} sm={4}>
                             <div className="oe-coldStorage-kpiCard">
                               <p className="oe-coldStorage-kpiLabel">
-                                Total Storage Units
+                                {intl.formatMessage({
+                                  id: "coldStorage.dashboard.totalUnits",
+                                })}
                               </p>
                               <p className="oe-coldStorage-kpiValue">
                                 {totalUnits}
@@ -452,7 +585,9 @@ function FreezerMonitoringDashboard({ intl }) {
                           <Column lg={4} md={4} sm={4}>
                             <div className="oe-coldStorage-kpiCard">
                               <p className="oe-coldStorage-kpiLabel">
-                                Normal Status
+                                {intl.formatMessage({
+                                  id: "coldStorage.dashboard.normalUnits",
+                                })}
                               </p>
                               <p className="oe-coldStorage-kpiValue">
                                 {normalUnits}
@@ -462,7 +597,9 @@ function FreezerMonitoringDashboard({ intl }) {
                           <Column lg={4} md={4} sm={4}>
                             <div className="oe-coldStorage-kpiCard">
                               <p className="oe-coldStorage-kpiLabel">
-                                Warnings
+                                {intl.formatMessage({
+                                  id: "coldStorage.dashboard.warningUnits",
+                                })}
                               </p>
                               <p className="oe-coldStorage-kpiValue">
                                 {warningUnits}
@@ -472,7 +609,9 @@ function FreezerMonitoringDashboard({ intl }) {
                           <Column lg={4} md={4} sm={4}>
                             <div className="oe-coldStorage-kpiCard">
                               <p className="oe-coldStorage-kpiLabel">
-                                Critical Alerts
+                                {intl.formatMessage({
+                                  id: "coldStorage.dashboard.criticalUnits",
+                                })}
                               </p>
                               <p className="oe-coldStorage-kpiValue">
                                 {criticalUnits}
@@ -499,8 +638,15 @@ function FreezerMonitoringDashboard({ intl }) {
                         >
                           <Search
                             size="lg"
-                            labelText="Search by Unit ID or Name"
-                            placeholder="Search by Unit ID or Name"
+                            closeButtonLabelText={intl.formatMessage({
+                              id: "carbon.search.clear",
+                            })}
+                            labelText={intl.formatMessage({
+                              id: "coldStorage.dashboard.search",
+                            })}
+                            placeholder={intl.formatMessage({
+                              id: "coldStorage.dashboard.search",
+                            })}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             value={searchTerm}
                             style={{
@@ -520,20 +666,34 @@ function FreezerMonitoringDashboard({ intl }) {
                           >
                             <Dropdown
                               id="status-filter"
-                              label="All Status"
-                              titleText="Status"
+                              label={intl.formatMessage({
+                                id: "coldStorage.filter.allStatuses",
+                              })}
+                              titleText={intl.formatMessage({
+                                id: "coldStorage.status",
+                              })}
                               items={STATUS_OPTIONS}
                               selectedItem={statusFilter}
+                              itemToString={(item) =>
+                                item ? getStatusLabel(item, intl) : ""
+                              }
                               onChange={({ selectedItem }) =>
                                 setStatusFilter(selectedItem)
                               }
                             />
                             <Dropdown
                               id="device-filter"
-                              label="All Device Types"
-                              titleText="Device Type"
+                              label={intl.formatMessage({
+                                id: "coldStorage.filter.allDeviceTypes",
+                              })}
+                              titleText={intl.formatMessage({
+                                id: "coldStorage.device.type",
+                              })}
                               items={deviceOptions}
                               selectedItem={deviceFilter}
+                              itemToString={(item) =>
+                                item ? getDeviceTypeLabel(item, intl) : ""
+                              }
                               onChange={({ selectedItem }) =>
                                 setDeviceFilter(selectedItem)
                               }
@@ -547,7 +707,7 @@ function FreezerMonitoringDashboard({ intl }) {
                             ...row,
                             isExpanded: !!expandedRowIds[String(row.id || "")],
                           }))}
-                          headers={COLUMNS}
+                          headers={getColumns(intl)}
                           size="lg"
                           expandableRows
                         >
@@ -558,11 +718,19 @@ function FreezerMonitoringDashboard({ intl }) {
                             getTableProps,
                             getRowProps,
                           }) => (
-                            <TableContainer title="Storage Units">
+                            <TableContainer
+                              title={intl.formatMessage({
+                                id: "coldStorage.dashboard.storageUnits",
+                              })}
+                            >
                               <Table {...getTableProps()}>
                                 <TableHead>
                                   <TableRow>
-                                    <TableExpandHeader aria-label="expand row" />
+                                    <TableExpandHeader
+                                      aria-label={intl.formatMessage({
+                                        id: "coldStorage.table.expand",
+                                      })}
+                                    />
                                     {headers.map((header) => (
                                       <TableHeader
                                         key={header.key}
@@ -577,12 +745,16 @@ function FreezerMonitoringDashboard({ intl }) {
                                   {rows.length === 0 && (
                                     <TableRow>
                                       <TableCell
-                                        colSpan={COLUMNS.length + 2}
+                                        colSpan={getColumns(intl).length + 2}
                                         className="empty-state"
                                       >
                                         {dashboardLoading
-                                          ? "Loading storage units…"
-                                          : "No storage units found."}
+                                          ? intl.formatMessage({
+                                              id: "coldStorage.dashboard.loadingUnits",
+                                            })
+                                          : intl.formatMessage({
+                                              id: "coldStorage.dashboard.noUnits",
+                                            })}
                                       </TableCell>
                                     </TableRow>
                                   )}
@@ -597,8 +769,12 @@ function FreezerMonitoringDashboard({ intl }) {
                                           isExpanded={row.isExpanded}
                                           ariaLabel={
                                             row.isExpanded
-                                              ? "Collapse row"
-                                              : "Expand row"
+                                              ? intl.formatMessage({
+                                                  id: "coldStorage.table.collapse",
+                                                })
+                                              : intl.formatMessage({
+                                                  id: "coldStorage.table.expand",
+                                                })
                                           }
                                           {...getRowProps({
                                             row,
@@ -611,7 +787,19 @@ function FreezerMonitoringDashboard({ intl }) {
                                             if (cell.info.header === "status") {
                                               return (
                                                 <TableCell key={cell.id}>
-                                                  {statusTag(cell.value)}
+                                                  {statusTag(cell.value, intl)}
+                                                </TableCell>
+                                              );
+                                            }
+                                            if (
+                                              cell.info.header === "deviceType"
+                                            ) {
+                                              return (
+                                                <TableCell key={cell.id}>
+                                                  {getDeviceTypeLabel(
+                                                    cell.value,
+                                                    intl,
+                                                  )}
                                                 </TableCell>
                                               );
                                             }
@@ -683,9 +871,15 @@ function FreezerMonitoringDashboard({ intl }) {
 
                         {filteredUnits.length > 0 && (
                           <Pagination
-                            backwardText="Previous page"
-                            forwardText="Next page"
-                            itemsPerPageText="Items per page:"
+                            backwardText={intl.formatMessage({
+                              id: "pagination.previous",
+                            })}
+                            forwardText={intl.formatMessage({
+                              id: "pagination.next",
+                            })}
+                            itemsPerPageText={intl.formatMessage({
+                              id: "pagination.itemsPerPage",
+                            })}
                             page={currentPage}
                             pageSize={pageSize}
                             pageSizes={[5, 10, 20, 30, 50]}
@@ -701,7 +895,10 @@ function FreezerMonitoringDashboard({ intl }) {
                       <Column lg={16} md={8} sm={4}>
                         <Section style={{ marginTop: "2rem" }}>
                           <Heading style={{ marginBottom: "1rem" }}>
-                            Active Alerts ({activeAlerts.length})
+                            {intl.formatMessage(
+                              { id: "coldStorage.dashboard.activeAlerts" },
+                              { count: activeAlerts.length },
+                            )}
                           </Heading>
 
                           {activeAlerts.length > 0 ? (
@@ -717,7 +914,7 @@ function FreezerMonitoringDashboard({ intl }) {
                                           : "warm-gray"
                                       }
                                     >
-                                      {alert.severity}
+                                      {getStatusLabel(alert.severity, intl)}
                                     </Tag>
                                   ),
                                   device: alert.unitName,
@@ -733,12 +930,42 @@ function FreezerMonitoringDashboard({ intl }) {
                                   _alert: alert,
                                 }))}
                                 headers={[
-                                  { key: "severity", header: "Severity" },
-                                  { key: "device", header: "Device" },
-                                  { key: "location", header: "Location" },
-                                  { key: "temperature", header: "Temperature" },
-                                  { key: "duration", header: "Duration" },
-                                  { key: "startedAt", header: "Started" },
+                                  {
+                                    key: "severity",
+                                    header: intl.formatMessage({
+                                      id: "coldStorage.alert.severity",
+                                    }),
+                                  },
+                                  {
+                                    key: "device",
+                                    header: intl.formatMessage({
+                                      id: "coldStorage.device",
+                                    }),
+                                  },
+                                  {
+                                    key: "location",
+                                    header: intl.formatMessage({
+                                      id: "coldStorage.location",
+                                    }),
+                                  },
+                                  {
+                                    key: "temperature",
+                                    header: intl.formatMessage({
+                                      id: "coldStorage.temperature",
+                                    }),
+                                  },
+                                  {
+                                    key: "duration",
+                                    header: intl.formatMessage({
+                                      id: "coldStorage.alert.duration",
+                                    }),
+                                  },
+                                  {
+                                    key: "startedAt",
+                                    header: intl.formatMessage({
+                                      id: "coldStorage.alert.startedAt",
+                                    }),
+                                  },
                                 ]}
                                 size="sm"
                               >
@@ -769,7 +996,11 @@ function FreezerMonitoringDashboard({ intl }) {
                                               {header.header}
                                             </TableHeader>
                                           ))}
-                                          <TableHeader>Actions</TableHeader>
+                                          <TableHeader>
+                                            {intl.formatMessage({
+                                              id: "coldStorage.actions",
+                                            })}
+                                          </TableHeader>
                                         </TableRow>
                                       </TableHead>
                                       <TableBody>
@@ -803,7 +1034,11 @@ function FreezerMonitoringDashboard({ intl }) {
                                                     kind="ghost"
                                                     size="sm"
                                                     renderIcon={View}
-                                                    iconDescription="View alert details"
+                                                    iconDescription={intl.formatMessage(
+                                                      {
+                                                        id: "coldStorage.alert.viewDetails",
+                                                      },
+                                                    )}
                                                     hasIconOnly
                                                     onClick={(e) => {
                                                       e.stopPropagation();
@@ -827,7 +1062,9 @@ function FreezerMonitoringDashboard({ intl }) {
                                                         );
                                                       }}
                                                     >
-                                                      Acknowledge
+                                                      {intl.formatMessage({
+                                                        id: "coldStorage.alert.acknowledge",
+                                                      })}
                                                     </Button>
                                                   )}
                                                 </div>
@@ -842,9 +1079,15 @@ function FreezerMonitoringDashboard({ intl }) {
                               </DataTable>
 
                               <Pagination
-                                backwardText="Previous page"
-                                forwardText="Next page"
-                                itemsPerPageText="Items per page:"
+                                backwardText={intl.formatMessage({
+                                  id: "pagination.previous",
+                                })}
+                                forwardText={intl.formatMessage({
+                                  id: "pagination.next",
+                                })}
+                                itemsPerPageText={intl.formatMessage({
+                                  id: "pagination.itemsPerPage",
+                                })}
                                 page={alertsCurrentPage}
                                 pageSize={alertsPageSize}
                                 pageSizes={[5, 10, 20, 30, 50]}
@@ -859,7 +1102,11 @@ function FreezerMonitoringDashboard({ intl }) {
                             <Tile
                               style={{ padding: "1rem", textAlign: "center" }}
                             >
-                              <p style={{ margin: 0 }}>No active alerts</p>
+                              <p style={{ margin: 0 }}>
+                                {intl.formatMessage({
+                                  id: "coldStorage.dashboard.noActiveAlerts",
+                                })}
+                              </p>
                             </Tile>
                           )}
                         </Section>
@@ -868,9 +1115,9 @@ function FreezerMonitoringDashboard({ intl }) {
                     <Grid fullWidth>
                       <Column lg={16} md={8} sm={4}>
                         <p className="hist-footer">
-                          Cold Storage Monitoring v2.1.0 | Compliant with CAP,
-                          CLIA, FDA, and WHO guidelines | HIPAA Compliant Data
-                          Handling
+                          {intl.formatMessage({
+                            id: "coldStorage.dashboard.complianceNotice",
+                          })}
                         </p>
                       </Column>
                     </Grid>

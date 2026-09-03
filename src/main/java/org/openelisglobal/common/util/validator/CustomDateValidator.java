@@ -13,9 +13,9 @@
  */
 package org.openelisglobal.common.util.validator;
 
-import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.format.DateTimeParseException;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
@@ -23,8 +23,7 @@ import java.util.Locale;
 import org.apache.commons.validator.routines.DateValidator;
 import org.openelisglobal.common.action.IActionConstants;
 import org.openelisglobal.common.log.LogEvent;
-import org.openelisglobal.common.util.ConfigurationProperties;
-import org.openelisglobal.common.util.ConfigurationProperties.Property;
+import org.openelisglobal.common.util.DateUtil;
 
 public class CustomDateValidator extends DateValidator {
 
@@ -94,16 +93,9 @@ public class CustomDateValidator extends DateValidator {
             return false;
         }
 
-        DateFormat formatter = null;
-        if (locale != null) {
-            formatter = DateFormat.getDateInstance(DateFormat.SHORT, locale);
-        } else {
-            formatter = DateFormat.getDateInstance(DateFormat.SHORT, Locale.getDefault());
-        }
-        formatter.setLenient(false);
         try {
-            formatter.parse(value);
-        } catch (ParseException e) {
+            DateUtil.parseLocalDate(value, locale == null ? Locale.getDefault() : locale);
+        } catch (DateTimeParseException e) {
             // bugzilla 2154
             LogEvent.logError(e);
             return false;
@@ -112,9 +104,12 @@ public class CustomDateValidator extends DateValidator {
     }
 
     public Date getDate(String date) {
-        Locale locale = Locale
-                .forLanguageTag(ConfigurationProperties.getInstance().getPropertyValue(Property.DEFAULT_DATE_LOCALE));
-        return validate(date, locale);
+        try {
+            return DateUtil.parseDate(date);
+        } catch (DateTimeParseException e) {
+            LogEvent.logError(e);
+            return null;
+        }
     }
 
     public String validateDate(Date date, DateRelation relative) {

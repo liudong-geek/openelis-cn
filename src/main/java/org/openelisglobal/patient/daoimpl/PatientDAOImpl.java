@@ -145,6 +145,35 @@ public class PatientDAOImpl extends BaseDAOImpl<Patient, String> implements Pati
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<Patient> getPatientManagementPage(int offset, int pageSize) throws LIMSRuntimeException {
+        try {
+            String hql = "select p from Patient p join fetch p.person person "
+                    + "where not (person.firstName = :placeholder and person.lastName = :placeholder) "
+                    + "order by p.id desc";
+            return entityManager.unwrap(Session.class).createQuery(hql, Patient.class)
+                    .setParameter("placeholder", "NULL").setFirstResult(offset).setMaxResults(pageSize).list();
+        } catch (RuntimeException e) {
+            LogEvent.logError(e);
+            throw new LIMSRuntimeException("Error loading patient management list", e);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public int getPatientManagementCount() throws LIMSRuntimeException {
+        try {
+            String hql = "select count(p.id) from Patient p join p.person person "
+                    + "where not (person.firstName = :placeholder and person.lastName = :placeholder)";
+            return entityManager.unwrap(Session.class).createQuery(hql, Long.class)
+                    .setParameter("placeholder", "NULL").getSingleResult().intValue();
+        } catch (RuntimeException e) {
+            LogEvent.logError(e);
+            throw new LIMSRuntimeException("Error counting patient management list", e);
+        }
+    }
+
+    @Override
     public Patient readPatient(String idString) {
         Patient pat = null;
         try {

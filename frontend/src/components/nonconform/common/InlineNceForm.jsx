@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useContext } from "react";
-import { format } from "date-fns";
 import {
   Button,
   DatePicker,
@@ -18,10 +17,15 @@ import {
   postToOpenElisServerJsonResponse,
   postToOpenElisServerFormData,
 } from "../../utils/Utils";
-import { NotificationContext } from "../../layout/Layout";
+import { ConfigurationContext, NotificationContext } from "../../layout/Layout";
 import { NotificationKinds } from "../../common/CustomNotification";
 import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
 import NceFileAttachment from "./NceFileAttachment";
+import {
+  formatDateForLocale,
+  getCarbonDateFormat,
+  getDatePickerPlaceholderMessage,
+} from "../../common/dateLocaleUtils";
 import "./InlineNceForm.css";
 
 /**
@@ -39,6 +43,13 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
   const { addNotification, setNotificationVisible } =
     useContext(NotificationContext);
   const { userSessionDetails } = useContext(UserSessionDetailsContext);
+  const { configurationProperties = {} } =
+    useContext(ConfigurationContext) || {};
+  const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "zh-CN";
+  const currentDate = () => formatDateForLocale(new Date(), dateLocale);
+  const datePickerPlaceholder = intl.formatMessage(
+    getDatePickerPlaceholderMessage(dateLocale),
+  );
 
   const [categories, setCategories] = useState([]);
   const [types, setTypes] = useState([]);
@@ -49,7 +60,7 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
   const [nceForm, setNceForm] = useState({
     nceNumber: "",
     reporterName: "",
-    dateOfEvent: format(new Date(), "MM/dd/yyyy"),
+    dateOfEvent: currentDate(),
     reportingUnit: "",
     title: "",
     description: "",
@@ -64,7 +75,7 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
 
   // Build context string from result row
   const contextString = resultRow
-    ? `${intl.formatMessage({ id: "column.name.labNo", defaultMessage: "Lab #" })}: ${resultRow.accessionNumber || ""} - ${intl.formatMessage({ id: "column.name.testName", defaultMessage: "Test" })}: ${resultRow.testName || ""}, ${intl.formatMessage({ id: "column.name.result", defaultMessage: "Result" })}: ${resultRow.resultValue || ""}, ${intl.formatMessage({ id: "patient.label", defaultMessage: "Patient" })}: ${resultRow.patientName || ""}`
+    ? `${intl.formatMessage({ id: "column.name.labNo" })}: ${resultRow.accessionNumber || ""} - ${intl.formatMessage({ id: "column.name.testName" })}: ${resultRow.testName || ""}, ${intl.formatMessage({ id: "column.name.result" })}: ${resultRow.resultValue || ""}, ${intl.formatMessage({ id: "patient.label" })}: ${resultRow.patientName || ""}`
     : "";
 
   // Set reporter name from session
@@ -123,7 +134,6 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
           ...prev,
           nceNumber: intl.formatMessage({
             id: "nce.error.numberGeneration",
-            defaultMessage: "Failed to generate NCE number. Please try again.",
           }),
         }));
       }
@@ -166,38 +176,32 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
     const newErrors = {};
     if (!nceForm.nceNumber) {
       newErrors.nceNumber = intl.formatMessage({
-        id: "nce.error.numberGeneration",
-        defaultMessage: "NCE number is required. Please retry.",
+        id: "nce.error.numberRequired",
       });
     }
     if (!nceForm.dateOfEvent) {
       newErrors.dateOfEvent = intl.formatMessage({
         id: "nce.error.dateOfEvent.required",
-        defaultMessage: "Date of event is required",
       });
     }
     if (!nceForm.reportingUnit) {
       newErrors.reportingUnit = intl.formatMessage({
         id: "nce.error.reportingUnit.required",
-        defaultMessage: "Reporting unit is required",
       });
     }
     if (!nceForm.description) {
       newErrors.description = intl.formatMessage({
         id: "nce.error.description.required",
-        defaultMessage: "Description is required",
       });
     }
     if (!nceForm.severity) {
       newErrors.severity = intl.formatMessage({
         id: "nce.error.severity.required",
-        defaultMessage: "Severity is required",
       });
     }
     if (!nceForm.categoryId) {
       newErrors.categoryId = intl.formatMessage({
         id: "nce.error.category.required",
-        defaultMessage: "Category is required",
       });
     }
 
@@ -237,7 +241,6 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
         title: intl.formatMessage({ id: "notification.title" }),
         message: intl.formatMessage({
           id: "nonconform.order.save.success",
-          defaultMessage: "NCE reported successfully",
         }),
       });
       setNotificationVisible(true);
@@ -252,7 +255,6 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
         title: intl.formatMessage({ id: "notification.title" }),
         message: intl.formatMessage({
           id: "nonconform.order.save.fail",
-          defaultMessage: "Failed to report NCE",
         }),
       });
       setNotificationVisible(true);
@@ -296,20 +298,14 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
       <div className="inline-nce-header">
         <Warning size={20} />
         <h4>
-          <FormattedMessage
-            id="nce.inline.title"
-            defaultMessage="Report Non-Conformity Event"
-          />
+          <FormattedMessage id="nce.inline.title" />
         </h4>
       </div>
 
       {/* Auto-populated context */}
       <Tile className="inline-nce-context">
         <Tag type="green">
-          <FormattedMessage
-            id="nce.inline.context"
-            defaultMessage="CONTEXT (Auto-populated)"
-          />
+          <FormattedMessage id="nce.inline.context" />
         </Tag>
         <p className="inline-nce-context-text">{contextString}</p>
       </Tile>
@@ -320,7 +316,6 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
           id="inline-nce-number"
           labelText={intl.formatMessage({
             id: "nce.field.nceNumber",
-            defaultMessage: "NCE Number",
           })}
           value={nceForm.nceNumber}
           readOnly
@@ -329,7 +324,6 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
           id="inline-nce-reporter"
           labelText={intl.formatMessage({
             id: "nce.field.reporterName",
-            defaultMessage: "Reporter Name",
           })}
           value={nceForm.reporterName}
           onChange={(e) => handleFormChange("reporterName", e.target.value)}
@@ -337,23 +331,25 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
         <DatePicker
           id="inline-nce-date-picker"
           datePickerType="single"
-          dateFormat="m/d/Y"
+          dateFormat={getCarbonDateFormat(dateLocale)}
           value={nceForm.dateOfEvent}
-          maxDate={format(new Date(), "MM/dd/yyyy")}
+          maxDate={currentDate()}
           onChange={(dates) => {
             if (dates && dates[0]) {
-              const formatted = format(new Date(dates[0]), "MM/dd/yyyy");
+              const formatted = formatDateForLocale(
+                new Date(dates[0]),
+                dateLocale,
+              );
               handleFormChange("dateOfEvent", formatted);
             }
           }}
         >
           <DatePickerInput
             id="inline-nce-date"
-            placeholder="mm/dd/yyyy"
+            placeholder={datePickerPlaceholder}
             labelText={
               intl.formatMessage({
                 id: "nce.field.dateOfEvent",
-                defaultMessage: "Date of Event",
               }) + " *"
             }
             invalid={!!errors.dateOfEvent}
@@ -365,7 +361,6 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
           labelText={
             intl.formatMessage({
               id: "nce.field.reportingUnit",
-              defaultMessage: "Reporting Unit",
             }) + " *"
           }
           value={nceForm.reportingUnit}
@@ -387,7 +382,6 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
           labelText={
             intl.formatMessage({
               id: "nce.field.category",
-              defaultMessage: "Category",
             }) + " *"
           }
           value={nceForm.categoryId}
@@ -402,7 +396,6 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
             value=""
             text={intl.formatMessage({
               id: "nce.select.category",
-              defaultMessage: "Select category...",
             })}
           />
           {categories.map((cat) => (
@@ -413,7 +406,6 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
           id="inline-nce-type"
           labelText={intl.formatMessage({
             id: "nce.field.type",
-            defaultMessage: "Subcategory",
           })}
           value={nceForm.typeId}
           onChange={(e) => handleFormChange("typeId", e.target.value)}
@@ -423,7 +415,6 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
             value=""
             text={intl.formatMessage({
               id: "nce.select.type",
-              defaultMessage: "Select...",
             })}
           />
           {types.map((type) => (
@@ -435,8 +426,7 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
       {/* Severity */}
       <div className="inline-nce-section">
         <label className="inline-nce-label">
-          <FormattedMessage id="nce.field.severity" defaultMessage="Severity" />{" "}
-          *
+          <FormattedMessage id="nce.field.severity" /> *
         </label>
         {errors.severity && (
           <span className="inline-nce-error">{errors.severity}</span>
@@ -449,16 +439,10 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
             <div className="inline-nce-severity-indicator critical"></div>
             <div className="inline-nce-severity-content">
               <span className="inline-nce-severity-label">
-                <FormattedMessage
-                  id="nce.severity.critical"
-                  defaultMessage="Critical"
-                />
+                <FormattedMessage id="nce.severity.critical" />
               </span>
               <span className="inline-nce-severity-desc">
-                <FormattedMessage
-                  id="nce.severity.critical.description"
-                  defaultMessage="Patient safety risk"
-                />
+                <FormattedMessage id="nce.severity.critical.description" />
               </span>
             </div>
           </div>
@@ -470,16 +454,10 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
             <div className="inline-nce-severity-indicator major"></div>
             <div className="inline-nce-severity-content">
               <span className="inline-nce-severity-label">
-                <FormattedMessage
-                  id="nce.severity.major"
-                  defaultMessage="Major"
-                />
+                <FormattedMessage id="nce.severity.major" />
               </span>
               <span className="inline-nce-severity-desc">
-                <FormattedMessage
-                  id="nce.severity.major.description"
-                  defaultMessage="Significant impact"
-                />
+                <FormattedMessage id="nce.severity.major.description" />
               </span>
             </div>
           </div>
@@ -491,16 +469,10 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
             <div className="inline-nce-severity-indicator minor"></div>
             <div className="inline-nce-severity-content">
               <span className="inline-nce-severity-label">
-                <FormattedMessage
-                  id="nce.severity.minor"
-                  defaultMessage="Minor"
-                />
+                <FormattedMessage id="nce.severity.minor" />
               </span>
               <span className="inline-nce-severity-desc">
-                <FormattedMessage
-                  id="nce.severity.minor.description"
-                  defaultMessage="Limited impact"
-                />
+                <FormattedMessage id="nce.severity.minor.description" />
               </span>
             </div>
           </div>
@@ -512,11 +484,9 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
         id="inline-nce-title"
         labelText={intl.formatMessage({
           id: "nce.field.title",
-          defaultMessage: "Title",
         })}
         placeholder={intl.formatMessage({
           id: "nce.field.title.placeholder",
-          defaultMessage: "Brief description of the event...",
         })}
         value={nceForm.title}
         onChange={(e) => handleFormChange("title", e.target.value)}
@@ -528,13 +498,10 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
         labelText={
           intl.formatMessage({
             id: "nce.field.description",
-            defaultMessage: "Description",
           }) + " *"
         }
         placeholder={intl.formatMessage({
           id: "nce.field.description.placeholder",
-          defaultMessage:
-            "Describe what happened, when it was detected, and any relevant context...",
         })}
         value={nceForm.description}
         onChange={(e) => handleFormChange("description", e.target.value)}
@@ -548,11 +515,9 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
         id="inline-nce-immediate-action"
         labelText={intl.formatMessage({
           id: "nce.field.immediateAction",
-          defaultMessage: "Immediate Action Taken",
         })}
         placeholder={intl.formatMessage({
           id: "nce.field.immediateAction.placeholder",
-          defaultMessage: "What corrective steps were taken immediately...",
         })}
         value={nceForm.immediateAction}
         onChange={(e) => handleFormChange("immediateAction", e.target.value)}
@@ -565,11 +530,9 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
           id="inline-nce-suspected-causes"
           labelText={intl.formatMessage({
             id: "nce.field.suspectedCauses",
-            defaultMessage: "Suspected Causes",
           })}
           placeholder={intl.formatMessage({
             id: "nce.field.suspectedCauses.placeholder",
-            defaultMessage: "Reporter's initial hypotheses on cause...",
           })}
           value={nceForm.suspectedCauses}
           onChange={(e) => handleFormChange("suspectedCauses", e.target.value)}
@@ -579,11 +542,9 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
           id="inline-nce-proposed-action"
           labelText={intl.formatMessage({
             id: "nce.field.proposedAction",
-            defaultMessage: "Proposed Action",
           })}
           placeholder={intl.formatMessage({
             id: "nce.field.proposedAction.placeholder",
-            defaultMessage: "Recommended next steps...",
           })}
           value={nceForm.proposedAction}
           onChange={(e) => handleFormChange("proposedAction", e.target.value)}
@@ -594,10 +555,7 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
       {/* Section 4: Attachments */}
       <div className="inline-nce-section">
         <label className="inline-nce-label">
-          <FormattedMessage
-            id="nce.section.attachments"
-            defaultMessage="Attachments"
-          />
+          <FormattedMessage id="nce.section.attachments" />
         </label>
         <NceFileAttachment
           attachments={nceForm.attachments || []}
@@ -611,17 +569,13 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
       {resultRow && (
         <div className="inline-nce-linked">
           <label className="inline-nce-label">
-            <FormattedMessage
-              id="nce.field.linkedItems"
-              defaultMessage="Linked Items"
-            />
+            <FormattedMessage id="nce.field.linkedItems" />
           </label>
           <div className="inline-nce-linked-item">
             <CheckmarkFilled size={16} />
             <span>
               {intl.formatMessage({
                 id: "sample.label",
-                defaultMessage: "Sample",
               })}
               : {resultRow.accessionNumber}
               {resultRow.sequenceNumber ? `-${resultRow.sequenceNumber}` : ""}
@@ -632,7 +586,6 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
             <span>
               {intl.formatMessage({
                 id: "column.name.result",
-                defaultMessage: "Result",
               })}
               : {resultRow.testName} — {resultRow.resultValue || ""}
             </span>
@@ -643,7 +596,7 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
       {/* Buttons */}
       <div className="inline-nce-buttons">
         <Button kind="ghost" size="sm" onClick={onClose} disabled={submitting}>
-          <FormattedMessage id="label.button.cancel" defaultMessage="Cancel" />
+          <FormattedMessage id="label.button.cancel" />
         </Button>
         <Button
           kind="danger"
@@ -652,15 +605,9 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
           disabled={submitting}
         >
           {submitting ? (
-            <FormattedMessage
-              id="nce.creating"
-              defaultMessage="Creating NCE..."
-            />
+            <FormattedMessage id="nce.creating" />
           ) : (
-            <FormattedMessage
-              id="nce.button.createNce"
-              defaultMessage="Submit NCE"
-            />
+            <FormattedMessage id="nce.button.createNce" />
           )}
         </Button>
       </div>

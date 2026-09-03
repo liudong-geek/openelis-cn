@@ -566,6 +566,8 @@ public class TestCatalogEditorRestController {
     /** OGC-748 Basic Info — identity + domain + AMR flag + status. */
     public static class BasicInfo {
         public String testId;
+        @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+        public String testGuid;
         public String name;
         public String code;
         public String description;
@@ -722,6 +724,7 @@ public class TestCatalogEditorRestController {
         info.testId = test.getId();
         info.name = test.getName();
         info.code = test.getLocalCode();
+        info.testGuid = test.getGuid();
         info.description = test.getDescription();
         info.domain = test.getDomain();
         info.labUnitId = test.getTestSection() == null ? null : test.getTestSection().getId();

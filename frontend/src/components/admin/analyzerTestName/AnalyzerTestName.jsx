@@ -34,6 +34,7 @@ import {
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import ActionPaginationButtonType from "../../common/ActionPaginationButtonType";
+import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 
 let breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -203,7 +204,7 @@ function AnalyzerTestName() {
       JSON.stringify(selectedIds),
       setLoading(false),
       setTimeout(() => {
-        window.location.reload();
+        refreshCurrentRoute();
       }, 1000),
     );
   }
@@ -336,7 +337,7 @@ function AnalyzerTestName() {
 
     closeAddModal();
     setTimeout(() => {
-      window.location.reload();
+      refreshCurrentRoute();
     }, 1000);
   };
 
@@ -369,7 +370,7 @@ function AnalyzerTestName() {
 
     closeUpdateModal();
     setTimeout(() => {
-      window.location.reload();
+      refreshCurrentRoute();
     }, 1000);
   };
 
@@ -381,7 +382,7 @@ function AnalyzerTestName() {
           id={cell.id}
           checked={selectedRowIds.includes(row.id)}
           name="selectRowCheckbox"
-          ariaLabel="selectRows"
+          ariaLabel="选择该行"
           onSelect={() => {
             setDeactivateButton(false);
             if (selectedRowIds.includes(row.id)) {

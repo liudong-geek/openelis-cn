@@ -63,6 +63,10 @@ const mockConfigurationContext = {
     BANNER_TEXT: "Test LIMS",
     releaseNumber: "3.2.1",
   },
+  enabledLanguages: {
+    en: { label: "English", messages },
+    zh: { label: "简体中文", messages },
+  },
   reloadConfiguration: vi.fn(),
 };
 
@@ -287,6 +291,7 @@ const renderHeader = (options = {}) => {
     menuData = MOCK_MENU_DATA,
     navContext = "main",
     sessionDetails = mockUserSessionDetails,
+    configurationContext = mockConfigurationContext,
     logout = vi.fn(),
     showSideNav = true,
   } = options;
@@ -310,7 +315,7 @@ const renderHeader = (options = {}) => {
         <UserSessionDetailsContext.Provider
           value={{ userSessionDetails: sessionDetails, logout }}
         >
-          <ConfigurationContext.Provider value={mockConfigurationContext}>
+          <ConfigurationContext.Provider value={configurationContext}>
             <NotificationContext.Provider value={mockNotificationContext}>
               <OEHeader
                 onChangeLanguage={vi.fn()}
@@ -369,8 +374,20 @@ describe("Header Component - M2b Enhancement Tests", () => {
 
       const sideNav = container.querySelector(".cds--side-nav");
       expect(sideNav).toHaveClass("cds--side-nav--expanded");
+      expect(sideNav).toHaveClass("oe-app-sidenav--persistent");
       expect(sideNav).not.toHaveClass("cds--side-nav--hidden");
       expect(container.querySelector('[data-cy="menuButton"]')).toBeNull();
+    });
+
+    test("desktop keeps a visible loading state while the menu endpoint warms up", async () => {
+      const { container } = renderHeader({ menuData: [] });
+
+      expect(
+        await screen.findByText(messages["sidenav.menu.loading"]),
+      ).toBeInTheDocument();
+      expect(container.querySelector(".cds--side-nav")).toHaveClass(
+        "oe-app-sidenav--persistent",
+      );
     });
 
     test("small viewport renders hamburger; nav is a closed overlay drawer", async () => {
@@ -645,6 +662,239 @@ describe("Header Component - M2b Enhancement Tests", () => {
   });
 
   describe("Menu Initialization", () => {
+    test("keeps the request worklist as the single primary order entry", async () => {
+      const orderMenuData = [
+        MOCK_MENU_DATA[0],
+        {
+          menu: {
+            elementId: "menu_sample",
+            displayKey: "banner.menu.sample",
+            actionURL: "",
+            isActive: true,
+          },
+          childMenus: [
+            {
+              menu: {
+                elementId: "menu_order_workflow",
+                displayKey: "sidenav.label.order.workflow",
+                actionURL: "",
+                isActive: true,
+              },
+              childMenus: [
+                {
+                  menu: {
+                    elementId: "menu_order_dashboard",
+                    displayKey: "sidenav.label.order.dashboard",
+                    actionURL: "/order",
+                    isActive: true,
+                  },
+                  childMenus: [],
+                },
+                {
+                  menu: {
+                    elementId: "menu_order_enter",
+                    displayKey: "sidenav.label.order.enter",
+                    actionURL: "/order/enter",
+                    isActive: true,
+                  },
+                  childMenus: [],
+                },
+              ],
+            },
+          ],
+        },
+      ];
+
+      const { container } = renderHeader({
+        menuData: orderMenuData,
+        configurationContext: {
+          ...mockConfigurationContext,
+          enabledLanguages: {
+            zh: { label: "简体中文", messages },
+          },
+        },
+      });
+
+      await waitFor(() => {
+        expect(container.querySelector("#menu_sample button")).toBeTruthy();
+      });
+      fireEvent.click(container.querySelector("#menu_sample button"));
+
+      expect(
+        await screen.findByText(messages["sidenav.label.order.active"]),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(messages["sidenav.label.order.new"]),
+      ).not.toBeInTheDocument();
+    });
+
+    test("hides restricted server report entries and keeps available reports navigable", async () => {
+      const reportMenuData = [
+        MOCK_MENU_DATA[0],
+        {
+          menu: {
+            elementId: "menu_reports",
+            displayKey: "banner.menu.reports",
+            actionURL: "",
+            isActive: true,
+          },
+          childMenus: [
+            {
+              menu: {
+                elementId: "menu_reports_export_routine",
+                displayKey: "reports.export.byDate_routine",
+                actionURL: "/Report?type=routine&report=CISampleRoutineExport",
+                isActive: true,
+              },
+              childMenus: [],
+            },
+            {
+              menu: {
+                elementId: "menu_reports_patient",
+                displayKey: "sidenav.label.statusreport",
+                actionURL: "/Report?type=patient&report=patientClinical",
+                isActive: true,
+              },
+              childMenus: [],
+            },
+          ],
+        },
+      ];
+
+      const { container } = renderHeader({
+        initialRoute: "/Dashboard",
+        menuData: reportMenuData,
+        configurationContext: {
+          ...mockConfigurationContext,
+          enabledLanguages: {
+            zh: { label: "简体中文", messages },
+          },
+        },
+      });
+
+      await waitFor(() => {
+        expect(container.querySelector("#menu_reports button")).toBeTruthy();
+      });
+      fireEvent.click(container.querySelector("#menu_reports button"));
+
+      expect(
+        container.querySelector("#menu_reports_export_routine_nav"),
+      ).not.toBeInTheDocument();
+
+      const availableItem = container.querySelector(
+        "#menu_reports_patient_nav",
+      );
+      expect(availableItem).toHaveAttribute(
+        "href",
+        "/Report?type=patient&report=patientClinical",
+      );
+      expect(availableItem).not.toHaveAttribute("aria-disabled");
+    });
+
+    test("opens direct report documents in a separate tab without replacing the application", async () => {
+      const openSpy = vi.spyOn(window, "open").mockReturnValue({});
+      const directReportMenu = [
+        MOCK_MENU_DATA[0],
+        {
+          menu: {
+            elementId: "menu_reports",
+            displayKey: "banner.menu.reports",
+            actionURL: "",
+            isActive: true,
+          },
+          childMenus: [
+            {
+              menu: {
+                elementId: "menu_reports_validation_backlog",
+                displayKey: "sideNav.label.delayedvalidation",
+                actionURL:
+                  "/ReportPrint?type=indicator&report=validationBacklog",
+                isActive: true,
+              },
+              childMenus: [],
+            },
+          ],
+        },
+      ];
+
+      const { container } = renderHeader({
+        initialRoute: "/Dashboard",
+        menuData: directReportMenu,
+      });
+
+      await waitFor(() => {
+        expect(container.querySelector("#menu_reports button")).toBeTruthy();
+      });
+      fireEvent.click(container.querySelector("#menu_reports button"));
+
+      const directReport = container.querySelector(
+        "#menu_reports_validation_backlog_nav",
+      );
+      expect(directReport).toHaveAttribute("target", "_blank");
+      fireEvent.click(directReport);
+
+      expect(openSpy).toHaveBeenCalledWith(
+        "/ReportPrint?type=indicator&report=validationBacklog",
+        "_blank",
+        "noopener,noreferrer",
+      );
+      expect(screen.getByTestId("current-path")).toHaveTextContent(
+        "/Dashboard",
+      );
+      openSpy.mockRestore();
+    });
+
+    test("does not render an active leaf menu item without an action", async () => {
+      const inertMenuData = [
+        ...MOCK_MENU_DATA,
+        {
+          menu: {
+            elementId: "menu_billing",
+            displayKey: "banner.menu.billing",
+            actionURL: "",
+            isActive: true,
+          },
+          childMenus: [],
+        },
+      ];
+
+      const { container } = renderHeader({ menuData: inertMenuData });
+
+      await waitFor(() => {
+        expect(container.querySelector("#menu_home_nav")).toBeTruthy();
+      });
+
+      expect(container.querySelector("#menu_billing_nav")).toBeNull();
+      expect(
+        screen.queryByText(messages["banner.menu.billing"]),
+      ).not.toBeInTheDocument();
+    });
+
+    test("opening a top-level menu collapses its open sibling", async () => {
+      const { container } = renderHeader();
+
+      await waitFor(() => {
+        expect(container.querySelector("#menu_sample button")).toBeTruthy();
+        expect(container.querySelector("#menu_results button")).toBeTruthy();
+      });
+
+      const getOrderToggle = () =>
+        container.querySelector("#menu_sample button");
+      const getResultsToggle = () =>
+        container.querySelector("#menu_results button");
+
+      fireEvent.click(getOrderToggle());
+      await waitFor(() => {
+        expect(getOrderToggle()).toHaveAttribute("aria-expanded", "true");
+      });
+
+      fireEvent.click(getResultsToggle());
+      await waitFor(() => {
+        expect(getOrderToggle()).toHaveAttribute("aria-expanded", "false");
+        expect(getResultsToggle()).toHaveAttribute("aria-expanded", "true");
+      });
+    });
+
     /**
      * Test: Menu items from API get expanded property initialized to false
      * Ensures no undefined expanded properties that cause toggle bugs
@@ -795,6 +1045,25 @@ describe("Header Component - M2b Enhancement Tests", () => {
   });
 
   describe("User panel actions", () => {
+    test("single-language installation hides the language selector", async () => {
+      const { container } = renderHeader({
+        configurationContext: {
+          ...mockConfigurationContext,
+          enabledLanguages: {
+            zh: { label: "简体中文", messages },
+          },
+        },
+      });
+
+      await waitFor(() => {
+        expect(
+          container.querySelector('[data-cy="headerChangePassword"]'),
+        ).toBeTruthy();
+      });
+
+      expect(container.querySelector("#selector")).toBeNull();
+    });
+
     test("authenticated panel orders locale, change password, then logout", async () => {
       const { container } = renderHeader();
 
@@ -810,11 +1079,11 @@ describe("Header Component - M2b Enhancement Tests", () => {
       const localeIndex = panelItems.findIndex((li) =>
         li.querySelector("#selector"),
       );
-      const changePasswordIndex = panelItems.findIndex(
-        (li) => li.dataset.cy === "headerChangePassword",
+      const changePasswordIndex = panelItems.findIndex((li) =>
+        li.querySelector('[data-cy="headerChangePassword"]'),
       );
-      const logoutIndex = panelItems.findIndex(
-        (li) => li.dataset.cy === "logOut",
+      const logoutIndex = panelItems.findIndex((li) =>
+        li.querySelector('[data-cy="logOut"]'),
       );
 
       expect(localeIndex).toBeGreaterThan(-1);
@@ -823,10 +1092,6 @@ describe("Header Component - M2b Enhancement Tests", () => {
     });
 
     test("change password item navigates to /ChangePasswordLogin", async () => {
-      const originalLocation = window.location;
-      delete window.location;
-      window.location = { ...originalLocation, href: "" };
-
       const { container } = renderHeader();
       await waitFor(() => {
         expect(
@@ -837,9 +1102,9 @@ describe("Header Component - M2b Enhancement Tests", () => {
       fireEvent.click(
         container.querySelector('[data-cy="headerChangePassword"]'),
       );
-      expect(window.location.href).toBe("/ChangePasswordLogin");
-
-      window.location = originalLocation;
+      expect(screen.getByTestId("current-path")).toHaveTextContent(
+        "/ChangePasswordLogin",
+      );
     });
 
     test("logout item calls the session logout", async () => {

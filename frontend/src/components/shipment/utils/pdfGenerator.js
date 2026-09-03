@@ -35,7 +35,7 @@ export const generateManifestPDF = async (manifestData, formatMessage) => {
   doc.setFontSize(18);
   doc.setFont(undefined, "bold");
   doc.text(
-    formatMessage({ id: "shipment.manifest.title" }) || "Shipping Manifest",
+    formatMessage({ id: "shipment.manifest.title" }) || "标本转运清单",
     105,
     20,
     {
@@ -50,34 +50,34 @@ export const generateManifestPDF = async (manifestData, formatMessage) => {
 
   const boxInfo = [
     [
-      formatMessage({ id: "shipment.box.id" }) || "Box ID:",
+      formatMessage({ id: "shipment.box.id" }) || "转运箱编号：",
       manifestData.boxId || "-",
     ],
     [
       formatMessage({ id: "shipment.manifest.serviceLocation" }) ||
-        "Service Location:",
+        "服务地点：",
       manifestData.serviceLocation || "-",
     ],
     [
-      formatMessage({ id: "shipment.box.destination" }) || "Destination:",
+      formatMessage({ id: "shipment.box.destination" }) || "目标机构：",
       manifestData.destinationFacility || "-",
     ],
     [
-      formatMessage({ id: "shipment.box.state" }) || "State:",
+      formatMessage({ id: "shipment.box.state" }) || "状态：",
       manifestData.state || "-",
     ],
     [
-      formatMessage({ id: "shipment.box.temperature" }) || "Temperature:",
-      manifestData.temperature || "AMBIENT",
+      formatMessage({ id: "shipment.box.temperature" }) || "转运温度：",
+      manifestData.temperature || "常温",
     ],
     [
-      formatMessage({ id: "shipment.box.created" }) || "Created:",
+      formatMessage({ id: "shipment.box.created" }) || "创建时间：",
       manifestData.createdDate
         ? new Date(manifestData.createdDate).toLocaleString()
         : "-",
     ],
     [
-      formatMessage({ id: "shipment.box.createdBy" }) || "Created By:",
+      formatMessage({ id: "shipment.box.createdBy" }) || "创建人：",
       manifestData.createdBy || "-",
     ],
   ];
@@ -97,7 +97,7 @@ export const generateManifestPDF = async (manifestData, formatMessage) => {
   // Box ID barcode
   try {
     const boxBarcode = await generateBarcodeDataUrl(
-      manifestData.boxId || "UNKNOWN",
+      manifestData.boxId || "未知",
       { height: 10 },
     );
     yPos = doc.lastAutoTable.finalY + 5;
@@ -124,11 +124,7 @@ export const generateManifestPDF = async (manifestData, formatMessage) => {
   // Samples Table header
   doc.setFontSize(14);
   doc.setFont(undefined, "bold");
-  doc.text(
-    formatMessage({ id: "shipment.label.samples" }) || "Samples",
-    20,
-    yPos,
-  );
+  doc.text(formatMessage({ id: "shipment.label.samples" }) || "标本", 20, yPos);
 
   const samplesTableData = manifestData.samples.map((sample, index) => [
     (index + 1).toString(),
@@ -144,13 +140,12 @@ export const generateManifestPDF = async (manifestData, formatMessage) => {
     startY: yPos + 5,
     head: [
       [
-        formatMessage({ id: "shipment.manifest.number" }) || "#",
-        formatMessage({ id: "sample.label.accessionNumber" }) ||
-          "Accession Number",
-        formatMessage({ id: "sample.label.typeOfSample" }) || "Type",
-        formatMessage({ id: "shipment.label.tests" }) || "Tests",
-        formatMessage({ id: "sample.label.collectionDate" }) ||
-          "Collection Date",
+        formatMessage({ id: "shipment.label.sequence" }) || "序号",
+        formatMessage({ id: "shipment.sample.accessionNumber" }) ||
+          "实验室编号",
+        formatMessage({ id: "sample.label.typeOfSample" }) || "标本类型",
+        formatMessage({ id: "shipment.label.tests" }) || "检验项目",
+        formatMessage({ id: "sample.label.collectionDate" }) || "采集日期",
       ],
     ],
     body: samplesTableData,
@@ -168,8 +163,7 @@ export const generateManifestPDF = async (manifestData, formatMessage) => {
   doc.setFontSize(12);
   doc.setFont(undefined, "bold");
   doc.text(
-    formatMessage({ id: "shipment.manifest.specimenBarcodes" }) ||
-      "Specimen Barcodes",
+    formatMessage({ id: "shipment.manifest.specimenBarcodes" }) || "标本条码",
     20,
     yPos,
   );
@@ -219,7 +213,7 @@ export const generateManifestPDF = async (manifestData, formatMessage) => {
   doc.setFontSize(12);
   doc.setFont(undefined, "bold");
   doc.text(
-    `${formatMessage({ id: "shipment.manifest.totalSamples" }) || "Total Samples:"} ${manifestData.samples.length}`,
+    `${formatMessage({ id: "shipment.manifest.totalSamples" }) || "标本总数："} ${manifestData.samples.length}`,
     20,
     yPos,
   );
@@ -228,7 +222,7 @@ export const generateManifestPDF = async (manifestData, formatMessage) => {
   if (manifestData.notes?.trim()) {
     yPos += 10;
     doc.setFont(undefined, "bold");
-    doc.text(formatMessage({ id: "shipment.box.notes" }) || "Notes:", 20, yPos);
+    doc.text(formatMessage({ id: "shipment.box.notes" }) || "备注：", 20, yPos);
     yPos += 7;
     doc.setFont(undefined, "normal");
     const splitNotes = doc.splitTextToSize(manifestData.notes, 170);
@@ -241,13 +235,13 @@ export const generateManifestPDF = async (manifestData, formatMessage) => {
   doc.setFontSize(8);
   doc.setFont(undefined, "normal");
   doc.text(
-    `${formatMessage({ id: "shipment.manifest.generated" }) || "Generated:"} ${new Date().toLocaleString()}`,
+    `${formatMessage({ id: "shipment.manifest.generated" }) || "生成时间："} ${new Date().toLocaleString()}`,
     20,
     yPos,
   );
 
   // Save PDF
-  doc.save(`manifest-${manifestData.boxId}.pdf`);
+  doc.save(`转运清单-${manifestData.boxId}.pdf`);
 };
 
 /**
@@ -278,7 +272,7 @@ export const generateLabelPDF = (boxData, formatMessage) => {
   doc.setFont(undefined, "bold");
   doc.text(
     (
-      formatMessage({ id: "shipment.label.shippingLabel" }) || "SHIPPING LABEL"
+      formatMessage({ id: "shipment.label.shippingLabel" }) || "标本转运标签"
     ).toUpperCase(),
     pageW / 2,
     9,
@@ -306,7 +300,7 @@ export const generateLabelPDF = (boxData, formatMessage) => {
   doc.setTextColor(100, 100, 100);
   doc.text(
     (
-      formatMessage({ id: "shipment.box.destination" }) || "Destination"
+      formatMessage({ id: "shipment.box.destination" }) || "目标机构"
     ).toUpperCase(),
     col1X,
     yPos,
@@ -326,7 +320,7 @@ export const generateLabelPDF = (boxData, formatMessage) => {
   doc.setTextColor(100, 100, 100);
   doc.text(
     (
-      formatMessage({ id: "shipment.box.temperature" }) || "Temperature"
+      formatMessage({ id: "shipment.box.temperature" }) || "转运温度"
     ).toUpperCase(),
     col2X,
     yPos,
@@ -334,7 +328,7 @@ export const generateLabelPDF = (boxData, formatMessage) => {
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(11);
   doc.setFont(undefined, "normal");
-  doc.text(boxData.temperature || "AMBIENT", col2X, yPos + 5);
+  doc.text(boxData.temperature || "常温", col2X, yPos + 5);
 
   // --- Separator line ---
   yPos = yPos + 5 + destLines.length * 5 + 4;
@@ -351,9 +345,7 @@ export const generateLabelPDF = (boxData, formatMessage) => {
   doc.setFont(undefined, "bold");
   doc.setTextColor(100, 100, 100);
   doc.text(
-    (
-      formatMessage({ id: "sample.label.types" }) || "Sample Types"
-    ).toUpperCase(),
+    (formatMessage({ id: "sample.label.types" }) || "标本类型").toUpperCase(),
     col1X,
     yPos,
   );
@@ -384,7 +376,7 @@ export const generateLabelPDF = (boxData, formatMessage) => {
   yPos += 5;
 
   // Total badge — bordered rectangle, printer-friendly
-  const totalLabel = `${formatMessage({ id: "shipment.manifest.totalSamples" }) || "Total Samples:"} ${boxData.sampleCount || 0}`;
+  const totalLabel = `${formatMessage({ id: "shipment.manifest.totalSamples" }) || "标本总数："} ${boxData.sampleCount || 0}`;
   doc.setFontSize(12);
   doc.setFont(undefined, "bold");
   doc.setTextColor(0, 0, 0);
@@ -399,7 +391,7 @@ export const generateLabelPDF = (boxData, formatMessage) => {
   doc.setFont(undefined, "normal");
   doc.setTextColor(130, 130, 130);
   doc.text(
-    `${formatMessage({ id: "shipment.box.created" }) || "Created:"} ${boxData.createdDate ? new Date(boxData.createdDate).toLocaleDateString() : "-"}`,
+    `${formatMessage({ id: "shipment.box.created" }) || "创建时间："} ${boxData.createdDate ? new Date(boxData.createdDate).toLocaleDateString() : "-"}`,
     margin,
     pageH - 4,
   );
@@ -408,6 +400,6 @@ export const generateLabelPDF = (boxData, formatMessage) => {
   });
 
   // Save PDF
-  const boxIdStr = typeof boxData.boxId === "string" ? boxData.boxId : "box";
-  doc.save(`label-${boxIdStr}.pdf`);
+  const boxIdStr = typeof boxData.boxId === "string" ? boxData.boxId : "转运箱";
+  doc.save(`转运标签-${boxIdStr}.pdf`);
 };

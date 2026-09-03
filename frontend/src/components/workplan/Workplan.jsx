@@ -2,9 +2,7 @@ import {
   Button,
   Column,
   Grid,
-  Heading,
   Link,
-  Section,
   Table,
   TableBody,
   TableCell,
@@ -27,6 +25,11 @@ import { AlertDialog, NotificationKinds } from "../common/CustomNotification";
 import { ConfigurationContext } from "../layout/Layout";
 import PageBreadCrumb from "../common/PageBreadCrumb";
 import EQABadge from "../eqa/EQABadge";
+import ProductPageHeader from "../common/ProductPageHeader";
+import { useHistory } from "react-router-dom";
+
+export const getWorkplanResultRoute = (accessionNumber) =>
+  `/Results?accessionNumber=${encodeURIComponent(accessionNumber)}`;
 
 export default function Workplan(props) {
   const { configurationProperties } = useContext(ConfigurationContext);
@@ -34,6 +37,7 @@ export default function Workplan(props) {
     useContext(NotificationContext);
 
   const intl = useIntl();
+  const history = useHistory();
 
   const [testsList, setTestsList] = useState([]);
   const [subjectOnWorkplan, setSubjectOnWorkplan] = useState(false);
@@ -46,31 +50,25 @@ export default function Workplan(props) {
 
   const type = props.type;
   let title = "";
-  let sourceTitle = "";
   switch (type) {
     case "test": {
       title = <FormattedMessage id="workplan.test.title" />;
-      sourceTitle = "WorkPlanByTest";
       break;
     }
     case "panel": {
       title = <FormattedMessage id="workplan.panel.title" />;
-      sourceTitle = "WorkPlanByPanel";
       break;
     }
     case "unit": {
       title = <FormattedMessage id="workplan.unit.title" />;
-      sourceTitle = "WorkPlanByTestSection";
       break;
     }
     case "priority": {
       title = <FormattedMessage id="workplan.priority.title" />;
-      sourceTitle = "WorkPlanByPriority";
       break;
     }
     default: {
       title = "";
-      sourceTitle = "";
     }
   }
 
@@ -178,269 +176,264 @@ export default function Workplan(props) {
   return (
     <>
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
-      <Grid fullWidth={true}>
-        {notificationVisible === true ? <AlertDialog /> : ""}
-        <Column lg={16} md={8} sm={4}>
-          <Section>
-            <Section>
-              <Heading>{title}</Heading>
-            </Section>
-          </Section>
-        </Column>
-        <br />
-        <br />
-      </Grid>
-      <div className="orderLegendBody">
-        <Grid fullWidth={true}>
-          <Column lg={16} md={8} sm={4}>
-            <WorkplanSearchForm
-              type={type}
-              createTestsList={handleTestsList}
-              selectedValue={handleSelectedValue}
-              selectedLabel={handleSelectedLabel}
-            />
-          </Column>
-        </Grid>
-        {testsList.length !== 0 && (
-          <>
-            <hr />
-            <br />
-            <Grid fullWidth={true}>
-              <Column lg={16} md={8} sm={4}>
-                <Button
-                  size="md"
-                  type="button"
-                  name="print"
-                  id="print"
-                  onClick={printWorkplan}
-                >
-                  <FormattedMessage id="workplan.print" />
-                </Button>
-              </Column>
-            </Grid>
-            <br />
-            <Grid fullWidth={true}>
-              <Column sm={4} md={8} lg={16}>
-                <FormattedMessage id="label.total.tests" /> = {testsList.length}
-                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-                <img
-                  src={`images/nonconforming.gif`}
-                  alt="nonconforming"
-                /> = <FormattedMessage id="result.nonconforming.item" />
-                <br />
-                <br />
-              </Column>
-            </Grid>
-            <Grid fullWidth={true}>
-              <Column sm={4} md={8} lg={16}>
-                <>
-                  <Table size={"sm"} data-cy="workplanResultsTable">
-                    <TableHead>
-                      <TableRow>
-                        <TableHeader>
-                          <FormattedMessage id="label.button.remove" />
-                        </TableHeader>
-                        {type === "test" && <TableHeader>&nbsp;</TableHeader>}
-                        <TableHeader>
-                          <FormattedMessage id="quick.entry.accession.number" />
-                        </TableHeader>
-                        {subjectOnWorkplan?.toLowerCase() === "true" && (
+      {notificationVisible === true ? <AlertDialog /> : ""}
+      <ProductPageHeader
+        title={title}
+        subtitle={<FormattedMessage id="workplan.subtitle" />}
+        titleId="workplan-page-title"
+      />
+      <main className="oe-workplan-page" aria-labelledby="workplan-page-title">
+        <div className="orderLegendBody oe-workplan-surface">
+          <Grid fullWidth={true}>
+            <Column lg={16} md={8} sm={4}>
+              <WorkplanSearchForm
+                type={type}
+                createTestsList={handleTestsList}
+                selectedValue={handleSelectedValue}
+                selectedLabel={handleSelectedLabel}
+              />
+            </Column>
+          </Grid>
+          {testsList.length !== 0 && (
+            <>
+              <hr />
+              <br />
+              <Grid fullWidth={true}>
+                <Column lg={16} md={8} sm={4}>
+                  <Button
+                    size="md"
+                    type="button"
+                    name="print"
+                    id="print"
+                    onClick={printWorkplan}
+                  >
+                    <FormattedMessage id="workplan.print" />
+                  </Button>
+                </Column>
+              </Grid>
+              <br />
+              <Grid fullWidth={true}>
+                <Column sm={4} md={8} lg={16}>
+                  <FormattedMessage id="label.total.tests" /> ={" "}
+                  {testsList.length}
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+                  <img
+                    src={`images/nonconforming.gif`}
+                    alt={intl.formatMessage({
+                      id: "result.nonconforming.item",
+                    })}
+                  />{" "}
+                  = <FormattedMessage id="result.nonconforming.item" />
+                  <br />
+                  <br />
+                </Column>
+              </Grid>
+              <Grid fullWidth={true}>
+                <Column sm={4} md={8} lg={16}>
+                  <>
+                    <Table size={"sm"} data-cy="workplanResultsTable">
+                      <TableHead>
+                        <TableRow>
                           <TableHeader>
-                            <FormattedMessage id="patient.subject.number" />
+                            <FormattedMessage id="label.button.remove" />
                           </TableHeader>
-                        )}
-                        {nextVisitOnWorkplan?.toLowerCase() === "true" && (
+                          {type === "test" && <TableHeader>&nbsp;</TableHeader>}
                           <TableHeader>
-                            <FormattedMessage id="sample.entry.nextVisit.date" />
+                            <FormattedMessage id="quick.entry.accession.number" />
                           </TableHeader>
-                        )}
-                        {type !== "test" && <TableHeader>&nbsp;</TableHeader>}
-                        {type !== "test" && (
-                          <TableHeader>
-                            {configurationName === "Haiti LNSP" ? (
-                              <FormattedMessage
-                                id="sample.entry.project.patient.and.testName"
-                                values={{ br: <br /> }}
-                              />
-                            ) : (
-                              <FormattedMessage id="sample.entry.project.testName" />
-                            )}
-                          </TableHeader>
-                        )}
-                        <TableHeader>
-                          <FormattedMessage id="sample.receivedDate" />
-                        </TableHeader>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {testsList
-                        .slice((page - 1) * pageSize, page * pageSize)
-                        .map((row, index) => {
-                          if (
-                            !(row.accessionNumber === currentAccessionNumber)
-                          ) {
-                            showAccessionNumber = true;
-                            currentAccessionNumber = row.accessionNumber;
-                            rowColorIndex++;
-                          } else {
-                            showAccessionNumber = false;
-                          }
-                          return (
-                            <TableRow
-                              key={index}
-                              id={"row_" + index}
-                              className={
-                                rowColorIndex % 2 === 0 ? "evenRow" : "oddRow"
-                              }
-                            >
-                              {!row.servingAsTestGroupIdentifier && (
-                                <TableCell>
-                                  <input
-                                    type="checkbox"
-                                    value={row.notIncludedInWorkplan}
-                                    id={"includedCheck_" + index}
-                                    className="includedCheck"
-                                    onClick={(e) =>
-                                      disableEnableTest(e.target, index)
-                                    }
-                                  />
-                                </TableCell>
+                          {subjectOnWorkplan?.toLowerCase() === "true" && (
+                            <TableHeader>
+                              <FormattedMessage id="patient.subject.number" />
+                            </TableHeader>
+                          )}
+                          {nextVisitOnWorkplan?.toLowerCase() === "true" && (
+                            <TableHeader>
+                              <FormattedMessage id="sample.entry.nextVisit.date" />
+                            </TableHeader>
+                          )}
+                          {type !== "test" && <TableHeader>&nbsp;</TableHeader>}
+                          {type !== "test" && (
+                            <TableHeader>
+                              {configurationName === "Haiti LNSP" ? (
+                                <FormattedMessage
+                                  id="sample.entry.project.patient.and.testName"
+                                  values={{ br: <br /> }}
+                                />
+                              ) : (
+                                <FormattedMessage id="sample.entry.project.testName" />
                               )}
-                              {type === "test" && (
-                                <TableCell>
-                                  {row.nonconforming && (
-                                    <img
-                                      src={`images/nonconforming.gif`}
-                                      alt="nonconforming"
-                                    />
-                                  )}
-                                </TableCell>
-                              )}
-                              <TableCell>
-                                {showAccessionNumber && (
-                                  <>
-                                    <Link
-                                      style={{ color: "blue" }}
-                                      href={
-                                        `/result?type=order&doRange=false&source=${sourceTitle}&accessionNumber=` +
-                                        row.accessionNumber
+                            </TableHeader>
+                          )}
+                          <TableHeader>
+                            <FormattedMessage id="sample.receivedDate" />
+                          </TableHeader>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {testsList
+                          .slice((page - 1) * pageSize, page * pageSize)
+                          .map((row, index) => {
+                            if (
+                              !(row.accessionNumber === currentAccessionNumber)
+                            ) {
+                              showAccessionNumber = true;
+                              currentAccessionNumber = row.accessionNumber;
+                              rowColorIndex++;
+                            } else {
+                              showAccessionNumber = false;
+                            }
+                            return (
+                              <TableRow
+                                key={index}
+                                id={"row_" + index}
+                                className={
+                                  rowColorIndex % 2 === 0 ? "evenRow" : "oddRow"
+                                }
+                              >
+                                {!row.servingAsTestGroupIdentifier && (
+                                  <TableCell>
+                                    <input
+                                      type="checkbox"
+                                      value={row.notIncludedInWorkplan}
+                                      id={"includedCheck_" + index}
+                                      className="includedCheck"
+                                      onClick={(e) =>
+                                        disableEnableTest(e.target, index)
                                       }
-                                    >
-                                      <u>
+                                    />
+                                  </TableCell>
+                                )}
+                                {type === "test" && (
+                                  <TableCell>
+                                    {row.nonconforming && (
+                                      <img
+                                        src={`images/nonconforming.gif`}
+                                        alt={intl.formatMessage({
+                                          id: "result.nonconforming.item",
+                                        })}
+                                      />
+                                    )}
+                                  </TableCell>
+                                )}
+                                <TableCell>
+                                  {showAccessionNumber && (
+                                    <>
+                                      <Link
+                                        href={getWorkplanResultRoute(
+                                          row.accessionNumber,
+                                        )}
+                                        onClick={(event) => {
+                                          event.preventDefault();
+                                          history.push(
+                                            getWorkplanResultRoute(
+                                              row.accessionNumber,
+                                            ),
+                                          );
+                                        }}
+                                      >
                                         {convertAlphaNumLabNumForDisplay(
                                           row.accessionNumber,
                                         )}
-                                      </u>
-                                    </Link>
-                                    {row.isEqaSample && (
-                                      <EQABadge priority={row.eqaPriority} />
-                                    )}
-                                  </>
-                                )}
-                              </TableCell>
-                              {subjectOnWorkplan?.toLowerCase() === "true" && (
-                                <TableCell>
-                                  {showAccessionNumber && row.patientInfo}
-                                </TableCell>
-                              )}
-                              {nextVisitOnWorkplan?.toLowerCase() ===
-                                "true" && (
-                                <TableCell>
-                                  {showAccessionNumber && row.nextVisitDate}
-                                </TableCell>
-                              )}
-                              {type !== "test" && (
-                                <TableCell>
-                                  {row.nonconforming && (
-                                    <img
-                                      src={`images/nonconforming.gif`}
-                                      alt="nonconforming"
-                                    />
+                                      </Link>
+                                      {row.isEqaSample && (
+                                        <EQABadge priority={row.eqaPriority} />
+                                      )}
+                                    </>
                                   )}
                                 </TableCell>
-                              )}
-                              {type !== "test" && (
-                                <TableCell>{row.testName}</TableCell>
-                              )}
-                              <TableCell>{row.receivedDate}</TableCell>
-                            </TableRow>
-                          );
-                        })}
-                    </TableBody>
-                  </Table>
-                  <Pagination
-                    onChange={handlePageChange}
-                    page={page}
-                    pageSize={pageSize}
-                    pageSizes={[10, 20, 30, 50, 100]}
-                    totalItems={testsList.length}
-                    forwardText={intl.formatMessage({
-                      id: "pagination.forward",
-                    })}
-                    backwardText={intl.formatMessage({
-                      id: "pagination.backward",
-                    })}
-                    itemRangeText={(min, max, total) =>
-                      intl.formatMessage(
-                        { id: "pagination.item-range" },
-                        { min: min, max: max, total: total },
-                      )
-                    }
-                    itemsPerPageText={intl.formatMessage({
-                      id: "pagination.items-per-page",
-                    })}
-                    itemText={(min, max) =>
-                      intl.formatMessage(
-                        { id: "pagination.item" },
-                        { min: min, max: max },
-                      )
-                    }
-                    pageNumberText={intl.formatMessage({
-                      id: "pagination.page-number",
-                    })}
-                    pageRangeText={(_current, total) =>
-                      intl.formatMessage(
-                        { id: "pagination.page-range" },
-                        { total: total },
-                      )
-                    }
-                    pageText={(page, pagesUnknown) =>
-                      intl.formatMessage(
-                        { id: "pagination.page" },
-                        { page: pagesUnknown ? "" : page },
-                      )
-                    }
-                  />
-                </>
-              </Column>
-              <hr />
-            </Grid>
-            <br />
-            <Grid fullWidth={true}>
-              <Column sm={4} md={8} lg={16}>
-                <Button
-                  size="md"
-                  type="button"
-                  name="print"
-                  id="print"
-                  onClick={printWorkplan}
-                >
-                  <FormattedMessage id="workplan.print" />
-                </Button>
-              </Column>
-            </Grid>
-          </>
-        )}
-        {selectedValue && testsList.length === 0 && (
-          <h4>
-            <Grid>
-              <Column sm={4} md={8} lg={16}>
-                <FormattedMessage id="result.noTestsFound" />
-              </Column>
-            </Grid>
-          </h4>
-        )}
-      </div>
+                                {subjectOnWorkplan?.toLowerCase() ===
+                                  "true" && (
+                                  <TableCell>
+                                    {showAccessionNumber && row.patientInfo}
+                                  </TableCell>
+                                )}
+                                {nextVisitOnWorkplan?.toLowerCase() ===
+                                  "true" && (
+                                  <TableCell>
+                                    {showAccessionNumber && row.nextVisitDate}
+                                  </TableCell>
+                                )}
+                                {type !== "test" && (
+                                  <TableCell>
+                                    {row.nonconforming && (
+                                      <img
+                                        src={`images/nonconforming.gif`}
+                                        alt={intl.formatMessage({
+                                          id: "result.nonconforming.item",
+                                        })}
+                                      />
+                                    )}
+                                  </TableCell>
+                                )}
+                                {type !== "test" && (
+                                  <TableCell>{row.testName}</TableCell>
+                                )}
+                                <TableCell>{row.receivedDate}</TableCell>
+                              </TableRow>
+                            );
+                          })}
+                      </TableBody>
+                    </Table>
+                    <Pagination
+                      onChange={handlePageChange}
+                      page={page}
+                      pageSize={pageSize}
+                      pageSizes={[10, 20, 30, 50, 100]}
+                      totalItems={testsList.length}
+                      forwardText={intl.formatMessage({
+                        id: "pagination.forward",
+                      })}
+                      backwardText={intl.formatMessage({
+                        id: "pagination.backward",
+                      })}
+                      itemRangeText={(min, max, total) =>
+                        intl.formatMessage(
+                          { id: "pagination.item-range" },
+                          { min: min, max: max, total: total },
+                        )
+                      }
+                      itemsPerPageText={intl.formatMessage({
+                        id: "pagination.items-per-page",
+                      })}
+                      itemText={(min, max) =>
+                        intl.formatMessage(
+                          { id: "pagination.item" },
+                          { min: min, max: max },
+                        )
+                      }
+                      pageNumberText={intl.formatMessage({
+                        id: "pagination.page-number",
+                      })}
+                      pageRangeText={(_current, total) =>
+                        intl.formatMessage(
+                          { id: "pagination.page-range" },
+                          { total: total },
+                        )
+                      }
+                      pageText={(page, pagesUnknown) =>
+                        intl.formatMessage(
+                          { id: "pagination.page" },
+                          { page: pagesUnknown ? "" : page },
+                        )
+                      }
+                    />
+                  </>
+                </Column>
+                <hr />
+              </Grid>
+            </>
+          )}
+          {selectedValue && testsList.length === 0 && (
+            <h4>
+              <Grid>
+                <Column sm={4} md={8} lg={16}>
+                  <FormattedMessage id="result.noTestsFound" />
+                </Column>
+              </Grid>
+            </h4>
+          )}
+        </div>
+      </main>
     </>
   );
 }

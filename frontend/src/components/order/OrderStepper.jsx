@@ -1,6 +1,7 @@
+import { pushWithListContext } from "../common/listWorkspace";
 import React from "react";
 import { useHistory, useLocation } from "react-router-dom";
-import { ProgressIndicator, ProgressStep } from "@carbon/react";
+import { Checkmark, Locked } from "@carbon/icons-react";
 import { useIntl } from "react-intl";
 import { useOrderContext } from "./OrderContext";
 
@@ -31,8 +32,7 @@ const OrderStepper = ({ currentStep, onStepClick, className = "" }) => {
   const intl = useIntl();
   const history = useHistory();
   const location = useLocation();
-  const { samples, storageSkipped, labNumber, stepProgress } =
-    useOrderContext();
+  const { samples, storageSkipped, stepProgress } = useOrderContext();
 
   // Determine current step from URL if not provided
   const activeStep =
@@ -46,8 +46,9 @@ const OrderStepper = ({ currentStep, onStepClick, className = "" }) => {
 
     switch (stepKey) {
       case "enter":
-        // Enter is complete if we have a lab number
-        return !!labNumber;
+        // A generated lab number alone is not enough. The step is complete
+        // only after the validated order entry has been saved.
+        return stepProgress?.enter || false;
 
       case "collect":
         // Collect is complete if all samples have sampleItemId
@@ -74,26 +75,66 @@ const OrderStepper = ({ currentStep, onStepClick, className = "" }) => {
       onStepClick(stepIndex);
     } else {
       // Default behavior: navigate to the step's path
-      history.push(ORDER_STEPS[stepIndex].path);
+      pushWithListContext(history, ORDER_STEPS[stepIndex].path);
     }
   };
 
+  const completionState = ORDER_STEPS.map((_, index) => isStepComplete(index));
+
+  const canNavigateTo = (stepIndex) => {
+    if (stepIndex <= activeStep) return true;
+    return completionState.slice(0, stepIndex).every(Boolean);
+  };
+
   return (
-    <ProgressIndicator
-      currentIndex={activeStep >= 0 ? activeStep : 0}
+    <nav
       className={`order-stepper ${className}`}
-      spaceEqually={true}
-      onChange={(stepIndex) => handleStepClick(stepIndex)}
+      aria-label={intl.formatMessage({ id: "order.workflow.navigation" })}
     >
-      {ORDER_STEPS.map((step, index) => (
-        <ProgressStep
-          key={step.path}
-          complete={isStepComplete(index)}
-          current={index === activeStep}
-          label={intl.formatMessage({ id: step.label })}
-        />
-      ))}
-    </ProgressIndicator>
+      <ol className="order-step-list">
+        {ORDER_STEPS.map((step, index) => {
+          const complete = completionState[index];
+          const current = index === activeStep;
+          const enabled = canNavigateTo(index);
+          const statusId = current
+            ? "order.step.status.current"
+            : complete
+              ? "order.step.status.complete"
+              : enabled
+                ? "order.step.status.pending"
+                : "order.step.status.locked";
+
+          return (
+            <li
+              key={step.path}
+              className={`order-step-item ${complete ? "is-complete" : ""} ${current ? "is-current" : ""} ${!enabled ? "is-locked" : ""}`}
+            >
+              <button
+                type="button"
+                className="order-step-button"
+                onClick={() => handleStepClick(index)}
+                disabled={!enabled}
+                aria-current={current ? "step" : undefined}
+              >
+                <span className="order-step-marker" aria-hidden="true">
+                  {complete ? (
+                    <Checkmark size={16} />
+                  ) : !enabled ? (
+                    <Locked size={14} />
+                  ) : (
+                    index + 1
+                  )}
+                </span>
+                <span className="order-step-copy">
+                  <strong>{intl.formatMessage({ id: step.label })}</strong>
+                  <small>{intl.formatMessage({ id: statusId })}</small>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
   );
 };
 

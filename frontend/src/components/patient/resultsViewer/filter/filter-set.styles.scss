@@ -32,7 +32,7 @@
 // TreeView TreeNode renders a Checkbox in its `label` slot. The default
 // label wrapper applies vertical padding intended for plain-text labels;
 // vertically center the Checkbox so it sits on the row baseline.
-.filterSetContent :global(.cds--tree-node__label) {
+.filterSetContent .cds--tree-node__label {
   display: flex;
   align-items: center;
   min-height: 1.75rem;
@@ -41,6 +41,6 @@
 // Carbon's Checkbox adds its own left padding for the box; the TreeNode
 // also adds chevron padding. Tighten the gap so the checkbox doesn't
 // drift away from the chevron column.
-.filterSetContent :global(.cds--tree-node__label .cds--checkbox-wrapper) {
+.filterSetContent .cds--tree-node__label .cds--checkbox-wrapper {
   margin: 0;
 }

@@ -54,7 +54,34 @@
 }
 
 .instruments-tab__empty {
-  text-align: center;
-  padding: 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 8rem;
+  padding: 1.5rem;
   color: var(--cds-text-secondary, #525252);
+  border: 1px solid var(--cds-border-subtle, #e0e0e0);
+}
+
+.instruments-tab__empty-copy {
+  flex: 1;
+}
+
+.instruments-tab__empty-copy h5 {
+  margin-bottom: 0.25rem;
+  color: var(--cds-text-primary, #161616);
+  font-size: 1rem;
+}
+
+.instruments-tab__empty-copy p {
+  max-width: 44rem;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 671px) {
+  .instruments-tab__empty {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }

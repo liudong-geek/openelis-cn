@@ -19,6 +19,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.openelisglobal.common.action.IActionConstants;
+import org.openelisglobal.login.valueholder.UserSessionData;
 import org.openelisglobal.panel.service.PanelService;
 import org.openelisglobal.panel.valueholder.Panel;
 import org.openelisglobal.sample.service.SampleService;
@@ -77,6 +79,12 @@ public class SampleTypeRequestRestControllerTest {
         ReflectionTestUtils.setField(controller, "unitOfMeasureService", unitOfMeasureService);
         ReflectionTestUtils.setField(controller, "testService", testService);
         ReflectionTestUtils.setField(controller, "panelService", panelService);
+
+        UserSessionData userSessionData = new UserSessionData();
+        userSessionData.setSytemUserId(1);
+        org.mockito.Mockito.lenient().when(httpRequest.getSession()).thenReturn(httpSession);
+        org.mockito.Mockito.lenient().when(httpSession.getAttribute(IActionConstants.USER_SESSION_DATA))
+                .thenReturn(userSessionData);
 
     }
 
@@ -288,8 +296,7 @@ public class SampleTypeRequestRestControllerTest {
     @Test
     public void fulfillRequest_validCall_returns200WithDto() {
         SampleTypeRequest fulfilled = buildRequest(20, "5", SampleTypeRequest.Status.COLLECTED);
-        doNothing().when(sampleTypeRequestService).fulfillRequest(20, "SI-1");
-        when(sampleTypeRequestService.get(20)).thenReturn(fulfilled);
+        when(sampleTypeRequestService.fulfillRequest(20, "SI-1")).thenReturn(fulfilled);
 
         ResponseEntity<?> response = controller.fulfillRequest(20, "SI-1");
 

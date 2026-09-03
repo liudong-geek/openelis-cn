@@ -525,8 +525,12 @@ public class DisplayListController extends BaseRestController {
     public List<IdValuePair> getDepartmentsForReferingSite(@RequestParam String refferingSiteId) {
 
         List<IdValuePair> list = new ArrayList<>();
-        List<Organization> departments = organizationService.getOrganizationsByParentId(refferingSiteId).stream()
-                .filter(org -> org.getIsActive().equals(IActionConstants.YES)).collect(Collectors.toList());
+        List<Organization> organizationChildren = organizationService.getOrganizationsByParentId(refferingSiteId);
+        if (organizationChildren == null) {
+            return list;
+        }
+        List<Organization> departments = organizationChildren.stream()
+                .filter(org -> IActionConstants.YES.equals(org.getIsActive())).collect(Collectors.toList());
         departments.forEach(d -> {
             list.add(new IdValuePair(d.getId(), d.getOrganizationName()));
         });

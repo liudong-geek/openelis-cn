@@ -38,6 +38,18 @@ const breadcrumbs = [
 
 const REFRESH_INTERVAL_MS = 30000;
 const ATTEMPT_LIMIT = 20;
+const STATUS_MESSAGES = {
+  SUCCEEDED: { messageId: "dataexport.status.state.SUCCEEDED" },
+  FAILED: { messageId: "dataexport.status.state.FAILED" },
+  INCOMPLETE: { messageId: "dataexport.status.state.INCOMPLETE" },
+};
+
+function formatStatus(intl, status) {
+  const statusMessage = STATUS_MESSAGES[status];
+  return statusMessage
+    ? intl.formatMessage({ id: statusMessage.messageId })
+    : status;
+}
 
 function statusTagType(status, failedLast24h) {
   if (status === "SUCCEEDED" && failedLast24h === 0) return "green";
@@ -162,7 +174,9 @@ function AttemptHistory({ taskId }) {
             <TableCell>{formatOptionalInstant(intl, a.endTime)}</TableCell>
             <TableCell>{formatDuration(intl, a.durationMs)}</TableCell>
             <TableCell>
-              <Tag type={attemptStatusTagType(a.status)}>{a.status}</Tag>
+              <Tag type={attemptStatusTagType(a.status)}>
+                {formatStatus(intl, a.status)}
+              </Tag>
             </TableCell>
           </TableRow>
         ))}
@@ -243,9 +257,9 @@ function DataExportStatus() {
   const tableRows = rows.map((r) => ({
     id: String(r.id),
     endpoint: r.endpoint,
-    lastStatus:
-      r.lastStatus ||
-      intl.formatMessage({ id: "dataexport.status.noAttempts" }),
+    lastStatus: r.lastStatus
+      ? formatStatus(intl, r.lastStatus)
+      : intl.formatMessage({ id: "dataexport.status.noAttempts" }),
     lastSuccess: formatInstant(intl, r.lastSuccess),
     lastAttempt: formatInstant(intl, r.lastAttempt),
     failedLast24h: intl.formatMessage(

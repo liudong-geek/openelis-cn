@@ -26,6 +26,9 @@ public class ServiceRequestProviderTest {
     @Mock
     private FhirTransformService fhirTransformService;
 
+    @Mock
+    private org.openelisglobal.fhir.service.FhirOrderIntakeService intakeService;
+
     @InjectMocks
     private ServiceRequestProvider serviceRequestProvider;
 
@@ -72,6 +75,7 @@ public class ServiceRequestProviderTest {
         when(analysisService.getAllMatching("fhirUuid", UUID.fromString(uuid)))
                 .thenReturn(Collections.singletonList(analysis));
         when(fhirTransformService.transformToServiceRequest("1")).thenReturn(expected);
+        when(intakeService.readCollected(UUID.fromString(uuid), expected)).thenReturn(expected);
 
         ServiceRequest actual = serviceRequestProvider.readServiceRequest(id);
 

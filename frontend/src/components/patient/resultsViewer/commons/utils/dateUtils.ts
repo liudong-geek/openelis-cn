@@ -32,7 +32,11 @@ const defaultOptions: FormatDateOptions = {
   year: true,
 };
 
-export function formatDate(date: Date, options?: Partial<FormatDateOptions>) {
+export function formatDate(
+  date: Date,
+  options?: Partial<FormatDateOptions>,
+  locale = getLocale(),
+) {
   const { mode, time, day, year }: FormatDateOptions = {
     ...defaultOptions,
     ...options,
@@ -42,29 +46,31 @@ export function formatDate(date: Date, options?: Partial<FormatDateOptions>) {
     month: "short",
     day: day ? "2-digit" : undefined,
   };
-  let locale = getLocale();
+  let resolvedLocale = locale;
   let localeString: string;
   const isToday = dayjs(date).isToday();
   if (isToday) {
     // This produces the word "Today" in the language of `locale`
-    const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+    const rtf = new Intl.RelativeTimeFormat(resolvedLocale, {
+      numeric: "auto",
+    });
     localeString = rtf.format(0, "day");
     localeString =
-      localeString[0].toLocaleUpperCase(locale) + localeString.slice(1);
+      localeString[0].toLocaleUpperCase(resolvedLocale) + localeString.slice(1);
   } else {
-    if (locale == "en") {
+    if (resolvedLocale == "en") {
       // This locale override is here rather than in `getLocale`
       // because Americans should see AM/PM for times.
-      locale = "en-GB";
+      resolvedLocale = "en-GB";
     }
-    localeString = date.toLocaleDateString(locale, formatterOptions);
-    if (locale == "en-GB" && mode == "standard" && year && day) {
+    localeString = date.toLocaleDateString(resolvedLocale, formatterOptions);
+    if (resolvedLocale == "en-GB" && mode == "standard" && year && day) {
       // Custom formatting for English. Use hyphens instead of spaces.
       localeString = localeString.replace(/ /g, "-");
     }
     if (mode == "wide") {
       localeString = localeString.replace(/ /g, " — "); // space-emdash-space
-      if (/ru.*/.test(locale)) {
+      if (/ru.*/.test(resolvedLocale)) {
         // Remove the extra em-dash that gets added between the year and the suffix 'r.'
         const len = localeString.length;
         localeString =
@@ -74,7 +80,7 @@ export function formatDate(date: Date, options?: Partial<FormatDateOptions>) {
     }
   }
   if (time === true || (isToday && time === "for today")) {
-    localeString += `, ${formatTime(date)}`;
+    localeString += `, ${formatTime(date, locale)}`;
   }
   return localeString;
 }
@@ -83,8 +89,8 @@ export function formatDate(date: Date, options?: Partial<FormatDateOptions>) {
  * Formats the input as a time, according to the current locale.
  * 12-hour or 24-hour clock depends on locale.
  */
-export function formatTime(date: Date) {
-  return date.toLocaleTimeString(getLocale(), {
+export function formatTime(date: Date, locale = getLocale()) {
+  return date.toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -102,12 +108,13 @@ export function formatTime(date: Date) {
 export function formatDatetime(
   date: Date,
   options?: Partial<Omit<FormatDateOptions, "time">>,
+  locale = getLocale(),
 ) {
-  return formatDate(date, { ...options, time: true });
+  return formatDate(date, { ...options, time: true }, locale);
 }
 
 function getLocale() {
-  return "en";
+  return document.documentElement.lang || navigator.language || "en";
 }
 
 /**
@@ -118,9 +125,10 @@ export function parseDate(dateString: string) {
   return dayjs(dateString).toDate();
 }
 
-export const parseTime: (sortedTimes: Array<string>) => ParsedTimeType = (
-  sortedTimes,
-) => {
+export const parseTime = (
+  sortedTimes: Array<string>,
+  locale = getLocale(),
+): ParsedTimeType => {
   const yearColumns: Array<{ year: string; size: number }> = [],
     dayColumns: Array<{ year: string; day: string; size: number }> = [],
     timeColumns: string[] = [];
@@ -128,8 +136,8 @@ export const parseTime: (sortedTimes: Array<string>) => ParsedTimeType = (
   sortedTimes.forEach((datetime) => {
     const parsedDate = parseDate(datetime);
     const year = parsedDate.getFullYear().toString();
-    const date = formatDate(parsedDate, { mode: "wide", year: false });
-    const time = formatTime(parsedDate);
+    const date = formatDate(parsedDate, { mode: "wide", year: false }, locale);
+    const time = formatTime(parsedDate, locale);
 
     const yearColumn = yearColumns.find(
       ({ year: innerYear }) => year === innerYear,

@@ -1,8 +1,8 @@
 import React, { useContext } from "react";
 import { Redirect } from "react-router-dom";
-import { Loading } from "@carbon/react";
 import { ConfigurationContext } from "../../layout/Layout";
 import UnifiedResults from "./UnifiedResults";
+import PageLoadingState from "../../common/PageLoadingState";
 
 /**
  * OGC-1020 (R1) — route consolidation behind the `resultsEntryUnifiedRoute`
@@ -45,7 +45,7 @@ function useUnifiedResultsFlag(): FlagState {
 export const UnifiedResultsRoute: React.FC = () => {
   const flag = useUnifiedResultsFlag();
   if (flag === "loading") {
-    return <Loading description="" withOverlay={false} />;
+    return <PageLoadingState />;
   }
   return flag === "on" ? (
     <UnifiedResults />
@@ -65,21 +65,12 @@ export const LegacyResultsGate: React.FC<{ children: React.ReactElement }> = ({
 }) => {
   const flag = useUnifiedResultsFlag();
   if (flag === "loading") {
-    return <Loading description="" withOverlay={false} />;
+    return <PageLoadingState />;
   }
   if (flag === "off") {
     return children;
   }
-  const accession = new URLSearchParams(window.location.search).get(
-    "accessionNumber",
-  );
-  return (
-    <Redirect
-      to={
-        accession
-          ? `/Results?accessionNumber=${encodeURIComponent(accession)}`
-          : "/Results"
-      }
-    />
-  );
+  // Preserve the complete filter state. Dashboard task scopes, accession deep
+  // links and lab-unit/date filters must survive the legacy compatibility hop.
+  return <Redirect to={`/Results${window.location.search}`} />;
 };

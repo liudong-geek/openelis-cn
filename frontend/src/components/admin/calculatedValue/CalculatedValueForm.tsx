@@ -36,6 +36,8 @@ import {
   NotificationKinds,
 } from "../../common/CustomNotification";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import { refreshCurrentRoute } from "../../utils/NavigationUtils";
+import { validateCalculationExpression } from "./calculationExpression";
 
 const breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -219,7 +221,7 @@ const CalculatedValue: React.FC<CalculatedValueProps> = () => {
         title: intl.formatMessage({ id: "notification.title" }),
         message: intl.formatMessage({ id: "delete.success.msg" }),
       });
-      window.location.reload();
+      refreshCurrentRoute();
     } else {
       addNotification({
         kind: NotificationKinds.error,
@@ -359,13 +361,15 @@ const CalculatedValue: React.FC<CalculatedValueProps> = () => {
       addNotification({
         kind: NotificationKinds.success,
         title: intl.formatMessage({ id: "notification.title" }),
-        message: "Succesfuly saved",
+        message: intl.formatMessage({ id: "save.success" }),
       });
     } else {
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
-        message: "Duplicate Calculation Name or Error while saving",
+        message: intl.formatMessage({
+          id: "error.duplicate.calculationname",
+        }),
       });
     }
   };
@@ -407,8 +411,7 @@ const CalculatedValue: React.FC<CalculatedValueProps> = () => {
     );
 
     try {
-      // Code that might throw an error
-      eval(mathematicalOperation);
+      validateCalculationExpression(mathematicalOperation);
       console.log(JSON.stringify(calculationList[index]));
       postToOpenElisServer(
         "/rest/test-calculation",
@@ -420,7 +423,9 @@ const CalculatedValue: React.FC<CalculatedValueProps> = () => {
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
-        message: "Invalid Calculation Logic : " + error.message,
+        message:
+          "计算公式无效：" +
+          (error instanceof Error ? error.message : "请检查公式配置"),
       });
     }
   };
@@ -546,8 +551,7 @@ const CalculatedValue: React.FC<CalculatedValueProps> = () => {
                 required
               >
                 <SelectItem text="" value="" />
-                <SelectItem text="Patient Age(Years)" value="AGE" />
-                <SelectItem text="Patient Weight(Kg)" value="WEIGHT" />
+                <SelectItem text="患者年龄（岁）" value="AGE" />
               </Select>
             </Column>
             <Column lg={5}> </Column>
@@ -914,19 +918,19 @@ const CalculatedValue: React.FC<CalculatedValueProps> = () => {
                                   >
                                     <SelectItem text="" value="" />
                                     <SelectItem
-                                      text="Test Result"
+                                      text="检验结果"
                                       value="TEST_RESULT"
                                     />
                                     <SelectItem
-                                      text="Mathematical Function"
+                                      text="运算符"
                                       value="MATH_FUNCTION"
                                     />
                                     <SelectItem
-                                      text="Integer"
+                                      text="数值常量"
                                       value="INTEGER"
                                     />
                                     <SelectItem
-                                      text="Patient Attribute"
+                                      text="患者属性"
                                       value="PATIENT_ATTRIBUTE"
                                     />
                                   </Select>

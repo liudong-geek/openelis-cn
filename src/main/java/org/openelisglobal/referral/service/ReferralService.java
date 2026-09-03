@@ -34,6 +34,8 @@ public interface ReferralService extends BaseObjectService<Referral, String> {
 
     List<ReferralDisplayItem> getReferralItems(ReferredOutTestsForm form);
 
+    List<ReferralDisplayItem> getReferralItems(ReferredOutTestsForm form, String systemUserId);
+
     List<Referral> getReferralsByTestAndDate(ReferDateType dateType, Timestamp startTimestamp, Timestamp endTimestamp,
             List<String> testUnitIds, List<String> testIds);
 }

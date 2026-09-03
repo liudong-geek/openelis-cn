@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+  <changeSet author="local-chinese-edition" id="3.5.0-068-enable-simplified-chinese">
+    <preConditions onFail="MARK_RAN">
+      <and>
+        <tableExists tableName="supported_locale" schemaName="clinlims"/>
+        <sqlCheck expectedResult="0">
+          SELECT COUNT(*) FROM clinlims.supported_locale WHERE locale_code = 'zh'
+        </sqlCheck>
+      </and>
+    </preConditions>
+    <insert schemaName="clinlims" tableName="supported_locale">
+      <column name="id" valueSequenceNext="supported_locale_seq"/>
+      <column name="locale_code" value="zh"/>
+      <column name="display_name" value="简体中文"/>
+      <column name="is_active" valueBoolean="true"/>
+      <column name="is_fallback" valueBoolean="false"/>
+      <column name="sort_order" valueNumeric="3"/>
+      <column name="last_updated" valueComputed="now()"/>
+    </insert>
+  </changeSet>
+
+</databaseChangeLog>

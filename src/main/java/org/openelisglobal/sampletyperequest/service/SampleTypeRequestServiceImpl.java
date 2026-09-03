@@ -1,6 +1,8 @@
 package org.openelisglobal.sampletyperequest.service;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.openelisglobal.common.service.AuditableBaseObjectServiceImpl;
 import org.openelisglobal.sampleitem.service.SampleItemService;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
@@ -83,10 +85,15 @@ public class SampleTypeRequestServiceImpl extends AuditableBaseObjectServiceImpl
 
     @Override
     @Transactional
-    public void fulfillRequest(Integer requestId, String sampleItemId) {
+    public SampleTypeRequest fulfillRequest(Integer requestId, String sampleItemId) {
         SampleTypeRequest request = get(requestId);
         if (request == null) {
             throw new IllegalArgumentException("SampleTypeRequest not found: " + requestId);
+        }
+        if (request.getStatus() == SampleTypeRequest.Status.COLLECTED && request.getSampleItem() != null
+                && sampleItemId.equals(request.getSampleItem().getId())) {
+            initializeLazyAssociations(request);
+            return request;
         }
         if (request.getStatus() != SampleTypeRequest.Status.REQUESTED) {
             throw new IllegalStateException("Cannot fulfill request in status: " + request.getStatus());
@@ -100,6 +107,44 @@ public class SampleTypeRequestServiceImpl extends AuditableBaseObjectServiceImpl
         request.setStatus(SampleTypeRequest.Status.COLLECTED);
         request.setSampleItem(sampleItem);
         update(request);
+        initializeLazyAssociations(request);
+        return request;
+    }
+
+    @Override
+    @Transactional
+    public int fulfillMatchingRequests(String sampleId, List<SampleItem> sampleItems) {
+        if (sampleId == null || sampleId.trim().isEmpty() || sampleItems == null || sampleItems.isEmpty()) {
+            return 0;
+        }
+
+        List<SampleTypeRequest> allRequests = sampleTypeRequestDAO.getRequestsBySampleId(sampleId);
+        Set<String> alreadyLinkedItemIds = new HashSet<>();
+        for (SampleTypeRequest request : allRequests) {
+            if (request.getSampleItem() != null && request.getSampleItem().getId() != null) {
+                alreadyLinkedItemIds.add(request.getSampleItem().getId());
+            }
+        }
+
+        int fulfilledCount = 0;
+        for (SampleTypeRequest request : allRequests) {
+            if (request.getStatus() != SampleTypeRequest.Status.REQUESTED || request.getTypeOfSample() == null) {
+                continue;
+            }
+            String requestedTypeId = request.getTypeOfSample().getId();
+            SampleItem match = sampleItems.stream()
+                    .filter(item -> item != null && item.getId() != null && item.getTypeOfSample() != null)
+                    .filter(item -> !alreadyLinkedItemIds.contains(item.getId()))
+                    .filter(item -> requestedTypeId.equals(item.getTypeOfSample().getId())).findFirst().orElse(null);
+            if (match != null) {
+                request.setStatus(SampleTypeRequest.Status.COLLECTED);
+                request.setSampleItem(match);
+                update(request);
+                alreadyLinkedItemIds.add(match.getId());
+                fulfilledCount++;
+            }
+        }
+        return fulfilledCount;
     }
 
     @Override

@@ -129,7 +129,13 @@ const ReflexCalcSection = ({ testId }) => {
           />
         ) : (
           <TableContainer>
-            <Table size="lg" useZebraStyles aria-label="reflex-rules">
+            <Table
+              size="lg"
+              useZebraStyles
+              aria-label={intl.formatMessage({
+                id: "label.testCatalog.reflexCalc.reflex.heading",
+              })}
+            >
               <TableHead>
                 <TableRow>
                   <TableHeader>
@@ -192,7 +198,12 @@ const ReflexCalcSection = ({ testId }) => {
               <FormattedMessage id="label.testCatalog.reflexCalc.calc.empty" />
             </p>
           ) : (
-            <Table size="sm" aria-label="calc-feeds-into">
+            <Table
+              size="sm"
+              aria-label={intl.formatMessage({
+                id: "label.testCatalog.reflexCalc.calc.feedsInto",
+              })}
+            >
               <TableHead>
                 <TableRow>
                   <TableHeader>
@@ -230,7 +241,12 @@ const ReflexCalcSection = ({ testId }) => {
               <FormattedMessage id="label.testCatalog.reflexCalc.calc.empty" />
             </p>
           ) : (
-            <Table size="sm" aria-label="calc-calculated-by">
+            <Table
+              size="sm"
+              aria-label={intl.formatMessage({
+                id: "label.testCatalog.reflexCalc.calc.calculatedBy",
+              })}
+            >
               <TableHead>
                 <TableRow>
                   <TableHeader>

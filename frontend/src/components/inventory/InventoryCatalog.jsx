@@ -64,8 +64,14 @@ const InventoryCatalog = () => {
 
   const statusOptions = [
     { id: "ALL", text: intl.formatMessage({ id: "inventory.filter.all" }) },
-    { id: "ACTIVE", text: "Active" },
-    { id: "INACTIVE", text: "Inactive" },
+    {
+      id: "ACTIVE",
+      text: intl.formatMessage({ id: "inventory.status.ACTIVE" }),
+    },
+    {
+      id: "INACTIVE",
+      text: intl.formatMessage({ id: "inventory.status.INACTIVE" }),
+    },
   ];
 
   const headers = [
@@ -122,14 +128,10 @@ const InventoryCatalog = () => {
   }, [typeFilter, statusFilter]);
 
   const getItemTypeLabel = (type) => {
-    const labels = {
-      REAGENT: "Reagent",
-      RDT: "RDT (Rapid Diagnostic Test)",
-      CARTRIDGE: "Analyzer Cartridge",
-      HIV_KIT: "HIV Test Kit",
-      SYPHILIS_KIT: "Syphilis Test Kit",
-    };
-    return labels[type] || type;
+    return intl.formatMessage({
+      id: `inventory.itemType.${type}`,
+      defaultMessage: type,
+    });
   };
 
   const fetchItems = async () => {
@@ -147,7 +149,7 @@ const InventoryCatalog = () => {
       notify({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.error" }),
-        subtitle: "Error loading catalog items",
+        subtitle: intl.formatMessage({ id: "catalog.item.load.error" }),
       });
     } finally {
       setLoading(false);
@@ -189,10 +191,14 @@ const InventoryCatalog = () => {
   const rows = paginatedItems.map((item) => ({
     id: String(item.id),
     name: item.name,
-    itemType: item.itemType,
+    itemType: getItemTypeLabel(item.itemType),
     units: item.units,
     lowStockThreshold: item.lowStockThreshold || "-",
-    status: item.isActive ? "Active" : "Inactive",
+    status: intl.formatMessage({
+      id: item.isActive
+        ? "inventory.status.ACTIVE"
+        : "inventory.status.INACTIVE",
+    }),
   }));
 
   const handleItemSaved = () => {
@@ -232,7 +238,7 @@ const InventoryCatalog = () => {
       notify({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.error" }),
-        subtitle: "Error activating item",
+        subtitle: intl.formatMessage({ id: "catalog.item.activate.error" }),
       });
     }
   };
@@ -255,7 +261,7 @@ const InventoryCatalog = () => {
       notify({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.error" }),
-        subtitle: "Error deactivating item",
+        subtitle: intl.formatMessage({ id: "catalog.item.deactivate.error" }),
       });
     }
   };
@@ -344,12 +350,14 @@ const InventoryCatalog = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={headers.length}>Loading...</TableCell>
+                    <TableCell colSpan={headers.length}>
+                      {intl.formatMessage({ id: "label.loading" })}
+                    </TableCell>
                   </TableRow>
                 ) : rows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={headers.length}>
-                      No catalog items found
+                      {intl.formatMessage({ id: "catalog.item.empty" })}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -361,11 +369,7 @@ const InventoryCatalog = () => {
                           if (cell.info.header === "status") {
                             return (
                               <TableCell key={cell.id}>
-                                <Tag
-                                  type={
-                                    cell.value === "Active" ? "green" : "gray"
-                                  }
-                                >
+                                <Tag type={item?.isActive ? "green" : "gray"}>
                                   {cell.value}
                                 </Tag>
                               </TableCell>
@@ -423,9 +427,11 @@ const InventoryCatalog = () => {
 
             {!loading && rows.length > 0 && (
               <Pagination
-                backwardText="Previous page"
-                forwardText="Next page"
-                itemsPerPageText="Items per page:"
+                backwardText={intl.formatMessage({ id: "pagination.backward" })}
+                forwardText={intl.formatMessage({ id: "pagination.forward" })}
+                itemsPerPageText={intl.formatMessage({
+                  id: "pagination.itemsPerPage",
+                })}
                 page={page}
                 pageSize={pageSize}
                 pageSizes={[10, 20, 30, 40, 50]}

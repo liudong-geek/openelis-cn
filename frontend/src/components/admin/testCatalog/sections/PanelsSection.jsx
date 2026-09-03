@@ -259,7 +259,12 @@ const PanelsSection = ({ testId }) => {
           title={intl.formatMessage({ id: "label.testCatalog.panels.empty" })}
         />
       ) : (
-        <Table size="lg" aria-label="panel-memberships">
+        <Table
+          size="lg"
+          aria-label={intl.formatMessage({
+            id: "label.testCatalog.section.panels",
+          })}
+        >
           <TableHead>
             <TableRow>
               <TableHeader>

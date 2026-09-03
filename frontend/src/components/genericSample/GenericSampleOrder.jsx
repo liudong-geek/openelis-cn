@@ -9,6 +9,7 @@ import {
   InlineNotification,
 } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
+import { navigateToInternalPath } from "../utils/NavigationUtils";
 import PageBreadCrumb from "../common/PageBreadCrumb";
 import CustomDatePicker from "../common/CustomDatePicker";
 import CustomTimePicker from "../common/CustomTimePicker";
@@ -477,7 +478,7 @@ export default function GenericSampleOrder({
                 </Button>
                 <Button
                   kind="tertiary"
-                  onClick={() => (window.location.href = "/")}
+                  onClick={() => navigateToInternalPath("/")}
                 >
                   <FormattedMessage id="button.home" defaultMessage="Home" />
                 </Button>

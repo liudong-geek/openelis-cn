@@ -12,6 +12,7 @@ import {
 import { getFromOpenElisServer } from "../utils/Utils";
 import { sampleTypeTestsStructure } from "../data/SampleEntryTestsForTypeProvider";
 import AutoComplete from "../common/AutoComplete";
+import { buildLabelMakerUrl } from "../barcodeWorkflow/labelMakerUrl";
 import "../Style.css";
 
 const PrePrint = () => {
@@ -164,7 +165,7 @@ const PrePrint = () => {
       facilityName: facilityId,
       testIds: selectedTestIds,
     });
-    setSource(`LabelMakerServlet?${params.toString()}`);
+    setSource(buildLabelMakerUrl(params));
     setRenderBarcode(true);
   };
 
@@ -284,7 +285,7 @@ const PrePrint = () => {
           <Column lg={8} md={4} sm={4}>
             <Select
               id="selectSampleType"
-              labelText="Sample Type"
+              labelText={intl.formatMessage({ id: "sample.type" })}
               onChange={(e) => {
                 handleFetchSampleTypeTests(e);
               }}

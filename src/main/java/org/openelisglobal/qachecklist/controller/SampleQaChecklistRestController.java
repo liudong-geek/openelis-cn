@@ -189,6 +189,12 @@ public class SampleQaChecklistRestController extends BaseRestController {
     @SuppressWarnings("unchecked")
     public ResponseEntity<?> saveQaChecklist(@RequestBody Map<String, Object> requestBody) {
         try {
+            if (sampleQaChecklistService.getActiveChecklistItems().isEmpty()) {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(Map.of("error", "QA checklist is not configured", "code",
+                                "QA_CHECKLIST_NOT_CONFIGURED", "errorKey", "qa.checklist.notConfigured"));
+            }
+
             Integer sampleId = null;
 
             // Support both sampleId and labNumber in the request

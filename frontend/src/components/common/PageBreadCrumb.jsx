@@ -20,7 +20,7 @@ const PageBreadCrumb = ({ breadcrumbs }) => {
   const defaultsLastAsCurrent = !anyExplicitCurrent && breadcrumbs.length > 1;
 
   return (
-    <Grid fullWidth={true}>
+    <Grid fullWidth={true} className="oe-page-breadcrumb">
       <Column lg={16} md={8} sm={4}>
         <Breadcrumb>
           {breadcrumbs.map((breadcrumb, index) => {

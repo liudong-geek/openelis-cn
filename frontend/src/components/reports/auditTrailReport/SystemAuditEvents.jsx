@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useCallback, useContext, useEffect, useState } from "react";
 import {
   Grid,
   Column,
@@ -25,6 +25,20 @@ import { FormattedMessage, useIntl } from "react-intl";
 import { getFromOpenElisServer } from "../../utils/Utils";
 import config from "../../../config.json";
 import SearchPatientForm from "../../patient/SearchPatientForm";
+import { ConfigurationContext } from "../../layout/Layout";
+import {
+  getCarbonDateFormat,
+  getDatePickerPlaceholderMessage,
+} from "../../common/dateLocaleUtils";
+import {
+  formatReportApiDateForLocale,
+  parseReportDisplayDateToApi,
+} from "../reportDateUtils";
+import {
+  getAuditActionMessageId,
+  getAuditEntityTypeMessageId,
+  getAuditFieldMessageId,
+} from "./auditLocalization";
 import "../../Style.css";
 
 const PATIENT_ENTITY_NAME = "PATIENT";
@@ -58,6 +72,15 @@ const headers = [
 
 const SystemAuditEvents = () => {
   const intl = useIntl();
+  const configuration = useContext(ConfigurationContext);
+  const dateLocale =
+    configuration?.configurationProperties?.DEFAULT_DATE_LOCALE ||
+    intl.locale ||
+    "zh-CN";
+  const dateFormat = getCarbonDateFormat(dateLocale);
+  const datePlaceholder = intl.formatMessage(
+    getDatePickerPlaceholderMessage(dateLocale),
+  );
   const [events, setEvents] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -77,6 +100,11 @@ const SystemAuditEvents = () => {
   const isPatientEntity = selectedEntityType === PATIENT_ENTITY_NAME;
 
   const allLabel = intl.formatMessage({ id: "systemAudit.filter.all" });
+  const localizeEntityType = useCallback(
+    (entityType) =>
+      intl.formatMessage({ id: getAuditEntityTypeMessageId(entityType) }),
+    [intl],
+  );
 
   const actionOptions = [
     { id: "", text: allLabel },
@@ -97,7 +125,14 @@ const SystemAuditEvents = () => {
   useEffect(() => {
     getFromOpenElisServer("/rest/systemAuditEvents/entityTypes", (data) => {
       if (data) {
-        setEntityTypes([{ id: "", name: allLabel }, ...data]);
+        setEntityTypes([
+          { id: "", apiName: "", text: allLabel },
+          ...data.map((item) => ({
+            ...item,
+            apiName: item.name,
+            text: localizeEntityType(item.name),
+          })),
+        ]);
       }
     });
     getFromOpenElisServer("/rest/users", (data) => {
@@ -105,7 +140,7 @@ const SystemAuditEvents = () => {
         setUsers([{ id: "", value: allLabel }, ...data]);
       }
     });
-  }, []);
+  }, [allLabel, localizeEntityType]);
 
   const buildParams = useCallback(
     (p, ps) => {
@@ -145,28 +180,33 @@ const SystemAuditEvents = () => {
           if (data && data.events) {
             const formatted = data.events.map((e, idx) => {
               const changesObj = e.changes || {};
-              const changesStr = Object.keys(changesObj).length > 0
-                ? Object.entries(changesObj)
-                    .map(([k, v]) => {
-                      if (v && typeof v === "object") {
-                        const oldVal = v.old ?? "";
-                        const newVal = v.new ?? "";
-                        if (!oldVal && !newVal) return null;
-                        if (oldVal && newVal) return `${k}: ${oldVal} → ${newVal}`;
-                        if (newVal) return `${k}: ${newVal}`;
-                        return `${k}: ${oldVal}`;
-                      }
-                      if (!v) return null;
-                      return `${k}: ${v}`;
-                    })
-                    .filter(Boolean)
-                    .join(", ")
-                : "";
+              const changesStr =
+                Object.keys(changesObj).length > 0
+                  ? Object.entries(changesObj)
+                      .map(([k, v]) => {
+                        const fieldLabel = intl.formatMessage({
+                          id: getAuditFieldMessageId(k),
+                        });
+                        if (v && typeof v === "object") {
+                          const oldVal = v.old ?? "";
+                          const newVal = v.new ?? "";
+                          if (!oldVal && !newVal) return null;
+                          if (oldVal && newVal)
+                            return `${fieldLabel}：${oldVal} → ${newVal}`;
+                          if (newVal) return `${fieldLabel}：${newVal}`;
+                          return `${fieldLabel}：${oldVal}`;
+                        }
+                        if (!v) return null;
+                        return `${fieldLabel}：${v}`;
+                      })
+                      .filter(Boolean)
+                      .join("；")
+                  : "";
               return {
                 ...e,
                 id: String((p - 1) * ps + idx + 1),
                 timestamp: e.timestamp
-                  ? new Date(e.timestamp).toLocaleString(navigator.language, {
+                  ? new Date(e.timestamp).toLocaleString(intl.locale, {
                       day: "2-digit",
                       month: "2-digit",
                       year: "numeric",
@@ -175,6 +215,10 @@ const SystemAuditEvents = () => {
                       hour12: false,
                     })
                   : "",
+                entityType: localizeEntityType(e.entityType),
+                action: intl.formatMessage({
+                  id: getAuditActionMessageId(e.action),
+                }),
                 changes: changesStr,
               };
             });
@@ -188,7 +232,7 @@ const SystemAuditEvents = () => {
         },
       );
     },
-    [buildParams],
+    [buildParams, intl, localizeEntityType],
   );
 
   const handleSearch = () => {
@@ -239,12 +283,15 @@ const SystemAuditEvents = () => {
         <Column lg={4} md={4} sm={4}>
           <DatePicker
             datePickerType="single"
-            dateFormat="Y-m-d"
-            onChange={(dates, dateStr) => setStartDate(dateStr)}
+            dateFormat={dateFormat}
+            value={formatReportApiDateForLocale(startDate, dateLocale)}
+            onChange={(_dates, dateStr) =>
+              setStartDate(parseReportDisplayDateToApi(dateStr, dateLocale))
+            }
           >
             <DatePickerInput
               id="startDate"
-              placeholder="yyyy-mm-dd"
+              placeholder={datePlaceholder}
               labelText={intl.formatMessage({
                 id: "systemAudit.filter.startDate",
               })}
@@ -254,12 +301,15 @@ const SystemAuditEvents = () => {
         <Column lg={4} md={4} sm={4}>
           <DatePicker
             datePickerType="single"
-            dateFormat="Y-m-d"
-            onChange={(dates, dateStr) => setEndDate(dateStr)}
+            dateFormat={dateFormat}
+            value={formatReportApiDateForLocale(endDate, dateLocale)}
+            onChange={(_dates, dateStr) =>
+              setEndDate(parseReportDisplayDateToApi(dateStr, dateLocale))
+            }
           >
             <DatePickerInput
               id="endDate"
-              placeholder="yyyy-mm-dd"
+              placeholder={datePlaceholder}
               labelText={intl.formatMessage({
                 id: "systemAudit.filter.endDate",
               })}
@@ -273,13 +323,9 @@ const SystemAuditEvents = () => {
               id: "systemAudit.filter.entityType",
             })}
             items={entityTypes}
-            itemToString={(item) => (item ? item.name : "")}
+            itemToString={(item) => (item ? item.text : "")}
             onChange={({ selectedItem }) => {
-              const newType = selectedItem
-                ? selectedItem.name === allLabel
-                  ? ""
-                  : selectedItem.name
-                : "";
+              const newType = selectedItem?.apiName || "";
               setSelectedEntityType(newType);
               // Switching away from PATIENT clears the selected patient so the
               // next query is unconstrained.
@@ -349,11 +395,8 @@ const SystemAuditEvents = () => {
                   }}
                 >
                   <Tag type={selectedPatient?.patientPK ? "blue" : "gray"}>
-                    <FormattedMessage
-                      id="systemAudit.filter.selectedPatient"
-                      defaultMessage="Selected Patient"
-                    />
-                    :{" "}
+                    <FormattedMessage id="systemAudit.filter.selectedPatient" />
+                    ：{" "}
                     {selectedPatient?.patientPK
                       ? [selectedPatient.firstName, selectedPatient.lastName]
                           .filter(Boolean)
@@ -363,7 +406,6 @@ const SystemAuditEvents = () => {
                           : "")
                       : intl.formatMessage({
                           id: "systemAudit.filter.selectedPatient.none",
-                          defaultMessage: "None",
                         })}
                   </Tag>
                   <Button
@@ -372,15 +414,9 @@ const SystemAuditEvents = () => {
                     onClick={() => setShowPatientSearch((prev) => !prev)}
                   >
                     {selectedPatient?.patientPK ? (
-                      <FormattedMessage
-                        id="systemAudit.filter.selectAnotherPatient"
-                        defaultMessage="Select Another Patient"
-                      />
+                      <FormattedMessage id="systemAudit.filter.selectAnotherPatient" />
                     ) : (
-                      <FormattedMessage
-                        id="systemAudit.filter.selectPatient"
-                        defaultMessage="Select Patient"
-                      />
+                      <FormattedMessage id="systemAudit.filter.selectPatient" />
                     )}
                   </Button>
                   {selectedPatient?.patientPK && (
@@ -392,10 +428,7 @@ const SystemAuditEvents = () => {
                         setShowPatientSearch(false);
                       }}
                     >
-                      <FormattedMessage
-                        id="label.button.clear"
-                        defaultMessage="Clear"
-                      />
+                      <FormattedMessage id="label.button.clear" />
                     </Button>
                   )}
                 </div>
@@ -422,6 +455,7 @@ const SystemAuditEvents = () => {
             <Loading
               small={true}
               withOverlay={false}
+              description={intl.formatMessage({ id: "loading.description" })}
               className={isLoading ? "show" : "hidden"}
             />
           </Button>
@@ -449,70 +483,70 @@ const SystemAuditEvents = () => {
       )}
       {events.length > 0 && (
         <Grid fullWidth={true}>
-        <Column lg={16}>
-          <DataTable rows={events} headers={headers} isSortable>
-            {({ rows, headers, getHeaderProps, getTableProps }) => (
-              <TableContainer>
-                <Table {...getTableProps()}>
-                  <TableHead>
-                    <TableRow>
-                      {headers.map((header) => (
-                        <TableHeader
-                          key={header.key}
-                          {...getHeaderProps({ header })}
-                        >
-                          {header.header}
-                        </TableHeader>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {rows.map((row) => (
-                      <TableRow key={row.id}>
-                        {row.cells.map((cell) => (
-                          <TableCell key={cell.id}>{cell.value}</TableCell>
+          <Column lg={16}>
+            <DataTable rows={events} headers={headers} isSortable>
+              {({ rows, headers, getHeaderProps, getTableProps }) => (
+                <TableContainer>
+                  <Table {...getTableProps()}>
+                    <TableHead>
+                      <TableRow>
+                        {headers.map((header) => (
+                          <TableHeader
+                            key={header.key}
+                            {...getHeaderProps({ header })}
+                          >
+                            {header.header}
+                          </TableHeader>
                         ))}
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </DataTable>
-          <Pagination
-            onChange={handlePageChange}
-            page={page}
-            pageSize={pageSize}
-            pageSizes={[25, 50, 100]}
-            totalItems={totalItems}
-            forwardText={intl.formatMessage({ id: "pagination.forward" })}
-            backwardText={intl.formatMessage({ id: "pagination.backward" })}
-            itemRangeText={(min, max, total) =>
-              intl.formatMessage(
-                { id: "pagination.item-range" },
-                { min, max, total },
-              )
-            }
-            itemsPerPageText={intl.formatMessage({
-              id: "pagination.items-per-page",
-            })}
-            itemText={(min, max) =>
-              intl.formatMessage({ id: "pagination.item" }, { min, max })
-            }
-            pageNumberText={intl.formatMessage({
-              id: "pagination.page-number",
-            })}
-            pageRangeText={(_current, total) =>
-              intl.formatMessage({ id: "pagination.page-range" }, { total })
-            }
-            pageText={(page, pagesUnknown) =>
-              intl.formatMessage(
-                { id: "pagination.page" },
-                { page: pagesUnknown ? "" : page },
-              )
-            }
-          />
-        </Column>
+                    </TableHead>
+                    <TableBody>
+                      {rows.map((row) => (
+                        <TableRow key={row.id}>
+                          {row.cells.map((cell) => (
+                            <TableCell key={cell.id}>{cell.value}</TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </DataTable>
+            <Pagination
+              onChange={handlePageChange}
+              page={page}
+              pageSize={pageSize}
+              pageSizes={[25, 50, 100]}
+              totalItems={totalItems}
+              forwardText={intl.formatMessage({ id: "pagination.forward" })}
+              backwardText={intl.formatMessage({ id: "pagination.backward" })}
+              itemRangeText={(min, max, total) =>
+                intl.formatMessage(
+                  { id: "pagination.item-range" },
+                  { min, max, total },
+                )
+              }
+              itemsPerPageText={intl.formatMessage({
+                id: "pagination.items-per-page",
+              })}
+              itemText={(min, max) =>
+                intl.formatMessage({ id: "pagination.item" }, { min, max })
+              }
+              pageNumberText={intl.formatMessage({
+                id: "pagination.page-number",
+              })}
+              pageRangeText={(_current, total) =>
+                intl.formatMessage({ id: "pagination.page-range" }, { total })
+              }
+              pageText={(page, pagesUnknown) =>
+                intl.formatMessage(
+                  { id: "pagination.page" },
+                  { page: pagesUnknown ? "" : page },
+                )
+              }
+            />
+          </Column>
         </Grid>
       )}
     </>

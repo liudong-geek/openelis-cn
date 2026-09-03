@@ -27,8 +27,12 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { useHistory, useLocation } from "react-router-dom";
 import { AlertDialog } from "../common/CustomNotification";
+import {
+  getCarbonDateFormat,
+  getDatePickerPlaceholderMessage,
+} from "../common/dateLocaleUtils";
 import PageBreadCrumb from "../common/PageBreadCrumb";
-import { NotificationContext } from "../layout/Layout";
+import { ConfigurationContext, NotificationContext } from "../layout/Layout";
 import { getFromOpenElisServer } from "../utils/Utils";
 import AddToBoxModal from "./AddToBoxModal";
 import CancelReferralModal from "./CancelReferralModal";
@@ -44,6 +48,12 @@ const ShipmentDashboard = () => {
   const location = useLocation();
   const componentMounted = useRef(true);
   const { addNotification } = useContext(NotificationContext);
+  const { configurationProperties = {} } =
+    useContext(ConfigurationContext) || {};
+  const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "zh-CN";
+  const datePickerPlaceholder = intl.formatMessage(
+    getDatePickerPlaceholderMessage(dateLocale),
+  );
 
   // Tab state - derive from URL
   const getTabFromUrl = () => {
@@ -588,7 +598,11 @@ const ShipmentDashboard = () => {
             selectedIndex={selectedTab}
             onChange={({ selectedIndex }) => setSelectedTab(selectedIndex)}
           >
-            <TabList aria-label="Shipment tabs">
+            <TabList
+              aria-label={intl.formatMessage({
+                id: "shipment.dashboard.tabs.aria",
+              })}
+            >
               <Tab>
                 <FormattedMessage id="shipment.tab.boxes" />
               </Tab>
@@ -648,12 +662,13 @@ const ShipmentDashboard = () => {
                   />
                   <DatePicker
                     datePickerType="single"
+                    dateFormat={getCarbonDateFormat(dateLocale)}
                     onChange={([date]) => setFilterDateFrom(date)}
                     value={filterDateFrom}
                   >
                     <DatePickerInput
                       id="date-from"
-                      placeholder="mm/dd/yyyy"
+                      placeholder={datePickerPlaceholder}
                       labelText={intl.formatMessage({
                         id: "shipment.filter.dateFrom",
                       })}
@@ -662,12 +677,13 @@ const ShipmentDashboard = () => {
                   </DatePicker>
                   <DatePicker
                     datePickerType="single"
+                    dateFormat={getCarbonDateFormat(dateLocale)}
                     onChange={([date]) => setFilterDateTo(date)}
                     value={filterDateTo}
                   >
                     <DatePickerInput
                       id="date-to"
-                      placeholder="mm/dd/yyyy"
+                      placeholder={datePickerPlaceholder}
                       labelText={intl.formatMessage({
                         id: "shipment.filter.dateTo",
                       })}

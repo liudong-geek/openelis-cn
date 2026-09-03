@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useContext } from "react";
 import { useIntl, FormattedMessage } from "react-intl";
 import {
   Grid,
@@ -13,6 +13,12 @@ import {
 } from "@carbon/react";
 import { getFromOpenElisServer } from "../../../utils/Utils";
 import Questionnaire from "../../../common/Questionnaire";
+import { ConfigurationContext } from "../../../layout/Layout";
+import {
+  getDatePickerFormat,
+  getDatePickerPlaceholderMessage,
+} from "../../orderDateUtils";
+import { formatDateForLocale } from "../../../common/dateLocaleUtils";
 
 /**
  * ProgramSection - Program selection with dynamic additional fields
@@ -24,9 +30,13 @@ import Questionnaire from "../../../common/Questionnaire";
 
 const ProgramSection = ({ orderData, setOrderData, isReadOnly }) => {
   const intl = useIntl();
+  const { configurationProperties = {} } =
+    useContext(ConfigurationContext) || {};
+  const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "en-US";
   const componentMounted = useRef(true);
 
   const [programs, setPrograms] = useState([]);
+  const [programsLoaded, setProgramsLoaded] = useState(false);
   const [selectedProgram, setSelectedProgram] = useState(null);
   const [questionnaire, setQuestionnaire] = useState(
     orderData?.sampleOrderItems?.questionnaire || null,
@@ -64,8 +74,9 @@ const ProgramSection = ({ orderData, setOrderData, isReadOnly }) => {
   useEffect(() => {
     componentMounted.current = true;
     getFromOpenElisServer("/rest/user-programs", (response) => {
-      if (componentMounted.current && response) {
-        setPrograms(response);
+      if (componentMounted.current) {
+        setPrograms(Array.isArray(response) ? response : []);
+        setProgramsLoaded(true);
       }
     });
     return () => {
@@ -398,9 +409,18 @@ const ProgramSection = ({ orderData, setOrderData, isReadOnly }) => {
                 defaultMessage: "Select...",
               })}
             />
-            <SelectItem value="routine" text="Routine Monitoring" />
-            <SelectItem value="targeted" text="Targeted (Clinical Suspicion)" />
-            <SelectItem value="confirmatory" text="Confirmatory" />
+            <SelectItem
+              value="routine"
+              text={intl.formatMessage({ id: "vl.indication.routine" })}
+            />
+            <SelectItem
+              value="targeted"
+              text={intl.formatMessage({ id: "vl.indication.targeted" })}
+            />
+            <SelectItem
+              value="confirmatory"
+              text={intl.formatMessage({ id: "vl.indication.confirmatory" })}
+            />
           </Select>
         </Column>
 
@@ -424,20 +444,30 @@ const ProgramSection = ({ orderData, setOrderData, isReadOnly }) => {
                 defaultMessage: "Select...",
               })}
             />
-            <SelectItem value="not_applicable" text="Not Applicable" />
-            <SelectItem value="pregnant" text="Pregnant" />
-            <SelectItem value="breastfeeding" text="Breastfeeding" />
+            <SelectItem
+              value="not_applicable"
+              text={intl.formatMessage({ id: "vl.pregnancy.notApplicable" })}
+            />
+            <SelectItem
+              value="pregnant"
+              text={intl.formatMessage({ id: "vl.pregnancy.pregnant" })}
+            />
+            <SelectItem
+              value="breastfeeding"
+              text={intl.formatMessage({ id: "vl.pregnancy.breastfeeding" })}
+            />
           </Select>
         </Column>
         <Column lg={8} md={4} sm={4}>
           <DatePicker
             datePickerType="single"
-            dateFormat="d/m/Y"
+            dateFormat={getDatePickerFormat(dateLocale)}
             onChange={(dates) => {
               if (dates && dates[0]) {
-                const date = dates[0];
-                const formatted = `${date.getDate().toString().padStart(2, "0")}/${(date.getMonth() + 1).toString().padStart(2, "0")}/${date.getFullYear()}`;
-                handleVLFieldChange("lastVLDate", formatted);
+                handleVLFieldChange(
+                  "lastVLDate",
+                  formatDateForLocale(dates[0], dateLocale),
+                );
               }
             }}
           >
@@ -447,7 +477,9 @@ const ProgramSection = ({ orderData, setOrderData, isReadOnly }) => {
                 id: "vl.lastVLDate",
                 defaultMessage: "Date of Last VL Result",
               })}
-              placeholder="dd/mm/yyyy"
+              placeholder={intl.formatMessage(
+                getDatePickerPlaceholderMessage(dateLocale),
+              )}
               disabled={isReadOnly}
             />
           </DatePicker>
@@ -479,6 +511,13 @@ const ProgramSection = ({ orderData, setOrderData, isReadOnly }) => {
   const isVLProgram =
     selectedProgram?.value?.toLowerCase().includes("vl") ||
     selectedProgram?.value?.toLowerCase().includes("viral load");
+
+  // Programs are optional, deployment-specific workflows. Keeping an empty
+  // program card in every routine clinical request wastes a full section and
+  // exposes terminology that is irrelevant to most operators.
+  if (programsLoaded && programs.length === 0 && !selectedProgram) {
+    return null;
+  }
 
   return (
     <Tile className="order-section program-section">

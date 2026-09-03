@@ -24,6 +24,7 @@ import { FormattedMessage, useIntl } from "react-intl";
 import { getFromOpenElisServer } from "../../utils/Utils";
 import { auditTrailHeaderData } from "./AuditTrailTableHeader";
 import config from "../../../config.json";
+import { getAuditActionMessageId } from "./auditLocalization";
 
 const AuditTrailReport = ({ id }) => {
   const [labNo, setLabNo] = useState("");
@@ -58,7 +59,7 @@ const AuditTrailReport = ({ id }) => {
           // Add unique id and format timestamp for each item
           const updatedAuditTrailItems = data.log.map((item, index) => {
             const formattedTimeStamp = new Date(item.timeStamp).toLocaleString(
-              navigator.language,
+              intl.locale,
               {
                 day: "2-digit",
                 month: "2-digit",
@@ -68,7 +69,14 @@ const AuditTrailReport = ({ id }) => {
                 hour12: false,
               },
             ); // Convert timestamp to localized format (DD/MM/YYYY HH:mm)
-            return { ...item, id: index + 1, timeStamp: formattedTimeStamp };
+            return {
+              ...item,
+              id: index + 1,
+              timeStamp: formattedTimeStamp,
+              action: intl.formatMessage({
+                id: getAuditActionMessageId(item.action),
+              }),
+            };
           });
 
           setIsLabNoError(null);
@@ -106,7 +114,6 @@ const AuditTrailReport = ({ id }) => {
               id="labNo"
               labelText={intl.formatMessage({
                 id: "label.audittrail",
-                defaultMessage: "Lab No",
               })}
               value={labNo}
               onChange={(event, rowVal) =>
@@ -135,6 +142,9 @@ const AuditTrailReport = ({ id }) => {
                 <Loading
                   small={true}
                   withOverlay={false}
+                  description={intl.formatMessage({
+                    id: "loading.description",
+                  })}
                   className={isLoading ? "show" : "hidden"}
                 />
               </Button>
@@ -193,10 +203,7 @@ const AuditTrailReport = ({ id }) => {
             <Column lg={16} style={{ marginBottom: "20px" }}>
               <Section>
                 <Heading>
-                  <FormattedMessage
-                    id="audittrail.table.heading"
-                    defaultMessage={"Order Information"}
-                  />
+                  <FormattedMessage id="audittrail.table.heading" />
                 </Heading>
               </Section>
             </Column>
@@ -281,41 +288,45 @@ const AuditTrailReport = ({ id }) => {
         </div>
       )}
       <Grid fullWidth={true}>
-      <Column lg={16}>
-        <DataTable
-          rows={auditTrailItems ?? []}
-          headers={auditTrailHeaderData}
-          isSortable
-        >
-          {({ rows, headers, getHeaderProps, getTableProps }) => (
-            <TableContainer title={intl.formatMessage({ id: "audittrail.table.title.patientResults" })}>
-              <Table {...getTableProps()}>
-                <TableHead>
-                  <TableRow>
-                    {headers.map((header) => (
-                      <TableHeader
-                        key={header.key}
-                        {...getHeaderProps({ header })}
-                      >
-                        {header.header}
-                      </TableHeader>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {rows.map((row) => (
+        <Column lg={16}>
+          <DataTable
+            rows={auditTrailItems ?? []}
+            headers={auditTrailHeaderData}
+            isSortable
+          >
+            {({ rows, headers, getHeaderProps, getTableProps }) => (
+              <TableContainer
+                title={intl.formatMessage({
+                  id: "audittrail.table.title.patientResults",
+                })}
+              >
+                <Table {...getTableProps()}>
+                  <TableHead>
+                    <TableRow>
+                      {headers.map((header) => (
+                        <TableHeader
+                          key={header.key}
+                          {...getHeaderProps({ header })}
+                        >
+                          {header.header}
+                        </TableHeader>
+                      ))}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {rows.map((row) => (
                       <TableRow key={row.id}>
                         {row.cells.map((cell) => (
                           <TableCell key={cell.id}>{cell.value}</TableCell>
                         ))}
                       </TableRow>
                     ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </DataTable>
-      </Column>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </DataTable>
+        </Column>
       </Grid>
     </>
   );

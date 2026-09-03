@@ -68,16 +68,16 @@ public class SearchResultsServiceTest extends BaseWebContextSensitiveTest {
 
     @SuppressWarnings("unused")
     private Object[] parametersForGetSearchResults_shouldGetSearchResultsFromLuceneIndexes() {
-        return new Object[] { new Object[] { "Johm", "Doee", "12/12/1992", "M" },
+        return new Object[] { new Object[] { "Johm", "Doee", "1992/12/12", "M" },
                 new Object[] { "Johm", null, null, null }, new Object[] { null, "Doee", null, null },
-                new Object[] { null, null, "12/12/1992", null }, new Object[] { null, null, null, "M" } };
+                new Object[] { null, null, "1992/12/12", null }, new Object[] { null, null, null, "M" } };
     }
 
     @SuppressWarnings("unused")
     private Object[] parametersForGetSearchResultsExact_shouldGetExactSearchResultsFromLuceneIndexes() {
-        return new Object[] { new Object[] { "John", "Doe", "12/12/1992", "M" },
+        return new Object[] { new Object[] { "John", "Doe", "1992/12/12", "M" },
                 new Object[] { "John", null, null, null }, new Object[] { null, "Doe", null, null },
-                new Object[] { null, null, "12/12/1992", null }, new Object[] { null, null, null, "M" } };
+                new Object[] { null, null, "1992/12/12", null }, new Object[] { null, null, null, "M" } };
     }
 
     @Test
@@ -89,7 +89,7 @@ public class SearchResultsServiceTest extends BaseWebContextSensitiveTest {
 
         String firstName = "John";
         String lastname = "Doe";
-        String dob = "12/12/1992";
+        String dob = "1992/12/12";
         String gender = "M";
 
         List<PatientSearchResults> searchResults = DBSearchResultsServiceImpl.getSearchResults(searchLastName,
@@ -109,7 +109,7 @@ public class SearchResultsServiceTest extends BaseWebContextSensitiveTest {
 
         String firstName = "John";
         String lastname = "Doe";
-        String dob = "12/12/1992";
+        String dob = "1992/12/12";
         String gender = "M";
 
         List<PatientSearchResults> searchResults = DBSearchResultsServiceImpl.getSearchResultsExact(searchLastName,
@@ -128,7 +128,7 @@ public class SearchResultsServiceTest extends BaseWebContextSensitiveTest {
 
         String firstName = "John";
         String lastname = "Doe";
-        String dob = "12/12/1992";
+        String dob = "1992/12/12";
         String gender = "M";
         Patient pat = createPatient(firstName, lastname, dob, gender);
         String patientId = patientService.insert(pat);
@@ -153,7 +153,7 @@ public class SearchResultsServiceTest extends BaseWebContextSensitiveTest {
 
         String firstName = "John";
         String lastname = "Doe";
-        String dob = "12/12/1992";
+        String dob = "1992/12/12";
         String gender = "M";
         Patient pat = createPatient(firstName, lastname, dob, gender);
         String patientId = patientService.insert(pat);
@@ -175,9 +175,7 @@ public class SearchResultsServiceTest extends BaseWebContextSensitiveTest {
         Assert.assertEquals(patientID, result.getPatientID());
         Assert.assertEquals(firstName, result.getFirstName());
         Assert.assertEquals(lastName, result.getLastName());
-        Assert.assertEquals(
-                new SimpleDateFormat("yyyy-MM-dd").format(new SimpleDateFormat("dd/MM/yyyy").parse(birthdate)),
-                result.getBirthdate().replace("Invalid date format: ", ""));
+        Assert.assertEquals(birthdate, result.getBirthdate());
         Assert.assertEquals(gender, result.getGender());
     }
 
@@ -189,7 +187,7 @@ public class SearchResultsServiceTest extends BaseWebContextSensitiveTest {
         person.setSysUserId("1");
         personService.save(person);
 
-        DateFormat dateFormat = new SimpleDateFormat("dd/MM/yyyy");
+        DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd");
         Date date = dateFormat.parse(birthDate);
         long time = date.getTime();
         Timestamp dob = new Timestamp(time);

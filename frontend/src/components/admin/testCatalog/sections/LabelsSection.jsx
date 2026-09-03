@@ -281,7 +281,12 @@ const LabelsSection = ({ testId }) => {
         <DataTable rows={rows} headers={headers}>
           {({ rows: dtRows, headers: hdrs, getHeaderProps, getTableProps }) => (
             <TableContainer>
-              <Table {...getTableProps()} aria-label="labels">
+              <Table
+                {...getTableProps()}
+                aria-label={intl.formatMessage({
+                  id: "label.testCatalog.section.labels",
+                })}
+              >
                 <TableHead>
                   <TableRow>
                     {hdrs.map((header) => {

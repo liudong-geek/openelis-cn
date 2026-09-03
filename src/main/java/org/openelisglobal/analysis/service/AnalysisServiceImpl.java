@@ -411,6 +411,15 @@ public class AnalysisServiceImpl extends AuditableBaseObjectServiceImpl<Analysis
 
     @Override
     @Transactional(readOnly = true)
+    public List<Analysis> getAllAnalysisByTestsAndStatusAndCompletedDateRangeExclusive(List<String> testIdList,
+            List<String> analysisStatusList, List<String> sampleStatusList, Timestamp startInclusive,
+            Timestamp endExclusive) {
+        return baseObjectDAO.getAllAnalysisByTestsAndStatusAndCompletedDateRangeExclusive(testIdList,
+                analysisStatusList, sampleStatusList, startInclusive, endExclusive);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<Analysis> getAllAnalysisByTestSectionAndStatus(String sectionId, List<String> statusList,
             boolean sortedByDateAndAccession) {
         return baseObjectDAO.getAllAnalysisByTestSectionAndStatus(sectionId, statusList, sortedByDateAndAccession);

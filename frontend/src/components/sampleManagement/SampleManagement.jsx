@@ -38,7 +38,6 @@ export default function SampleManagement() {
   // Breadcrumb navigation
   const breadcrumbs = [
     { label: "home.label", link: "/" },
-    { label: "menu.genericSample" },
     { label: "banner.menu.sampleManagement" },
   ];
 

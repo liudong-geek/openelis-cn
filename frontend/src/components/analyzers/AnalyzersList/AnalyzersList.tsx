@@ -275,7 +275,7 @@ const AnalyzersList = () => {
       connection: connection,
       testUnits:
         analyzer.testUnitIds && analyzer.testUnitIds.length > 0
-          ? `${analyzer.testUnitIds.length} unit(s)`
+          ? `${analyzer.testUnitIds.length} 个检测科室`
           : "-",
       status: unifiedStatus,
       lastModified: analyzer.lastModified

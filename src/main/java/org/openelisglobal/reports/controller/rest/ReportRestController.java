@@ -21,6 +21,7 @@ import org.openelisglobal.common.util.validator.GenericValidator;
 import org.openelisglobal.reports.action.implementation.IReportCreator;
 import org.openelisglobal.reports.action.implementation.ReportImplementationFactory;
 import org.openelisglobal.reports.form.ReportForm;
+import org.openelisglobal.reports.service.ReportAnalysisAuthorizationService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,6 +36,9 @@ public class ReportRestController extends BaseRestController {
     @Autowired
     private ServletContext context;
 
+    @Autowired
+    private ReportAnalysisAuthorizationService reportAnalysisAuthorizationService;
+
     private static String reportPath = null;
 
     private static String imagesPath = null;
@@ -44,8 +48,10 @@ public class ReportRestController extends BaseRestController {
     public void showReportPrint(@RequestBody ReportForm form, HttpServletRequest request, HttpServletResponse response)
             throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
 
+        IReportCreator reportCreator = getReportCreator(form.getReport());
+        reportAnalysisAuthorizationService.authorize(form, getSysUserId(request), reportCreator, form.getReport());
+
         LogEvent.logTrace("ReportController", "Log GET ", form.getReport());
-        IReportCreator reportCreator = ReportImplementationFactory.getReportCreator(form.getReport());
 
         if (reportCreator != null) {
             reportCreator.setSystemUserId(getSysUserId(request));
@@ -80,6 +86,10 @@ public class ReportRestController extends BaseRestController {
                 LogEvent.logError(e);
             }
         }
+    }
+
+    protected IReportCreator getReportCreator(String requestedReport) {
+        return ReportImplementationFactory.getReportCreator(requestedReport);
     }
 
     private String getReportPath() {

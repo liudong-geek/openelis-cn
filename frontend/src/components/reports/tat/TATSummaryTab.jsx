@@ -2,7 +2,7 @@ import React from "react";
 import { Tile, InlineNotification, SkeletonText } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
 import TATBreakdownTable from "./TATBreakdownTable";
-import { formatTat } from "./tatUtils";
+import { formatHistogramBin, formatTat } from "./tatUtils";
 
 const STAT_CARDS = [
   { key: "totalCount", labelId: "reports.tat.totalResults", isCount: true },
@@ -27,7 +27,13 @@ function TATSummaryTab({ data, loading, filters }) {
 
   if (!data || !filters) {
     return (
-      <div style={{ padding: "2rem", textAlign: "center", color: "var(--cds-text-helper)" }}>
+      <div
+        style={{
+          padding: "2rem",
+          textAlign: "center",
+          color: "var(--cds-text-helper)",
+        }}
+      >
         <FormattedMessage id="reports.tat.noResults" />
       </div>
     );
@@ -44,7 +50,6 @@ function TATSummaryTab({ data, loading, filters }) {
             title={intl.formatMessage(
               { id: "reports.tat.workingTimeInfo" },
               {
-                weekendDays: intl.formatMessage({ id: "reports.tat.configuredWeekends" }),
                 holidayCount: data.excludedDaysCount,
               },
             )}
@@ -53,7 +58,11 @@ function TATSummaryTab({ data, loading, filters }) {
           />
           <a
             href="/MasterListsPage/calendarManagement"
-            style={{ fontSize: "12px", marginTop: "0.25rem", display: "inline-block" }}
+            style={{
+              fontSize: "12px",
+              marginTop: "0.25rem",
+              display: "inline-block",
+            }}
           >
             <FormattedMessage id="reports.tat.manageCalendar" />
           </a>
@@ -70,7 +79,11 @@ function TATSummaryTab({ data, loading, filters }) {
           />
           <a
             href="/MasterListsPage/calendarManagement"
-            style={{ fontSize: "12px", marginTop: "0.25rem", display: "inline-block" }}
+            style={{
+              fontSize: "12px",
+              marginTop: "0.25rem",
+              display: "inline-block",
+            }}
           >
             <FormattedMessage id="reports.tat.manageCalendar" />
           </a>
@@ -90,10 +103,18 @@ function TATSummaryTab({ data, loading, filters }) {
           <Tile
             key={card.key}
             style={{
-              backgroundColor: card.highlight ? "var(--cds-support-success-inverse)" : undefined,
+              backgroundColor: card.highlight
+                ? "var(--cds-support-success-inverse)"
+                : undefined,
             }}
           >
-            <p style={{ fontSize: "12px", color: "var(--cds-text-secondary)", marginBottom: "0.25rem" }}>
+            <p
+              style={{
+                fontSize: "12px",
+                color: "var(--cds-text-secondary)",
+                marginBottom: "0.25rem",
+              }}
+            >
               <FormattedMessage id={card.labelId} />
             </p>
             <p style={{ fontSize: "24px", fontWeight: 600 }}>
@@ -102,7 +123,7 @@ function TATSummaryTab({ data, loading, filters }) {
               ) : card.isCount ? (
                 data[card.key]?.toLocaleString()
               ) : (
-                formatTat(data[card.key])
+                formatTat(data[card.key], intl)
               )}
             </p>
           </Tile>
@@ -118,11 +139,17 @@ function TATSummaryTab({ data, loading, filters }) {
       >
         {STAT_CARDS.slice(4).map((card) => (
           <Tile key={card.key}>
-            <p style={{ fontSize: "12px", color: "var(--cds-text-secondary)", marginBottom: "0.25rem" }}>
+            <p
+              style={{
+                fontSize: "12px",
+                color: "var(--cds-text-secondary)",
+                marginBottom: "0.25rem",
+              }}
+            >
               <FormattedMessage id={card.labelId} />
             </p>
             <p style={{ fontSize: "24px", fontWeight: 600 }}>
-              {data.totalCount === 0 ? "—" : formatTat(data[card.key])}
+              {data.totalCount === 0 ? "—" : formatTat(data[card.key], intl)}
             </p>
           </Tile>
         ))}
@@ -140,27 +167,55 @@ function TATSummaryTab({ data, loading, filters }) {
           <h4 style={{ marginBottom: "1rem" }}>
             <FormattedMessage id="reports.tat.distribution" />
           </h4>
-          <div style={{ display: "flex", gap: "4px", alignItems: "flex-end", height: "200px" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: "4px",
+              alignItems: "flex-end",
+              height: "200px",
+            }}
+          >
             {data.histogram.map((bin, i) => {
+              const binLabel = formatHistogramBin(bin.binLabel, intl);
               const maxCount = Math.max(...data.histogram.map((b) => b.count));
               const height = maxCount > 0 ? (bin.count / maxCount) * 180 : 0;
-              const colors = ["var(--cds-support-success)", "var(--cds-support-success)", "var(--cds-support-success)", "var(--cds-support-success)", "var(--cds-support-success)",
-                "var(--cds-support-warning)", "var(--cds-support-warning)", "var(--cds-support-warning)", "var(--cds-support-warning)", "var(--cds-support-error)"];
+              const colors = [
+                "var(--cds-support-success)",
+                "var(--cds-support-success)",
+                "var(--cds-support-success)",
+                "var(--cds-support-success)",
+                "var(--cds-support-success)",
+                "var(--cds-support-warning)",
+                "var(--cds-support-warning)",
+                "var(--cds-support-warning)",
+                "var(--cds-support-warning)",
+                "var(--cds-support-error)",
+              ];
               return (
                 <div
                   key={i}
                   style={{ flex: 1, textAlign: "center" }}
-                  title={`${bin.binLabel}: ${bin.count}`}
+                  title={intl.formatMessage(
+                    { id: "reports.tat.histogramTooltip" },
+                    { label: binLabel, count: bin.count },
+                  )}
                 >
                   <div
                     style={{
                       height: `${height}px`,
-                      backgroundColor: colors[i] || "var(--cds-support-success)",
+                      backgroundColor:
+                        colors[i] || "var(--cds-support-success)",
                       borderRadius: "2px 2px 0 0",
                     }}
                   />
-                  <div style={{ fontSize: "10px", color: "var(--cds-text-secondary)", marginTop: "4px" }}>
-                    {bin.binLabel}
+                  <div
+                    style={{
+                      fontSize: "10px",
+                      color: "var(--cds-text-secondary)",
+                      marginTop: "4px",
+                    }}
+                  >
+                    {binLabel}
                   </div>
                 </div>
               );

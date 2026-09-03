@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   DatePicker,
   DatePickerInput,
@@ -13,56 +13,122 @@ import {
 import { Search, Reset } from "@carbon/react/icons";
 import { FormattedMessage, useIntl } from "react-intl";
 import { getFromOpenElisServer } from "../../utils/Utils";
+import { ConfigurationContext } from "../../layout/Layout";
+import {
+  getCarbonDateFormat,
+  getDatePickerPlaceholderMessage,
+} from "../../common/dateLocaleUtils";
+import {
+  formatLocalDateForReportApi,
+  formatReportApiDateForLocale,
+  parseReportDisplayDateToApi,
+} from "../reportDateUtils";
 
 export const SEGMENTS = [
-  { id: "RECEIPT_TO_VALIDATION", labelKey: "reports.tat.segment.receiptToValidation" },
-  { id: "ORDER_TO_COLLECTION", labelKey: "reports.tat.segment.orderToCollection" },
-  { id: "COLLECTION_TO_RECEIPT", labelKey: "reports.tat.segment.collectionToReceipt" },
-  { id: "RECEIPT_TO_TESTING", labelKey: "reports.tat.segment.receiptToTesting" },
+  {
+    id: "RECEIPT_TO_VALIDATION",
+    labelKey: "reports.tat.segment.receiptToValidation",
+  },
+  {
+    id: "ORDER_TO_COLLECTION",
+    labelKey: "reports.tat.segment.orderToCollection",
+  },
+  {
+    id: "COLLECTION_TO_RECEIPT",
+    labelKey: "reports.tat.segment.collectionToReceipt",
+  },
+  {
+    id: "RECEIPT_TO_TESTING",
+    labelKey: "reports.tat.segment.receiptToTesting",
+  },
   { id: "RECEIPT_TO_RESULT", labelKey: "reports.tat.segment.receiptToResult" },
-  { id: "RESULT_TO_VALIDATION", labelKey: "reports.tat.segment.resultToValidation" },
+  {
+    id: "RESULT_TO_VALIDATION",
+    labelKey: "reports.tat.segment.resultToValidation",
+  },
   { id: "OVERALL", labelKey: "reports.tat.segment.overall" },
 ];
 
 const DATE_PRESETS = [
-  { labelKey: "reports.tat.preset.today", compute: () => ({ from: new Date(), to: new Date() }) },
-  { labelKey: "reports.tat.preset.7days", compute: () => { const to = new Date(); const from = new Date(); from.setDate(from.getDate() - 7); return { from, to }; } },
-  { labelKey: "reports.tat.preset.30days", compute: () => { const to = new Date(); const from = new Date(); from.setDate(from.getDate() - 30); return { from, to }; } },
-  { labelKey: "reports.tat.preset.90days", compute: () => { const to = new Date(); const from = new Date(); from.setDate(from.getDate() - 90); return { from, to }; } },
-  { labelKey: "reports.tat.preset.thisMonth", compute: () => {
-    const now = new Date();
-    return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: now };
-  }},
-  { labelKey: "reports.tat.preset.lastMonth", compute: () => {
-    const now = new Date();
-    return {
-      from: new Date(now.getFullYear(), now.getMonth() - 1, 1),
-      to: new Date(now.getFullYear(), now.getMonth(), 0),
-    };
-  }},
-  { labelKey: "reports.tat.preset.thisQuarter", compute: () => {
-    const now = new Date();
-    const q = Math.floor(now.getMonth() / 3);
-    return { from: new Date(now.getFullYear(), q * 3, 1), to: now };
-  }},
+  {
+    labelKey: "reports.tat.preset.today",
+    compute: () => ({ from: new Date(), to: new Date() }),
+  },
+  {
+    labelKey: "reports.tat.preset.7days",
+    compute: () => {
+      const to = new Date();
+      const from = new Date();
+      from.setDate(from.getDate() - 7);
+      return { from, to };
+    },
+  },
+  {
+    labelKey: "reports.tat.preset.30days",
+    compute: () => {
+      const to = new Date();
+      const from = new Date();
+      from.setDate(from.getDate() - 30);
+      return { from, to };
+    },
+  },
+  {
+    labelKey: "reports.tat.preset.90days",
+    compute: () => {
+      const to = new Date();
+      const from = new Date();
+      from.setDate(from.getDate() - 90);
+      return { from, to };
+    },
+  },
+  {
+    labelKey: "reports.tat.preset.thisMonth",
+    compute: () => {
+      const now = new Date();
+      return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: now };
+    },
+  },
+  {
+    labelKey: "reports.tat.preset.lastMonth",
+    compute: () => {
+      const now = new Date();
+      return {
+        from: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+        to: new Date(now.getFullYear(), now.getMonth(), 0),
+      };
+    },
+  },
+  {
+    labelKey: "reports.tat.preset.thisQuarter",
+    compute: () => {
+      const now = new Date();
+      const q = Math.floor(now.getMonth() / 3);
+      return { from: new Date(now.getFullYear(), q * 3, 1), to: now };
+    },
+  },
 ];
-
-function formatDate(d) {
-  return d.toISOString().split("T")[0];
-}
 
 function getDefaultDates() {
   const to = new Date();
   const from = new Date();
   from.setDate(from.getDate() - 30);
   return {
-    fromDate: from.toISOString().split("T")[0],
-    toDate: to.toISOString().split("T")[0],
+    fromDate: formatLocalDateForReportApi(from),
+    toDate: formatLocalDateForReportApi(to),
   };
 }
 
 function TATFilterBar({ onGenerate }) {
   const intl = useIntl();
+  const configuration = useContext(ConfigurationContext);
+  const dateLocale =
+    configuration?.configurationProperties?.DEFAULT_DATE_LOCALE ||
+    intl.locale ||
+    "zh-CN";
+  const dateFormat = getCarbonDateFormat(dateLocale);
+  const datePlaceholder = intl.formatMessage(
+    getDatePickerPlaceholderMessage(dateLocale),
+  );
   const defaults = getDefaultDates();
 
   const [fromDate, setFromDate] = useState(defaults.fromDate);
@@ -91,9 +157,7 @@ function TATFilterBar({ onGenerate }) {
     });
     getFromOpenElisServer("/rest/displayList/ALL_TESTS", (res) => {
       if (res)
-        setTestOptions(
-          res.map((item) => ({ id: item.id, text: item.value })),
-        );
+        setTestOptions(res.map((item) => ({ id: item.id, text: item.value })));
     });
     getFromOpenElisServer("/rest/user-sample-types", (res) => {
       if (res)
@@ -101,15 +165,18 @@ function TATFilterBar({ onGenerate }) {
           res.map((item) => ({ id: item.id, text: item.value })),
         );
     });
-    getFromOpenElisServer("/rest/displayList/SAMPLE_PATIENT_REFERRING_CLINIC", (res) => {
-      if (res)
-        setSiteOptions(
-          res.map((item) => ({
-            id: item.id || item.value,
-            text: item.value,
-          })),
-        );
-    });
+    getFromOpenElisServer(
+      "/rest/displayList/SAMPLE_PATIENT_REFERRING_CLINIC",
+      (res) => {
+        if (res)
+          setSiteOptions(
+            res.map((item) => ({
+              id: item.id || item.value,
+              text: item.value,
+            })),
+          );
+      },
+    );
   }, []);
 
   const handleGenerate = () => {
@@ -165,8 +232,8 @@ function TATFilterBar({ onGenerate }) {
             size="sm"
             onClick={() => {
               const { from, to } = p.compute();
-              setFromDate(formatDate(from));
-              setToDate(formatDate(to));
+              setFromDate(formatLocalDateForReportApi(from));
+              setToDate(formatLocalDateForReportApi(to));
             }}
           >
             {intl.formatMessage({ id: p.labelKey })}
@@ -184,28 +251,32 @@ function TATFilterBar({ onGenerate }) {
       >
         <DatePicker
           datePickerType="single"
-          dateFormat="Y-m-d"
-          value={fromDate}
-          onChange={(_dates, dateStr) => setFromDate(dateStr)}
+          dateFormat={dateFormat}
+          value={formatReportApiDateForLocale(fromDate, dateLocale)}
+          onChange={(_dates, dateStr) =>
+            setFromDate(parseReportDisplayDateToApi(dateStr, dateLocale))
+          }
         >
           <DatePickerInput
             id="tat-from-date"
             labelText={intl.formatMessage({ id: "reports.tat.dateRangeFrom" })}
-            placeholder="yyyy-mm-dd"
+            placeholder={datePlaceholder}
             size="sm"
           />
         </DatePicker>
 
         <DatePicker
           datePickerType="single"
-          dateFormat="Y-m-d"
-          value={toDate}
-          onChange={(_dates, dateStr) => setToDate(dateStr)}
+          dateFormat={dateFormat}
+          value={formatReportApiDateForLocale(toDate, dateLocale)}
+          onChange={(_dates, dateStr) =>
+            setToDate(parseReportDisplayDateToApi(dateStr, dateLocale))
+          }
         >
           <DatePickerInput
             id="tat-to-date"
             labelText={intl.formatMessage({ id: "reports.tat.dateRangeTo" })}
-            placeholder="yyyy-mm-dd"
+            placeholder={datePlaceholder}
             size="sm"
           />
         </DatePicker>
@@ -213,6 +284,7 @@ function TATFilterBar({ onGenerate }) {
         <Dropdown
           id="tat-segment"
           titleText={intl.formatMessage({ id: "reports.tat.tatSegment" })}
+          label={intl.formatMessage({ id: "reports.tat.tatSegment" })}
           items={SEGMENTS.map((s) => ({
             id: s.id,
             text: intl.formatMessage({ id: s.labelKey }),
@@ -261,6 +333,7 @@ function TATFilterBar({ onGenerate }) {
         <Dropdown
           id="tat-sample-type"
           titleText={intl.formatMessage({ id: "reports.tat.sampleType" })}
+          label={intl.formatMessage({ id: "reports.tat.sampleType" })}
           items={[
             {
               id: "",
@@ -319,26 +392,47 @@ function TATFilterBar({ onGenerate }) {
             selectedIndex={calculationMode === "CALENDAR" ? 0 : 1}
             size="sm"
           >
-            <Switch name="CALENDAR" text={intl.formatMessage({ id: "reports.tat.calendarTime" })} />
-            <Switch name="WORKING_TIME" text={intl.formatMessage({ id: "reports.tat.workingTime" })} />
+            <Switch
+              name="CALENDAR"
+              text={intl.formatMessage({ id: "reports.tat.calendarTime" })}
+            />
+            <Switch
+              name="WORKING_TIME"
+              text={intl.formatMessage({ id: "reports.tat.workingTime" })}
+            />
           </ContentSwitcher>
         </div>
 
         <Dropdown
           id="tat-priority"
           titleText={intl.formatMessage({ id: "reports.tat.priority" })}
+          label={intl.formatMessage({ id: "reports.tat.priority" })}
           size="sm"
           items={[
-            { id: "", text: intl.formatMessage({ id: "reports.tat.priority.all" }) },
-            { id: "ROUTINE", text: intl.formatMessage({ id: "reports.tat.priority.routine" }) },
-            { id: "STAT", text: intl.formatMessage({ id: "reports.tat.priority.stat" }) },
-            { id: "ASAP", text: intl.formatMessage({ id: "reports.tat.priority.asap" }) },
+            {
+              id: "",
+              text: intl.formatMessage({ id: "reports.tat.priority.all" }),
+            },
+            {
+              id: "ROUTINE",
+              text: intl.formatMessage({ id: "reports.tat.priority.routine" }),
+            },
+            {
+              id: "STAT",
+              text: intl.formatMessage({ id: "reports.tat.priority.stat" }),
+            },
+            {
+              id: "ASAP",
+              text: intl.formatMessage({ id: "reports.tat.priority.asap" }),
+            },
           ]}
           itemToString={(item) => item?.text || ""}
           selectedItem={{
             id: priority,
             text: priority
-              ? intl.formatMessage({ id: `reports.tat.priority.${priority.toLowerCase()}` })
+              ? intl.formatMessage({
+                  id: `reports.tat.priority.${priority.toLowerCase()}`,
+                })
               : intl.formatMessage({ id: "reports.tat.priority.all" }),
           }}
           onChange={({ selectedItem }) => setPriority(selectedItem.id)}

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useContext, useState } from "react";
 import {
   Form,
   Stack,
@@ -16,10 +16,21 @@ import {
 } from "@carbon/react";
 import { DocumentPdf, DocumentBlank, TableSplit } from "@carbon/icons-react";
 import { FormattedMessage, useIntl } from "react-intl";
+import {
+  getCarbonDateFormat,
+  getDatePickerPlaceholderMessage,
+} from "../common/dateLocaleUtils";
+import { ConfigurationContext } from "../layout/Layout";
 import { ReportsAPI } from "./InventoryService";
 
 const InventoryReports = () => {
   const intl = useIntl();
+  const { configurationProperties = {} } =
+    useContext(ConfigurationContext) || {};
+  const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "zh-CN";
+  const datePickerPlaceholder = intl.formatMessage(
+    getDatePickerPlaceholderMessage(dateLocale),
+  );
 
   const reportTypes = [
     {
@@ -152,7 +163,7 @@ const InventoryReports = () => {
       link.href = url;
       link.download =
         response.filename ||
-        `inventory-report.${formData.exportFormat.id.toLowerCase()}`;
+        `试剂耗材报表.${formData.exportFormat.id.toLowerCase()}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -161,10 +172,7 @@ const InventoryReports = () => {
       setSuccess(intl.formatMessage({ id: "reports.generation.success" }));
     } catch (err) {
       console.error("Error generating report:", err);
-      setError(
-        err.message ||
-          intl.formatMessage({ id: "reports.error.generationFailed" }),
-      );
+      setError(intl.formatMessage({ id: "reports.error.generationFailed" }));
     } finally {
       setGenerating(false);
     }
@@ -228,6 +236,7 @@ const InventoryReports = () => {
                   </FormLabel>
                   <DatePicker
                     datePickerType="range"
+                    dateFormat={getCarbonDateFormat(dateLocale)}
                     value={[formData.startDate, formData.endDate]}
                     onChange={(dates) => {
                       handleChange("startDate", dates[0] || null);
@@ -236,7 +245,7 @@ const InventoryReports = () => {
                   >
                     <DatePickerInput
                       id="startDate"
-                      placeholder="mm/dd/yyyy"
+                      placeholder={datePickerPlaceholder}
                       labelText={intl.formatMessage({
                         id: "reports.startDate",
                       })}
@@ -244,7 +253,7 @@ const InventoryReports = () => {
                     />
                     <DatePickerInput
                       id="endDate"
-                      placeholder="mm/dd/yyyy"
+                      placeholder={datePickerPlaceholder}
                       labelText={intl.formatMessage({ id: "reports.endDate" })}
                       size="md"
                     />

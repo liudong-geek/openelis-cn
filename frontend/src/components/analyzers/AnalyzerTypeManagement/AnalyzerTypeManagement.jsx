@@ -55,7 +55,7 @@ const AnalyzerTypeManagement = () => {
   const protocolOptions = [
     { id: "ASTM", text: "ASTM" },
     { id: "HL7", text: "HL7" },
-    { id: "FILE", text: "FILE" },
+    { id: "FILE", text: "文件" },
   ];
 
   const loadAnalyzerTypes = useCallback(() => {
@@ -129,10 +129,10 @@ const AnalyzerTypeManagement = () => {
     protocol: type.protocol || "",
     pluginClassName: type.pluginClassName || "",
     identifierPattern: type.identifierPattern || "",
-    isGenericPlugin: type.isGenericPlugin ? "Yes" : "No",
-    pluginLoaded: type.pluginLoaded ? "Yes" : "No",
+    isGenericPlugin: type.isGenericPlugin ? "是" : "否",
+    pluginLoaded: type.pluginLoaded ? "已加载" : "未加载",
     instanceCount: type.instanceCount != null ? type.instanceCount : 0,
-    isActive: type.isActive ? "Active" : "Inactive",
+    isActive: type.isActive ? "已启用" : "已停用",
   }));
 
   const validateForm = () => {
@@ -268,13 +268,15 @@ const AnalyzerTypeManagement = () => {
                           <TableCell key={cell.id}>
                             {cell.info.header === "isActive" ? (
                               <Tag
-                                type={cell.value === "Active" ? "green" : "red"}
+                                type={cell.value === "已启用" ? "green" : "red"}
                               >
                                 {cell.value}
                               </Tag>
                             ) : cell.info.header === "pluginLoaded" ? (
                               <Tag
-                                type={cell.value === "Yes" ? "green" : "gray"}
+                                type={
+                                  cell.value === "已加载" ? "green" : "gray"
+                                }
                               >
                                 {cell.value}
                               </Tag>

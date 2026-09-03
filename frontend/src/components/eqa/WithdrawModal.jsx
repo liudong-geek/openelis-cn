@@ -19,6 +19,7 @@ const WithdrawModal = ({ open, enrollment, onClose, onConfirm }) => {
   return (
     <Modal
       open={open}
+      closeButtonLabel={intl.formatMessage({ id: "button.close" })}
       danger
       modalHeading={intl.formatMessage({ id: "eqa.enrollment.withdraw" })}
       primaryButtonText={intl.formatMessage({

@@ -274,7 +274,7 @@ export const NCECorrectiveAction = () => {
                     <SelectItem
                       key={statusOption.value}
                       value={statusOption.value}
-                      text={statusOption.text}
+                      text={intl.formatMessage({ id: statusOption.textId })}
                     />
                   ))}
                 </Select>
@@ -334,7 +334,7 @@ export const NCECorrectiveAction = () => {
                         <TableHeader key="checkbox" />
                         {headers.map((header) => (
                           <TableHeader id={header.key} key={header.key}>
-                            {header.value}
+                            {intl.formatMessage({ id: header.valueId })}
                           </TableHeader>
                         ))}
                       </TableRow>
@@ -893,10 +893,7 @@ export const NCECorrectiveAction = () => {
 
                 {!!submit && !actionLogIsBlank && !actionLogIsComplete && (
                   <div style={{ color: "#c62828", margin: "4px 0" }}>
-                    <FormattedMessage
-                      id="nonconform.corrective.requiredFields"
-                      defaultMessage="Fill all corrective-action fields (action, person responsible, date completed, and at least one action type), or leave the row entirely empty."
-                    />
+                    <FormattedMessage id="nonconform.corrective.requiredFields" />
                   </div>
                 )}
 

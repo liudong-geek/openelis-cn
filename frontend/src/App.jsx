@@ -110,13 +110,18 @@ import {
   UnifiedResultsRoute,
 } from "./components/resultPage/unified/routeGates";
 import { getFromOpenElisServer } from "./components/utils/Utils";
+import {
+  getRequestLocale,
+  resolveSupportedLocale,
+} from "./components/utils/LocaleUtils";
 import { loadAndApplyBranding } from "./components/utils/BrandingUtils";
-import { languages, languageMessages } from "./languages";
+import { defaultLanguages, languageMessages } from "./languages";
 import config from "./config.json";
 import { SecureRoute } from "./components/security";
 import "./index.scss";
 import PatientManagement from "./components/patient/PatientManagement";
 import PatientHistory from "./components/patient/PatientHistory";
+import ListReturnButton from "./components/common/ListReturnButton";
 import PatientMerge from "./components/patient/PatientMerge";
 import Aliquot from "./components/sample/Aliquot";
 import Workplan from "./components/workplan/Workplan";
@@ -151,8 +156,12 @@ import SampleBatchEntrySetup from "./components/batchOrderEntry/SampleBatchEntry
 import AuditTrailReportIndex from "./components/reports/auditTrailReport/Index";
 import ReferredOutTests from "./components/resultPage/resultsReferredOut/ReferredOutTests";
 import { Roles } from "./components/utils/Utils";
-import NoteBookInstanceEntryForm from "./components/notebook/NoteBookInstanceEntryForm";
-import NotebookSampleOrder from "./components/notebook/NotebookSampleOrder";
+const NoteBookInstanceEntryForm = lazyWithRetry(
+  () => import("./components/notebook/NoteBookInstanceEntryForm"),
+);
+const NotebookSampleOrder = lazyWithRetry(
+  () => import("./components/notebook/NotebookSampleOrder"),
+);
 const FreezerMonitoringDashboard = lazyWithRetry(
   () => import("./components/coldStorage/FreezerMonitoringDashboard"),
 );
@@ -178,6 +187,7 @@ const GenericSampleResults = lazyWithRetry(
 
 import ShipmentSettings from "./components/shipment/ShipmentSettings";
 import RouteErrorBoundary from "./components/common/RouteErrorBoundary";
+import PageLoadingState from "./components/common/PageLoadingState";
 import {
   OrderProvider,
   OrderDashboard,
@@ -186,22 +196,56 @@ import {
   OrderLabel,
   OrderQA,
 } from "./components/order";
+import "./ux-foundation.scss";
+import { INTERNAL_ROUTE_REFRESH_EVENT } from "./components/utils/NavigationUtils";
+
+export const AUDIT_TRAIL_ROUTE_ROLES = Object.freeze([
+  Roles.GLOBAL_ADMIN,
+  Roles.AUDIT_TRAIL,
+]);
 
 export default function App() {
-  const defaultLocale =
-    localStorage.getItem("locale") || navigator.language.split(/[-_]/)[0];
-
-  const initialLocale = languages[defaultLocale] ? defaultLocale : "en";
+  // The China delivery edition has one visible UI locale. Normalize even a
+  // previously saved English preference before the first render so users do
+  // not see a flash of English while the backend locale list is loading.
+  const savedLocale = localStorage.getItem("locale");
+  const initialLocale = resolveSupportedLocale(
+    savedLocale,
+    Object.keys(defaultLanguages),
+    "zh",
+  );
+  // Older installations persisted Java-style aliases such as zh_CN. Store the
+  // canonical UI key before the first API effect runs so every request uses the
+  // same language as React Intl.
+  if (savedLocale !== initialLocale) {
+    localStorage.setItem("locale", initialLocale);
+  }
 
   const [locale, setLocale] = useState(initialLocale);
-  const [messages, setMessages] = useState(languages[initialLocale].messages);
+  const [messages, setMessages] = useState(
+    defaultLanguages[initialLocale].messages,
+  );
 
   const [userSessionDetails, setUserSessionDetails] = useState({});
   const [errorLoadingSessionDetails, setErrorLoadingSessionDetails] =
     useState(false);
+  const [routeRefreshKey, setRouteRefreshKey] = useState(0);
 
   useEffect(() => {
     getUserSessionDetails();
+  }, []);
+
+  useEffect(() => {
+    const refreshCurrentRoute = () => {
+      setRouteRefreshKey((currentKey) => currentKey + 1);
+    };
+    window.addEventListener(INTERNAL_ROUTE_REFRESH_EVENT, refreshCurrentRoute);
+    return () => {
+      window.removeEventListener(
+        INTERNAL_ROUTE_REFRESH_EVENT,
+        refreshCurrentRoute,
+      );
+    };
   }, []);
 
   // Load and apply site branding (colors, favicon)
@@ -225,10 +269,12 @@ export default function App() {
       try {
         const response = await fetch(config.serverBaseUrl + `/session`, {
           credentials: "include",
+          headers: {
+            "Accept-Language": getRequestLocale(),
+          },
         });
         if (response.status === 200) {
           const jsonResp = await response.json();
-          console.debug(JSON.stringify(jsonResp));
           if (jsonResp.authenticated) {
             localStorage.setItem("CSRF", jsonResp.csrf);
           }
@@ -246,11 +292,13 @@ export default function App() {
           await new Promise((resolve) => setTimeout(resolve, 1000));
         } else {
           const options = {
-            title: "System Error",
-            message: "Error : " + error.message,
+            title: messages["app.session.error.title"] || "系统连接失败",
+            message:
+              messages["app.session.error.message"] ||
+              "无法连接到本地检验系统，请确认服务已启动后重新加载页面。",
             buttons: [
               {
-                label: "OK",
+                label: messages["errorBoundary.reload"] || "重新加载",
                 onClick: () => {
                   window.location.href = window.location.origin;
                 },
@@ -274,6 +322,7 @@ export default function App() {
         headers: {
           "Content-Type": "application/json",
           "X-CSRF-Token": localStorage.getItem("CSRF"),
+          "Accept-Language": getRequestLocale(),
         },
       })
         .then((response) => response.text())
@@ -313,6 +362,7 @@ export default function App() {
         headers: {
           "Content-Type": "application/json",
           "X-CSRF-Token": localStorage.getItem("CSRF"),
+          "Accept-Language": getRequestLocale(),
         },
       })
         .then((response) => response.status)
@@ -327,25 +377,32 @@ export default function App() {
   };
 
   const changeLanguageReact = (lang) => {
-    // Check if we have messages for this language
-    const messages = languageMessages[lang] || languages[lang]?.messages;
-    if (!messages) {
-      lang = "en";
-    }
+    lang = resolveSupportedLocale(lang, Object.keys(defaultLanguages), "zh");
     setLocale(lang);
-    setMessages(languageMessages[lang] || languages["en"].messages);
+    setMessages(defaultLanguages[lang]?.messages || languageMessages.zh);
     localStorage.setItem("locale", lang);
   };
 
   const changeLanguageBackend = async (lang) => {
+    const requestLocale = resolveSupportedLocale(
+      lang,
+      Object.keys(defaultLanguages),
+      "zh",
+    );
     if (userSessionDetails.authenticated) {
-      getFromOpenElisServer("/Home?lang=" + lang, () => {
-        // Language changed on backend
-      });
+      getFromOpenElisServer(
+        "/Home?lang=" + encodeURIComponent(requestLocale),
+        () => {
+          // Language changed on backend
+        },
+      );
     } else {
-      getFromOpenElisServer("/LoginPage?lang=" + lang, () => {
-        // Language changed on backend
-      });
+      getFromOpenElisServer(
+        "/LoginPage?lang=" + encodeURIComponent(requestLocale),
+        () => {
+          // Language changed on backend
+        },
+      );
     }
   };
 
@@ -414,7 +471,7 @@ export default function App() {
         <>
           <Router>
             <Layout onChangeLanguage={onChangeLanguage}>
-              <Switch>
+              <Switch key={routeRefreshKey}>
                 <Route path="/login" exact component={() => <Login />} />
                 <Route
                   path="/ChangePasswordLogin"
@@ -515,25 +572,41 @@ export default function App() {
                 <SecureRoute
                   path="/NoteBookInstanceEntryForm/:notebookid"
                   exact
-                  component={() => <NoteBookInstanceEntryForm />}
+                  component={() => (
+                    <Suspense fallback={<PageLoadingState />}>
+                      <NoteBookInstanceEntryForm />
+                    </Suspense>
+                  )}
                   role={Roles.RESULTS}
                 />
                 <SecureRoute
                   path="/NoteBookInstanceEditForm/:notebookentryid"
                   exact
-                  component={() => <NoteBookInstanceEntryForm />}
+                  component={() => (
+                    <Suspense fallback={<PageLoadingState />}>
+                      <NoteBookInstanceEntryForm />
+                    </Suspense>
+                  )}
                   role={Roles.RESULTS}
                 />
                 <SecureRoute
                   path="/NotebookSampleOrder/:notebookId/:notebookEntryId"
                   exact
-                  component={() => <NotebookSampleOrder />}
+                  component={() => (
+                    <Suspense fallback={<PageLoadingState />}>
+                      <NotebookSampleOrder />
+                    </Suspense>
+                  )}
                   role={Roles.RESULTS}
                 />
                 <SecureRoute
                   path="/NotebookSampleOrder/:notebookId"
                   exact
-                  component={() => <NotebookSampleOrder />}
+                  component={() => (
+                    <Suspense fallback={<PageLoadingState />}>
+                      <NotebookSampleOrder />
+                    </Suspense>
+                  )}
                   role={Roles.RESULTS}
                 />
                 <SecureRoute
@@ -547,7 +620,7 @@ export default function App() {
                   path="/GenericSample/Order"
                   exact
                   component={() => (
-                    <Suspense fallback={null}>
+                    <Suspense fallback={<PageLoadingState />}>
                       <GenericSampleOrder />
                     </Suspense>
                   )}
@@ -557,7 +630,7 @@ export default function App() {
                   path="/GenericSample/Edit"
                   exact
                   component={() => (
-                    <Suspense fallback={null}>
+                    <Suspense fallback={<PageLoadingState />}>
                       <GenericSampleOrderEdit />
                     </Suspense>
                   )}
@@ -567,7 +640,7 @@ export default function App() {
                   path="/GenericSample/Import"
                   exact
                   component={() => (
-                    <Suspense fallback={null}>
+                    <Suspense fallback={<PageLoadingState />}>
                       <GenericSampleOrderImport />
                     </Suspense>
                   )}
@@ -577,7 +650,7 @@ export default function App() {
                   path="/FreezerMonitoring"
                   exact
                   component={() => (
-                    <Suspense fallback={null}>
+                    <Suspense fallback={<PageLoadingState />}>
                       <FreezerMonitoringDashboard />
                     </Suspense>
                   )}
@@ -965,7 +1038,7 @@ export default function App() {
                   path="/SampleShipment/reports"
                   exact
                   component={() => (
-                    <Suspense fallback={null}>
+                    <Suspense fallback={<PageLoadingState />}>
                       <ShipmentReport />
                     </Suspense>
                   )}
@@ -993,7 +1066,7 @@ export default function App() {
                   exact
                   component={() => (
                     <RouteErrorBoundary {...routeErrorAnalyzers}>
-                      <Suspense fallback={null}>
+                      <Suspense fallback={<PageLoadingState />}>
                         <AnalyzerFormPage />
                       </Suspense>
                     </RouteErrorBoundary>
@@ -1005,7 +1078,7 @@ export default function App() {
                   exact
                   component={() => (
                     <RouteErrorBoundary {...routeErrorAnalyzers}>
-                      <Suspense fallback={null}>
+                      <Suspense fallback={<PageLoadingState />}>
                         <AnalyzerFormPage />
                       </Suspense>
                     </RouteErrorBoundary>
@@ -1017,7 +1090,7 @@ export default function App() {
                   exact
                   component={() => (
                     <RouteErrorBoundary {...routeErrorAnalyzers}>
-                      <Suspense fallback={null}>
+                      <Suspense fallback={<PageLoadingState />}>
                         <QcRulePage />
                       </Suspense>
                     </RouteErrorBoundary>
@@ -1029,7 +1102,7 @@ export default function App() {
                   exact
                   component={() => (
                     <RouteErrorBoundary {...routeErrorAnalyzers}>
-                      <Suspense fallback={null}>
+                      <Suspense fallback={<PageLoadingState />}>
                         <AnalyzersPage />
                       </Suspense>
                     </RouteErrorBoundary>
@@ -1041,7 +1114,7 @@ export default function App() {
                   exact
                   component={() => (
                     <RouteErrorBoundary {...routeErrorAnalyzers}>
-                      <Suspense fallback={null}>
+                      <Suspense fallback={<PageLoadingState />}>
                         <FieldMapping />
                       </Suspense>
                     </RouteErrorBoundary>
@@ -1053,7 +1126,7 @@ export default function App() {
                   exact
                   component={() => (
                     <RouteErrorBoundary {...routeErrorAnalyzers}>
-                      <Suspense fallback={null}>
+                      <Suspense fallback={<PageLoadingState />}>
                         <ErrorDashboardPage />
                       </Suspense>
                     </RouteErrorBoundary>
@@ -1065,7 +1138,7 @@ export default function App() {
                   exact
                   component={() => (
                     <RouteErrorBoundary {...routeErrorAnalyzers}>
-                      <Suspense fallback={null}>
+                      <Suspense fallback={<PageLoadingState />}>
                         <CustomFieldTypeManagementPage />
                       </Suspense>
                     </RouteErrorBoundary>
@@ -1077,7 +1150,7 @@ export default function App() {
                   exact
                   component={() => (
                     <RouteErrorBoundary {...routeErrorAnalyzers}>
-                      <Suspense fallback={null}>
+                      <Suspense fallback={<PageLoadingState />}>
                         <AnalyzerTypesPage />
                       </Suspense>
                     </RouteErrorBoundary>
@@ -1142,7 +1215,7 @@ export default function App() {
                   path="/GenericSample/Results"
                   exact
                   component={() => (
-                    <Suspense fallback={null}>
+                    <Suspense fallback={<PageLoadingState />}>
                       <GenericSampleResults />
                     </Suspense>
                   )}
@@ -1160,12 +1233,13 @@ export default function App() {
                   exact
                   component={() => (
                     <RouteErrorBoundary {...routeErrorPatientResultsViewer}>
-                      <Suspense fallback={null}>
+                      <ListReturnButton fallback="/PatientManagement" />
+                      <Suspense fallback={<PageLoadingState />}>
                         <RoutedResultsViewer />
                       </Suspense>
                     </RouteErrorBoundary>
                   )}
-                  role={Roles.RECEPTION}
+                  role={[Roles.RECEPTION, Roles.RESULTS, Roles.REPORTS]}
                 />
 
                 <SecureRoute
@@ -1316,7 +1390,7 @@ export default function App() {
                   path="/AuditTrailReport"
                   exact
                   component={() => <AuditTrailReportIndex />}
-                  role={Roles.GLOBAL_ADMIN}
+                  role={AUDIT_TRAIL_ROUTE_ROLES}
                 />
                 <SecureRoute
                   path="/TATReport"
@@ -1359,7 +1433,7 @@ export default function App() {
                   exact
                   component={() => (
                     <RouteErrorBoundary {...routeErrorAnalyzerResults}>
-                      <Suspense fallback={null}>
+                      <Suspense fallback={<PageLoadingState />}>
                         <AnalyserResultIndex />
                       </Suspense>
                     </RouteErrorBoundary>

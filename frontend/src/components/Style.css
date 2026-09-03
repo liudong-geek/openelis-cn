@@ -972,6 +972,47 @@ li.cds--side-nav__item.cds--side-nav__item--active {
   fill: currentColor !important;
 }
 
+/* Make expandable rows visibly interactive and keep the open branch obvious.
+ * Previously the expanded parent was forced back to a transparent background,
+ * leaving only the small chevron as feedback after a click. */
+nav.cds--side-nav .cds--side-nav__item.menu-expanded > .cds--side-nav__submenu,
+nav.cds--side-nav .cds--side-nav__submenu[aria-expanded="true"] {
+  background-color: #edf5ff !important;
+  border-left: 4px solid var(--cds-link-primary, #0f62fe) !important;
+  color: #161616 !important;
+  font-weight: 600 !important;
+}
+
+nav.cds--side-nav .top-level-menu-item.menu-expanded > .cds--side-nav__submenu,
+nav.cds--side-nav
+  .top-level-menu-item
+  > .cds--side-nav__submenu[aria-expanded="true"] {
+  padding-left: calc(1rem - 4px) !important;
+}
+
+nav.cds--side-nav
+  .reduced-padding-nav-menu-item.menu-expanded
+  > .cds--side-nav__submenu,
+nav.cds--side-nav
+  .reduced-padding-nav-menu-item
+  > .cds--side-nav__submenu[aria-expanded="true"] {
+  padding-left: calc(2.5rem - 4px) !important;
+}
+
+nav.cds--side-nav
+  .cds--side-nav__item.menu-expanded
+  > .cds--side-nav__submenu:hover,
+nav.cds--side-nav .cds--side-nav__submenu[aria-expanded="true"]:hover {
+  background-color: #d0e2ff !important;
+}
+
+nav.cds--side-nav
+  .cds--side-nav__item.menu-active-branch
+  > .cds--side-nav__submenu[aria-expanded="false"] {
+  color: var(--cds-link-primary, #0f62fe) !important;
+  font-weight: 600 !important;
+}
+
 /* Micro-transition: suppress 1-frame flash when Carbon toggles active classes.
  * 50ms is imperceptible but forces the browser to interpolate from the current
  * (transparent) value instead of snapping to Carbon's default grey for one paint.

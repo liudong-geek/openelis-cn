@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+  <changeSet author="local-chinese-edition" id="3.5.0-073-cn-chinese-only-ui">
+    <preConditions onFail="HALT">
+      <and>
+        <tableExists tableName="supported_locale" schemaName="clinlims"/>
+        <tableExists tableName="site_information" schemaName="clinlims"/>
+        <sqlCheck expectedResult="1">
+          SELECT COUNT(*) FROM clinlims.supported_locale WHERE locale_code = 'zh'
+        </sqlCheck>
+      </and>
+    </preConditions>
+
+    <update schemaName="clinlims" tableName="supported_locale">
+      <column name="is_active" valueBoolean="false"/>
+      <column name="is_fallback" valueBoolean="false"/>
+    </update>
+    <update schemaName="clinlims" tableName="supported_locale">
+      <column name="display_name" value="简体中文"/>
+      <column name="is_active" valueBoolean="true"/>
+      <column name="is_fallback" valueBoolean="true"/>
+      <column name="sort_order" valueNumeric="1"/>
+      <column name="last_updated" valueComputed="now()"/>
+      <where>locale_code = 'zh'</where>
+    </update>
+    <update schemaName="clinlims" tableName="site_information">
+      <column name="value" value="zh-CN"/>
+      <where>name = 'default language locale'</where>
+    </update>
+    <update schemaName="clinlims" tableName="site_information">
+      <column name="value" value="zh-CN"/>
+      <where>name = 'default date locale'</where>
+    </update>
+
+    <rollback>
+      <update schemaName="clinlims" tableName="supported_locale">
+        <column name="is_active" valueBoolean="true"/>
+        <where>locale_code IN ('en', 'fr', 'zh')</where>
+      </update>
+      <update schemaName="clinlims" tableName="supported_locale">
+        <column name="is_fallback" valueBoolean="false"/>
+      </update>
+      <update schemaName="clinlims" tableName="supported_locale">
+        <column name="is_fallback" valueBoolean="true"/>
+        <where>locale_code = 'en'</where>
+      </update>
+      <update schemaName="clinlims" tableName="site_information">
+        <column name="value" value="en-US"/>
+        <where>name = 'default language locale'</where>
+      </update>
+      <update schemaName="clinlims" tableName="site_information">
+        <column name="value" value="en-US"/>
+        <where>name = 'default date locale'</where>
+      </update>
+    </rollback>
+  </changeSet>
+
+</databaseChangeLog>

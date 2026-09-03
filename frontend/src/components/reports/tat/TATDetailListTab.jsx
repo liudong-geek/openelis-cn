@@ -13,12 +13,12 @@ import {
 } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { getFromOpenElisServer } from "../../utils/Utils";
-import { formatTat } from "./tatUtils";
+import { formatTat, formatTatPriority } from "./tatUtils";
 
-function formatTimestamp(ts) {
+function formatTimestamp(ts, locale) {
   if (!ts) return "—";
   try {
-    return new Date(ts).toLocaleString();
+    return new Date(ts).toLocaleString(locale);
   } catch {
     return ts;
   }
@@ -28,18 +28,66 @@ function TATDetailListTab({ filters, buildQueryString }) {
   const intl = useIntl();
 
   const ALL_HEADERS = [
-    { key: "labNumber", header: intl.formatMessage({ id: "reports.tat.column.labNumber" }), alwaysVisible: true },
-    { key: "testName", header: intl.formatMessage({ id: "reports.tat.column.test" }), alwaysVisible: true },
-    { key: "labUnit", header: intl.formatMessage({ id: "reports.tat.column.labUnit" }), alwaysVisible: true },
-    { key: "priority", header: intl.formatMessage({ id: "reports.tat.column.priority" }), alwaysVisible: true },
-    { key: "orderCreated", header: intl.formatMessage({ id: "reports.tat.column.ordered" }), alwaysVisible: true },
-    { key: "collected", header: intl.formatMessage({ id: "reports.tat.column.collected" }), alwaysVisible: true },
-    { key: "received", header: intl.formatMessage({ id: "reports.tat.column.received" }), alwaysVisible: true },
-    { key: "testingStarted", header: intl.formatMessage({ id: "reports.tat.column.started" }), alwaysVisible: false },
-    { key: "resultEntered", header: intl.formatMessage({ id: "reports.tat.column.resulted" }), alwaysVisible: false },
-    { key: "validated", header: intl.formatMessage({ id: "reports.tat.column.validated" }), alwaysVisible: true },
-    { key: "selectedSegmentTat", header: intl.formatMessage({ id: "reports.tat.column.selectedTat" }), alwaysVisible: true },
-    { key: "overallTat", header: intl.formatMessage({ id: "reports.tat.column.overallTat" }), alwaysVisible: true },
+    {
+      key: "labNumber",
+      header: intl.formatMessage({ id: "reports.tat.column.labNumber" }),
+      alwaysVisible: true,
+    },
+    {
+      key: "testName",
+      header: intl.formatMessage({ id: "reports.tat.column.test" }),
+      alwaysVisible: true,
+    },
+    {
+      key: "labUnit",
+      header: intl.formatMessage({ id: "reports.tat.column.labUnit" }),
+      alwaysVisible: true,
+    },
+    {
+      key: "priority",
+      header: intl.formatMessage({ id: "reports.tat.column.priority" }),
+      alwaysVisible: true,
+    },
+    {
+      key: "orderCreated",
+      header: intl.formatMessage({ id: "reports.tat.column.ordered" }),
+      alwaysVisible: true,
+    },
+    {
+      key: "collected",
+      header: intl.formatMessage({ id: "reports.tat.column.collected" }),
+      alwaysVisible: true,
+    },
+    {
+      key: "received",
+      header: intl.formatMessage({ id: "reports.tat.column.received" }),
+      alwaysVisible: true,
+    },
+    {
+      key: "testingStarted",
+      header: intl.formatMessage({ id: "reports.tat.column.started" }),
+      alwaysVisible: false,
+    },
+    {
+      key: "resultEntered",
+      header: intl.formatMessage({ id: "reports.tat.column.resulted" }),
+      alwaysVisible: false,
+    },
+    {
+      key: "validated",
+      header: intl.formatMessage({ id: "reports.tat.column.validated" }),
+      alwaysVisible: true,
+    },
+    {
+      key: "selectedSegmentTat",
+      header: intl.formatMessage({ id: "reports.tat.column.selectedTat" }),
+      alwaysVisible: true,
+    },
+    {
+      key: "overallTat",
+      header: intl.formatMessage({ id: "reports.tat.column.overallTat" }),
+      alwaysVisible: true,
+    },
   ];
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -72,19 +120,37 @@ function TATDetailListTab({ filters, buildQueryString }) {
 
   if (!filters) {
     return (
-      <div style={{ padding: "2rem", textAlign: "center", color: "var(--cds-text-helper)" }}>
+      <div
+        style={{
+          padding: "2rem",
+          textAlign: "center",
+          color: "var(--cds-text-helper)",
+        }}
+      >
         <FormattedMessage id="reports.tat.noResults" />
       </div>
     );
   }
 
   if (loading) {
-    return <DataTableSkeleton headers={ALL_HEADERS.filter((h) => h.alwaysVisible)} rowCount={10} />;
+    return (
+      <DataTableSkeleton
+        headers={ALL_HEADERS.filter((h) => h.alwaysVisible)}
+        rowCount={10}
+        aria-label={intl.formatMessage({ id: "loading.description" })}
+      />
+    );
   }
 
   if (!data || !data.results || data.results.length === 0) {
     return (
-      <div style={{ padding: "2rem", textAlign: "center", color: "var(--cds-text-helper)" }}>
+      <div
+        style={{
+          padding: "2rem",
+          textAlign: "center",
+          color: "var(--cds-text-helper)",
+        }}
+      >
         <FormattedMessage id="reports.tat.noResults" />
       </div>
     );
@@ -97,15 +163,15 @@ function TATDetailListTab({ filters, buildQueryString }) {
     labNumber: r.labNumber,
     testName: r.testName,
     labUnit: r.labUnit,
-    priority: r.priority,
-    orderCreated: formatTimestamp(r.orderCreated),
-    collected: formatTimestamp(r.collected),
-    received: formatTimestamp(r.received),
-    testingStarted: formatTimestamp(r.testingStarted),
-    resultEntered: formatTimestamp(r.resultEntered),
-    validated: formatTimestamp(r.validated),
-    selectedSegmentTat: formatTat(r.selectedSegmentTat),
-    overallTat: formatTat(r.overallTat),
+    priority: formatTatPriority(r.priority, intl),
+    orderCreated: formatTimestamp(r.orderCreated, intl.locale),
+    collected: formatTimestamp(r.collected, intl.locale),
+    received: formatTimestamp(r.received, intl.locale),
+    testingStarted: formatTimestamp(r.testingStarted, intl.locale),
+    resultEntered: formatTimestamp(r.resultEntered, intl.locale),
+    validated: formatTimestamp(r.validated, intl.locale),
+    selectedSegmentTat: formatTat(r.selectedSegmentTat, intl),
+    overallTat: formatTat(r.overallTat, intl),
     rawPriority: r.priority,
   }));
 
@@ -180,6 +246,30 @@ function TATDetailListTab({ filters, buildQueryString }) {
           setPageSize(newSize);
         }}
         pageSizes={[25, 50, 100]}
+        forwardText={intl.formatMessage({ id: "pagination.forward" })}
+        backwardText={intl.formatMessage({ id: "pagination.backward" })}
+        itemRangeText={(min, max, total) =>
+          intl.formatMessage(
+            { id: "pagination.item-range" },
+            { min, max, total },
+          )
+        }
+        itemsPerPageText={intl.formatMessage({
+          id: "pagination.items-per-page",
+        })}
+        itemText={(min, max) =>
+          intl.formatMessage({ id: "pagination.item" }, { min, max })
+        }
+        pageNumberText={intl.formatMessage({ id: "pagination.page-number" })}
+        pageRangeText={(_current, total) =>
+          intl.formatMessage({ id: "pagination.page-range" }, { total })
+        }
+        pageText={(currentPage, pagesUnknown) =>
+          intl.formatMessage(
+            { id: "pagination.page" },
+            { page: pagesUnknown ? "" : currentPage },
+          )
+        }
       />
     </div>
   );

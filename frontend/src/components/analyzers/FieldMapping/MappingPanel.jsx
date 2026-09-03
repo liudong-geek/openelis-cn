@@ -53,6 +53,21 @@ const MappingPanel = ({
   const [validationResult, setValidationResult] = useState(null);
   const [validationErrors, setValidationErrors] = useState([]);
 
+  const formatFieldType = (fieldType) => {
+    const messageIds = {
+      NUMERIC: "analyzer.fieldMapping.fieldType.numeric",
+      QUALITATIVE: "analyzer.fieldMapping.fieldType.qualitative",
+      CONTROL_TEST: "analyzer.fieldMapping.fieldType.controlTest",
+      MELTING_POINT: "analyzer.fieldMapping.fieldType.meltingPoint",
+      DATE_TIME: "analyzer.fieldMapping.fieldType.dateTime",
+      TEXT: "analyzer.fieldMapping.fieldType.text",
+      CUSTOM: "analyzer.fieldMapping.fieldType.custom",
+    };
+    return messageIds[fieldType]
+      ? intl.formatMessage({ id: messageIds[fieldType] })
+      : fieldType;
+  };
+
   useEffect(() => {
     if (field?.fieldType === "CUSTOM" && mapping?.validationRules) {
       setValidationRules(mapping.validationRules);
@@ -178,7 +193,7 @@ const MappingPanel = ({
     <div className="mapping-panel" data-testid="mapping-panel">
       <div className="panel-header">
         <h3>
-          Mapping
+          <FormattedMessage id="analyzer.fieldMapping.panel.heading" />
           {mapping && !mapping.isActive && (
             <Tag
               type="gray"
@@ -225,10 +240,19 @@ const MappingPanel = ({
                         },
                         {
                           reason: mapping.isRequired
-                            ? "Required mapping"
+                            ? intl.formatMessage({
+                                id: "analyzer.fieldMapping.panel.retire.reason.required",
+                              })
                             : pendingMessagesCount > 0
-                              ? `${pendingMessagesCount} pending messages`
-                              : "Unknown reason",
+                              ? intl.formatMessage(
+                                  {
+                                    id: "analyzer.fieldMapping.panel.retire.reason.pending",
+                                  },
+                                  { count: pendingMessagesCount },
+                                )
+                              : intl.formatMessage({
+                                  id: "analyzer.fieldMapping.panel.retire.reason.unknown",
+                                }),
                         },
                       )
                     : ""
@@ -242,7 +266,7 @@ const MappingPanel = ({
                 >
                   <FormattedMessage
                     id="analyzer.fieldMapping.panel.retire"
-                    defaultMessage="Retire Mapping"
+                    defaultMessage="停用映射"
                   />
                 </Button>
               </Tooltip>
@@ -255,15 +279,29 @@ const MappingPanel = ({
         <div className="edit-mode">
           {/* Source Field Info (read-only) */}
           <div className="source-field-card">
-            <h4>Source Field</h4>
+            <h4>
+              <FormattedMessage id="analyzer.fieldMapping.panel.source.title" />
+            </h4>
             <p>
-              <strong>Name:</strong> {field.fieldName}
+              <strong>
+                <FormattedMessage id="analyzer.fieldMapping.panel.source.name" />
+                ：
+              </strong>{" "}
+              {field.fieldName}
             </p>
             <p>
-              <strong>Type:</strong> {field.fieldType}
+              <strong>
+                <FormattedMessage id="analyzer.fieldMapping.panel.source.type" />
+                ：
+              </strong>{" "}
+              {formatFieldType(field.fieldType)}
             </p>
             <p>
-              <strong>Unit:</strong> {field.unit || "-"}
+              <strong>
+                <FormattedMessage id="analyzer.fieldMapping.panel.source.unit" />
+                ：
+              </strong>{" "}
+              {field.unit || "-"}
             </p>
           </div>
 
@@ -298,7 +336,7 @@ const MappingPanel = ({
                 <h4>
                   <FormattedMessage
                     id="analyzer.fieldMapping.panel.validationRules.title"
-                    defaultMessage="Validation Rules"
+                    defaultMessage="字段校验规则"
                   />
                 </h4>
                 <ul className="validation-rules-list">
@@ -309,11 +347,11 @@ const MappingPanel = ({
                           <div>
                             <strong>{rule.ruleName}</strong>
                             <br />
-                            <span>Type: {rule.ruleType}</span>
+                            <span>类型：{rule.ruleType}</span>
                             {rule.errorMessage && (
                               <>
                                 <br />
-                                <span>Error: {rule.errorMessage}</span>
+                                <span>错误提示：{rule.errorMessage}</span>
                               </>
                             )}
                           </div>
@@ -418,7 +456,7 @@ const MappingPanel = ({
                   >
                     <FormattedMessage
                       id="analyzer.fieldMapping.panel.testValidation.button"
-                      defaultMessage="Test Validation"
+                      defaultMessage="测试校验规则"
                     />
                   </Button>
 
@@ -489,26 +527,48 @@ const MappingPanel = ({
           {mapping ? (
             <>
               <div className="source-field-card">
-                <h4>Source Field</h4>
+                <h4>
+                  <FormattedMessage id="analyzer.fieldMapping.panel.source.title" />
+                </h4>
                 <p>
-                  <strong>Name:</strong> {field.fieldName}
+                  <strong>
+                    <FormattedMessage id="analyzer.fieldMapping.panel.source.name" />
+                    ：
+                  </strong>{" "}
+                  {field.fieldName}
                 </p>
                 <p>
-                  <strong>Type:</strong> {field.fieldType}
+                  <strong>
+                    <FormattedMessage id="analyzer.fieldMapping.panel.source.type" />
+                    ：
+                  </strong>{" "}
+                  {formatFieldType(field.fieldType)}
                 </p>
               </div>
               <div className="target-field-card">
-                <h4>Target Field</h4>
+                <h4>
+                  <FormattedMessage id="analyzer.fieldMapping.panel.target.title" />
+                </h4>
                 <p>
-                  <strong>Field ID:</strong> {mapping.openelisFieldId}
+                  <strong>
+                    <FormattedMessage id="analyzer.fieldMapping.panel.target.fieldId" />
+                    ：
+                  </strong>{" "}
+                  {mapping.openelisFieldId}
                 </p>
                 <p>
-                  <strong>Type:</strong> {mapping.openelisFieldType}
+                  <strong>
+                    <FormattedMessage id="analyzer.fieldMapping.panel.source.type" />
+                    ：
+                  </strong>{" "}
+                  {formatFieldType(mapping.openelisFieldType)}
                 </p>
               </div>
             </>
           ) : (
-            <p>No mapping exists for this field. Click "Edit" to create one.</p>
+            <p>
+              <FormattedMessage id="analyzer.fieldMapping.panel.empty" />
+            </p>
           )}
         </div>
       )}

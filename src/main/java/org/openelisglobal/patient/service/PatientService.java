@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import org.openelisglobal.common.service.BaseObjectService;
 import org.openelisglobal.patient.action.bean.PatientManagementInfo;
+import org.openelisglobal.patient.form.PatientListResponse;
 import org.openelisglobal.patient.valueholder.Patient;
 import org.openelisglobal.patientidentity.valueholder.PatientIdentity;
 import org.openelisglobal.person.valueholder.Person;
@@ -26,6 +27,8 @@ public interface PatientService extends BaseObjectService<Patient, String> {
     Patient getPatientByExternalId(String externalId);
 
     List<Patient> getAllPatients();
+
+    PatientListResponse getPatientManagementList(int page, int pageSize);
 
     boolean externalIDExists(String patientExternalID);
 

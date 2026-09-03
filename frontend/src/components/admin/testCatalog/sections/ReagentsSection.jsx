@@ -316,7 +316,12 @@ const ReagentsSection = ({ testId }) => {
             getTableProps,
           }) => (
             <TableContainer>
-              <Table {...getTableProps()} aria-label="reagents">
+              <Table
+                {...getTableProps()}
+                aria-label={intl.formatMessage({
+                  id: "label.testCatalog.section.reagents",
+                })}
+              >
                 <TableHead>
                   <TableRow>
                     {hdrs.map((header) => {

@@ -19,7 +19,8 @@ import org.openelisglobal.internationalization.MessageUtil;
 import org.openelisglobal.spring.util.SpringContext;
 
 // Note both Clinical and LNSP should extend common subclass
-public class IndicatorCDIHIVLNSP extends IndicatorHIV implements IReportCreator, IReportParameterSetter {
+public class IndicatorCDIHIVLNSP extends IndicatorHIV
+        implements IReportCreator, IReportParameterSetter, SafeNonPatientReportCreator {
     private static String HIV_POSITIVE1_ID = "undefined";
     private static String HIV_POSITIVE2_ID = "undefined";
     private static String HIV_POSITIVE12_ID = "undefined";

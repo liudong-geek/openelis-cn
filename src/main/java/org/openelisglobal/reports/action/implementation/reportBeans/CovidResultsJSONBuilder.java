@@ -16,8 +16,8 @@ import org.openelisglobal.result.valueholder.Result;
 
 public class CovidResultsJSONBuilder extends CovidResultsBuilderImpl {
 
-    public CovidResultsJSONBuilder(DateRange dateRange) {
-        super(dateRange);
+    public CovidResultsJSONBuilder(DateRange dateRange, List<Analysis> authorizedCandidates) {
+        super(dateRange, authorizedCandidates);
     }
 
     private JSONArray dataSource = new JSONArray();

@@ -1,15 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useHistory } from "react-router-dom";
 import { useIntl, FormattedMessage } from "react-intl";
 import {
-  Grid,
-  Column,
   Tile,
   Button,
   TextInput,
-  DatePicker,
-  DatePickerInput,
-  RadioButtonGroup,
-  RadioButton,
   DataTable,
   Table,
   TableHead,
@@ -40,20 +35,16 @@ const PatientSearchSection = ({
   isReadOnly,
 }) => {
   const intl = useIntl();
+  const history = useHistory();
   const componentMounted = useRef(true);
 
   // Tab state
   const [activeTab, setActiveTab] = useState("search"); // "search" | "new"
 
-  // Search fields
-  const [searchFields, setSearchFields] = useState({
-    patientId: "",
-    previousLabNumber: "",
-    lastName: "",
-    firstName: "",
-    dateOfBirth: "",
-    gender: "",
-  });
+  // Order entry uses one compact selector. The complete multi-field search and
+  // all CRUD operations remain in Patient Management.
+  const [quickQuery, setQuickQuery] = useState("");
+  const [searchAttempted, setSearchAttempted] = useState(false);
 
   // Results state
   const [searchResults, setSearchResults] = useState([]);
@@ -80,40 +71,20 @@ const PatientSearchSection = ({
     }
   }, [orderData?.patientProperties?.patientPK]);
 
-  // Handle search field changes
-  const handleFieldChange = (field, value) => {
-    setSearchFields((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
   // Execute search
   const handleSearch = () => {
+    const query = quickQuery.trim();
+    if (!query || isReadOnly) return;
+
     setIsSearching(true);
     setSearchResults([]);
+    setSearchAttempted(true);
 
-    // Build search endpoint with proper parameter names (matching SearchPatientForm.js pattern exactly)
-    const searchEndpoint =
-      "/rest/patient-search-results?" +
-      "lastName=" +
-      (searchFields.lastName || "") +
-      "&firstName=" +
-      (searchFields.firstName || "") +
-      "&STNumber=" +
-      (searchFields.patientId || "") +
-      "&subjectNumber=" +
-      (searchFields.patientId || "") +
-      "&nationalID=" +
-      (searchFields.patientId || "") +
-      "&labNumber=" +
-      (searchFields.previousLabNumber || "") +
-      "&guid=" +
-      "&dateOfBirth=" +
-      (searchFields.dateOfBirth || "") +
-      "&gender=" +
-      (searchFields.gender || "") +
-      "&suppressExternalSearch=true";
+    const params = new URLSearchParams({
+      quickQuery: query,
+      suppressExternalSearch: "true",
+    });
+    const searchEndpoint = `/rest/patient-search-results?${params.toString()}`;
 
     getFromOpenElisServer(searchEndpoint, (response) => {
       if (componentMounted.current) {
@@ -123,6 +94,22 @@ const PatientSearchSection = ({
           const mappedResults = response.patientSearchResults.map((p) => ({
             ...p,
             id: p.patientID || p.id,
+            displayName:
+              `${p.lastName || ""}${p.firstName || ""}`.trim() || "—",
+            patientNumber:
+              p.nationalId ||
+              p.subjectNumber ||
+              p.STNumber ||
+              p.patientID ||
+              "—",
+            genderDisplay:
+              p.gender === "M"
+                ? intl.formatMessage({ id: "patient.male" })
+                : p.gender === "F"
+                  ? intl.formatMessage({ id: "patient.female" })
+                  : p.gender || "—",
+            birthDateForDisplay:
+              p.birthDateForDisplay || p.birthdate || p.dob || "—",
             dataSource: "Local",
           }));
           setSearchResults(mappedResults);
@@ -132,50 +119,12 @@ const PatientSearchSection = ({
     });
   };
 
-  // External search (Client Registry)
-  const handleExternalSearch = () => {
-    setIsSearching(true);
-    setSearchResults([]);
-
-    const params = new URLSearchParams();
-    if (searchFields.lastName) params.append("lastName", searchFields.lastName);
-    if (searchFields.firstName)
-      params.append("firstName", searchFields.firstName);
-    if (searchFields.dateOfBirth)
-      params.append("dateOfBirth", searchFields.dateOfBirth);
-    if (searchFields.gender) params.append("gender", searchFields.gender);
-
-    const searchEndpoint = `/rest/patient-search/external?${params.toString()}`;
-
-    getFromOpenElisServer(searchEndpoint, (response) => {
-      if (componentMounted.current) {
-        setIsSearching(false);
-        if (response?.patientSearchResults) {
-          // Mark results as from external source and ensure 'id' field
-          const externalResults = response.patientSearchResults.map((p) => ({
-            ...p,
-            id: p.patientID || p.id,
-            dataSource: "Client Registry",
-          }));
-          setSearchResults(externalResults);
-          setTotalItems(externalResults.length);
-        }
-      }
-    });
-  };
-
   // Clear search
   const handleClear = () => {
-    setSearchFields({
-      patientId: "",
-      previousLabNumber: "",
-      lastName: "",
-      firstName: "",
-      dateOfBirth: "",
-      gender: "",
-    });
+    setQuickQuery("");
     setSearchResults([]);
     setTotalItems(0);
+    setSearchAttempted(false);
   };
 
   // Select patient
@@ -234,21 +183,14 @@ const PatientSearchSection = ({
   // Table headers
   const headers = [
     {
-      key: "lastName",
+      key: "displayName",
       header: intl.formatMessage({
-        id: "patient.lastName",
-        defaultMessage: "Last Name",
+        id: "patient.name",
+        defaultMessage: "Patient name",
       }),
     },
     {
-      key: "firstName",
-      header: intl.formatMessage({
-        id: "patient.firstName",
-        defaultMessage: "First Name",
-      }),
-    },
-    {
-      key: "gender",
+      key: "genderDisplay",
       header: intl.formatMessage({
         id: "patient.gender",
         defaultMessage: "Gender",
@@ -262,24 +204,10 @@ const PatientSearchSection = ({
       }),
     },
     {
-      key: "nationalId",
+      key: "patientNumber",
       header: intl.formatMessage({
-        id: "patient.natId",
-        defaultMessage: "Unique Health ID",
-      }),
-    },
-    {
-      key: "externalId",
-      header: intl.formatMessage({
-        id: "patient.externalId",
-        defaultMessage: "National ID",
-      }),
-    },
-    {
-      key: "dataSource",
-      header: intl.formatMessage({
-        id: "patient.dataSource",
-        defaultMessage: "Data Source",
+        id: "patient.number",
+        defaultMessage: "Patient number",
       }),
     },
     { key: "actions", header: "" },
@@ -287,198 +215,92 @@ const PatientSearchSection = ({
 
   return (
     <Tile className="order-section patient-search-section">
-      <h4 className="section-title">
-        <FormattedMessage id="banner.menu.patient" defaultMessage="Patient" />
-      </h4>
-
-      {/* Tab Buttons */}
-      <div className="section-tabs">
-        <Button
-          kind={activeTab === "search" ? "primary" : "tertiary"}
-          size="md"
-          onClick={() => setActiveTab("search")}
-        >
-          <FormattedMessage
-            id="search.patient.label"
-            defaultMessage="Search for Patient"
-          />
-        </Button>
-        <Button
-          kind={activeTab === "new" ? "primary" : "tertiary"}
-          size="md"
-          onClick={handleNewPatient}
-          disabled={isReadOnly}
-        >
-          <FormattedMessage
-            id="new.patient.label"
-            defaultMessage="New Patient"
-          />
-        </Button>
+      <div className="order-section-heading">
+        <span className="order-section-heading__step">1</span>
+        <div className="order-section-heading__copy">
+          <h4 className="section-title">
+            <FormattedMessage id="order.entry.patient.title" />
+          </h4>
+          <p>
+            <FormattedMessage id="order.entry.patient.helper" />
+          </p>
+        </div>
+        <div className="order-section-heading__actions">
+          {activeTab === "new" && (
+            <Button
+              kind="ghost"
+              size="sm"
+              onClick={() => setActiveTab("search")}
+            >
+              <FormattedMessage id="patient.search.return" />
+            </Button>
+          )}
+          <Button
+            kind="ghost"
+            size="sm"
+            onClick={() => history.push("/PatientManagement")}
+          >
+            <FormattedMessage id="patient.manage.open" />
+          </Button>
+          {activeTab !== "new" && (
+            <Button
+              kind="tertiary"
+              size="sm"
+              onClick={handleNewPatient}
+              disabled={isReadOnly}
+            >
+              <FormattedMessage
+                id="new.patient.label"
+                defaultMessage="New Patient"
+              />
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Search Tab Content */}
       {activeTab === "search" && (
         <div className="search-content">
-          <Grid>
-            {/* Search Fields Row 1 */}
-            <Column lg={8} md={4} sm={4}>
+          {!selectedPatient && (
+            <div className="patient-quick-search">
               <TextInput
-                id="patientId"
+                id="patientQuickQuery"
                 labelText={intl.formatMessage({
-                  id: "patient.id",
-                  defaultMessage: "Patient Id",
+                  id: "patient.quickSearch.label",
                 })}
                 placeholder={intl.formatMessage({
-                  id: "patient.id.placeholder",
-                  defaultMessage: "Enter Patient Id",
+                  id: "patient.quickSearch.placeholder",
                 })}
-                value={searchFields.patientId}
-                onChange={(e) => handleFieldChange("patientId", e.target.value)}
-                disabled={isReadOnly}
-              />
-            </Column>
-            <Column lg={8} md={4} sm={4}>
-              <TextInput
-                id="previousLabNumber"
-                labelText={intl.formatMessage({
-                  id: "order.previousLabNumber",
-                  defaultMessage: "Previous Lab Number",
-                })}
-                placeholder={intl.formatMessage({
-                  id: "order.previousLabNumber.placeholder",
-                  defaultMessage: "Enter Previous Lab Number",
-                })}
-                value={searchFields.previousLabNumber}
-                onChange={(e) =>
-                  handleFieldChange("previousLabNumber", e.target.value)
-                }
-                disabled={isReadOnly}
-              />
-            </Column>
-
-            {/* Search Fields Row 2 */}
-            <Column lg={8} md={4} sm={4}>
-              <TextInput
-                id="lastName"
-                labelText={intl.formatMessage({
-                  id: "patient.lastName",
-                  defaultMessage: "Last Name",
-                })}
-                placeholder={intl.formatMessage({
-                  id: "patient.lastName.placeholder",
-                  defaultMessage: "Enter Patient's Last Name",
-                })}
-                value={searchFields.lastName}
-                onChange={(e) => handleFieldChange("lastName", e.target.value)}
-                disabled={isReadOnly}
-              />
-            </Column>
-            <Column lg={8} md={4} sm={4}>
-              <TextInput
-                id="firstName"
-                labelText={intl.formatMessage({
-                  id: "patient.firstName",
-                  defaultMessage: "First Name",
-                })}
-                placeholder={intl.formatMessage({
-                  id: "patient.firstName.placeholder",
-                  defaultMessage: "Enter Patient's First Name",
-                })}
-                value={searchFields.firstName}
-                onChange={(e) => handleFieldChange("firstName", e.target.value)}
-                disabled={isReadOnly}
-              />
-            </Column>
-
-            {/* Search Fields Row 3 */}
-            <Column lg={8} md={4} sm={4}>
-              <DatePicker
-                datePickerType="single"
-                dateFormat="d/m/Y"
-                onChange={(dates) => {
-                  if (dates && dates[0]) {
-                    const date = dates[0];
-                    const formatted = `${date.getDate().toString().padStart(2, "0")}/${(date.getMonth() + 1).toString().padStart(2, "0")}/${date.getFullYear()}`;
-                    handleFieldChange("dateOfBirth", formatted);
+                value={quickQuery}
+                onChange={(event) => setQuickQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleSearch();
                   }
                 }}
-              >
-                <DatePickerInput
-                  id="dateOfBirth"
-                  labelText={intl.formatMessage({
-                    id: "patient.dob",
-                    defaultMessage: "Date of Birth",
-                  })}
-                  placeholder="dd/mm/yyyy"
-                  disabled={isReadOnly}
-                />
-              </DatePicker>
-            </Column>
-            <Column lg={8} md={4} sm={4}>
-              <RadioButtonGroup
-                legendText={intl.formatMessage({
-                  id: "patient.gender",
-                  defaultMessage: "Gender",
-                })}
-                name="gender"
-                valueSelected={searchFields.gender}
-                onChange={(value) => handleFieldChange("gender", value)}
-              >
-                <RadioButton
-                  id="gender-male"
-                  labelText={intl.formatMessage({
-                    id: "patient.male",
-                    defaultMessage: "Male",
-                  })}
-                  value="M"
-                  disabled={isReadOnly}
-                />
-                <RadioButton
-                  id="gender-female"
-                  labelText={intl.formatMessage({
-                    id: "patient.female",
-                    defaultMessage: "Female",
-                  })}
-                  value="F"
-                  disabled={isReadOnly}
-                />
-              </RadioButtonGroup>
-            </Column>
-
-            {/* Search Buttons */}
-            <Column lg={16} md={8} sm={4}>
-              <div className="search-buttons">
+                disabled={isReadOnly}
+              />
+              <div className="search-buttons patient-quick-search__actions">
                 <Button
                   kind="primary"
                   size="md"
                   onClick={handleSearch}
-                  disabled={isSearching || isReadOnly}
+                  disabled={isSearching || isReadOnly || !quickQuery.trim()}
                 >
-                  <FormattedMessage
-                    id="label.button.search"
-                    defaultMessage="Search"
-                  />
+                  <FormattedMessage id="label.button.search" />
                 </Button>
-                <Button
-                  kind="secondary"
-                  size="md"
-                  onClick={handleExternalSearch}
-                  disabled={isSearching || isReadOnly}
-                >
-                  <FormattedMessage
-                    id="patient.externalSearch"
-                    defaultMessage="External Search"
-                  />
-                </Button>
-                <Button kind="ghost" size="md" onClick={handleClear}>
-                  <FormattedMessage
-                    id="label.button.clear"
-                    defaultMessage="Clear"
-                  />
-                </Button>
+                {(quickQuery || searchAttempted) && (
+                  <Button kind="ghost" size="md" onClick={handleClear}>
+                    <FormattedMessage id="label.button.clear" />
+                  </Button>
+                )}
               </div>
-            </Column>
-          </Grid>
+              <p className="helper-text patient-quick-search__helper">
+                <FormattedMessage id="patient.quickSearch.helper" />
+              </p>
+            </div>
+          )}
 
           {/* Selected Patient Card */}
           {selectedPatient && (
@@ -496,14 +318,33 @@ const PatientSearchSection = ({
               </div>
               <div className="selected-card-content">
                 <h5>
-                  {selectedPatient.firstName} {selectedPatient.lastName}
+                  {selectedPatient.lastName}
+                  {selectedPatient.firstName}
                 </h5>
                 <p>
-                  {selectedPatient.birthDateForDisplay &&
-                    `DOB: ${selectedPatient.birthDateForDisplay}`}
-                  {selectedPatient.gender && ` · ${selectedPatient.gender}`}
-                  {selectedPatient.nationalId &&
-                    ` · ID: ${selectedPatient.nationalId}`}
+                  {selectedPatient.birthDateForDisplay && (
+                    <>
+                      <FormattedMessage id="patient.dob" />：
+                      {selectedPatient.birthDateForDisplay}
+                    </>
+                  )}
+                  {selectedPatient.gender && (
+                    <>
+                      {" · "}
+                      {selectedPatient.gender === "M"
+                        ? intl.formatMessage({ id: "patient.male" })
+                        : selectedPatient.gender === "F"
+                          ? intl.formatMessage({ id: "patient.female" })
+                          : selectedPatient.gender}
+                    </>
+                  )}
+                  {selectedPatient.nationalId && (
+                    <>
+                      {" · "}
+                      <FormattedMessage id="patient.natioanalid" />：
+                      {selectedPatient.nationalId}
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -518,7 +359,14 @@ const PatientSearchSection = ({
                   defaultMessage="Patient Results"
                 />
               </h5>
-              <DataTable rows={searchResults} headers={headers} isSortable>
+              <DataTable
+                rows={searchResults.slice(
+                  (currentPage - 1) * pageSize,
+                  currentPage * pageSize,
+                )}
+                headers={headers}
+                isSortable
+              >
                 {({
                   rows,
                   headers,
@@ -569,14 +417,10 @@ const PatientSearchSection = ({
                                   </TableCell>
                                 );
                               }
-                              if (cell.info.header === "dataSource") {
-                                return (
-                                  <TableCell key={cell.id}>
-                                    {cell.value || "Local"}
-                                  </TableCell>
-                                );
-                              }
-                              if (cell.info.header === "lastName" && isMerged) {
+                              if (
+                                cell.info.header === "displayName" &&
+                                isMerged
+                              ) {
                                 return (
                                   <TableCell key={cell.id}>
                                     {cell.value}{" "}
@@ -585,8 +429,17 @@ const PatientSearchSection = ({
                                       size="sm"
                                       title={
                                         mergedIntoLabel
-                                          ? `Merged into ${mergedIntoLabel}`
-                                          : "Merged"
+                                          ? intl.formatMessage(
+                                              {
+                                                id: "patient.search.merged.into",
+                                              },
+                                              {
+                                                identifier: mergedIntoLabel,
+                                              },
+                                            )
+                                          : intl.formatMessage({
+                                              id: "patient.search.merged.tag",
+                                            })
                                       }
                                     >
                                       <FormattedMessage
@@ -635,16 +488,19 @@ const PatientSearchSection = ({
           )}
 
           {/* No Results */}
-          {searchResults.length === 0 && !isSearching && !selectedPatient && (
-            <div className="no-results">
-              <p>
-                <FormattedMessage
-                  id="patient.noResults"
-                  defaultMessage="0-0 of 0 items"
-                />
-              </p>
-            </div>
-          )}
+          {searchAttempted &&
+            searchResults.length === 0 &&
+            !isSearching &&
+            !selectedPatient && (
+              <div className="no-results">
+                <p>
+                  <FormattedMessage
+                    id="patient.search.empty.results"
+                    defaultMessage="No matching patients were found."
+                  />
+                </p>
+              </div>
+            )}
         </div>
       )}
 

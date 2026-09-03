@@ -41,7 +41,11 @@ const PatientImageSelector = ({
         >
           {value ? (
             <div className="image-with-overlay">
-              <img src={value} alt="Patient photo" className="patient-image" />
+              <img
+                src={value}
+                alt={intl.formatMessage({ id: "patient.photo.label" })}
+                className="patient-image"
+              />
               <div className="image-overlay">
                 <span className="overlay-text">
                   {" "}

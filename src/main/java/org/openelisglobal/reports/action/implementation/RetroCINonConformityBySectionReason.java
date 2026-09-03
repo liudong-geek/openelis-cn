@@ -13,7 +13,8 @@
  */
 package org.openelisglobal.reports.action.implementation;
 
-public class RetroCINonConformityBySectionReason extends NonConformityBySectionReason {
+public class RetroCINonConformityBySectionReason extends NonConformityBySectionReason
+        implements SafeNonPatientReportCreator {
 
     @Override
     protected String getHeaderName() {

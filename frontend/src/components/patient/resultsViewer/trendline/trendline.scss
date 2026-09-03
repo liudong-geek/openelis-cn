@@ -31,7 +31,7 @@
   //  color: $text-05; // WIP
 }
 
-:global(.cds--cc--area path.area) {
+.cds--cc--area path.area {
   stroke: none;
   fill: #a7f0ba;
 }
@@ -80,6 +80,6 @@
   background: white;
 }
 
-.range-tabs :global(.cds--tabs--scrollable__nav-link) {
+.range-tabs .cds--tabs--scrollable__nav-link {
   width: 7rem;
 }

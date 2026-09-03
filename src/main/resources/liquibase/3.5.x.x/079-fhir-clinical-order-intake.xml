@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+  <changeSet id="3.5.0-079-fhir-clinical-order-intake" author="local-chinese-edition">
+    <createTable schemaName="clinlims" tableName="fhir_intake_receipt">
+      <column name="fhir_uuid" type="uuid"><constraints nullable="false" primaryKey="true"/></column>
+      <column name="source_system" type="varchar(255)"><constraints nullable="false"/></column>
+      <column name="external_id" type="varchar(80)"><constraints nullable="false"/></column>
+      <column name="payload_hash" type="varchar(64)"><constraints nullable="false"/></column>
+      <column name="payload_json" type="text"><constraints nullable="false"/></column>
+      <column name="sample_id" type="numeric(10)"><constraints nullable="false"/></column>
+      <column name="test_id" type="numeric(10)"><constraints nullable="false"/></column>
+      <column name="created_by" type="varchar(20)"><constraints nullable="false"/></column>
+      <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+    </createTable>
+    <addUniqueConstraint schemaName="clinlims" tableName="fhir_intake_receipt"
+        columnNames="source_system,external_id" constraintName="uq_fhir_intake_source_order"/>
+    <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="fhir_intake_receipt" baseColumnNames="sample_id"
+        referencedTableSchemaName="clinlims" referencedTableName="sample" referencedColumnNames="id" constraintName="fk_fhir_intake_sample"/>
+    <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="fhir_intake_receipt" baseColumnNames="test_id"
+        referencedTableSchemaName="clinlims" referencedTableName="test" referencedColumnNames="id" constraintName="fk_fhir_intake_test"/>
+    <createIndex schemaName="clinlims" tableName="fhir_intake_receipt" indexName="idx_fhir_intake_sample">
+      <column name="sample_id"/>
+    </createIndex>
+    <rollback><dropTable schemaName="clinlims" tableName="fhir_intake_receipt"/></rollback>
+  </changeSet>
+</databaseChangeLog>

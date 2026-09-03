@@ -65,6 +65,8 @@ import org.openelisglobal.sample.valueholder.SampleAdditionalField;
 import org.openelisglobal.samplehuman.valueholder.SampleHuman;
 import org.openelisglobal.spring.util.SpringContext;
 import org.springframework.validation.Errors;
+import org.springframework.validation.FieldError;
+import org.springframework.validation.ObjectError;
 
 /** */
 public class SamplePatientUpdateData {
@@ -318,7 +320,23 @@ public class SamplePatientUpdateData {
 
         // check patient errors
         if (patientErrors.hasErrors()) {
-            errors.addAllErrors(patientErrors);
+            copyPatientErrors(patientErrors, errors);
+        }
+    }
+
+    static void copyPatientErrors(Errors patientErrors, Errors errors) {
+        // BaseErrors uses the object name "Non bound errors", while the REST
+        // controller's BindingResult is named "samplePatientEntryForm".
+        // Errors.addAllErrors rejects that mismatch and turns an actionable
+        // patient validation failure into an HTTP 500. Copy the individual
+        // errors instead so duplicate identifiers and date-format problems
+        // reach the structured 400/409 response.
+        for (FieldError fieldError : patientErrors.getFieldErrors()) {
+            errors.rejectValue(fieldError.getField(), fieldError.getCode(), fieldError.getArguments(),
+                    fieldError.getDefaultMessage());
+        }
+        for (ObjectError globalError : patientErrors.getGlobalErrors()) {
+            errors.reject(globalError.getCode(), globalError.getArguments(), globalError.getDefaultMessage());
         }
     }
 

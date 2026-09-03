@@ -189,6 +189,9 @@
 
         <!-- Decoupled order workflow (OGC-356) -->
         <class>org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest</class>
+        <!-- External clinical-order idempotency/audit receipt. Keep the test ORM
+             model aligned with the production persistence unit. -->
+        <class>org.openelisglobal.fhir.valueholder.FhirIntakeReceipt</class>
         <!-- Barcode Label Presets (OGC-285 M2) -->
         <class>org.openelisglobal.labelpreset.valueholder.LabelPreset</class>
         <class>org.openelisglobal.labelpreset.valueholder.LabelPresetField</class>

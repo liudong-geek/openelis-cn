@@ -108,10 +108,15 @@ const ControlLotList = () => {
     controlLevel: lot.controlLevel || "-",
     status: lot.status,
     calculationMethod: lot.calculationMethod
-      ? intl.formatMessage({
-          id: `qc.controlLot.statistics.method.${lot.calculationMethod.toLowerCase()}`,
-          defaultMessage: lot.calculationMethod,
-        })
+      ? (() => {
+          const methodMessageId = `qc.controlLot.statistics.method.${lot.calculationMethod.toLowerCase()}`;
+          return intl.formatMessage({
+            id:
+              methodMessageId in intl.messages
+                ? methodMessageId
+                : "status.unknown",
+          });
+        })()
       : "-",
     expirationDate: lot.expirationDate
       ? new Date(lot.expirationDate).toLocaleDateString()
@@ -121,9 +126,7 @@ const ControlLotList = () => {
 
   const translatedHeaders = headers.map((h) => ({
     key: h.key,
-    header: h.header
-      ? intl.formatMessage({ id: h.header, defaultMessage: h.header })
-      : "",
+    header: h.header ? intl.formatMessage({ id: h.header }) : "",
   }));
 
   if (loading) {
@@ -156,6 +159,10 @@ const ControlLotList = () => {
 
       {error && (
         <InlineNotification
+          aria-label={intl.formatMessage({ id: "button.close" })}
+          statusIconDescription={intl.formatMessage({
+            id: "carbon.notification.error",
+          })}
           kind="error"
           title={intl.formatMessage({ id: "qc.controlLot.error.title" })}
           subtitle={error}
@@ -240,10 +247,15 @@ const ControlLotList = () => {
                             <TableCell key={cell.id}>
                               <Tag type={STATUS_TAG[cell.value] || "gray"}>
                                 {cell.value
-                                  ? intl.formatMessage({
-                                      id: `qc.controlLot.status.${cell.value.toLowerCase()}`,
-                                      defaultMessage: cell.value,
-                                    })
+                                  ? (() => {
+                                      const statusMessageId = `qc.controlLot.status.${cell.value.toLowerCase()}`;
+                                      return intl.formatMessage({
+                                        id:
+                                          statusMessageId in intl.messages
+                                            ? statusMessageId
+                                            : "status.unknown",
+                                      });
+                                    })()
                                   : "-"}
                               </Tag>
                             </TableCell>

@@ -22,6 +22,7 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.openelisglobal.testcalculated.service.TestCalculationService;
 import org.openelisglobal.testcalculated.valueholder.Calculation;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -120,5 +121,17 @@ public class CalculatedValueRestControllerTest {
         verify(testCalculationService, times(1)).getAll();
         assertEquals(Boolean.TRUE, activeRule.getToggled());
         assertEquals(Boolean.FALSE, inactiveRule.getToggled());
+    }
+
+    @Test
+    public void saveCalculation_rejectsExecutableContent() throws Exception {
+        String body = "{\"name\":\"unsafe\",\"sampleId\":1,\"testId\":2,\"operations\":["
+                + "{\"order\":0,\"type\":\"INTEGER\",\"value\":\"1\"},"
+                + "{\"order\":1,\"type\":\"MATH_FUNCTION\",\"value\":\"; shutdown\"}]}";
+
+        mockMvc.perform(post("/rest/test-calculation").contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isBadRequest());
+
+        verify(testCalculationService, never()).save(any(Calculation.class));
     }
 }

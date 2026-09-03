@@ -1,5 +1,5 @@
 import React, { createContext, useReducer, useEffect, useMemo } from "react";
-import { useTranslation } from "react-i18next";
+import { useIntl } from "react-intl";
 import isObject from "lodash/isObject";
 import { parseTime } from "../commons";
 import {
@@ -42,7 +42,7 @@ export interface FilterProviderProps {
 
 const FilterProvider = ({ roots, children }: FilterProviderProps) => {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const { t } = useTranslation();
+  const intl = useIntl();
 
   const actions = useMemo(
     () => ({
@@ -106,10 +106,14 @@ const FilterProvider = ({ roots, children }: FilterProviderProps) => {
     });
     const panelName = "timeline";
     return {
-      data: { parsedTime: parseTime(allTimes), rowData: rows, panelName },
+      data: {
+        parsedTime: parseTime(allTimes, intl.locale),
+        rowData: rows,
+        panelName,
+      },
       loaded: true,
     };
-  }, [activeTests, state.tests]);
+  }, [activeTests, intl.locale, state.tests]);
 
   useEffect(() => {
     if (roots?.length && !Object.keys(state?.parents).length) {

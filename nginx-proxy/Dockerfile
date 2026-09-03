@@ -1,4 +1,4 @@
-FROM nginx:1.15-alpine
+FROM nginx:1.27-alpine
 
 USER root
 RUN apk update; \ 
@@ -14,4 +14,3 @@ RUN chown nginx:nginx /healthcheck.sh; \
 # RUN chmod +x /docker-entrypoint.sh
 
 # ENTRYPOINT ["/docker-entrypoint.sh"]
-

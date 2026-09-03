@@ -13,6 +13,8 @@ import ta from "./ta.json";
 import taLK from "./ta_LK.json";
 import amET from "./am_ET.json";
 import sw from "./sw.json";
+import zh from "./zh.json";
+import zhCN from "./zh_CN.json";
 
 /**
  * All available language message bundles.
@@ -34,6 +36,8 @@ export const languageMessages = {
   "ta-LK": taLK,
   sw: sw,
   "am-ET": amET,
+  zh: zh,
+  "zh-CN": zhCN,
 };
 
 /**
@@ -41,8 +45,7 @@ export const languageMessages = {
  * The actual enabled languages are fetched from /rest/supportedlocales/active.
  */
 export const defaultLanguages = {
-  en: { label: "English", messages: en },
-  fr: { label: "Français", messages: fr },
+  zh: { label: "简体中文", messages: zh },
 };
 
 /**
@@ -66,36 +69,35 @@ export const languages = {
   "ta-LK": { label: "தமிழ் (Sri Lanka)", messages: taLK },
   sw: { label: "Swahili", messages: sw },
   "am-ET": { label: "Amharic", messages: amET },
+  zh: { label: "简体中文", messages: zh },
+  "zh-CN": { label: "简体中文（中国）", messages: zhCN },
 };
 
 /**
- * Builds the languages object from backend-provided locales.
- * Falls back to default label if displayName not provided.
- * Falls back to English messages if no message bundle exists for a configured locale.
+ * Builds the visible language list for the China delivery edition.
+ *
+ * The backend locale table is still consulted so its Chinese display label can
+ * be used, but non-Chinese locales are deliberately not exposed in the UI.
+ * Keeping this rule here also prevents a brief English language switcher from
+ * appearing while an older database is being upgraded.
  * @param {Array} supportedLocales - Array of {localeCode, displayName, fallback} from backend
  * @returns {Object} Languages object with {[localeCode]: {label, messages, fallback}}
  */
 export function buildLanguagesFromConfig(supportedLocales) {
-  if (!supportedLocales || supportedLocales.length === 0) {
-    return defaultLanguages;
-  }
+  const chineseLocale = Array.isArray(supportedLocales)
+    ? supportedLocales.find((locale) =>
+        String(locale?.localeCode || "")
+          .replaceAll("_", "-")
+          .toLowerCase()
+          .startsWith("zh"),
+      )
+    : null;
 
-  const result = {};
-  for (const locale of supportedLocales) {
-    const code = locale.localeCode;
-    const messages = languageMessages[code] || languageMessages["en"];
-
-    result[code] = {
-      label: locale.displayName || code,
-      messages: messages,
-      fallback: locale.fallback || false,
-    };
-  }
-
-  // Ensure we always have at least one language (English as ultimate fallback)
-  if (Object.keys(result).length === 0) {
-    return defaultLanguages;
-  }
-
-  return result;
+  return {
+    zh: {
+      ...defaultLanguages.zh,
+      label: chineseLocale?.displayName || defaultLanguages.zh.label,
+      fallback: true,
+    },
+  };
 }

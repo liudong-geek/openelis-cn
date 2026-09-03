@@ -20,6 +20,7 @@ import {
 } from "../../common/CustomNotification";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import { navigateToInternalPath } from "../../utils/NavigationUtils";
 
 let breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -69,7 +70,9 @@ function UomCreate() {
 
   const handleUomCreatePostResponseCallBack = (res) => {
     if (!res) {
-      window.location.reload();
+      navigateToInternalPath("/MasterListsPage/UomManagement", {
+        replace: true,
+      });
     } else {
       setNotificationVisible(true);
       addNotification({
@@ -82,7 +85,9 @@ function UomCreate() {
         }),
       });
       setTimeout(() => {
-        window.location.reload();
+        navigateToInternalPath("/MasterListsPage/UomManagement", {
+          replace: true,
+        });
       }, 200);
     }
   };
@@ -210,7 +215,9 @@ function UomCreate() {
               </Button>{" "}
               <Button
                 onClick={() =>
-                  window.location.replace("/MasterListsPage/UomManagement")
+                  navigateToInternalPath("/MasterListsPage/UomManagement", {
+                    replace: true,
+                  })
                 }
                 kind="tertiary"
                 type="button"

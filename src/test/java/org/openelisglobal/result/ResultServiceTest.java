@@ -180,7 +180,7 @@ public class ResultServiceTest extends BaseWebContextSensitiveTest {
         Result result = resultService.get("4");
         String lastUpdatedTime = resultService.getLastUpdatedTime(result);
         assertNotNull(lastUpdatedTime);
-        assertEquals("07/07/2025", lastUpdatedTime);
+        assertEquals("2025/07/07", lastUpdatedTime);
     }
 
     @Test
@@ -196,7 +196,7 @@ public class ResultServiceTest extends BaseWebContextSensitiveTest {
         Result result = resultService.get("3");
         String testTime = resultService.getTestTime(result);
         assertNotNull(testTime);
-        assertEquals("07/07/2025", testTime);
+        assertEquals("2025/07/07", testTime);
     }
 
     @Test

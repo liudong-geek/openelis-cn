@@ -31,6 +31,7 @@ export default function EditBoxPage() {
   const { id } = useParams();
   const history = useHistory();
   const intl = useIntl();
+  const isChineseLocale = intl.locale?.toLowerCase().startsWith("zh");
 
   const [formData, setFormData] = useState(null);
   const [rackOptions, setRackOptions] = useState([]);
@@ -51,12 +52,17 @@ export default function EditBoxPage() {
         });
       } else {
         setError(
-          response?.error ||
-            response?.message ||
-            intl.formatMessage({
-              id: "storage.editbox.error.loadBox",
-              defaultMessage: "Failed to load box",
-            }),
+          isChineseLocale
+            ? intl.formatMessage({
+                id: "storage.editbox.error.loadBox",
+                defaultMessage: "Failed to load box",
+              })
+            : response?.error ||
+                response?.message ||
+                intl.formatMessage({
+                  id: "storage.editbox.error.loadBox",
+                  defaultMessage: "Failed to load box",
+                }),
         );
       }
       setLoading(false);
@@ -109,24 +115,37 @@ export default function EditBoxPage() {
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(
-          body.message ||
-            intl.formatMessage(
-              {
-                id: "storage.edit.error.saveHttp",
-                defaultMessage: "Save failed (HTTP {status})",
-              },
-              { status: response.status },
-            ),
+          isChineseLocale
+            ? intl.formatMessage(
+                {
+                  id: "storage.edit.error.saveHttp",
+                  defaultMessage: "Save failed (HTTP {status})",
+                },
+                { status: response.status },
+              )
+            : body.message ||
+                intl.formatMessage(
+                  {
+                    id: "storage.edit.error.saveHttp",
+                    defaultMessage: "Save failed (HTTP {status})",
+                  },
+                  { status: response.status },
+                ),
         );
       }
       navigateBack();
     } catch (e) {
       setError(
-        e.message ||
-          intl.formatMessage({
-            id: "storage.edit.error.saveFailed",
-            defaultMessage: "Save failed",
-          }),
+        isChineseLocale
+          ? intl.formatMessage({
+              id: "storage.edit.error.saveFailed",
+              defaultMessage: "Save failed",
+            })
+          : e.message ||
+              intl.formatMessage({
+                id: "storage.edit.error.saveFailed",
+                defaultMessage: "Save failed",
+              }),
       );
     } finally {
       setSaving(false);

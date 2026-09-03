@@ -28,6 +28,7 @@ import org.openelisglobal.reports.action.implementation.IReportCreator;
 import org.openelisglobal.reports.action.implementation.IReportParameterSetter;
 import org.openelisglobal.reports.action.implementation.ReportImplementationFactory;
 import org.openelisglobal.reports.form.ReportForm;
+import org.openelisglobal.reports.service.ReportAnalysisAuthorizationService;
 import org.openelisglobal.spring.util.SpringContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
@@ -54,6 +55,9 @@ public class ReportController extends BaseController {
 
     @Autowired
     private ServletContext context;
+
+    @Autowired
+    private ReportAnalysisAuthorizationService reportAnalysisAuthorizationService;
 
     private String reportPath = null;
     private String imagesPath = null;
@@ -91,23 +95,27 @@ public class ReportController extends BaseController {
             throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
         if (result.hasErrors()) {
             saveErrors(result);
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             return findForward(FWD_FAIL, form);
         }
 
-        LogEvent.logTrace("ReportController", "Log GET ", request.getParameter("report"));
-        printReport(request, response, form);
+        String requestedReport = request.getParameter("report");
+        IReportCreator reportCreator = getReportCreator(requestedReport);
+        reportAnalysisAuthorizationService.authorize(form, getSysUserId(request), reportCreator, requestedReport);
+
+        LogEvent.logTrace("ReportController", "Log GET ", requestedReport);
+        printReport(request, response, form, reportCreator, requestedReport);
 
         // signal to remove from from session
         status.setComplete();
         return null;
     }
 
-    private void printReport(HttpServletRequest request, HttpServletResponse response, ReportForm form) {
-        IReportCreator reportCreator = ReportImplementationFactory.getReportCreator(request.getParameter("report"));
-
+    private void printReport(HttpServletRequest request, HttpServletResponse response, ReportForm form,
+            IReportCreator reportCreator, String requestedReport) {
         if (reportCreator != null) {
             reportCreator.setSystemUserId(getSysUserId(request));
-            reportCreator.setRequestedReport(request.getParameter("report"));
+            reportCreator.setRequestedReport(requestedReport);
             reportCreator.initializeReport(form);
             reportCreator.setReportPath(getReportPath());
 
@@ -138,9 +146,13 @@ public class ReportController extends BaseController {
             }
         }
 
-        if ("patient".equals(request.getParameter("type"))) {
-            trackReports(reportCreator, request.getParameter("report"), ReportType.PATIENT);
+        if (reportCreator != null && "patient".equals(request.getParameter("type"))) {
+            trackReports(reportCreator, requestedReport, ReportType.PATIENT);
         }
+    }
+
+    protected IReportCreator getReportCreator(String requestedReport) {
+        return ReportImplementationFactory.getReportCreator(requestedReport);
     }
 
     private void trackReports(IReportCreator reportCreator, String reportName, ReportType type) {

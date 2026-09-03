@@ -83,6 +83,9 @@ public class PatientProvider implements IResourceProvider {
     @Autowired
     private PatientContactService patientContactService;
 
+    @Autowired
+    private org.openelisglobal.userrole.service.UserRoleService userRoleService;
+
     @Override
     public Class<? extends IBaseResource> getResourceType() {
         return org.hl7.fhir.r4.model.Patient.class;
@@ -119,9 +122,20 @@ public class PatientProvider implements IResourceProvider {
 
         try {
 
+            String userId = FhirProviderUtils.getSysUserId(request);
+            if (userId == null || !(userRoleService.userInRole(userId,
+                    org.openelisglobal.common.constants.Constants.ROLE_GLOBAL_ADMIN)
+                    || userRoleService.userInRole(userId,
+                            org.openelisglobal.common.constants.Constants.ROLE_RECEPTION))) {
+                throw new ca.uhn.fhir.rest.server.exceptions.ForbiddenOperationException("患者建档需要检验登记权限");
+            }
+
             if (fhirPatient == null) {
                 LogEvent.logError(this.getClass().getSimpleName(), method, "Patient resource is null");
                 throw new InvalidRequestException("Patient resource cannot be null");
+            }
+            if (!fhirPatient.hasName() || !fhirPatient.hasGender() || !fhirPatient.hasBirthDate()) {
+                throw new ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException("患者姓名、性别和出生日期不能为空");
             }
 
             if (fhirPatient.getIdElement() == null || fhirPatient.getIdElement().getIdPart() == null) {
@@ -131,6 +145,13 @@ public class PatientProvider implements IResourceProvider {
             }
 
             PatientManagementInfo patientInfo = fhirTransformService.createOePatientManagementInfo(fhirPatient);
+            if (StringUtils.isBlank(patientInfo.getNationalId())) {
+                throw new ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException("缺少患者主数据编号 pat_nationalId");
+            }
+            if (StringUtils.isNotBlank(patientInfo.getNationalId())
+                    && patientService.getPatientByNationalId(patientInfo.getNationalId()) != null) {
+                throw new ResourceVersionConflictException("患者编号已存在，请引用既有患者主档，不得重复建档");
+            }
 
             if (StringUtils.isBlank(patientInfo.getPatientPK())) {
                 patientInfo.setPatientUpdateStatus(PatientUpdateStatus.ADD);
@@ -148,12 +169,14 @@ public class PatientProvider implements IResourceProvider {
                     LogEvent.logError(this.getClass().getSimpleName(), method,
                             "Validation error: " + error.getDefaultMessage());
                 }
-                outcome.setOperationOutcome(operationOutcome);
-                return outcome;
+                throw new ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException(operationOutcome);
             }
 
             Patient patient = new Patient();
             PatientUtil.preparePatientData(errors, request, patientInfo, patient);
+            if (errors.hasErrors()) {
+                throw new ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException("患者资料未通过完整性校验");
+            }
 
             if (fhirPatient.getTelecom() != null) {
                 fhirTransformService.addTelecomToPerson(fhirPatient.getTelecom(), patient.getPerson());
@@ -185,7 +208,7 @@ public class PatientProvider implements IResourceProvider {
             org.hl7.fhir.r4.model.Patient savedFhirPatient = fhirTransformService
                     .transformToFhirPatient(savedPatient.getId());
 
-            IdType id = new IdType("Patient", patient.getId());
+            IdType id = new IdType("Patient", savedFhirPatient.getIdElement().getIdPart());
             outcome.setId(id);
             outcome.setCreated(true);
             outcome.setResource(savedFhirPatient);
@@ -198,14 +221,12 @@ public class PatientProvider implements IResourceProvider {
             LogEvent.logInfo(this.getClass().getSimpleName(), method,
                     "Patient creation completed successfully: " + patient.getId());
 
+        } catch (ca.uhn.fhir.rest.server.exceptions.BaseServerResponseException e) {
+            throw e;
         } catch (Exception e) {
             LogEvent.logError(this.getClass().getSimpleName(), method,
                     "Exception during patient creation: " + e.getMessage());
-
-            operationOutcome.addIssue().setSeverity(OperationOutcome.IssueSeverity.ERROR)
-                    .setCode(OperationOutcome.IssueType.EXCEPTION).setDiagnostics(e.getMessage());
-
-            outcome.setOperationOutcome(operationOutcome);
+            throw new InternalErrorException("患者接口建档失败，请核对资料或联系管理员", e);
         }
 
         return outcome;

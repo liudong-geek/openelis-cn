@@ -136,7 +136,7 @@ const MappingActivationModal = ({
                   >
                     <FormattedMessage
                       id="analyzer.fieldMapping.activationModal.viewPendingMessages"
-                      defaultMessage="View Pending Messages"
+                      defaultMessage="查看待处理消息"
                     />
                   </Link>
                 )}
@@ -159,7 +159,7 @@ const MappingActivationModal = ({
                   <Link onClick={onReloadPage} data-testid="reload-page-link">
                     <FormattedMessage
                       id="analyzer.fieldMapping.activationModal.reloadPage"
-                      defaultMessage="Reload Page"
+                      defaultMessage="刷新页面"
                     />
                   </Link>
                 )}
@@ -220,7 +220,7 @@ const MappingActivationModal = ({
         >
           <FormattedMessage
             id="analyzer.fieldMapping.activationModal.activate"
-            defaultMessage="Activate Changes"
+            defaultMessage="激活修改"
           />
         </Button>
       </ModalFooter>

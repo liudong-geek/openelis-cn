@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+    http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <changeSet id="lis-cn-058-patient-report-release-sequence" author="codex">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <sequenceExists schemaName="clinlims" sequenceName="patient_report_release_seq"/>
+            </not>
+        </preConditions>
+        <createSequence schemaName="clinlims" sequenceName="patient_report_release_seq"
+                        startValue="1" incrementBy="1"/>
+        <rollback>
+            <dropSequence schemaName="clinlims" sequenceName="patient_report_release_seq"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="lis-cn-058-patient-report-release-table" author="codex">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists schemaName="clinlims" tableName="patient_report_release"/>
+            </not>
+        </preConditions>
+        <createTable schemaName="clinlims" tableName="patient_report_release">
+            <column name="id" type="BIGINT">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="patient_id" type="NUMERIC(10)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="report_number" type="VARCHAR(50)">
+                <constraints nullable="false" unique="true"
+                             uniqueConstraintName="uq_patient_report_release_number"/>
+            </column>
+            <column name="report_version" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_by" type="NUMERIC(10)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="issued_by" type="NUMERIC(10)"/>
+            <column name="issued_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="issued_signature_id" type="BIGINT"/>
+            <column name="supersedes_release_id" type="BIGINT"/>
+            <column name="amendment_reason" type="TEXT"/>
+            <column name="voided_by" type="NUMERIC(10)"/>
+            <column name="voided_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="void_signature_id" type="BIGINT"/>
+            <column name="void_reason" type="TEXT"/>
+            <column name="pdf_content" type="BYTEA"/>
+            <column name="pdf_sha256" type="VARCHAR(64)"/>
+            <column name="accession_numbers" type="TEXT"/>
+            <column name="print_count" type="INTEGER" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_printed_by" type="NUMERIC(10)"/>
+            <column name="last_printed_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="last_updated" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addUniqueConstraint schemaName="clinlims" tableName="patient_report_release"
+                             columnNames="patient_id,report_version"
+                             constraintName="uq_patient_report_release_patient_version"/>
+        <createIndex schemaName="clinlims" tableName="patient_report_release"
+                     indexName="idx_patient_report_release_patient_status">
+            <column name="patient_id"/>
+            <column name="status"/>
+            <column name="report_version" descending="true"/>
+        </createIndex>
+        <sql>CREATE UNIQUE INDEX uq_patient_report_release_active_draft
+             ON clinlims.patient_report_release (patient_id) WHERE status = 'DRAFT'</sql>
+
+        <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="patient_report_release"
+                                 baseColumnNames="patient_id" constraintName="fk_patient_report_release_patient"
+                                 referencedTableSchemaName="clinlims" referencedTableName="patient"
+                                 referencedColumnNames="id" onDelete="RESTRICT"/>
+        <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="patient_report_release"
+                                 baseColumnNames="issued_signature_id"
+                                 constraintName="fk_patient_report_release_issue_signature"
+                                 referencedTableSchemaName="clinlims" referencedTableName="electronic_signature"
+                                 referencedColumnNames="id" onDelete="RESTRICT"/>
+        <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="patient_report_release"
+                                 baseColumnNames="void_signature_id"
+                                 constraintName="fk_patient_report_release_void_signature"
+                                 referencedTableSchemaName="clinlims" referencedTableName="electronic_signature"
+                                 referencedColumnNames="id" onDelete="RESTRICT"/>
+        <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="patient_report_release"
+                                 baseColumnNames="supersedes_release_id"
+                                 constraintName="fk_patient_report_release_supersedes"
+                                 referencedTableSchemaName="clinlims" referencedTableName="patient_report_release"
+                                 referencedColumnNames="id" onDelete="RESTRICT"/>
+        <rollback>
+            <dropIndex schemaName="clinlims" tableName="patient_report_release"
+                       indexName="uq_patient_report_release_active_draft"/>
+            <dropTable schemaName="clinlims" tableName="patient_report_release"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

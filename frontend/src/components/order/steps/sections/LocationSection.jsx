@@ -255,7 +255,11 @@ const LocationSection = ({ orderData, setOrderData, isReadOnly }) => {
               setSelectedSite({
                 id: environmentalFields.samplingSiteId,
                 organizationName:
-                  environmentalFields.samplingSiteName || "Unknown Site",
+                  environmentalFields.samplingSiteName ||
+                  intl.formatMessage({
+                    id: "env.site.unknown",
+                    defaultMessage: "Unnamed sampling site",
+                  }),
                 shortName: environmentalFields.samplingSiteCode || "",
                 organizationType: environmentalFields.siteType || "",
               });
@@ -274,6 +278,7 @@ const LocationSection = ({ orderData, setOrderData, isReadOnly }) => {
   }, [
     environmentalFields.samplingSiteId,
     environmentalFields.samplingSiteName,
+    intl,
   ]);
 
   // ==========================================
@@ -812,10 +817,35 @@ const LocationSection = ({ orderData, setOrderData, isReadOnly }) => {
               <div className="selected-card-content">
                 <h5>{selectedSite.organizationName}</h5>
                 <p>
-                  {selectedSite.shortName && `Code: ${selectedSite.shortName}`}
-                  {selectedSite.city && ` · Location: ${selectedSite.city}`}
-                  {selectedSite.organizationType &&
-                    ` · Type: ${selectedSite.organizationType}`}
+                  {selectedSite.shortName && (
+                    <>
+                      <FormattedMessage
+                        id="site.code"
+                        defaultMessage="Sampling Site Code"
+                      />
+                      : {selectedSite.shortName}
+                    </>
+                  )}
+                  {selectedSite.city && (
+                    <>
+                      {" · "}
+                      <FormattedMessage
+                        id="env.site.address"
+                        defaultMessage="Address"
+                      />
+                      : {selectedSite.city}
+                    </>
+                  )}
+                  {selectedSite.organizationType && (
+                    <>
+                      {" · "}
+                      <FormattedMessage
+                        id="env.site.type"
+                        defaultMessage="Sampling Site Type"
+                      />
+                      : {selectedSite.organizationType}
+                    </>
+                  )}
                 </p>
                 {selectedSite.streetAddress && (
                   <p>

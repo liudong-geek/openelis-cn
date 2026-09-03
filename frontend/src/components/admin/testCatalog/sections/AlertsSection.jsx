@@ -244,7 +244,12 @@ const AlertsSection = ({ testId }) => {
         <DataTable rows={rows} headers={headers} isSortable>
           {({ rows: dtRows, headers: hdrs, getHeaderProps, getTableProps }) => (
             <TableContainer>
-              <Table {...getTableProps()} aria-label="alerts">
+              <Table
+                {...getTableProps()}
+                aria-label={intl.formatMessage({
+                  id: "label.testCatalog.section.alerts",
+                })}
+              >
                 <TableHead>
                   <TableRow>
                     {hdrs.map((header) => {

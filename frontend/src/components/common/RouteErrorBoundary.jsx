@@ -64,8 +64,8 @@ class RouteErrorBoundaryClass extends React.Component {
 
     if (hasError) {
       return (
-        <Layer>
-          <Tile style={{ maxWidth: "32rem", margin: "2rem" }}>
+        <Layer className="oe-route-error">
+          <Tile className="oe-route-error__surface">
             <h2>{intl.formatMessage({ id: titleKey })}</h2>
             <p>{intl.formatMessage({ id: messageKey })}</p>
             <Button kind="primary" onClick={this.handleReload}>

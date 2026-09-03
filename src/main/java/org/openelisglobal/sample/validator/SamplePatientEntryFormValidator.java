@@ -7,14 +7,19 @@ import org.dom4j.DocumentException;
 import org.dom4j.DocumentHelper;
 import org.dom4j.Element;
 import org.openelisglobal.common.util.validator.CustomDateValidator.DateRelation;
+import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.common.validator.ValidationHelper;
 import org.openelisglobal.sample.form.SamplePatientEntryForm;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.Errors;
 import org.springframework.validation.Validator;
 
 @Component
 public class SamplePatientEntryFormValidator implements Validator {
+
+    @Autowired
+    RequesterMasterDataValidator requesterMasterDataValidator;
 
     @Override
     public boolean supports(Class<?> clazz) {
@@ -30,6 +35,11 @@ public class SamplePatientEntryFormValidator implements Validator {
             validateSampleXML(form.getSampleXML(), errors);
         }
 
+        int errorsBeforeRequesterValidation = errors.getErrorCount();
+        requesterMasterDataValidator.validate(form.getSampleOrderItems(), errors);
+        if (errors.getErrorCount() == errorsBeforeRequesterValidation) {
+            requesterMasterDataValidator.applyCanonicalValues(form.getSampleOrderItems());
+        }
     }
 
     private void validateSampleXML(String sampleXML, Errors errors) {
@@ -76,6 +86,20 @@ public class SamplePatientEntryFormValidator implements Validator {
         ValidationHelper.validateTimeField(collectionTime, "sampleXML", "sampleXML time", errors, false);
         if (errors.hasErrors()) {
             return;
+        }
+
+        // The date validator compares calendar days only.  Validate the combined
+        // timestamp as well so an operator cannot record a specimen collection in
+        // the future on today's date.
+        if (!GenericValidator.isBlankOrNull(collectionDate)
+                && !GenericValidator.isBlankOrNull(collectionTime)) {
+            java.sql.Timestamp collectionTimestamp = DateUtil
+                    .convertStringDateStringTimeToTimestamp(collectionDate, collectionTime);
+            if (collectionTimestamp != null && collectionTimestamp.after(DateUtil.getNowAsTimestamp())) {
+                errors.rejectValue("sampleXML", "error.sample.collection.future", null,
+                        "Collection date and time cannot be in the future");
+                return;
+            }
         }
 
         // validate sample id

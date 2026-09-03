@@ -16,6 +16,7 @@ import org.openelisglobal.address.service.AddressPartService;
 import org.openelisglobal.address.service.PersonAddressService;
 import org.openelisglobal.address.valueholder.PersonAddress;
 import org.openelisglobal.common.action.IActionConstants;
+import org.openelisglobal.dataexchange.fhir.FhirConfig;
 import org.openelisglobal.fhir.providers.PatientProvider;
 import org.openelisglobal.login.valueholder.UserSessionData;
 import org.openelisglobal.patient.service.PatientContactService;
@@ -36,6 +37,8 @@ public class PatientFacadeTest extends BaseWebContextSensitiveTest {
 
     @Autowired
     private PatientService patientService;
+    @Autowired
+    private FhirConfig fhirConfig;
     @Autowired
     private PersonService personService;
     @Autowired
@@ -143,6 +146,10 @@ public class PatientFacadeTest extends BaseWebContextSensitiveTest {
         String createJson = """
                 {
                   "resourceType": "Patient",
+                  "identifier": [{
+                    "system": "%s/pat_nationalId",
+                    "value": "TEST-PATIENT-19921212"
+                  }],
                   "name": [{
                     "use": "official",
                     "family": "Martin",
@@ -151,13 +158,13 @@ public class PatientFacadeTest extends BaseWebContextSensitiveTest {
                   "gender": "male",
                   "birthDate": "1992-12-12"
                 }
-                """;
+                """.formatted(fhirConfig.getOeFhirSystem());
 
         request.setContent(createJson.getBytes());
         MockHttpServletResponse response = new MockHttpServletResponse();
         fhirServlet.service(request, response);
 
-        assertEquals(201, response.getStatus());
+        assertEquals(response.getContentAsString(), 201, response.getStatus());
 
         JsonNode json = objectMapper.readTree(response.getContentAsString());
         String createdId = json.get("id").asText();

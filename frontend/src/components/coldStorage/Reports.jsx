@@ -31,6 +31,7 @@ import {
   TableToolbarSearch,
   Pagination,
 } from "@carbon/react";
+import { useIntl } from "react-intl";
 import "./Reports.scss";
 import {
   fetchReportExcursions,
@@ -38,36 +39,96 @@ import {
   downloadReportDirect,
 } from "./api";
 import { AlertDialog, NotificationKinds } from "../common/CustomNotification";
-import { NotificationContext } from "../layout/Layout";
-import { toDate, formatDuration } from "./shared/timeUtils";
+import { ConfigurationContext, NotificationContext } from "../layout/Layout";
+import { toDate } from "./shared/timeUtils";
+import {
+  getCarbonDateFormat,
+  getDatePickerPlaceholderMessage,
+} from "../common/dateLocaleUtils";
 
-const REPORT_TYPES = ["Daily Log", "Weekly Log", "Monthly Log"];
+const ALL_FREEZERS = "ALL_FREEZERS";
+
+const getReportTypes = (intl) => [
+  {
+    id: "daily",
+    label: intl.formatMessage({ id: "coldStorage.reports.type.daily" }),
+  },
+  {
+    id: "weekly",
+    label: intl.formatMessage({ id: "coldStorage.reports.type.weekly" }),
+  },
+  {
+    id: "monthly",
+    label: intl.formatMessage({ id: "coldStorage.reports.type.monthly" }),
+  },
+];
 
 const EXPORT_FORMATS = ["PDF"]; // CSV, XML, and Excel to be implemented in Phase 2
 
 const REPORT_TYPE_MAP = {
-  "Daily Log": "freezerDailyLogReport",
-  "Weekly Log": "freezerDailyLogReport",
-  "Monthly Log": "freezerDailyLogReport",
+  daily: "freezerDailyLogReport",
+  weekly: "freezerDailyLogReport",
+  monthly: "freezerDailyLogReport",
 };
 
-const EXCURSION_HEADERS = [
-  { key: "id", header: "Excursion ID" },
-  { key: "freezer", header: "Freezer" },
-  { key: "location", header: "Location" },
-  { key: "startTime", header: "Start Time" },
-  { key: "duration", header: "Duration" },
-  { key: "range", header: "Temperature Range" },
-  { key: "severity", header: "Severity" },
-  { key: "status", header: "Status" },
+const getExcursionHeaders = (intl) => [
+  {
+    key: "id",
+    header: intl.formatMessage({ id: "coldStorage.reports.excursion.id" }),
+  },
+  {
+    key: "freezer",
+    header: intl.formatMessage({ id: "coldStorage.device" }),
+  },
+  {
+    key: "location",
+    header: intl.formatMessage({ id: "coldStorage.location" }),
+  },
+  {
+    key: "startTime",
+    header: intl.formatMessage({ id: "coldStorage.alert.startedAt" }),
+  },
+  {
+    key: "duration",
+    header: intl.formatMessage({ id: "coldStorage.alert.duration" }),
+  },
+  {
+    key: "range",
+    header: intl.formatMessage({
+      id: "coldStorage.reports.temperatureRange",
+    }),
+  },
+  {
+    key: "severity",
+    header: intl.formatMessage({ id: "coldStorage.alert.severity" }),
+  },
+  {
+    key: "status",
+    header: intl.formatMessage({ id: "coldStorage.status" }),
+  },
 ];
 
-const AUDIT_HEADERS = [
-  { key: "timestamp", header: "Timestamp" },
-  { key: "performedBy", header: "User" },
-  { key: "action", header: "Action" },
-  { key: "comment", header: "Details" },
-  { key: "freezer", header: "Freezer ID" },
+const getAuditHeaders = (intl) => [
+  {
+    key: "timestamp",
+    header: intl.formatMessage({ id: "coldStorage.reports.audit.time" }),
+  },
+  {
+    key: "performedBy",
+    header: intl.formatMessage({ id: "coldStorage.reports.audit.operator" }),
+  },
+  {
+    key: "action",
+    header: intl.formatMessage({ id: "coldStorage.reports.audit.action" }),
+  },
+  {
+    key: "comment",
+    header: intl.formatMessage({ id: "coldStorage.reports.audit.details" }),
+  },
+  {
+    key: "freezer",
+    header: intl.formatMessage({ id: "coldStorage.unit.id" }),
+  },
 ];
 
 const formatDateTime = (value) => {
@@ -83,20 +144,63 @@ const formatTemperature = (value) => {
   return Number.isNaN(number) ? "—" : `${number.toFixed(1)}°C`;
 };
 
-const formatRange = (min, max) => {
+const formatRange = (min, max, intl) => {
   if (min == null && max == null) {
     return "—";
   }
   if (min == null) {
-    return `Max ${formatTemperature(max)}`;
+    return intl.formatMessage(
+      { id: "coldStorage.reports.range.maximum" },
+      { value: formatTemperature(max) },
+    );
   }
   if (max == null) {
-    return `Min ${formatTemperature(min)}`;
+    return intl.formatMessage(
+      { id: "coldStorage.reports.range.minimum" },
+      { value: formatTemperature(min) },
+    );
   }
-  return `${formatTemperature(min)} to ${formatTemperature(max)}`;
+  return intl.formatMessage(
+    { id: "coldStorage.reports.range.between" },
+    { min: formatTemperature(min), max: formatTemperature(max) },
+  );
 };
 
-const mapAlertToExcursion = (alert) => {
+const formatReportDuration = (seconds, intl) => {
+  const total = Number(seconds);
+  if (seconds == null || Number.isNaN(total)) return "—";
+  let remaining = Math.max(0, Math.floor(total));
+  const days = Math.floor(remaining / 86400);
+  remaining %= 86400;
+  const hours = Math.floor(remaining / 3600);
+  remaining %= 3600;
+  const minutes = Math.floor(remaining / 60);
+  const secs = remaining % 60;
+  if (days > 0) {
+    return intl.formatMessage(
+      { id: "coldStorage.reports.duration.daysHours" },
+      { days, hours },
+    );
+  }
+  if (hours > 0) {
+    return intl.formatMessage(
+      { id: "coldStorage.reports.duration.hoursMinutes" },
+      { hours, minutes },
+    );
+  }
+  if (minutes > 0) {
+    return intl.formatMessage(
+      { id: "coldStorage.reports.duration.minutes" },
+      { minutes },
+    );
+  }
+  return intl.formatMessage(
+    { id: "coldStorage.reports.duration.seconds" },
+    { seconds: secs },
+  );
+};
+
+const mapAlertToExcursion = (alert, intl) => {
   const alertId = alert.alertId ?? alert.id;
   const freezerId = alert.freezerId ?? alert.freezer;
   const durationSeconds =
@@ -105,12 +209,19 @@ const mapAlertToExcursion = (alert) => {
     id: `ALERT-${alertId}`,
     alertId,
     freezerId,
-    freezerName: alert.freezerName ?? `Freezer ${freezerId}`,
-    location: alert.locationName ?? "Unknown location",
+    freezerName:
+      alert.freezerName ??
+      intl.formatMessage(
+        { id: "coldStorage.device.fallbackName" },
+        { id: freezerId },
+      ),
+    location:
+      alert.locationName ??
+      intl.formatMessage({ id: "coldStorage.location.unknown" }),
     startTime: formatDateTime(alert.startTime),
     endTime: formatDateTime(alert.endTime),
-    duration: formatDuration(durationSeconds),
-    range: formatRange(alert.minTemperature, alert.maxTemperature),
+    duration: formatReportDuration(durationSeconds, intl),
+    range: formatRange(alert.minTemperature, alert.maxTemperature, intl),
     severity: alert.severity ?? "UNKNOWN",
     status: alert.status ?? "OPEN",
   };
@@ -132,45 +243,62 @@ const toIsoString = (value) => {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
-const formatActionLabel = (value) => {
+const formatActionLabel = (value, intl) => {
   const actionLabels = {
-    ALERT_ACKNOWLEDGED: "Alert acknowledged",
-    CRITICAL_ALERT_RESOLVED: "Critical alert resolved",
-    CORRECTIVE_ACTION_LOGGED: "Corrective action logged",
-    THRESHOLD_UPDATED: "Threshold updated",
-    FREEZER_RENAMED: "Freezer renamed",
-    FREEZER_STATUS_CHANGED: "Status changed",
-    CONFIGURATION_UPDATED: "Configuration updated",
-    ALERT: "Alert triggered",
-    CORRECTIVE_ACTION: "Corrective action",
+    ALERT_ACKNOWLEDGED: "coldStorage.reports.audit.alertAcknowledged",
+    CRITICAL_ALERT_RESOLVED: "coldStorage.reports.audit.criticalAlertResolved",
+    CORRECTIVE_ACTION_LOGGED:
+      "coldStorage.reports.audit.correctiveActionLogged",
+    THRESHOLD_UPDATED: "coldStorage.reports.audit.thresholdUpdated",
+    FREEZER_RENAMED: "coldStorage.reports.audit.deviceRenamed",
+    FREEZER_STATUS_CHANGED: "coldStorage.reports.audit.statusChanged",
+    CONFIGURATION_UPDATED: "coldStorage.reports.audit.configurationUpdated",
+    ALERT: "coldStorage.reports.audit.alertTriggered",
+    CORRECTIVE_ACTION: "coldStorage.reports.audit.correctiveAction",
   };
-  return (
-    actionLabels[value] ||
-    (value
-      ? value
-          .toLowerCase()
-          .replace(/_/g, " ")
-          .replace(/\b\w/g, (match) => match.toUpperCase())
-      : "")
-  );
+  if (!value) return "";
+  const messageId = actionLabels[value];
+  return messageId
+    ? intl.formatMessage({ id: messageId })
+    : intl.formatMessage(
+        { id: "coldStorage.reports.audit.unknownAction" },
+        { action: value },
+      );
 };
 
-const mapAuditEvent = (event) => ({
+const mapAuditEvent = (event, intl) => ({
   id:
     event.id ??
     `ACTION-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-  freezerName: event.freezerName ?? `Freezer ${event.freezerId ?? ""}`.trim(),
+  freezerName:
+    event.freezerName ??
+    intl.formatMessage(
+      { id: "coldStorage.device.fallbackName" },
+      { id: event.freezerId ?? "—" },
+    ),
   freezerId: event.freezerId ?? "—",
-  actionType: formatActionLabel(event.actionType),
-  performedBy: event.performedBy ?? "System",
+  actionType: formatActionLabel(event.actionType, intl),
+  performedBy:
+    event.performedBy ??
+    intl.formatMessage({ id: "coldStorage.reports.audit.system" }),
   timestamp: event.performedAt || "—", // Backend already formats the date
   comment: event.comment || event.details || "—",
   details: event.details || "",
 });
 
 function Reports({ devices = [] }) {
+  const intl = useIntl();
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
+  const { configurationProperties = {} } =
+    useContext(ConfigurationContext) || {};
+  const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "zh-CN";
+  const datePickerPlaceholder = intl.formatMessage(
+    getDatePickerPlaceholderMessage(dateLocale),
+  );
+  const reportTypes = useMemo(() => getReportTypes(intl), [intl]);
+  const excursionHeaders = useMemo(() => getExcursionHeaders(intl), [intl]);
+  const auditHeaders = useMemo(() => getAuditHeaders(intl), [intl]);
 
   const notify = useCallback(
     ({ kind = NotificationKinds.info, title, subtitle, message }) => {
@@ -207,22 +335,23 @@ function Reports({ devices = [] }) {
       (device, index, self) =>
         device.id && self.findIndex((d) => d.id === device.id) === index,
     );
-    const names = uniqueDevices.map(
-      (device) => device.unitName || `Freezer ${device.id}`,
-    );
-    return ["All Freezers", ...names];
-  }, [devices]);
-
-  const freezerNameToIdMap = useMemo(() => {
-    const map = {};
-    devices.forEach((device) => {
-      if (device.id) {
-        const name = device.unitName || `Freezer ${device.id}`;
-        map[name] = device.id;
-      }
-    });
-    return map;
-  }, [devices]);
+    return [
+      {
+        id: ALL_FREEZERS,
+        label: intl.formatMessage({ id: "coldStorage.trends.allFreezers" }),
+      },
+      ...uniqueDevices.map((device) => ({
+        id: String(device.id),
+        value: device.id,
+        label:
+          device.unitName ||
+          intl.formatMessage(
+            { id: "coldStorage.device.fallbackName" },
+            { id: device.id },
+          ),
+      })),
+    ];
+  }, [devices, intl]);
 
   const [excursions, setExcursions] = useState([]);
   const [auditTrail, setAuditTrail] = useState([]);
@@ -293,17 +422,19 @@ function Reports({ devices = [] }) {
     return filteredAuditRows.slice(startIndex, endIndex);
   }, [filteredAuditRows, auditPage, auditPageSize]);
 
-  const [reportType, setReportType] = useState("Daily Log");
-  const [freezer, setFreezer] = useState("All Freezers");
+  const [reportType, setReportType] = useState("daily");
+  const [freezer, setFreezer] = useState(ALL_FREEZERS);
   const [format, setFormat] = useState("PDF");
   const [dateRange, setDateRange] = useState(defaultDateRange());
 
   const selectedFreezerId = useMemo(() => {
-    if (!freezer || freezer === "All Freezers") {
+    if (!freezer || freezer === ALL_FREEZERS) {
       return null;
     }
-    return freezerNameToIdMap[freezer] || null;
-  }, [freezer, freezerNameToIdMap]);
+    return (
+      freezerOptions.find((option) => option.id === freezer)?.value ?? null
+    );
+  }, [freezer, freezerOptions]);
 
   const rangeParams = useMemo(() => {
     if (!Array.isArray(dateRange) || dateRange.length < 2) {
@@ -330,17 +461,21 @@ function Reports({ devices = [] }) {
         end: rangeParams.end,
       });
       const items = normalizeArray(data);
-      setExcursions(items.map((alert) => mapAlertToExcursion(alert)));
+      setExcursions(items.map((alert) => mapAlertToExcursion(alert, intl)));
     } catch (error) {
       notify({
         kind: NotificationKinds.error,
-        title: "Unable to load excursion history",
-        subtitle: error.message || "Unexpected error while loading excursions.",
+        title: intl.formatMessage({
+          id: "coldStorage.reports.error.excursionsTitle",
+        }),
+        subtitle: intl.formatMessage({
+          id: "coldStorage.reports.error.excursionsMessage",
+        }),
       });
     } finally {
       setExcursionsLoading(false);
     }
-  }, [rangeParams, selectedFreezerId, notify, normalizeArray]);
+  }, [rangeParams, selectedFreezerId, notify, normalizeArray, intl]);
 
   const loadAuditTrail = useCallback(async () => {
     setAuditLoading(true);
@@ -350,18 +485,21 @@ function Reports({ devices = [] }) {
         freezerId: selectedFreezerId,
       });
       const items = normalizeArray(data);
-      setAuditTrail(items.map((event) => mapAuditEvent(event)));
+      setAuditTrail(items.map((event) => mapAuditEvent(event, intl)));
     } catch (error) {
       notify({
         kind: NotificationKinds.error,
-        title: "Unable to load audit trail",
-        subtitle:
-          error.message || "Unexpected error while loading audit records.",
+        title: intl.formatMessage({
+          id: "coldStorage.reports.error.auditTitle",
+        }),
+        subtitle: intl.formatMessage({
+          id: "coldStorage.reports.error.auditMessage",
+        }),
       });
     } finally {
       setAuditLoading(false);
     }
-  }, [selectedFreezerId, notify, normalizeArray]);
+  }, [selectedFreezerId, notify, normalizeArray, intl]);
 
   useEffect(() => {
     if (!rangeParams) {
@@ -391,34 +529,45 @@ function Reports({ devices = [] }) {
         const downloadUrl = `/rest/coldstorage/reports/download/${reference}`;
         const link = document.createElement("a");
         link.href = downloadUrl;
-        link.download = `freezer_report_${reference}.${formatType.toLowerCase()}`;
+        link.download = `冰箱温度记录_${reference}.${formatType.toLowerCase()}`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         setPendingDownload(null);
         notify({
           kind: NotificationKinds.success,
-          title: "Download started",
-          subtitle: "Your report download has started successfully.",
+          title: intl.formatMessage({
+            id: "coldStorage.reports.downloadStarted",
+          }),
+          subtitle: intl.formatMessage({
+            id: "coldStorage.reports.downloadStartedMessage",
+          }),
         });
       } catch (error) {
         notify({
           kind: NotificationKinds.error,
-          title: "Download failed",
-          subtitle: "Unable to download the report. Please try again.",
+          title: intl.formatMessage({
+            id: "coldStorage.reports.downloadFailed",
+          }),
+          subtitle: intl.formatMessage({
+            id: "coldStorage.reports.downloadFailedMessage",
+          }),
         });
       }
     },
-    [notify],
+    [notify, intl],
   );
 
   const handleGenerate = async () => {
     if (!rangeParams) {
       notify({
         kind: NotificationKinds.error,
-        title: "Missing date range",
-        subtitle:
-          "Please select a valid start and end date before generating a report.",
+        title: intl.formatMessage({
+          id: "coldStorage.reports.missingDateRange",
+        }),
+        subtitle: intl.formatMessage({
+          id: "coldStorage.reports.missingDateRangeMessage",
+        }),
       });
       return;
     }
@@ -429,8 +578,12 @@ function Reports({ devices = [] }) {
     if (!reportName) {
       notify({
         kind: NotificationKinds.error,
-        title: "Invalid report type",
-        subtitle: `Report type "${reportType}" is not supported.`,
+        title: intl.formatMessage({
+          id: "coldStorage.reports.invalidReportType",
+        }),
+        subtitle: intl.formatMessage({
+          id: "coldStorage.reports.invalidReportTypeMessage",
+        }),
       });
       return;
     }
@@ -450,8 +603,7 @@ function Reports({ devices = [] }) {
       const link = document.createElement("a");
       link.href = url;
       const dateStr = new Date().toISOString().split("T")[0];
-      const reportSlug = reportType.toLowerCase().replace(/ /g, "_");
-      link.download = `freezer_report_${reportSlug}_${dateStr}.${formatParam.toLowerCase()}`;
+      link.download = `冰箱温度记录_${reportType}_${dateStr}.${formatParam.toLowerCase()}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -459,32 +611,67 @@ function Reports({ devices = [] }) {
 
       notify({
         kind: NotificationKinds.success,
-        title: "Report generated successfully",
-        subtitle: `${reportType} report has been downloaded to your computer.`,
+        title: intl.formatMessage({
+          id: "coldStorage.reports.generateSuccess",
+        }),
+        subtitle: intl.formatMessage({
+          id: "coldStorage.reports.generateSuccessMessage",
+        }),
       });
     } catch (error) {
-      const errorDetails = error.message || "Unexpected error occurred.";
       notify({
         kind: NotificationKinds.error,
-        title: "Report generation failed",
-        subtitle: `Unable to generate report. ${errorDetails}`,
+        title: intl.formatMessage({
+          id: "coldStorage.reports.generateFailed",
+        }),
+        subtitle: intl.formatMessage({
+          id: "coldStorage.reports.generateFailedMessage",
+        }),
       });
     }
   };
 
   const severityTag = (severity) => {
     if ((severity || "").toUpperCase() === "CRITICAL") {
-      return <Tag type="red">CRITICAL</Tag>;
+      return (
+        <Tag type="red">
+          {intl.formatMessage({ id: "coldStorage.status.critical" })}
+        </Tag>
+      );
     }
     if ((severity || "").toUpperCase() === "WARNING") {
-      return <Tag type="yellow">WARNING</Tag>;
+      return (
+        <Tag type="yellow">
+          {intl.formatMessage({ id: "coldStorage.status.warning" })}
+        </Tag>
+      );
     }
     return <Tag>{severity}</Tag>;
   };
 
   const statusTag = (status) => {
     if ((status || "").toUpperCase() === "RESOLVED") {
-      return <Tag type="green">Resolved</Tag>;
+      return (
+        <Tag type="green">
+          {intl.formatMessage({ id: "coldStorage.reports.status.resolved" })}
+        </Tag>
+      );
+    }
+    if ((status || "").toUpperCase() === "OPEN") {
+      return (
+        <Tag type="red">
+          {intl.formatMessage({ id: "coldStorage.reports.status.open" })}
+        </Tag>
+      );
+    }
+    if ((status || "").toUpperCase() === "ACKNOWLEDGED") {
+      return (
+        <Tag type="blue">
+          {intl.formatMessage({
+            id: "coldStorage.reports.status.acknowledged",
+          })}
+        </Tag>
+      );
     }
     return <Tag>{status}</Tag>;
   };
@@ -495,7 +682,9 @@ function Reports({ devices = [] }) {
 
       <Grid fullWidth={true}>
         <Column lg={16} md={8} sm={4}>
-          <h3 className="reports-title">Regulatory Reports</h3>
+          <h3 className="reports-title">
+            {intl.formatMessage({ id: "coldStorage.reports.title" })}
+          </h3>
         </Column>
       </Grid>
 
@@ -503,27 +692,43 @@ function Reports({ devices = [] }) {
         <Column lg={4} md={4} sm={4}>
           <Dropdown
             id="report-type"
-            titleText="Report Type"
-            items={REPORT_TYPES}
-            label={reportType}
-            selectedItem={reportType}
-            onChange={({ selectedItem }) => setReportType(selectedItem)}
+            titleText={intl.formatMessage({
+              id: "coldStorage.reports.reportType",
+            })}
+            items={reportTypes}
+            label={
+              reportTypes.find((item) => item.id === reportType)?.label ||
+              reportTypes[0].label
+            }
+            itemToString={(item) => item?.label || ""}
+            selectedItem={reportTypes.find((item) => item.id === reportType)}
+            onChange={({ selectedItem }) =>
+              setReportType(selectedItem?.id || "daily")
+            }
           />
         </Column>
         <Column lg={4} md={4} sm={4}>
           <Dropdown
             id="freezer-select"
-            titleText="Freezer"
+            titleText={intl.formatMessage({ id: "coldStorage.device" })}
             items={freezerOptions}
-            label={freezer}
-            selectedItem={freezer}
-            onChange={({ selectedItem }) => setFreezer(selectedItem)}
+            label={
+              freezerOptions.find((item) => item.id === freezer)?.label ||
+              freezerOptions[0].label
+            }
+            itemToString={(item) => item?.label || ""}
+            selectedItem={freezerOptions.find((item) => item.id === freezer)}
+            onChange={({ selectedItem }) =>
+              setFreezer(selectedItem?.id || ALL_FREEZERS)
+            }
           />
         </Column>
         <Column lg={4} md={4} sm={4}>
           <Dropdown
             id="export-format"
-            titleText="Export Format"
+            titleText={intl.formatMessage({
+              id: "coldStorage.reports.exportFormat",
+            })}
             items={EXPORT_FORMATS}
             label={format}
             selectedItem={format}
@@ -536,6 +741,7 @@ function Reports({ devices = [] }) {
         <Column lg={4} md={4} sm={4}>
           <DatePicker
             datePickerType="single"
+            dateFormat={getCarbonDateFormat(dateLocale)}
             onChange={(dates) => {
               if (dates && dates.length > 0) {
                 const newRange = [...dateRange];
@@ -546,8 +752,10 @@ function Reports({ devices = [] }) {
           >
             <DatePickerInput
               id="reports-start-date"
-              placeholder="mm/dd/yyyy"
-              labelText="Start date"
+              placeholder={datePickerPlaceholder}
+              labelText={intl.formatMessage({
+                id: "coldStorage.reports.startDate",
+              })}
               size="md"
             />
           </DatePicker>
@@ -555,6 +763,7 @@ function Reports({ devices = [] }) {
         <Column lg={4} md={4} sm={4}>
           <DatePicker
             datePickerType="single"
+            dateFormat={getCarbonDateFormat(dateLocale)}
             onChange={(dates) => {
               if (dates && dates.length > 0) {
                 const newRange = [...dateRange];
@@ -565,15 +774,17 @@ function Reports({ devices = [] }) {
           >
             <DatePickerInput
               id="reports-end-date"
-              placeholder="mm/dd/yyyy"
-              labelText="End date"
+              placeholder={datePickerPlaceholder}
+              labelText={intl.formatMessage({
+                id: "coldStorage.reports.endDate",
+              })}
               size="md"
             />
           </DatePicker>
         </Column>
         <Column lg={16} md={8} sm={4} className="reports-generate">
           <Button size="sm" onClick={handleGenerate}>
-            Generate Report
+            {intl.formatMessage({ id: "coldStorage.reports.generate" })}
           </Button>
           {pendingDownload && (
             <Button
@@ -587,19 +798,25 @@ function Reports({ devices = [] }) {
               }
               style={{ marginLeft: "1rem" }}
             >
-              Download {pendingDownload.format} Report
+              {intl.formatMessage(
+                { id: "coldStorage.reports.downloadFormat" },
+                { format: pendingDownload.format },
+              )}
             </Button>
           )}
         </Column>
         <Column lg={16} md={8} sm={4}>
           <div className="reports-compliance-box">
             <p>
-              <strong>Regulatory Compliance</strong>
+              <strong>
+                {intl.formatMessage({
+                  id: "coldStorage.reports.complianceTitle",
+                })}
+              </strong>
               <br />
-              Reports follow CAP (College of American Pathologists), CLIA
-              (Clinical Laboratory Improvement Amendments), FDA (Food and Drug
-              Administration), and WHO (World Health Organization) guidance for
-              temperature-controlled storage.
+              {intl.formatMessage({
+                id: "coldStorage.reports.complianceDescription",
+              })}
             </p>
           </div>
         </Column>
@@ -608,14 +825,29 @@ function Reports({ devices = [] }) {
       <Grid fullWidth={true} className="reports-bottom-tabs">
         <Column lg={16} md={8} sm={4}>
           <Tabs>
-            <TabList aria-label="Reports tabs" contained>
-              <Tab>Temperature Excursions</Tab>
-              <Tab>Audit Trail</Tab>
+            <TabList
+              aria-label={intl.formatMessage({
+                id: "coldStorage.reports.tabs.ariaLabel",
+              })}
+              contained
+            >
+              <Tab>
+                {intl.formatMessage({
+                  id: "coldStorage.reports.excursionsTab",
+                })}
+              </Tab>
+              <Tab>
+                {intl.formatMessage({ id: "coldStorage.reports.auditTab" })}
+              </Tab>
             </TabList>
             <TabPanels>
               <TabPanel>
-                <h4 className="exc-title">Temperature Excursion History</h4>
-                <DataTable rows={excursionRows} headers={EXCURSION_HEADERS}>
+                <h4 className="exc-title">
+                  {intl.formatMessage({
+                    id: "coldStorage.reports.excursionHistory",
+                  })}
+                </h4>
+                <DataTable rows={excursionRows} headers={excursionHeaders}>
                   {({
                     rows,
                     headers,
@@ -641,12 +873,16 @@ function Reports({ devices = [] }) {
                           {rows.length === 0 && (
                             <TableRow>
                               <TableCell
-                                colSpan={EXCURSION_HEADERS.length}
+                                colSpan={excursionHeaders.length}
                                 className="empty-state"
                               >
                                 {excursionsLoading
-                                  ? "Loading excursions…"
-                                  : "No excursions available for the selected filters."}
+                                  ? intl.formatMessage({
+                                      id: "coldStorage.reports.excursionsLoading",
+                                    })
+                                  : intl.formatMessage({
+                                      id: "coldStorage.reports.excursionsEmpty",
+                                    })}
                               </TableCell>
                             </TableRow>
                           )}
@@ -687,8 +923,10 @@ function Reports({ devices = [] }) {
                 </DataTable>
               </TabPanel>
               <TabPanel>
-                <h4 className="exc-title">Audit Trail</h4>
-                <DataTable rows={paginatedAuditRows} headers={AUDIT_HEADERS}>
+                <h4 className="exc-title">
+                  {intl.formatMessage({ id: "coldStorage.reports.auditTab" })}
+                </h4>
+                <DataTable rows={paginatedAuditRows} headers={auditHeaders}>
                   {({
                     rows,
                     headers,
@@ -701,8 +939,13 @@ function Reports({ devices = [] }) {
                       <TableToolbar {...getToolbarProps()}>
                         <TableToolbarContent>
                           <TableToolbarSearch
+                            closeButtonLabelText={intl.formatMessage({
+                              id: "carbon.search.clear",
+                            })}
                             persistent
-                            placeholder="Search audit trail..."
+                            placeholder={intl.formatMessage({
+                              id: "coldStorage.reports.auditSearch",
+                            })}
                             value={auditSearchTerm}
                             onChange={(e) => {
                               setAuditSearchTerm(e.target.value);
@@ -728,14 +971,20 @@ function Reports({ devices = [] }) {
                           {rows.length === 0 && (
                             <TableRow>
                               <TableCell
-                                colSpan={AUDIT_HEADERS.length}
+                                colSpan={auditHeaders.length}
                                 className="empty-state"
                               >
                                 {auditLoading
-                                  ? "Loading audit entries…"
+                                  ? intl.formatMessage({
+                                      id: "coldStorage.reports.auditLoading",
+                                    })
                                   : auditSearchTerm
-                                    ? "No audit entries match your search."
-                                    : "No audit activity for the selected filters."}
+                                    ? intl.formatMessage({
+                                        id: "coldStorage.reports.auditSearchEmpty",
+                                      })
+                                    : intl.formatMessage({
+                                        id: "coldStorage.reports.auditEmpty",
+                                      })}
                               </TableCell>
                             </TableRow>
                           )}
@@ -755,9 +1004,15 @@ function Reports({ devices = [] }) {
                 </DataTable>
                 {filteredAuditRows.length > 0 && (
                   <Pagination
-                    backwardText="Previous page"
-                    forwardText="Next page"
-                    itemsPerPageText="Items per page:"
+                    backwardText={intl.formatMessage({
+                      id: "pagination.previousPage",
+                    })}
+                    forwardText={intl.formatMessage({
+                      id: "pagination.nextPage",
+                    })}
+                    itemsPerPageText={intl.formatMessage({
+                      id: "pagination.itemsPerPage",
+                    })}
                     page={auditPage}
                     pageSize={auditPageSize}
                     pageSizes={[5, 10, 20, 50]}
@@ -777,8 +1032,7 @@ function Reports({ devices = [] }) {
       <Grid fullWidth={true}>
         <Column lg={16} md={8} sm={4}>
           <p className="reports-footer">
-            Cold Storage Monitoring v2.1.0 | CAP, CLIA, FDA & WHO compliant |
-            HIPAA-ready data handling
+            {intl.formatMessage({ id: "coldStorage.reports.footer" })}
           </p>
         </Column>
       </Grid>

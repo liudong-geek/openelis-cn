@@ -48,7 +48,8 @@ import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.test.service.TestServiceImpl;
 import org.openelisglobal.test.valueholder.Test;
 
-public class PatientCILNSPClinical_vreduit extends PatientReport implements IReportCreator, IReportParameterSetter {
+public class PatientCILNSPClinical_vreduit extends PatientReport
+        implements IReportCreator, IReportParameterSetter, ResultsScopedReportCreator.ClinicalPatientSelection {
 
     private static Set<String> analysisStatusIds;
     private static Set<String> validatedAnalysisStatusIds;

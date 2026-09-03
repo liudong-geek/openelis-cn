@@ -33,12 +33,14 @@ export interface PatientData {
 
 export type OBSERVATION_INTERPRETATION =
   | "NORMAL"
+  | "ABNORMAL"
   | "HIGH"
   | "CRITICALLY_HIGH"
   | "OFF_SCALE_HIGH"
   | "LOW"
   | "CRITICALLY_LOW"
   | "OFF_SCALE_LOW"
+  | "UNKNOWN"
   | "--";
 
 export interface ExternalOverviewProps {

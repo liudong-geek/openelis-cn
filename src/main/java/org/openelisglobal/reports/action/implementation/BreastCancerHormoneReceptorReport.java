@@ -13,7 +13,8 @@ import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.test.valueholder.Test;
 
-public class BreastCancerHormoneReceptorReport extends PatientProgramReport {
+public class BreastCancerHormoneReceptorReport extends PatientProgramReport
+        implements ResultsScopedReportCreator.ImmunohistochemistryProgramSampleSelection {
 
     private ImmunohistochemistrySampleService immunohistochemistrySampleService = SpringContext
             .getBean(ImmunohistochemistrySampleService.class);

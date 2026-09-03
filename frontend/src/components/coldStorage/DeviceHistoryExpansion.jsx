@@ -30,6 +30,7 @@ import {
   Download,
 } from "@carbon/icons-react";
 import { LineChart } from "@carbon/charts-react";
+import { useIntl } from "react-intl";
 import "@carbon/charts/styles.css";
 import {
   fetchCorrectiveActions,
@@ -37,17 +38,40 @@ import {
   fetchHistoricalReadings,
 } from "./api";
 
-const EVENT_TYPE_OPTIONS = [
-  { id: "all", label: "All Events" },
-  { id: "alert", label: "Alerts Only" },
-  { id: "corrective-action", label: "Corrective Actions Only" },
+const getEventTypeOptions = (intl) => [
+  {
+    id: "all",
+    label: intl.formatMessage({ id: "coldStorage.deviceHistory.allEvents" }),
+  },
+  {
+    id: "alert",
+    label: intl.formatMessage({ id: "coldStorage.deviceHistory.alertsOnly" }),
+  },
+  {
+    id: "corrective-action",
+    label: intl.formatMessage({
+      id: "coldStorage.deviceHistory.correctiveActionsOnly",
+    }),
+  },
 ];
 
-const TIME_RANGE_OPTIONS = [
-  { id: "24h", label: "Last 24 Hours" },
-  { id: "7d", label: "Last 7 Days" },
-  { id: "30d", label: "Last 30 Days" },
-  { id: "all", label: "All Time" },
+const getTimeRangeOptions = (intl) => [
+  {
+    id: "24h",
+    label: intl.formatMessage({ id: "coldStorage.trends.range.24h" }),
+  },
+  {
+    id: "7d",
+    label: intl.formatMessage({ id: "coldStorage.trends.range.7d" }),
+  },
+  {
+    id: "30d",
+    label: intl.formatMessage({ id: "coldStorage.trends.range.30d" }),
+  },
+  {
+    id: "all",
+    label: intl.formatMessage({ id: "coldStorage.trends.range.all" }),
+  },
 ];
 
 const RANGE_TO_DURATION = {
@@ -58,8 +82,10 @@ const RANGE_TO_DURATION = {
 };
 
 function DeviceHistoryExpansion({ device }) {
+  const intl = useIntl();
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [historyError, setHistoryError] = useState(null);
   const [correctiveActions, setCorrectiveActions] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -71,6 +97,8 @@ function DeviceHistoryExpansion({ device }) {
   const [chartData, setChartData] = useState([]);
   const [trendsLoading, setTrendsLoading] = useState(false);
   const [trendsError, setTrendsError] = useState(null);
+  const eventTypeOptions = useMemo(() => getEventTypeOptions(intl), [intl]);
+  const timeRangeOptions = useMemo(() => getTimeRangeOptions(intl), [intl]);
 
   const loadDeviceHistory = useCallback(async () => {
     if (!device) return;
@@ -79,6 +107,7 @@ function DeviceHistoryExpansion({ device }) {
     if (!deviceId) return;
 
     setLoading(true);
+    setHistoryError(null);
     try {
       const freezerId =
         typeof deviceId === "string" ? parseInt(deviceId, 10) : deviceId;
@@ -118,10 +147,13 @@ function DeviceHistoryExpansion({ device }) {
       setAlerts(alertsList || []);
     } catch (error) {
       console.error("Error loading device history:", error);
+      setHistoryError(
+        intl.formatMessage({ id: "coldStorage.deviceHistory.loadFailed" }),
+      );
     } finally {
       setLoading(false);
     }
-  }, [device]);
+  }, [device, intl]);
 
   useEffect(() => {
     if (device) {
@@ -154,7 +186,7 @@ function DeviceHistoryExpansion({ device }) {
       const normalizedReadings = (readings || [])
         .filter((reading) => reading.temperatureCelsius != null)
         .map((reading) => ({
-          group: "Temperature",
+          group: intl.formatMessage({ id: "coldStorage.temperature" }),
           date: new Date(reading.recordedAt),
           value: reading.temperatureCelsius,
         }))
@@ -163,12 +195,14 @@ function DeviceHistoryExpansion({ device }) {
       setChartData(normalizedReadings);
     } catch (error) {
       console.error("Error loading temperature readings:", error);
-      setTrendsError(error.message || "Unable to load temperature data.");
+      setTrendsError(
+        intl.formatMessage({ id: "coldStorage.trends.error.loadFailed" }),
+      );
       setChartData([]);
     } finally {
       setTrendsLoading(false);
     }
-  }, [device, timeRange]);
+  }, [device, timeRange, intl]);
 
   useEffect(() => {
     if (activeTab === 1 && device) {
@@ -183,9 +217,9 @@ function DeviceHistoryExpansion({ device }) {
         ? new Date(dateValue * 1000)
         : new Date(dateValue);
     if (isNaN(date.getTime())) return "—";
-    return date.toLocaleDateString("en-US", {
+    return date.toLocaleDateString("zh-CN", {
       year: "numeric",
-      month: "short",
+      month: "numeric",
       day: "numeric",
     });
   };
@@ -197,10 +231,10 @@ function DeviceHistoryExpansion({ device }) {
         ? new Date(dateValue * 1000)
         : new Date(dateValue);
     if (isNaN(date.getTime())) return "—";
-    return date.toLocaleTimeString("en-US", {
+    return date.toLocaleTimeString("zh-CN", {
       hour: "2-digit",
       minute: "2-digit",
-      hour12: true,
+      hour12: false,
     });
   };
 
@@ -219,10 +253,33 @@ function DeviceHistoryExpansion({ device }) {
         eventId: `ALT-${String(alert.id).padStart(3, "0")}`,
         summary:
           alert.currentTemperature != null
-            ? `Temperature ${alert.currentTemperature > alert.maxTemperature ? "exceeded" : "dropped below"} ${alert.severity === "CRITICAL" ? "critical" : "warning"} threshold (${formatTemperature(alert.maxTemperature || alert.minTemperature)})`
+            ? intl.formatMessage(
+                {
+                  id:
+                    alert.currentTemperature > alert.maxTemperature
+                      ? "coldStorage.deviceHistory.temperatureExceeded"
+                      : "coldStorage.deviceHistory.temperatureDroppedBelow",
+                },
+                {
+                  temperature: formatTemperature(alert.currentTemperature),
+                  level: intl.formatMessage({
+                    id:
+                      alert.severity === "CRITICAL"
+                        ? "coldStorage.status.critical"
+                        : "coldStorage.status.warning",
+                  }),
+                  threshold: formatTemperature(
+                    alert.maxTemperature ?? alert.minTemperature,
+                  ),
+                },
+              )
             : alert.severity === "CRITICAL"
-              ? "Critical temperature excursion detected"
-              : "Warning threshold exceeded",
+              ? intl.formatMessage({
+                  id: "coldStorage.deviceHistory.criticalExcursion",
+                })
+              : intl.formatMessage({
+                  id: "coldStorage.deviceHistory.warningExceeded",
+                }),
         severity: alert.severity,
         date: alert.startTime,
         time: alert.startTime,
@@ -236,7 +293,9 @@ function DeviceHistoryExpansion({ device }) {
         id: `CA-${String(action.id).padStart(3, "0")}`,
         type: "corrective-action",
         eventId: `CA-${String(action.id).padStart(3, "0")}`,
-        summary: action.description || "No description provided",
+        summary:
+          action.description ||
+          intl.formatMessage({ id: "coldStorage.deviceHistory.noDescription" }),
         severity: null,
         status: action.status || "PENDING",
         isEdited: action.isEdited || false,
@@ -254,7 +313,7 @@ function DeviceHistoryExpansion({ device }) {
         typeof b.date === "number" ? new Date(b.date * 1000) : new Date(b.date);
       return dateB - dateA;
     });
-  }, [alerts, correctiveActions]);
+  }, [alerts, correctiveActions, intl]);
 
   const filteredEvents = useMemo(() => {
     let filtered = allEvents;
@@ -308,8 +367,8 @@ function DeviceHistoryExpansion({ device }) {
   const formattedChartData = useMemo(() => {
     return chartData.map((point) => ({
       group: point.group,
-      key: point.date.toLocaleString([], {
-        month: "short",
+      key: point.date.toLocaleString("zh-CN", {
+        month: "numeric",
         day: "numeric",
         hour: "2-digit",
         minute: "2-digit",
@@ -336,7 +395,7 @@ function DeviceHistoryExpansion({ device }) {
           scaleType: "labels",
         },
         left: {
-          title: "Temperature",
+          title: intl.formatMessage({ id: "coldStorage.temperature.celsius" }),
           mapsTo: "value",
           scaleType: "linear",
         },
@@ -351,22 +410,28 @@ function DeviceHistoryExpansion({ device }) {
       thresholds: [
         {
           value: maxTemp,
-          label: "Warning",
+          label: intl.formatMessage({
+            id: "coldStorage.deviceHistory.highTemperatureThreshold",
+          }),
           fillColor: "#FF832B",
         },
         {
           value: minTemp,
-          label: "Alert",
+          label: intl.formatMessage({
+            id: "coldStorage.deviceHistory.lowTemperatureThreshold",
+          }),
           fillColor: "#DA1E28",
         },
       ],
     };
-  }, [deviceThresholds]);
+  }, [deviceThresholds, intl]);
 
   const handleExportCsv = () => {
     if (!chartData.length) return;
 
-    const csvHeader = "Timestamp,Temperature (°C)\n";
+    const csvHeader = `${intl.formatMessage({
+      id: "coldStorage.timestamp",
+    })},${intl.formatMessage({ id: "coldStorage.temperature.celsius" })}\n`;
     const csvRows = chartData
       .map((point) => `${point.date.toISOString()},${point.value}`)
       .join("\n");
@@ -378,7 +443,7 @@ function DeviceHistoryExpansion({ device }) {
     link.setAttribute("href", url);
     link.setAttribute(
       "download",
-      `temperature-history-${device?.id || device?.freezerId}-${new Date().toISOString()}.csv`,
+      `设备温度记录-${device?.id || device?.freezerId}-${new Date().toISOString()}.csv`,
     );
     link.style.visibility = "hidden";
     document.body.appendChild(link);
@@ -390,9 +455,17 @@ function DeviceHistoryExpansion({ device }) {
     if (!severity) return null;
     switch (severity) {
       case "WARNING":
-        return <Tag type="yellow">WARNING</Tag>;
+        return (
+          <Tag type="yellow">
+            {intl.formatMessage({ id: "coldStorage.status.warning" })}
+          </Tag>
+        );
       case "CRITICAL":
-        return <Tag type="red">CRITICAL</Tag>;
+        return (
+          <Tag type="red">
+            {intl.formatMessage({ id: "coldStorage.status.critical" })}
+          </Tag>
+        );
       default:
         return <Tag>{severity}</Tag>;
     }
@@ -402,15 +475,45 @@ function DeviceHistoryExpansion({ device }) {
     const tag = (() => {
       switch (status) {
         case "PENDING":
-          return <Tag type="red">Pending</Tag>;
+          return (
+            <Tag type="red">
+              {intl.formatMessage({
+                id: "coldStorage.corrective.status.pending",
+              })}
+            </Tag>
+          );
         case "IN_PROGRESS":
-          return <Tag type="blue">In Progress</Tag>;
+          return (
+            <Tag type="blue">
+              {intl.formatMessage({
+                id: "coldStorage.corrective.status.inProgress",
+              })}
+            </Tag>
+          );
         case "COMPLETED":
-          return <Tag type="green">Completed</Tag>;
+          return (
+            <Tag type="green">
+              {intl.formatMessage({
+                id: "coldStorage.corrective.status.completed",
+              })}
+            </Tag>
+          );
         case "CANCELLED":
-          return <Tag type="gray">Cancelled</Tag>;
+          return (
+            <Tag type="gray">
+              {intl.formatMessage({
+                id: "coldStorage.corrective.status.cancelled",
+              })}
+            </Tag>
+          );
         case "RETRACTED":
-          return <Tag type="magenta">Retracted</Tag>;
+          return (
+            <Tag type="magenta">
+              {intl.formatMessage({
+                id: "coldStorage.corrective.status.retracted",
+              })}
+            </Tag>
+          );
         default:
           return <Tag>{status}</Tag>;
       }
@@ -421,7 +524,7 @@ function DeviceHistoryExpansion({ device }) {
         {tag}
         {isEdited && (
           <Tag type="purple" size="sm">
-            Edited
+            {intl.formatMessage({ id: "coldStorage.corrective.edited" })}
           </Tag>
         )}
       </div>
@@ -429,13 +532,36 @@ function DeviceHistoryExpansion({ device }) {
   };
 
   const eventColumns = [
-    { key: "eventType", header: "Event Type" },
-    { key: "eventId", header: "Event ID" },
-    { key: "summary", header: "Summary / Title" },
-    { key: "severity", header: "Severity" },
-    { key: "date", header: "Date" },
-    { key: "time", header: "Time" },
-    { key: "performedBy", header: "Acknowledged / Performed By" },
+    {
+      key: "eventType",
+      header: intl.formatMessage({ id: "coldStorage.deviceHistory.eventType" }),
+    },
+    {
+      key: "eventId",
+      header: intl.formatMessage({ id: "coldStorage.deviceHistory.eventId" }),
+    },
+    {
+      key: "summary",
+      header: intl.formatMessage({ id: "coldStorage.deviceHistory.summary" }),
+    },
+    {
+      key: "severity",
+      header: intl.formatMessage({ id: "coldStorage.deviceHistory.level" }),
+    },
+    {
+      key: "date",
+      header: intl.formatMessage({ id: "coldStorage.deviceHistory.date" }),
+    },
+    {
+      key: "time",
+      header: intl.formatMessage({ id: "coldStorage.deviceHistory.time" }),
+    },
+    {
+      key: "performedBy",
+      header: intl.formatMessage({
+        id: "coldStorage.deviceHistory.acknowledgedOrPerformedBy",
+      }),
+    },
   ];
 
   const eventRows = paginatedEvents.map((event) => {
@@ -447,7 +573,11 @@ function DeviceHistoryExpansion({ device }) {
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           {isAlert ? <Warning size={16} /> : <Document size={16} />}
           <Tag type={isAlert ? "red" : "blue"} size="sm">
-            {isAlert ? "Alert" : "Corrective Action"}
+            {intl.formatMessage({
+              id: isAlert
+                ? "coldStorage.deviceHistory.alert"
+                : "coldStorage.deviceHistory.correctiveAction",
+            })}
           </Tag>
         </div>
       ),
@@ -466,7 +596,10 @@ function DeviceHistoryExpansion({ device }) {
     device?.unitName ||
     device?.name ||
     device?.freezerName ||
-    `Freezer ${device?.id || device?.freezerId}`;
+    intl.formatMessage(
+      { id: "coldStorage.deviceHistory.deviceFallback" },
+      { id: device?.id || device?.freezerId || "—" },
+    );
   const deviceId = device?.id || device?.freezerId;
 
   return (
@@ -474,7 +607,10 @@ function DeviceHistoryExpansion({ device }) {
       <h3
         style={{ marginBottom: "1.5rem", fontSize: "1.25rem", fontWeight: 600 }}
       >
-        Device History - {deviceDisplayName} ({deviceId})
+        {intl.formatMessage(
+          { id: "coldStorage.deviceHistory.title" },
+          { name: deviceDisplayName, id: deviceId },
+        )}
       </h3>
 
       {/* Summary Cards */}
@@ -489,7 +625,9 @@ function DeviceHistoryExpansion({ device }) {
             }}
           >
             <div style={{ fontSize: "0.875rem", marginBottom: "0.5rem" }}>
-              Total Events
+              {intl.formatMessage({
+                id: "coldStorage.deviceHistory.totalEvents",
+              })}
             </div>
             <div style={{ fontSize: "2rem", fontWeight: 600 }}>
               {totalEvents}
@@ -511,7 +649,9 @@ function DeviceHistoryExpansion({ device }) {
             }}
           >
             <div style={{ fontSize: "0.875rem", marginBottom: "0.5rem" }}>
-              Total Alerts
+              {intl.formatMessage({
+                id: "coldStorage.deviceHistory.totalAlerts",
+              })}
             </div>
             <div style={{ fontSize: "2rem", fontWeight: 600 }}>
               {totalAlerts}
@@ -528,7 +668,9 @@ function DeviceHistoryExpansion({ device }) {
             }}
           >
             <div style={{ fontSize: "0.875rem", marginBottom: "0.5rem" }}>
-              Corrective Actions
+              {intl.formatMessage({
+                id: "coldStorage.deviceHistory.totalCorrectiveActions",
+              })}
             </div>
             <div style={{ fontSize: "2rem", fontWeight: 600 }}>
               {totalCorrectiveActions}
@@ -542,24 +684,57 @@ function DeviceHistoryExpansion({ device }) {
         selectedIndex={activeTab}
         onChange={({ selectedIndex }) => setActiveTab(selectedIndex)}
       >
-        <TabList aria-label="Device history sections" contained>
-          <Tab renderIcon={Calendar}>Event History</Tab>
-          <Tab renderIcon={Time}>Temperature Trends</Tab>
+        <TabList
+          aria-label={intl.formatMessage({
+            id: "coldStorage.deviceHistory.tabs.ariaLabel",
+          })}
+          contained
+        >
+          <Tab renderIcon={Calendar}>
+            {intl.formatMessage({
+              id: "coldStorage.deviceHistory.eventHistory",
+            })}
+          </Tab>
+          <Tab renderIcon={Time}>
+            {intl.formatMessage({ id: "coldStorage.trends.title" })}
+          </Tab>
         </TabList>
         <TabPanels>
           {/* Event History Tab */}
           <TabPanel>
             {loading ? (
-              <Loading description="Loading event history..." />
+              <Loading
+                description={intl.formatMessage({
+                  id: "coldStorage.deviceHistory.loading",
+                })}
+              />
             ) : (
               <>
+                {historyError && (
+                  <div
+                    role="alert"
+                    style={{
+                      color: "var(--cds-text-error)",
+                      marginBottom: "1rem",
+                    }}
+                  >
+                    {historyError}
+                  </div>
+                )}
                 {/* Search and Filters Section */}
                 <Grid fullWidth style={{ marginBottom: "1rem" }}>
                   {/* Search - full width */}
                   <Column lg={16} md={8} sm={4}>
                     <Search
-                      labelText="Search events"
-                      placeholder="Search by event ID, summary, or user..."
+                      closeButtonLabelText={intl.formatMessage({
+                        id: "carbon.search.clear",
+                      })}
+                      labelText={intl.formatMessage({
+                        id: "coldStorage.deviceHistory.searchLabel",
+                      })}
+                      placeholder={intl.formatMessage({
+                        id: "coldStorage.deviceHistory.searchPlaceholder",
+                      })}
                       value={searchTerm}
                       onChange={(e) => {
                         setSearchTerm(e.target.value);
@@ -572,14 +747,16 @@ function DeviceHistoryExpansion({ device }) {
                   <Column lg={6} md={4} sm={4} style={{ marginTop: "1rem" }}>
                     <Dropdown
                       id="event-filter"
-                      titleText="Event Type"
+                      titleText={intl.formatMessage({
+                        id: "coldStorage.deviceHistory.eventType",
+                      })}
                       label={
-                        EVENT_TYPE_OPTIONS.find((opt) => opt.id === eventFilter)
-                          ?.label || "All Events"
+                        eventTypeOptions.find((opt) => opt.id === eventFilter)
+                          ?.label || eventTypeOptions[0].label
                       }
-                      items={EVENT_TYPE_OPTIONS}
+                      items={eventTypeOptions}
                       itemToString={(item) => (item ? item.label : "")}
-                      selectedItem={EVENT_TYPE_OPTIONS.find(
+                      selectedItem={eventTypeOptions.find(
                         (opt) => opt.id === eventFilter,
                       )}
                       onChange={({ selectedItem }) => {
@@ -601,7 +778,9 @@ function DeviceHistoryExpansion({ device }) {
                     getTableContainerProps,
                   }) => (
                     <TableContainer
-                      title="Event History"
+                      title={intl.formatMessage({
+                        id: "coldStorage.deviceHistory.eventHistory",
+                      })}
                       {...getTableContainerProps()}
                     >
                       <Table {...getTableProps()} size="md">
@@ -621,7 +800,9 @@ function DeviceHistoryExpansion({ device }) {
                           {rows.length === 0 && (
                             <TableRow>
                               <TableCell colSpan={eventColumns.length}>
-                                No events found.
+                                {intl.formatMessage({
+                                  id: "coldStorage.deviceHistory.empty",
+                                })}
                               </TableCell>
                             </TableRow>
                           )}
@@ -643,9 +824,15 @@ function DeviceHistoryExpansion({ device }) {
                         </TableBody>
                       </Table>
                       <Pagination
-                        backwardText="Previous page"
-                        forwardText="Next page"
-                        itemsPerPageText="Items per page:"
+                        backwardText={intl.formatMessage({
+                          id: "pagination.previousPage",
+                        })}
+                        forwardText={intl.formatMessage({
+                          id: "pagination.nextPage",
+                        })}
+                        itemsPerPageText={intl.formatMessage({
+                          id: "pagination.itemsPerPage",
+                        })}
                         page={currentPage}
                         pageSize={pageSize}
                         pageSizes={[5, 10, 20, 50]}
@@ -676,18 +863,20 @@ function DeviceHistoryExpansion({ device }) {
                     }}
                   >
                     <span style={{ fontSize: "0.875rem", fontWeight: 500 }}>
-                      Time Range:
+                      {intl.formatMessage({
+                        id: "coldStorage.trends.timeRange",
+                      })}
                     </span>
                     <Dropdown
                       id="time-range-dropdown"
                       titleText=""
                       label={
-                        TIME_RANGE_OPTIONS.find((opt) => opt.id === timeRange)
-                          ?.label || "Last 24 Hours"
+                        timeRangeOptions.find((opt) => opt.id === timeRange)
+                          ?.label || timeRangeOptions[0].label
                       }
-                      items={TIME_RANGE_OPTIONS}
+                      items={timeRangeOptions}
                       itemToString={(item) => (item ? item.label : "")}
-                      selectedItem={TIME_RANGE_OPTIONS.find(
+                      selectedItem={timeRangeOptions.find(
                         (opt) => opt.id === timeRange,
                       )}
                       onChange={({ selectedItem }) =>
@@ -714,7 +903,7 @@ function DeviceHistoryExpansion({ device }) {
                     onClick={handleExportCsv}
                     disabled={!chartData.length}
                   >
-                    Export CSV
+                    {intl.formatMessage({ id: "coldStorage.trends.export" })}
                   </Button>
                 </Column>
               </Grid>
@@ -737,7 +926,9 @@ function DeviceHistoryExpansion({ device }) {
                         marginBottom: "0.5rem",
                       }}
                     >
-                      Average Temp
+                      {intl.formatMessage({
+                        id: "coldStorage.trends.average",
+                      })}
                     </div>
                     <div style={{ fontSize: "1.75rem", fontWeight: 600 }}>
                       {temperatureStats.avg === "—"
@@ -762,7 +953,9 @@ function DeviceHistoryExpansion({ device }) {
                         marginBottom: "0.5rem",
                       }}
                     >
-                      Min Temp
+                      {intl.formatMessage({
+                        id: "coldStorage.trends.minimum",
+                      })}
                     </div>
                     <div
                       style={{
@@ -793,7 +986,9 @@ function DeviceHistoryExpansion({ device }) {
                         marginBottom: "0.5rem",
                       }}
                     >
-                      Max Temp
+                      {intl.formatMessage({
+                        id: "coldStorage.trends.maximum",
+                      })}
                     </div>
                     <div
                       style={{
@@ -824,7 +1019,9 @@ function DeviceHistoryExpansion({ device }) {
                         marginBottom: "0.5rem",
                       }}
                     >
-                      Data Points
+                      {intl.formatMessage({
+                        id: "coldStorage.trends.dataPoints",
+                      })}
                     </div>
                     <div style={{ fontSize: "1.75rem", fontWeight: 600 }}>
                       {temperatureStats.count.toLocaleString()}
@@ -843,7 +1040,11 @@ function DeviceHistoryExpansion({ device }) {
                 }}
               >
                 {trendsLoading ? (
-                  <Loading description="Loading temperature data..." />
+                  <Loading
+                    description={intl.formatMessage({
+                      id: "coldStorage.trends.loading",
+                    })}
+                  />
                 ) : trendsError ? (
                   <div
                     style={{
@@ -862,7 +1063,7 @@ function DeviceHistoryExpansion({ device }) {
                       color: "var(--cds-text-secondary)",
                     }}
                   >
-                    No temperature data available for the selected time range.
+                    {intl.formatMessage({ id: "coldStorage.trends.empty" })}
                   </div>
                 ) : (
                   <LineChart data={formattedChartData} options={chartOptions} />

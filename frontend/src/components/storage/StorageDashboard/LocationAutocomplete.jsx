@@ -110,9 +110,18 @@ const LocationAutocomplete = ({
                     ""}
                 </div>
                 {location.type && (
-                  <div className="location-type">{location.type}</div>
+                  <div className="location-type">
+                    {intl.formatMessage({
+                      id: `storage.type.${String(location.type).toLowerCase()}`,
+                      defaultMessage: location.type,
+                    })}
+                  </div>
                 )}
-                {isInactive && <div className="inactive-badge">(Inactive)</div>}
+                {isInactive && (
+                  <div className="inactive-badge">
+                    {`（${intl.formatMessage({ id: "inventory.status.INACTIVE" })}）`}
+                  </div>
+                )}
               </li>
             );
           })}

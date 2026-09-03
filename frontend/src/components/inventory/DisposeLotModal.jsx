@@ -14,12 +14,27 @@ const DisposeLotModal = ({ open, onClose, onSave, lot }) => {
   const intl = useIntl();
 
   const disposalReasons = [
-    { id: "EXPIRED", text: "Expired" },
-    { id: "DAMAGED", text: "Damaged" },
-    { id: "CONTAMINATED", text: "Contaminated" },
-    { id: "RECALLED", text: "Manufacturer Recall" },
-    { id: "QC_FAILED", text: "Failed Quality Control" },
-    { id: "OTHER", text: "Other" },
+    {
+      id: "EXPIRED",
+      text: intl.formatMessage({ id: "disposal.reason.expired" }),
+    },
+    {
+      id: "DAMAGED",
+      text: intl.formatMessage({ id: "disposal.reason.damaged" }),
+    },
+    {
+      id: "CONTAMINATED",
+      text: intl.formatMessage({ id: "disposal.reason.contaminated" }),
+    },
+    {
+      id: "RECALLED",
+      text: intl.formatMessage({ id: "disposal.reason.recalled" }),
+    },
+    {
+      id: "QC_FAILED",
+      text: intl.formatMessage({ id: "disposal.reason.qcFailed" }),
+    },
+    { id: "OTHER", text: intl.formatMessage({ id: "disposal.reason.other" }) },
   ];
 
   const [formData, setFormData] = useState({
@@ -37,12 +52,12 @@ const DisposeLotModal = ({ open, onClose, onSave, lot }) => {
 
   const validate = () => {
     if (!formData.reason) {
-      setError("Please select a disposal reason");
+      setError(intl.formatMessage({ id: "disposal.validation.reason" }));
       return false;
     }
 
     if (formData.reason === "OTHER" && !formData.notes?.trim()) {
-      setError("Please provide notes when selecting 'Other' as reason");
+      setError(intl.formatMessage({ id: "disposal.validation.notes" }));
       return false;
     }
 
@@ -66,7 +81,7 @@ const DisposeLotModal = ({ open, onClose, onSave, lot }) => {
       onSave();
     } catch (err) {
       console.error("Error disposing lot:", err);
-      setError(err.message || "Error disposing lot");
+      setError(intl.formatMessage({ id: "disposal.error" }));
     } finally {
       setSaving(false);
     }
@@ -119,7 +134,9 @@ const DisposeLotModal = ({ open, onClose, onSave, lot }) => {
           </FormLabel>
           <p>
             <strong>
-              {lot.currentQuantity} {lot.inventoryItem?.units || "units"}
+              {lot.currentQuantity}{" "}
+              {lot.inventoryItem?.units ||
+                intl.formatMessage({ id: "catalog.item.units" })}
             </strong>
           </p>
         </div>

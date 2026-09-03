@@ -93,22 +93,6 @@ public class GenericSampleOrderServiceImplTest {
         when(statusService.getStatusID(OrderStatus.Entered)).thenReturn("2");
         when(configurationProperties.getPropertyValue(any(ConfigurationProperties.Property.class))).thenReturn("X");
         when(configurationProperties.getPropertyValue(anyString())).thenReturn("human");
-        when(messageSource.getMessage(anyString(), any(), anyString(), any())).thenAnswer(invocation -> {
-            String key = invocation.getArgument(0);
-            if ("date.format".equals(key) || "date.format.formatKey".equals(key)) {
-                return "MM/dd/yyyy";
-            }
-            if ("dateTime.format".equals(key) || "timestamp.format.formatKey".equals(key)) {
-                return "MM/dd/yyyy HH:mm";
-            }
-            if ("time.format".equals(key) || "time.format.formatKey".equals(key)) {
-                return "HH:mm";
-            }
-            if ("timestamp.format.formatKey.12".equals(key)) {
-                return "MM/dd/yyyy hh:mm a";
-            }
-            return invocation.getArgument(2);
-        });
         MessageUtil.setMessageSource(messageSource);
 
         doAnswer(invocation -> {

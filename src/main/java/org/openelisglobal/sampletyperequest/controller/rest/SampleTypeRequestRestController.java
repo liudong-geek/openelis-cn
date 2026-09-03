@@ -147,9 +147,7 @@ public class SampleTypeRequestRestController {
     @PutMapping("/{requestId}/fulfill")
     public ResponseEntity<?> fulfillRequest(@PathVariable Integer requestId, @RequestParam String sampleItemId) {
         try {
-            sampleTypeRequestService.fulfillRequest(requestId, sampleItemId);
-
-            SampleTypeRequest request = sampleTypeRequestService.get(requestId);
+            SampleTypeRequest request = sampleTypeRequestService.fulfillRequest(requestId, sampleItemId);
             LogEvent.logInfo(this.getClass().getSimpleName(), "fulfillRequest",
                     "Fulfilled request: " + requestId + " with sampleItem: " + sampleItemId);
 

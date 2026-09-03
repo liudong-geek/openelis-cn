@@ -8,7 +8,6 @@ import {
   resolveApiErrorMessage,
 } from "../utils/Utils";
 import { nationalityList } from "../data/countries";
-import format from "date-fns/format";
 import {
   differenceInYears,
   differenceInMonths,
@@ -45,6 +44,10 @@ import { AlertDialog, NotificationKinds } from "../common/CustomNotification";
 import { NotificationContext, ConfigurationContext } from "../layout/Layout";
 import { createPatientValidationSchema } from "../formModel/validationSchema/CreatePatientValidationShema";
 import CustomDatePicker from "../common/CustomDatePicker";
+import {
+  formatDateForLocale,
+  parseDateForLocale,
+} from "../common/dateLocaleUtils";
 import PatientImageSelector from "./photoManagement/uploadPhoto/PatientImageSelector";
 import IdentificationDocuments from "./IdentificationDocuments";
 import { getPhoneFormatHint } from "./phoneFormatHint";
@@ -161,10 +164,7 @@ const computeDobFromFormatter = (
   pastDate.setFullYear(currentDate.getFullYear() - (Number(years) || 0));
   pastDate.setMonth(currentDate.getMonth() - (Number(months) || 0));
   pastDate.setDate(currentDate.getDate() - (Number(days) || 0));
-  return format(
-    new Date(pastDate),
-    dateLocale === "fr-FR" ? "dd/MM/yyyy" : "MM/dd/yyyy",
-  );
+  return formatDateForLocale(pastDate, dateLocale);
 };
 
 // Derive {years, months, days} from a displayed DOB string. Returns empty
@@ -172,24 +172,13 @@ const computeDobFromFormatter = (
 // blank rather than "NaN".
 const computeAgePartsFromDob = (dob?: string, dateLocale?: string) => {
   if (!dob || dob === "") return { years: "", months: "", days: "" };
-  const parts = dob.split("/");
-  if (parts.length !== 3) return { years: "", months: "", days: "" };
-  let yy;
-  let mm;
-  let dd;
-  if (dateLocale === "fr-FR") {
-    yy = parseInt(parts[2]);
-    mm = parseInt(parts[1]);
-    dd = parseInt(parts[0]);
-  } else {
-    yy = parseInt(parts[2]);
-    mm = parseInt(parts[0]);
-    dd = parseInt(parts[1]);
-  }
-  const birthDate = new Date(mm + "/" + dd + "/" + yy);
-  if (Number.isNaN(birthDate.getTime())) {
-    return { years: "", months: "", days: "" };
-  }
+  const parsedDob = parseDateForLocale(dob, dateLocale);
+  if (!parsedDob) return { years: "", months: "", days: "" };
+  const birthDate = new Date(
+    parsedDob.year,
+    parsedDob.month - 1,
+    parsedDob.day,
+  );
   const now = new Date();
   const years = differenceInYears(now, birthDate);
   const months = differenceInMonths(now, addYears(birthDate, years));
@@ -1834,7 +1823,14 @@ function CreatePatientForm(props: CreatePatientFormProps) {
                                   <SelectItem text="" value="" />
                                   {nationalityList.map((nationality, index) => (
                                     <SelectItem
-                                      text={nationality.label}
+                                      text={
+                                        nationality.value === "CHINESE"
+                                          ? intl.formatMessage({
+                                              id: "patient.nationality.chinese",
+                                              defaultMessage: "China",
+                                            })
+                                          : nationality.label
+                                      }
                                       value={nationality.value}
                                       key={index}
                                     />

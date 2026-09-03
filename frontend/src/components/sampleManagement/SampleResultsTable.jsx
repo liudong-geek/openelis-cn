@@ -461,7 +461,9 @@ function SampleResultsTable({
             <TableHead>
               <TableRow>
                 <TableExpandHeader
-                  aria-label="expand row"
+                  aria-label={intl.formatMessage({
+                    id: "sampleManagement.hierarchy.expand",
+                  })}
                   {...getExpandHeaderProps()}
                 />
                 <TableSelectAll

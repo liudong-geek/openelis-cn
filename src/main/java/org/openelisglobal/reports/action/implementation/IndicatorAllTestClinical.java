@@ -16,7 +16,8 @@ package org.openelisglobal.reports.action.implementation;
 import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.ConfigurationProperties.Property;
 
-public class IndicatorAllTestClinical extends IndicatorAllTest implements IReportCreator, IReportParameterSetter {
+public class IndicatorAllTestClinical extends IndicatorAllTest
+        implements IReportCreator, IReportParameterSetter, SafeNonPatientReportCreator {
 
     @Override
     protected String getLabNameLine1() {

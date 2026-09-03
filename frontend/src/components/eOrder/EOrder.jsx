@@ -305,7 +305,11 @@ const EOrder = ({ eOrders, setEOrders, eOrderRef }) => {
               <Table {...getTableProps()}>
                 <TableHead>
                   <TableRow>
-                    <TableExpandHeader aria-label="expand row" />
+                    <TableExpandHeader
+                      aria-label={intl.formatMessage({
+                        id: "carbon.table.row.expand",
+                      })}
+                    />
                     {headers.map((header) => (
                       <TableHeader
                         key={header.key}
@@ -321,7 +325,9 @@ const EOrder = ({ eOrders, setEOrders, eOrderRef }) => {
                     {rows.map((row) => (
                       <React.Fragment key={row.id}>
                         <TableExpandRow
-                          ariaLabel="row"
+                          ariaLabel={intl.formatMessage({
+                            id: "carbon.table.row.expand",
+                          })}
                           {...getRowProps({
                             row,
                           })}

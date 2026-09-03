@@ -3,16 +3,14 @@ package org.openelisglobal.notebook.controller.rest;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import jakarta.servlet.http.HttpServletRequest;
 import java.sql.Timestamp;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import java.util.TimeZone;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.hl7.fhir.r4.model.Bundle;
@@ -22,8 +20,7 @@ import org.openelisglobal.audittrail.action.workers.AuditTrailItem;
 import org.openelisglobal.audittrail.form.AuditTrailViewForm;
 import org.openelisglobal.common.rest.BaseRestController;
 import org.openelisglobal.common.services.historyservices.NoteBookHistoryService;
-import org.openelisglobal.common.util.ConfigurationProperties;
-import org.openelisglobal.common.util.ConfigurationProperties.Property;
+import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.dataexchange.fhir.FhirConfig;
 import org.openelisglobal.dataexchange.fhir.FhirUtil;
@@ -104,21 +101,8 @@ public class NoteBookRestController extends BaseRestController {
         }
 
         try {
-            String locale = ConfigurationProperties.getInstance().getPropertyValue(Property.DEFAULT_DATE_LOCALE);
-
-            String pattern;
-            if ("fr-FR".equalsIgnoreCase(locale)) {
-                pattern = "dd/MM/yyyy";
-            } else {
-                pattern = "MM/dd/yyyy";
-            }
-
-            SimpleDateFormat sdf = new SimpleDateFormat(pattern);
-            sdf.setTimeZone(TimeZone.getTimeZone("UTC")); // normalize
-            return sdf.parse(date);
-
-        } catch (ParseException e) {
-            // consider logging or rethrowing
+            return DateUtil.parseDate(date);
+        } catch (DateTimeParseException e) {
             return null;
         }
     }

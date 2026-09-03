@@ -11,6 +11,107 @@
   background-color: $ui-01;
 }
 
+.patient-results-page-header {
+  align-items: end;
+  row-gap: spacing.$spacing-04;
+}
+
+.patient-results-page-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+}
+
+.patient-report-release-section {
+  margin-top: spacing.$spacing-05;
+}
+
+.patient-report-release-panel {
+  border: 1px solid var(--cds-border-subtle-01);
+}
+
+.patient-report-release-heading,
+.patient-report-current,
+.patient-report-draft,
+.patient-report-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: spacing.$spacing-05;
+}
+
+.patient-report-release-heading p,
+.patient-report-current p,
+.patient-report-draft p {
+  color: var(--cds-text-secondary);
+  margin-top: spacing.$spacing-02;
+}
+
+.patient-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: spacing.$spacing-03;
+}
+
+.patient-report-prepare,
+.patient-report-draft,
+.patient-report-current,
+.patient-report-history {
+  border-top: 1px solid var(--cds-border-subtle-01);
+  padding-top: spacing.$spacing-05;
+}
+
+.patient-report-prepare {
+  display: grid;
+  gap: spacing.$spacing-04;
+  justify-items: start;
+}
+
+.patient-report-draft > div:first-child {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: spacing.$spacing-03;
+}
+
+.patient-report-draft p {
+  flex-basis: 100%;
+}
+
+.patient-report-void-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.patient-report-history h4 {
+  margin-bottom: spacing.$spacing-03;
+}
+
+.patient-report-history-row {
+  min-height: 2.5rem;
+  border-top: 1px solid var(--cds-border-subtle-00);
+}
+
+@media screen and (max-width: 672px) {
+  .patient-results-page-actions {
+    justify-content: flex-start;
+  }
+
+  .patient-report-release-heading,
+  .patient-report-current,
+  .patient-report-draft,
+  .patient-report-history-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .patient-report-actions,
+  .patient-report-void-action {
+    justify-content: flex-start;
+  }
+}
+
 .flex {
   display: grid;
   grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
@@ -70,7 +171,7 @@
   display: flex;
 }
 
-.rightSection :global(.cds--skeleton) {
+.rightSection .cds--skeleton {
   width: 100%;
 }
 
@@ -79,8 +180,8 @@
   min-width: 2.5rem;
 }
 
-.leftHeaderActions > :global(.cds--content-switcher),
-.viewOptsContentSwitcherContainer :global(.cds--content-switcher) {
+.leftHeaderActions > .cds--content-switcher,
+.viewOptsContentSwitcherContainer .cds--content-switcher {
   display: grid;
   grid-template-columns: 1fr 1fr;
   width: max-content;

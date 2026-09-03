@@ -10,7 +10,6 @@ import {
   TableBody,
   TableCell,
   Tag,
-  InlineNotification,
 } from "@carbon/react";
 import { Checkmark } from "@carbon/icons-react";
 import { getFromOpenElisServer } from "../../../utils/Utils";
@@ -122,7 +121,7 @@ const RequestedTestsSection = ({
         const sampleTypeName =
           sample.sampleTypeName ||
           sampleTypes.find((st) => st.id === sample.sampleTypeId)?.value ||
-          `Sample ${index + 1}`;
+          `${intl.formatMessage({ id: "collect.samples.title" })} ${index + 1}`;
         assignments.push({
           sampleIndex: index,
           sampleTypeName,
@@ -246,7 +245,9 @@ const RequestedTestsSection = ({
       compatibleTypes: (
         <div className="compatible-types-cell">
           {isLoadingCompatibility ? (
-            <span className="loading-text">Loading...</span>
+            <span className="loading-text">
+              {intl.formatMessage({ id: "label.loading" })}
+            </span>
           ) : compatibleTypes.length > 0 ? (
             compatibleTypes.map((st) => (
               <Tag
@@ -283,7 +284,9 @@ const RequestedTestsSection = ({
             assignments.map((a, i) => (
               <Tag key={i} type="purple" size="sm" className="assignment-tag">
                 <Checkmark size={12} className="checkmark-icon" />
-                {a.sampleTypeName} (Sample {a.sampleIndex + 1})
+                {a.sampleTypeName} (
+                {intl.formatMessage({ id: "collect.samples.title" })}{" "}
+                {a.sampleIndex + 1})
               </Tag>
             ))
           ) : (
@@ -301,25 +304,22 @@ const RequestedTestsSection = ({
 
   if (requestedItems.length === 0) {
     return (
-      <Tile className="order-section requested-tests-section">
-        <h4 className="section-title">
+      <section className="order-section requested-tests-section">
+        <header className="order-section__header">
+          <h4 className="section-title">
+            <FormattedMessage
+              id="collect.requestedTests.title"
+              defaultMessage="Requested Tests"
+            />
+          </h4>
+        </header>
+        <p className="order-section__empty">
           <FormattedMessage
-            id="collect.requestedTests.title"
-            defaultMessage="Requested Tests"
+            id="collect.noTestsOrdered"
+            defaultMessage="No tests or panels have been ordered yet. Go back to Step 1 to add tests."
           />
-        </h4>
-        <InlineNotification
-          kind="info"
-          title=""
-          subtitle={intl.formatMessage({
-            id: "collect.noTestsOrdered",
-            defaultMessage:
-              "No tests or panels have been ordered yet. Go back to Step 1 to add tests.",
-          })}
-          hideCloseButton
-          lowContrast
-        />
-      </Tile>
+        </p>
+      </section>
     );
   }
 
@@ -363,38 +363,6 @@ const RequestedTestsSection = ({
           </Table>
         )}
       </DataTable>
-
-      {/* Example multi-sample assignment note */}
-      <div className="multi-sample-example">
-        <h6>
-          <FormattedMessage
-            id="collect.multiSampleExample.title"
-            defaultMessage="Example: Multi-Sample Assignment"
-          />
-        </h6>
-        <p>
-          <FormattedMessage
-            id="collect.multiSampleExample.description"
-            defaultMessage="A test or panel can be assigned to multiple samples. The 'Sample Assignment(s)' column reflects all assignments."
-          />
-        </p>
-        <div className="example-tags">
-          <Tag type="purple" size="sm">
-            <Checkmark size={12} /> Plasma (Sample 1)
-          </Tag>
-          <span className="plus-sign">+</span>
-          <Tag type="purple" size="sm">
-            <Checkmark size={12} /> Plasma (Sample 2)
-          </Tag>
-          <span className="equals-sign">=</span>
-          <span className="example-text">
-            <FormattedMessage
-              id="collect.multiSampleExample.result"
-              defaultMessage="same test on two separate Plasma draws"
-            />
-          </span>
-        </div>
-      </div>
 
       {/* Assignment Modal */}
       <TestAssignmentModal

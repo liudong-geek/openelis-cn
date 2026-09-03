@@ -233,6 +233,9 @@ const MyProgramsPage = () => {
                 <TableToolbar>
                   <TableToolbarContent>
                     <TableToolbarSearch
+                      closeButtonLabelText={intl.formatMessage({
+                        id: "carbon.search.clear",
+                      })}
                       onChange={onInputChange}
                       placeholder={intl.formatMessage({
                         id: "eqa.myPrograms.search.placeholder",

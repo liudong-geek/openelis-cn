@@ -209,7 +209,9 @@ function ConfigMenuDisplay(props: ConfigMenuDisplayProps) {
           id={cell.id}
           checked={selectedRowId === row.id}
           name="selectRowRadio"
-          ariaLabel="selectRow"
+          ariaLabel={intl.formatMessage({
+            id: "admin.page.configuration.formEntryConfigMenu.select",
+          })}
           onSelect={() => {
             setModifyButton(false);
             setSelectedRowId(row.id);
@@ -225,7 +227,7 @@ function ConfigMenuDisplay(props: ConfigMenuDisplayProps) {
         <TableCell key={cell.id}>
           <img
             src={cell.value}
-            alt="Config Image"
+            alt={intl.formatMessage({ id: "site.branding.current.logo" })}
             style={{ maxWidth: "50px" }}
           />
         </TableCell>

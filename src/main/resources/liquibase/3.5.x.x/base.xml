@@ -159,6 +159,9 @@
   <!-- OGC-1142 / FR-69: terminology mapping display name -->
   <include relativeToChangelogFile="true" file="057-terminology-display-name.xml"/>
 
+  <!-- China hospital delivery: immutable, signed and versioned patient report releases -->
+  <include relativeToChangelogFile="true" file="058-patient-report-release.xml"/>
+
   <!-- OGC-1142 / FR-46-55: specimen-variant grouping link -->
   <include relativeToChangelogFile="true" file="058-test-variant-link.xml"/>
 
@@ -176,5 +179,29 @@
   <include relativeToChangelogFile="true" file="065-sample-type-terminology-mapping.xml"/>
   <include relativeToChangelogFile="true" file="066-sample-type-domain-enum-migration.xml"/>
   <include relativeToChangelogFile="true" file="067-sample-type-disposal-instructions.xml"/>
+
+  <!-- Local Simplified Chinese edition: expose the bundled zh UI messages. -->
+  <include relativeToChangelogFile="true" file="068-enable-simplified-chinese.xml"/>
+  <!-- China delivery defaults: patient identity, Unicode names and required QA controls. -->
+  <include relativeToChangelogFile="true" file="069-cn-delivery-safeguards.xml"/>
+  <!-- China delivery UX: route every result-entry link to the unified pending workbench. -->
+  <include relativeToChangelogFile="true" file="070-cn-enable-unified-results.xml"/>
+  <!-- China delivery master data: locale-scoped Hematology, Whole Blood and CBC names. -->
+  <include relativeToChangelogFile="true" file="071-cn-common-master-data-localization.xml"/>
+  <!-- China delivery core lab: sections, specimens, panels, biochemistry and CBC report names. -->
+  <include relativeToChangelogFile="true" file="072-cn-core-lab-master-data-localization.xml"/>
+  <!-- China delivery language profile: Simplified Chinese is the only active UI locale. -->
+  <include relativeToChangelogFile="true" file="073-cn-chinese-only-ui.xml"/>
+  <!-- China delivery workflow profile: clinical order entry only. -->
+  <include relativeToChangelogFile="true" file="074-cn-clinical-order-workflow.xml"/>
+  <!-- China delivery product identity: Chinese banner and default seed administrator name. -->
+  <include relativeToChangelogFile="true" file="075-cn-chinese-product-branding.xml"/>
+  <!-- China delivery master-data guard: referring facilities must come from the organization hierarchy. -->
+  <include relativeToChangelogFile="true" file="076-cn-clinical-master-data-guardrails.xml"/>
+  <!-- China delivery bootstrap: keep fresh installs usable without overwriting configured organizations. -->
+  <include relativeToChangelogFile="true" file="077-cn-clinical-organization-bootstrap.xml"/>
+  <!-- China delivery cleanup: remove the legacy literal empty short name from bootstrap organizations. -->
+  <include relativeToChangelogFile="true" file="078-cn-normalize-bootstrap-organization-short-names.xml"/>
+  <include relativeToChangelogFile="true" file="079-fhir-clinical-order-intake.xml"/>
 
 </databaseChangeLog>

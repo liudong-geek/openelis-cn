@@ -21,6 +21,8 @@ import org.openelisglobal.gender.valueholder.Gender;
 import org.openelisglobal.patient.action.IPatientUpdate.PatientUpdateStatus;
 import org.openelisglobal.patient.action.bean.PatientManagementInfo;
 import org.openelisglobal.patient.dao.PatientDAO;
+import org.openelisglobal.patient.form.PatientListItem;
+import org.openelisglobal.patient.form.PatientListResponse;
 import org.openelisglobal.patient.util.PatientUtil;
 import org.openelisglobal.patient.valueholder.Patient;
 import org.openelisglobal.patient.valueholder.PatientContact;
@@ -554,7 +556,15 @@ public class PatientServiceImpl extends AuditableBaseObjectServiceImpl<Patient, 
     @Override
     @Transactional(readOnly = true)
     public Patient getPatientBySubjectNumber(String subjectNumber) {
-        return getBaseObjectDAO().getPatientBySubjectNumber(subjectNumber);
+        if (GenericValidator.isBlankOrNull(subjectNumber) || GenericValidator.isBlankOrNull(PATIENT_SUBJECT_IDENTITY)) {
+            return null;
+        }
+        List<PatientIdentity> identities = patientIdentityService
+                .getPatientIdentitiesByValueAndType(subjectNumber.trim(), PATIENT_SUBJECT_IDENTITY);
+        if (identities == null || identities.isEmpty()) {
+            return null;
+        }
+        return getData(identities.get(0).getPatientId());
     }
 
     @Override
@@ -585,6 +595,27 @@ public class PatientServiceImpl extends AuditableBaseObjectServiceImpl<Patient, 
     @Transactional(readOnly = true)
     public List<Patient> getAllPatients() {
         return getBaseObjectDAO().getAllPatients();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PatientListResponse getPatientManagementList(int page, int pageSize) {
+        int safePage = Math.max(page, 1);
+        int safePageSize = Math.min(Math.max(pageSize, 10), 100);
+        int totalItems = getBaseObjectDAO().getPatientManagementCount();
+        int totalPages = totalItems == 0 ? 1 : (int) Math.ceil((double) totalItems / safePageSize);
+        safePage = Math.min(safePage, totalPages);
+        int offset = (safePage - 1) * safePageSize;
+
+        List<PatientListItem> patients = getBaseObjectDAO().getPatientManagementPage(offset, safePageSize).stream()
+                .map(patient -> new PatientListItem(patient.getId(), patient.getId(), getLastName(patient),
+                        getFirstName(patient), patient.getGender(),
+                        patient.getBirthDate() == null ? "" : getBirthdayForDisplay(patient),
+                        patient.getNationalId(), getPhone(patient), Boolean.TRUE.equals(patient.getIsMerged()),
+                        patient.getMergedIntoPatientId()))
+                .toList();
+
+        return new PatientListResponse(patients, safePage, safePageSize, totalItems, totalPages);
     }
 
     @Override

@@ -12,7 +12,6 @@ import {
   Column,
   Checkbox,
   FileUploader,
-  Tag,
   Section,
   Stack,
   Loading,
@@ -22,6 +21,7 @@ import {
   FilterableMultiSelect,
   Link,
 } from "@carbon/react";
+import Tag from "../common/LocalizedTag";
 import { Launch, Subtract, ArrowLeft, ArrowRight } from "@carbon/react/icons";
 import {
   getFromOpenElisServer,

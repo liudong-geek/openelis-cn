@@ -149,3 +149,13 @@ frontend/npm-test-*.log
 # Per-PR scratch session notes (never commit)
 PR-*-STATUS-REPORT.md
 volume/nce-attachments/
+
+# Frontend build output (never commit)
+frontend/dist/
+
+# Temporary test evidence (never commit)
+tmp/
+
+# Legacy conflicting duplicate copies (never commit)
+frontend/src/components/home/LandingPage 2.tsx
+frontend/src/components/reports/Index 2.jsx

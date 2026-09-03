@@ -46,7 +46,7 @@ import org.openelisglobal.test.valueholder.TestSection;
  * Copyright (C) CIRG, University of Washington, Seattle WA. All Rights
  * Reserved.
  */
-public class ValidationBacklogReport extends Report {
+public class ValidationBacklogReport extends Report implements SafeNonPatientReportCreator {
 
     private List<ValidationBacklogData> reportItems;
     private Map<String, TestBucket> sectionIdToBucketList;

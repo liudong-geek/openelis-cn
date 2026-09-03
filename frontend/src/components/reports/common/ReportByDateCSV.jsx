@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useContext, useEffect, useState } from "react";
 import {
   Form,
   FormLabel,
@@ -8,138 +8,148 @@ import {
   Button,
   Select,
   SelectItem,
-  Loading,
+  InlineLoading,
+  InlineNotification,
 } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
 import "../../Style.css";
-import { AlertDialog } from "../../common/CustomNotification";
 import CustomDatePicker from "../../common/CustomDatePicker";
 import config from "../../../config.json";
-import { encodeDate, getFromOpenElisServer } from "../../utils/Utils";
+import { getFromOpenElisServer } from "../../utils/Utils";
+import { ConfigurationContext } from "../../layout/Layout";
+import {
+  buildReportUrl,
+  isReportDateRangeValid,
+  openReportWindow,
+} from "./reportLaunch";
 
 const ReportByDateCSV = (props) => {
   const intl = useIntl();
-  const [loading, setLoading] = useState(false);
-  const [notificationVisible, setNotificationVisible] = useState(false);
+  const configuration = useContext(ConfigurationContext);
+  const dateLocale =
+    configuration?.configurationProperties?.DEFAULT_DATE_LOCALE || "fr-FR";
   const [statusOptions, setStatusOptions] = useState([]);
-
-  const [reportFormValues, setReportFormValues] = useState(() => {
-    if (props.report === "CIStudyExport") {
-      return {
-        startDate: null,
-        endDate: null,
-        error: null,
-        studyType: null,
-        dateType: null,
-      };
-    } else {
-      return {
-        startDate: null,
-        endDate: null,
-        error: null,
-        studyType: null,
-      };
-    }
+  const [optionsLoading, setOptionsLoading] = useState(true);
+  const [optionsError, setOptionsError] = useState(false);
+  const [launchError, setLaunchError] = useState(false);
+  const [reportFormValues, setReportFormValues] = useState({
+    startDate: "",
+    endDate: "",
+    error: "",
+    studyType: "",
+    dateType: "",
   });
 
-  const handleDatePickerChangeDate = (datePicker, date) => {
-    let updatedDate = encodeDate(date);
-    let obj = null;
-    switch (datePicker) {
-      case "startDate":
-        obj = {
-          ...reportFormValues,
-          startDate: updatedDate,
-        };
-        break;
-      case "endDate":
-        obj = {
-          ...reportFormValues,
-          endDate: updatedDate,
-        };
-        break;
-      default:
-    }
-    setReportFormValues(obj);
-  };
-
-  const handleSubmit = () => {
-    if (!reportFormValues.startDate || !reportFormValues.endDate) {
-      setReportFormValues({
-        ...reportFormValues,
-        error: intl.formatMessage({
-          id: "error.dateRange.start",
-          defaultMessage: "Please select Start and end date.",
-        }),
-      });
-      return;
-    }
-
-    if (!reportFormValues.studyType) {
-      setReportFormValues({
-        ...reportFormValues,
-        error: intl.formatMessage({
-          id: "error.report.csv.study",
-          defaultMessage: "Please select study type.",
-        }),
-      });
-      return;
-    }
-    if (props.report === "CIStudyExport" && !reportFormValues.dateType) {
-      setReportFormValues({
-        ...reportFormValues,
-        error: intl.formatMessage({
-          id: "error.report.csv.dateType",
-          defaultMessage: "Please select date type.",
-        }),
-      });
-      return;
-    }
-
-    setReportFormValues({
-      ...reportFormValues,
-      error: "",
-    });
-
-    setLoading(true);
-
-    const baseParams = `report=${props.report}&type=patient`;
-    const baseUrl = `${config.serverBaseUrl}/ReportPrint`;
-    const additionalParams =
-      props.report === "CIStudyExport"
-        ? `projectCode=${reportFormValues.studyType}&dateType=${reportFormValues.dateType}`
-        : `vlStudyType=${reportFormValues.studyType}`;
-    const url = `${baseUrl}?${baseParams}&upperDateRange=${reportFormValues.endDate}&lowerDateRange=${reportFormValues.startDate}&${additionalParams}`;
-
-    window.open(url, "_blank");
-    setLoading(false);
-    setNotificationVisible(true);
-  };
+  const loadStudyOptions = useCallback(
+    (signal = null) => {
+      setOptionsLoading(true);
+      setOptionsError(false);
+      setStatusOptions([]);
+      const endpoint =
+        props.report === "CIStudyExport"
+          ? "/rest/projects"
+          : "/rest/trendsprojects";
+      getFromOpenElisServer(
+        endpoint,
+        (data) => {
+          setOptionsLoading(false);
+          if (!Array.isArray(data)) {
+            setOptionsError(true);
+            setStatusOptions([]);
+            return;
+          }
+          setStatusOptions(data);
+        },
+        signal,
+      );
+    },
+    [props.report],
+  );
 
   useEffect(() => {
-    if (props.report === "CIStudyExport") {
-      getFromOpenElisServer("/rest/projects", (data) => {
-        setStatusOptions(data);
-        console.log("data", data);
-      });
-    } else {
-      getFromOpenElisServer("/rest/trendsprojects", (data) => {
-        setStatusOptions(data);
-      });
+    const controller = new AbortController();
+    setReportFormValues((current) => ({
+      ...current,
+      studyType: "",
+      dateType: "",
+      error: "",
+    }));
+    setLaunchError(false);
+    loadStudyOptions(controller.signal);
+    return () => controller.abort();
+  }, [loadStudyOptions]);
+
+  const handleDatePickerChangeDate = (datePicker, date) => {
+    setLaunchError(false);
+    setReportFormValues((current) => ({
+      ...current,
+      [datePicker]: date,
+      error: "",
+    }));
+  };
+
+  const handleSubmit = (event) => {
+    event?.preventDefault();
+    const { startDate, endDate, studyType, dateType } = reportFormValues;
+    if (!startDate || !endDate) {
+      setReportFormValues((current) => ({
+        ...current,
+        error: "reports.error.dateRangeRequired",
+      }));
+      return;
     }
-  }, [props]);
+    if (!isReportDateRangeValid(startDate, endDate, dateLocale)) {
+      setReportFormValues((current) => ({
+        ...current,
+        error: "reports.error.invalidDateRange",
+      }));
+      return;
+    }
+    if (!studyType) {
+      setReportFormValues((current) => ({
+        ...current,
+        error: "error.report.csv.study",
+      }));
+      return;
+    }
+    if (props.report === "CIStudyExport" && !dateType) {
+      setReportFormValues((current) => ({
+        ...current,
+        error: "error.report.csv.dateType",
+      }));
+      return;
+    }
+
+    const params = {
+      report: props.report,
+      type: "patient",
+      upperDateRange: endDate,
+      lowerDateRange: startDate,
+    };
+    if (props.report === "CIStudyExport") {
+      params.projectCode = studyType;
+      params.dateType = dateType;
+    } else {
+      params.vlStudyType = studyType;
+    }
+
+    setReportFormValues((current) => ({ ...current, error: "" }));
+    setLaunchError(
+      !openReportWindow(buildReportUrl(config.serverBaseUrl, params)),
+    );
+  };
 
   const dateOptions = [
     {
-      text: "Order Date",
+      text: intl.formatMessage({ id: "reports.query.dateType.order" }),
       value: "ORDER_DATE",
     },
     {
-      text: "Result Date",
+      text: intl.formatMessage({ id: "reports.query.dateType.result" }),
       value: "RESULT_DATE",
     },
     {
-      text: "Print Date",
+      text: intl.formatMessage({ id: "reports.query.dateType.print" }),
       value: "PRINT_DATE",
     },
   ];
@@ -152,29 +162,23 @@ const ReportByDateCSV = (props) => {
             <Section>
               <Section>
                 <h1>
-                  <FormattedMessage id={props.id} />
+                  <FormattedMessage id={props.id ?? props.report} />
                 </h1>
               </Section>
             </Section>
           </FormLabel>
         </Column>
       </Grid>
-      {notificationVisible && <AlertDialog />}
-      {loading && <Loading />}
-      <Grid fullWidth={true}>
-        <Column lg={16} md={6} sm={4}>
-          <Form>
-            <Grid fullWidth={true}>
+      <Grid fullWidth>
+        <Column lg={16} md={8} sm={4}>
+          <Form onSubmit={handleSubmit}>
+            <Grid fullWidth>
               <Column lg={4} md={4} sm={4}>
                 <CustomDatePicker
-                  key="startDate"
-                  id={"startDate"}
-                  labelText={intl.formatMessage({
-                    id: "eorder.date.start",
-                    defaultMessage: "Start Date",
-                  })}
-                  disallowFutureDate={true}
-                  autofillDate={true}
+                  id="startDate"
+                  labelText={intl.formatMessage({ id: "eorder.date.start" })}
+                  disallowFutureDate
+                  autofillDate
                   value={reportFormValues.startDate}
                   onChange={(date) =>
                     handleDatePickerChangeDate("startDate", date)
@@ -183,14 +187,10 @@ const ReportByDateCSV = (props) => {
               </Column>
               <Column lg={4} md={4} sm={4}>
                 <CustomDatePicker
-                  key="endDate"
-                  id={"endDate"}
-                  labelText={intl.formatMessage({
-                    id: "eorder.date.end",
-                    defaultMessage: "End Date",
-                  })}
-                  disallowFutureDate={true}
-                  autofillDate={true}
+                  id="endDate"
+                  labelText={intl.formatMessage({ id: "eorder.date.end" })}
+                  disallowFutureDate
+                  autofillDate
                   value={reportFormValues.endDate}
                   onChange={(date) =>
                     handleDatePickerChangeDate("endDate", date)
@@ -198,85 +198,164 @@ const ReportByDateCSV = (props) => {
                 />
               </Column>
               <Column lg={16}>
-                {" "}
                 <br />
               </Column>
               <Column lg={8} md={4} sm={4}>
-                <Select
-                  id="studyType"
-                  labelText={intl.formatMessage({
-                    id: "report.select.studttype",
-                  })}
-                  value={reportFormValues.studyType}
-                  onChange={(e) => {
-                    setReportFormValues({
-                      ...reportFormValues,
-                      studyType: e.target.value,
-                    });
-                  }}
-                >
-                  <SelectItem value="" text="Select Study Type" />
-
-                  {statusOptions.map((statusOption) => (
-                    <SelectItem
-                      key={statusOption.id}
-                      value={statusOption.id}
-                      text={statusOption.value}
+                {optionsLoading && (
+                  <InlineLoading
+                    description={intl.formatMessage({
+                      id: "reports.query.options.loading",
+                    })}
+                  />
+                )}
+                {optionsError && (
+                  <>
+                    <InlineNotification
+                      kind="error"
+                      lowContrast
+                      hideCloseButton
+                      title={intl.formatMessage({
+                        id: "reports.query.options.loadError.title",
+                      })}
+                      subtitle={intl.formatMessage({
+                        id: "reports.query.options.loadError.subtitle",
+                      })}
                     />
-                  ))}
-                </Select>
+                    <Button
+                      type="button"
+                      kind="tertiary"
+                      size="sm"
+                      onClick={() => loadStudyOptions()}
+                    >
+                      <FormattedMessage id="button.retry" />
+                    </Button>
+                  </>
+                )}
+                {!optionsLoading &&
+                  !optionsError &&
+                  statusOptions.length === 0 && (
+                    <InlineNotification
+                      kind="info"
+                      lowContrast
+                      hideCloseButton
+                      title={intl.formatMessage({
+                        id: "reports.query.options.empty",
+                      })}
+                    />
+                  )}
+                {!optionsLoading &&
+                  !optionsError &&
+                  statusOptions.length > 0 && (
+                    <Select
+                      id="studyType"
+                      labelText={intl.formatMessage({
+                        id: "report.select.studttype",
+                      })}
+                      value={reportFormValues.studyType}
+                      onChange={(event) => {
+                        const studyType = event.target.value;
+                        setLaunchError(false);
+                        setReportFormValues((current) => ({
+                          ...current,
+                          studyType,
+                          error: "",
+                        }));
+                      }}
+                    >
+                      <SelectItem
+                        value=""
+                        text={intl.formatMessage({
+                          id: "reports.query.study.placeholder",
+                        })}
+                      />
+                      {statusOptions.map((option) => (
+                        <SelectItem
+                          key={option.id}
+                          value={option.id}
+                          text={option.value}
+                        />
+                      ))}
+                    </Select>
+                  )}
               </Column>
               <Column lg={16}>
-                {" "}
                 <br />
               </Column>
-              <Column lg={8} md={4} sm={4}>
-                {props.report === "CIStudyExport" ? (
+              {props.report === "CIStudyExport" && (
+                <Column lg={8} md={4} sm={4}>
                   <Select
                     id="dateType"
                     labelText={intl.formatMessage({
                       id: "report.label.site.dateType",
                     })}
                     value={reportFormValues.dateType}
-                    onChange={(e) => {
-                      setReportFormValues({
-                        ...reportFormValues,
-                        dateType: e.target.value,
-                      });
+                    onChange={(event) => {
+                      const dateType = event.target.value;
+                      setLaunchError(false);
+                      setReportFormValues((current) => ({
+                        ...current,
+                        dateType,
+                        error: "",
+                      }));
                     }}
                   >
-                    <SelectItem value="" text="Select Date Type" />
-                    {dateOptions.map((dateOption) => (
+                    <SelectItem
+                      value=""
+                      text={intl.formatMessage({
+                        id: "reports.query.dateType.placeholder",
+                      })}
+                    />
+                    {dateOptions.map((option) => (
                       <SelectItem
-                        key={dateOption.value}
-                        value={dateOption.value}
-                        text={dateOption.text}
+                        key={option.value}
+                        value={option.value}
+                        text={option.text}
                       />
                     ))}
                   </Select>
-                ) : (
-                  <div></div>
-                )}
-              </Column>
+                </Column>
+              )}
             </Grid>
-            <br />
             <Section>
               <br />
-              {reportFormValues.error !== "" && (
-                <div style={{ color: "#c62828", margin: 4 }}>
-                  {reportFormValues.error}
-                </div>
+              {reportFormValues.error && (
+                <InlineNotification
+                  kind="error"
+                  lowContrast
+                  hideCloseButton
+                  title={intl.formatMessage({
+                    id: "reports.query.validation.title",
+                  })}
+                  subtitle={intl.formatMessage({
+                    id: reportFormValues.error,
+                  })}
+                />
               )}
-
+              {launchError && (
+                <InlineNotification
+                  kind="error"
+                  lowContrast
+                  hideCloseButton
+                  title={intl.formatMessage({
+                    id: "reports.query.error.title",
+                  })}
+                  subtitle={intl.formatMessage({
+                    id: "reports.query.popupBlocked",
+                  })}
+                />
+              )}
               <Button
                 data-cy="printableVersion"
-                type="button"
-                onClick={handleSubmit}
+                type="submit"
+                disabled={
+                  !reportFormValues.startDate ||
+                  !reportFormValues.endDate ||
+                  optionsLoading ||
+                  optionsError ||
+                  statusOptions.length === 0
+                }
               >
-                <FormattedMessage
-                  id="label.button.generatePrintableVersion"
-                  defaultMessage="Generate printable version"
-                />
+                <FormattedMessage id="label.button.generatePrintableVersion" />
               </Button>
             </Section>
           </Form>

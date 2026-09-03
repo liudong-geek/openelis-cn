@@ -40,7 +40,7 @@ import org.openelisglobal.patient.valueholder.Patient;
 import org.openelisglobal.reports.action.implementation.reportBeans.ErrorMessages;
 import org.openelisglobal.reports.form.ReportForm;
 
-public abstract class CollectionReport implements IReportCreator {
+public abstract class CollectionReport implements ResultsScopedReportCreator.PatientCollectionSelection {
     protected String requestedReport;
     protected String systemUserId;
 

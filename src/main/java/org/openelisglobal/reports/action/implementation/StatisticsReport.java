@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import net.sf.jasperreports.engine.JRDataSource;
@@ -33,8 +34,12 @@ import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.test.service.TestSectionService;
 import org.openelisglobal.test.service.TestService;
 import org.openelisglobal.test.valueholder.Test;
+import org.openelisglobal.test.valueholder.TestSection;
 
-public class StatisticsReport extends IndicatorReport implements IReportCreator, IReportParameterSetter {
+public class StatisticsReport extends IndicatorReport
+        implements IReportCreator, IReportParameterSetter, SafeNonPatientReportCreator {
+
+    private static final int EARLIEST_SUPPORTED_YEAR = 2009;
 
     private List<StatisticsReportData> reportItems;
     private String year;
@@ -95,51 +100,42 @@ public class StatisticsReport extends IndicatorReport implements IReportCreator,
     public void createReportData(ReportForm form) {
         AnalysisService analysisService = SpringContext.getBean(AnalysisService.class);
         TestService testService = SpringContext.getBean(TestService.class);
-        Date firstDate = DateUtil.getFistDayOfTheYear(Integer.valueOf(form.getUpperYear()));
-
-        Date lastDate = DateUtil.getLastDayOfTheYear(Integer.valueOf(form.getUpperYear()));
-        List<Test> testList = testService.getAllActiveTests(false);
-        List<String> testSectionIds = form.getLabSections().stream().collect(Collectors.toList());
+        TestSectionService testSectionService = SpringContext.getBean(TestSectionService.class);
+        int selectedYear = resolveReportYear(form == null ? null : form.getUpperYear());
+        Date firstDate = DateUtil.getFistDayOfTheYear(selectedYear);
+        Date lastDate = DateUtil.getLastDayOfTheYear(selectedYear);
+        List<Test> testList = safeList(testService.getAllActiveTests(false));
+        List<String> testSectionIds = resolveLabSectionIds(form == null ? null : form.getLabSections(),
+                safeList(testSectionService.getAllActiveTestSections()));
+        List<OrderPriority> selectedPriorities = resolvePriorities(form == null ? null : form.getPriority());
+        List<ReceptionTime> selectedReceptionTimes = resolveReceptionTimes(
+                form == null ? null : form.getReceptionTime());
         reportItems = new ArrayList<>();
-        testList.forEach(test -> {
-            List<Analysis> yearAnalysis = new ArrayList();
+        testList.stream().filter(Objects::nonNull).forEach(test -> {
             // get all anaysis collected with in the specifed year m for a specific test and
             // matching specific test sections
-            yearAnalysis = analysisService.getAnalysisByTestIdAndTestSectionIdsAndStartedInDateRange(
-                    DateUtil.convertDateTimeToSqlDate(firstDate), DateUtil.convertDateTimeToSqlDate(lastDate),
-                    test.getId(), testSectionIds);
+            List<Analysis> yearAnalysis = safeList(
+                    analysisService.getAnalysisByTestIdAndTestSectionIdsAndStartedInDateRange(
+                            DateUtil.convertDateTimeToSqlDate(firstDate), DateUtil.convertDateTimeToSqlDate(lastDate),
+                            test.getId(), testSectionIds));
 
             // filter only validated analysis
-            yearAnalysis = yearAnalysis.stream().filter(analysis -> SpringContext.getBean(IStatusService.class)
-                    .matches(analysis.getStatusId(), AnalysisStatus.Finalized)).collect(Collectors.toList());
+            yearAnalysis = yearAnalysis.stream().filter(Objects::nonNull)
+                    .filter(analysis -> SpringContext.getBean(IStatusService.class).matches(analysis.getStatusId(),
+                            AnalysisStatus.Finalized))
+                    .collect(Collectors.toList());
 
             // filter the analysis by priority
-            if (form.getPriority() != null || form.getPriority().size() > 0) {
-                if (form.getPriority().size() < OrderPriority.values().length) {
-                    yearAnalysis = yearAnalysis.stream().filter(
-                            analysis -> form.getPriority().contains(analysis.getSampleItem().getSample().getPriority()))
-                            .collect(Collectors.toList());
-                }
+            if (selectedPriorities.size() < OrderPriority.values().length) {
+                yearAnalysis = yearAnalysis.stream()
+                        .filter(analysis -> matchesPriority(analysis, selectedPriorities)).collect(Collectors.toList());
             }
 
             // filter the analysis by Reception time
-            if (form.getReceptionTime() != null) {
-                if (form.getReceptionTime().size() < ReceptionTime.values().length) {
-                    for (ReceptionTime time : form.getReceptionTime()) {
-                        if (time.equals(ReceptionTime.NORMAL_WORK_HOURS)) {
-                            // 09:00:00-15:30:00
-                            yearAnalysis = yearAnalysis.stream().filter(analysis -> analysis.getEnteredDate() != null)
-                                    .filter(analysis -> checkTimeRange(analysis.getEnteredDate(), "09:00:00",
-                                            "15:30:59"))
-                                    .collect(Collectors.toList());
-                        } else if (time.equals(ReceptionTime.OUT_OF_NORMAL_WORK_HOURS)) {
-                            // 15:31:00 - 08:59:00
-                            yearAnalysis = yearAnalysis.stream().filter(analysis -> analysis.getEnteredDate() != null)
-                                    .filter(analysis -> checkOutOfWorkingTimeRange(analysis.getEnteredDate()))
-                                    .collect(Collectors.toList());
-                        }
-                    }
-                }
+            if (selectedReceptionTimes.size() < ReceptionTime.values().length) {
+                yearAnalysis = yearAnalysis.stream().filter(analysis -> analysis.getEnteredDate() != null)
+                        .filter(analysis -> matchesReceptionTime(analysis.getEnteredDate(), selectedReceptionTimes))
+                        .collect(Collectors.toList());
             }
             // group tests and sample by Month
 
@@ -170,69 +166,57 @@ public class StatisticsReport extends IndicatorReport implements IReportCreator,
             Set<String> decSamples = new HashSet<>();
 
             if (!yearAnalysis.isEmpty()) {
-                yearAnalysis.forEach(analysis -> {
+                yearAnalysis.stream().filter(analysis -> analysis.getStartedDate() != null).forEach(analysis -> {
                     // Test test = analysis.getTest();
                     Calendar cal = Calendar.getInstance();
                     cal.setTime(analysis.getStartedDate());
                     switch (cal.get(Calendar.MONTH)) {
                     case 0: {
-                        janTests.add(analysis.getId());
-                        janSamples.add(analysis.getSampleItem().getSample().getId());
+                        addAnalysisAndSampleIds(analysis, janTests, janSamples);
                         break;
                     }
                     case 1: {
-                        febTests.add(analysis.getId());
-                        febSamples.add(analysis.getSampleItem().getSample().getId());
+                        addAnalysisAndSampleIds(analysis, febTests, febSamples);
                         break;
                     }
                     case 2: {
-                        marTests.add(analysis.getId());
-                        marSamples.add(analysis.getSampleItem().getSample().getId());
+                        addAnalysisAndSampleIds(analysis, marTests, marSamples);
                         break;
                     }
                     case 3: {
-                        aprTests.add(analysis.getId());
-                        aprSamples.add(analysis.getSampleItem().getSample().getId());
+                        addAnalysisAndSampleIds(analysis, aprTests, aprSamples);
                         break;
                     }
                     case 4: {
-                        mayTests.add(analysis.getId());
-                        maySamples.add(analysis.getSampleItem().getSample().getId());
+                        addAnalysisAndSampleIds(analysis, mayTests, maySamples);
                         break;
                     }
                     case 5: {
-                        junTests.add(analysis.getId());
-                        junSamples.add(analysis.getSampleItem().getSample().getId());
+                        addAnalysisAndSampleIds(analysis, junTests, junSamples);
                         break;
                     }
                     case 6: {
-                        julTests.add(analysis.getId());
-                        julSamples.add(analysis.getSampleItem().getSample().getId());
+                        addAnalysisAndSampleIds(analysis, julTests, julSamples);
                         break;
                     }
                     case 7: {
-                        augTests.add(analysis.getId());
-                        augSamples.add(analysis.getSampleItem().getSample().getId());
+                        addAnalysisAndSampleIds(analysis, augTests, augSamples);
                         break;
                     }
                     case 8: {
-                        sepTests.add(analysis.getId());
-                        sepSamples.add(analysis.getSampleItem().getSample().getId());
+                        addAnalysisAndSampleIds(analysis, sepTests, sepSamples);
                         break;
                     }
                     case 9: {
-                        octTests.add(analysis.getId());
-                        octSamples.add(analysis.getSampleItem().getSample().getId());
+                        addAnalysisAndSampleIds(analysis, octTests, octSamples);
                         break;
                     }
                     case 10: {
-                        novTests.add(analysis.getId());
-                        novSamples.add(analysis.getSampleItem().getSample().getId());
+                        addAnalysisAndSampleIds(analysis, novTests, novSamples);
                         break;
                     }
                     case 11: {
-                        decTests.add(analysis.getId());
-                        decSamples.add(analysis.getSampleItem().getSample().getId());
+                        addAnalysisAndSampleIds(analysis, decTests, decSamples);
                         break;
                     }
                     }
@@ -328,20 +312,26 @@ public class StatisticsReport extends IndicatorReport implements IReportCreator,
 
     private void inntialiseReportParams(ReportForm form) {
         TestSectionService testSectionService = SpringContext.getBean(TestSectionService.class);
-        String startDate = DateUtil
-                .formatDateAsText(DateUtil.getFistDayOfTheYear(Integer.valueOf(form.getUpperYear())));
-        String endDate = DateUtil.formatDateAsText(DateUtil.getLastDayOfTheYear(Integer.valueOf(form.getUpperYear())));
+        int selectedYear = resolveReportYear(form == null ? null : form.getUpperYear());
+        List<OrderPriority> selectedPriorities = resolvePriorities(form == null ? null : form.getPriority());
+        List<ReceptionTime> selectedReceptionTimes = resolveReceptionTimes(
+                form == null ? null : form.getReceptionTime());
+        List<String> selectedLabSections = resolveLabSectionIds(form == null ? null : form.getLabSections(),
+                safeList(testSectionService.getAllActiveTestSections()));
+        String startDate = DateUtil.formatDateAsText(DateUtil.getFistDayOfTheYear(selectedYear));
+        String endDate = DateUtil.formatDateAsText(DateUtil.getLastDayOfTheYear(selectedYear));
         year = startDate + " - " + endDate;
-        priority = form.getPriority().stream().map(priority -> getPriorityMap().get(priority.name()).toString())
+        priority = selectedPriorities.stream().map(selectedPriority -> getPriorityMap().get(selectedPriority.name()))
+                .filter(Objects::nonNull).collect(Collectors.joining(" , "));
+        labUnits = selectedLabSections.stream().map(testSectionService::getTestSectionById).filter(Objects::nonNull)
+                .map(testSection -> getLocalizedSectionName(testSectionService, testSection))
+                .filter(name -> name != null && !name.isBlank())
                 .collect(Collectors.joining(" , "));
-        labUnits = form.getLabSections().stream()
-                .map(labunitId -> testSectionService.getTestSectionById(labunitId).getLocalizedName())
-                .collect(Collectors.joining(" , "));
-        receptionTime = form.getReceptionTime().stream().map(time -> getReceptionTimeMap().get(time.name()).toString())
-                .collect(Collectors.joining(" ,"));
+        receptionTime = selectedReceptionTimes.stream().map(time -> getReceptionTimeMap().get(time.name()))
+                .filter(Objects::nonNull).collect(Collectors.joining(" ,"));
     }
 
-    private Map getReceptionTimeMap() {
+    private Map<String, String> getReceptionTimeMap() {
         Map<String, String> timeMap = new HashMap<>();
         for (IdValuePair value : getReceptionTimeList()) {
             timeMap.put(value.getId(), value.getValue());
@@ -349,11 +339,79 @@ public class StatisticsReport extends IndicatorReport implements IReportCreator,
         return timeMap;
     }
 
-    private Map getPriorityMap() {
+    private Map<String, String> getPriorityMap() {
         Map<String, String> prioritMap = new HashMap<>();
         for (IdValuePair value : DisplayListService.getInstance().getList(ListType.ORDER_PRIORITY)) {
             prioritMap.put(value.getId(), value.getValue());
         }
         return prioritMap;
+    }
+
+    static int resolveReportYear(String requestedYear) {
+        int currentYear = DateUtil.getCurrentYear();
+        if (requestedYear == null || requestedYear.isBlank()) {
+            return currentYear;
+        }
+        try {
+            int parsedYear = Integer.parseInt(requestedYear);
+            return parsedYear >= EARLIEST_SUPPORTED_YEAR && parsedYear <= currentYear ? parsedYear : currentYear;
+        } catch (NumberFormatException e) {
+            return currentYear;
+        }
+    }
+
+    static List<OrderPriority> resolvePriorities(List<OrderPriority> requestedPriorities) {
+        List<OrderPriority> priorities = requestedPriorities == null ? Collections.emptyList()
+                : requestedPriorities.stream().filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        return priorities.isEmpty() ? List.of(OrderPriority.values()) : priorities;
+    }
+
+    static List<ReceptionTime> resolveReceptionTimes(List<ReceptionTime> requestedReceptionTimes) {
+        List<ReceptionTime> receptionTimes = requestedReceptionTimes == null ? Collections.emptyList()
+                : requestedReceptionTimes.stream().filter(Objects::nonNull).distinct().collect(Collectors.toList());
+        return receptionTimes.isEmpty() ? List.of(ReceptionTime.values()) : receptionTimes;
+    }
+
+    static List<String> resolveLabSectionIds(List<String> requestedLabSectionIds,
+            List<TestSection> activeTestSections) {
+        List<String> selectedIds = requestedLabSectionIds == null ? Collections.emptyList()
+                : requestedLabSectionIds.stream().filter(id -> id != null && !id.isBlank()).distinct()
+                        .collect(Collectors.toList());
+        if (!selectedIds.isEmpty()) {
+            return selectedIds;
+        }
+        return safeList(activeTestSections).stream().filter(Objects::nonNull).map(TestSection::getId)
+                .filter(id -> id != null && !id.isBlank()).distinct().collect(Collectors.toList());
+    }
+
+    private static <T> List<T> safeList(List<T> values) {
+        return values == null ? Collections.emptyList() : values;
+    }
+
+    private static boolean matchesPriority(Analysis analysis, List<OrderPriority> selectedPriorities) {
+        return analysis.getSampleItem() != null && analysis.getSampleItem().getSample() != null
+                && selectedPriorities.contains(analysis.getSampleItem().getSample().getPriority());
+    }
+
+    private boolean matchesReceptionTime(Timestamp enteredDate, List<ReceptionTime> selectedReceptionTimes) {
+        return (selectedReceptionTimes.contains(ReceptionTime.NORMAL_WORK_HOURS)
+                && checkTimeRange(enteredDate, "09:00:00", "15:30:59"))
+                || (selectedReceptionTimes.contains(ReceptionTime.OUT_OF_NORMAL_WORK_HOURS)
+                        && checkOutOfWorkingTimeRange(enteredDate));
+    }
+
+    private static void addAnalysisAndSampleIds(Analysis analysis, Set<String> analysisIds, Set<String> sampleIds) {
+        if (analysis.getId() != null) {
+            analysisIds.add(analysis.getId());
+        }
+        if (analysis.getSampleItem() != null && analysis.getSampleItem().getSample() != null
+                && analysis.getSampleItem().getSample().getId() != null) {
+            sampleIds.add(analysis.getSampleItem().getSample().getId());
+        }
+    }
+
+    private static String getLocalizedSectionName(TestSectionService testSectionService, TestSection testSection) {
+        String localizedName = testSectionService.getUserLocalizedTesSectionName(testSection);
+        return localizedName == null || localizedName.isBlank() ? testSection.getTestSectionName() : localizedName;
     }
 }

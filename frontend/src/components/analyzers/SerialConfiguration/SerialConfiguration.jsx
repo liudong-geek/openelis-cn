@@ -292,7 +292,7 @@ const SerialConfiguration = ({
             onChange={(e) => handleFieldChange("portName", e.target.value)}
             invalid={!!errors.portName}
             invalidText={errors.portName}
-            placeholder="/dev/ttyUSB0 or COM3"
+            placeholder="/dev/ttyUSB0 或 COM3"
             required
           />
 

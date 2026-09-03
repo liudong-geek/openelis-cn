@@ -27,12 +27,15 @@ const StorageLocationModal = ({ open, onClose, onSave }) => {
   const [error, setError] = useState(null);
 
   const locationTypes = [
-    { id: "ROOM", text: "Room" },
-    { id: "REFRIGERATOR", text: "Refrigerator" },
-    { id: "FREEZER", text: "Freezer" },
-    { id: "SHELF", text: "Shelf" },
-    { id: "DRAWER", text: "Drawer" },
-    { id: "CABINET", text: "Cabinet" },
+    { id: "ROOM", text: intl.formatMessage({ id: "storage.type.room" }) },
+    {
+      id: "REFRIGERATOR",
+      text: intl.formatMessage({ id: "storage.type.refrigerator" }),
+    },
+    { id: "FREEZER", text: intl.formatMessage({ id: "storage.type.freezer" }) },
+    { id: "SHELF", text: intl.formatMessage({ id: "storage.type.shelf" }) },
+    { id: "DRAWER", text: intl.formatMessage({ id: "storage.type.drawer" }) },
+    { id: "CABINET", text: intl.formatMessage({ id: "storage.type.cabinet" }) },
   ];
 
   const handleChange = (field, value) => {
@@ -42,12 +45,12 @@ const StorageLocationModal = ({ open, onClose, onSave }) => {
 
   const validate = () => {
     if (!formData.name?.trim()) {
-      setError("Please enter a location name");
+      setError(intl.formatMessage({ id: "storage.validation.name" }));
       return false;
     }
 
     if (!formData.locationType) {
-      setError("Please select a location type");
+      setError(intl.formatMessage({ id: "storage.validation.type" }));
       return false;
     }
 
@@ -55,9 +58,7 @@ const StorageLocationModal = ({ open, onClose, onSave }) => {
       const min = parseFloat(formData.temperatureMin);
       const max = parseFloat(formData.temperatureMax);
       if (!isNaN(min) && !isNaN(max) && min > max) {
-        setError(
-          "Minimum temperature cannot be greater than maximum temperature",
-        );
+        setError(intl.formatMessage({ id: "storage.validation.temperature" }));
         return false;
       }
     }
@@ -102,7 +103,7 @@ const StorageLocationModal = ({ open, onClose, onSave }) => {
       onSave(newLocation);
     } catch (err) {
       console.error("Error creating storage location:", err);
-      setError(err.message || "Error creating storage location");
+      setError(intl.formatMessage({ id: "storage.location.create.error" }));
     } finally {
       setSaving(false);
     }
@@ -144,7 +145,9 @@ const StorageLocationModal = ({ open, onClose, onSave }) => {
               <span style={{ color: "#da1e28" }}> *</span>
             </>
           }
-          placeholder="e.g., Cold Storage Room 1"
+          placeholder={intl.formatMessage({
+            id: "storage.location.name.placeholder",
+          })}
           value={formData.name}
           onChange={(e) => handleChange("name", e.target.value)}
           invalid={error && !formData.name?.trim()}
@@ -153,7 +156,9 @@ const StorageLocationModal = ({ open, onClose, onSave }) => {
         <TextInput
           id="locationCode"
           labelText={intl.formatMessage({ id: "storage.location.code" })}
-          placeholder="e.g., ROOM-001 (optional)"
+          placeholder={intl.formatMessage({
+            id: "storage.location.code.placeholder",
+          })}
           value={formData.locationCode}
           onChange={(e) => handleChange("locationCode", e.target.value)}
         />
@@ -166,7 +171,9 @@ const StorageLocationModal = ({ open, onClose, onSave }) => {
               <span style={{ color: "#da1e28" }}> *</span>
             </>
           }
-          label="Select location type"
+          label={intl.formatMessage({
+            id: "storage.location.type.placeholder",
+          })}
           items={locationTypes}
           itemToString={(item) => (item ? item.text : "")}
           selectedItem={locationTypes.find(
@@ -213,7 +220,9 @@ const StorageLocationModal = ({ open, onClose, onSave }) => {
           labelText={intl.formatMessage({
             id: "storage.location.description",
           })}
-          placeholder="Optional description or notes"
+          placeholder={intl.formatMessage({
+            id: "storage.location.description.placeholder",
+          })}
           value={formData.description}
           onChange={(e) => handleChange("description", e.target.value)}
           rows={3}

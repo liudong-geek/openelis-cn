@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { getFromOpenElisServer } from "../utils/Utils";
+import { navigateToInternalPath } from "../utils/NavigationUtils";
 import {
   Tile,
   DataTable,
@@ -86,7 +87,9 @@ const ProgramDashboard = () => {
   };
 
   const handleRowClick = (programSampleId) => {
-    window.location.href = `/programView/${programSampleId}`;
+    navigateToInternalPath(
+      `/programView/${encodeURIComponent(programSampleId)}`,
+    );
   };
 
   useEffect(() => {

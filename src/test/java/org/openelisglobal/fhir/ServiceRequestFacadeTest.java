@@ -19,10 +19,12 @@ import org.openelisglobal.BaseWebContextSensitiveTest;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.provider.validation.AccessionNumberValidatorFactory;
+import org.openelisglobal.dataexchange.fhir.FhirConfig;
 import org.openelisglobal.common.provider.validation.IAccessionNumberGenerator;
 import org.openelisglobal.common.provider.validation.IAccessionNumberValidator;
 import org.openelisglobal.common.provider.validation.IAccessionNumberValidator.ValidationResults;
 import org.openelisglobal.fhir.providers.ServiceRequestProvider;
+import org.openelisglobal.fhir.service.FhirOrderIntakeService;
 import org.openelisglobal.localization.service.LocalizationService;
 import org.openelisglobal.localization.valueholder.Localization;
 import org.openelisglobal.panel.service.PanelService;
@@ -33,6 +35,8 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockServletConfig;
 import org.springframework.mock.web.MockServletContext;
+import org.springframework.test.util.AopTestUtils;
+import org.springframework.test.util.ReflectionTestUtils;
 
 public class ServiceRequestFacadeTest extends BaseWebContextSensitiveTest {
 
@@ -52,6 +56,10 @@ public class ServiceRequestFacadeTest extends BaseWebContextSensitiveTest {
 
     @Autowired
     private AnalysisService analysisService;
+    @Autowired
+    private FhirConfig fhirConfig;
+    @Autowired
+    private FhirOrderIntakeService intakeService;
 
     private RestfulServer fhirServlet;
     private ObjectMapper objectMapper;
@@ -65,12 +73,17 @@ public class ServiceRequestFacadeTest extends BaseWebContextSensitiveTest {
 
         Mockito.when(mockValidator.validFormat(Mockito.anyString(), Mockito.anyBoolean()))
                 .thenReturn(ValidationResults.SUCCESS);
+        Mockito.when(mockValidator.checkAccessionNumberValidity(Mockito.anyString(), Mockito.nullable(String.class),
+                Mockito.nullable(String.class), Mockito.nullable(String.class)))
+                .thenReturn(ValidationResults.SUCCESS);
 
         Mockito.when(mockValidator.getMaxAccessionLength()).thenReturn(10);
         Mockito.when(mockValidator.getMinAccessionLength()).thenReturn(5);
 
         Mockito.when(mockGenerator.getChangeableLength()).thenReturn(5);
         Mockito.when(mockGenerator.getInvarientLength()).thenReturn(5);
+        Mockito.when(mockGenerator.getNextAccessionNumber(Mockito.isNull(), Mockito.eq(true)))
+                .thenReturn("DEV2600001");
 
         Mockito.when(mockFactory.getValidator(Mockito.any())).thenReturn(mockValidator);
         Mockito.when(mockFactory.getGenerator(Mockito.any())).thenReturn(mockGenerator);
@@ -78,6 +91,12 @@ public class ServiceRequestFacadeTest extends BaseWebContextSensitiveTest {
         Field field = AccessionNumberUtil.class.getDeclaredField("accessionNumberValidatorFactory");
         field.setAccessible(true);
         field.set(null, mockFactory);
+
+        // AppTestConfig intentionally supplies a mock FhirContext for legacy tests.
+        // This facade exercises the real JSON persistence/idempotency path, so use
+        // the same real R4 codec that production provides.
+        FhirOrderIntakeService targetIntakeService = AopTestUtils.getTargetObject(intakeService);
+        ReflectionTestUtils.setField(targetIntakeService, "context", FhirContext.forR4Cached());
 
         fhirServlet = new RestfulServer(FhirContext.forR4());
         fhirServlet.setResourceProviders(Arrays.asList(serviceRequestProvider));
@@ -89,6 +108,12 @@ public class ServiceRequestFacadeTest extends BaseWebContextSensitiveTest {
         objectMapper = new ObjectMapper();
         executeDataSetWithStateManagement("testdata/facade-servicerequest.xml");
         ensureReferenceTables("PATIENT", "PERSON", "PATIENT_IDENTITY", "sample_human");
+        // DBUnit fixtures use explicit primary keys after RESTART IDENTITY. Keep the
+        // sequences used by the real order-entry transaction ahead of those rows.
+        resyncSequence("sample_seq", "sample");
+        resyncSequence("sample_human_seq", "sample_human");
+        resyncSequence("sample_requester_seq", "sample_requester");
+        resyncSequence("sample_barcode_info_seq", "sample_barcode_info");
     }
 
     @Test
@@ -97,7 +122,7 @@ public class ServiceRequestFacadeTest extends BaseWebContextSensitiveTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         fhirServlet.service(request, response);
 
-        assertEquals(200, response.getStatus());
+        assertEquals(response.getContentAsString(), 200, response.getStatus());
 
         JsonNode jsonResponse = objectMapper.readTree(response.getContentAsString());
 
@@ -114,7 +139,7 @@ public class ServiceRequestFacadeTest extends BaseWebContextSensitiveTest {
 
         fhirServlet.service(request, response);
 
-        assertEquals(404, response.getStatus());
+        assertEquals(response.getContentAsString(), 404, response.getStatus());
 
         JsonNode jsonResponse = objectMapper.readTree(response.getContentAsString());
         assertEquals("OperationOutcome", jsonResponse.get("resourceType").asText());
@@ -151,9 +176,7 @@ public class ServiceRequestFacadeTest extends BaseWebContextSensitiveTest {
     public void createServiceRequest_shouldReturnCreatedServiceRequest() throws Exception {
         cleanRowsInCurrentConnection(new String[] { "analysis", });
         String subjectUUID = "b479ab79-5f53-4d1f-bc9b-10f19ce04635";
-        String specimenUUID = "68438220-5cef-44c4-9e6f-9f88e6b93270";
-        String practitionerUUID = "550e8400-e29b-41d4-a716-446655441004";
-        String locationUUID = "68438220-5cef-44c4-9e6f-9f88e6b93287";
+        String organizationUUID = "68438220-5cef-44c4-9e6f-9f88e6b93287";
         String loinc = "123456";
         String loincDisplay = "Blood Test";
         MockHttpServletRequest request = buildFhirRequest("POST", "/ServiceRequest");
@@ -163,6 +186,11 @@ public class ServiceRequestFacadeTest extends BaseWebContextSensitiveTest {
                 "status": "active",
                 "intent": "order",
                 "priority": "routine",
+
+                "identifier": [{
+                    "system": "https://his.example.test/orders",
+                    "value": "FHIR-FACADE-ORDER-1"
+                }],
 
                 "code": {
                     "coding": [
@@ -181,20 +209,24 @@ public class ServiceRequestFacadeTest extends BaseWebContextSensitiveTest {
                 "authoredOn": "2023-02-03T00:00:00Z",
 
                 "requester": {
-                    "reference": "Practitioner/%s"
+                    "reference": "Organization/%s"
                 },
-
-                "locationReference": [
-                    {
-                    "reference": "Location/%s"
-                    }
-                ],
 
                 "specimen": [
                     {
-                    "reference": "Specimen/%s"
+                    "reference": "#requested-specimen"
                     }
                 ],
+
+                "contained": [{
+                    "resourceType": "Specimen",
+                    "id": "requested-specimen",
+                    "subject": { "reference": "Patient/%s" },
+                    "type": { "coding": [{
+                        "system": "%s/sampleType",
+                        "code": "SERUM"
+                    }] }
+                }],
 
                 "note": [
                     {
@@ -202,7 +234,8 @@ public class ServiceRequestFacadeTest extends BaseWebContextSensitiveTest {
                     }
                 ]
                 }
-                """.formatted(loinc, loincDisplay, subjectUUID, practitionerUUID, locationUUID, specimenUUID);
+                """.formatted(loinc, loincDisplay, subjectUUID, organizationUUID, subjectUUID,
+                        fhirConfig.getOeFhirSystem());
         request.setContentType("application/json");
         request.setContent(jsonBody.getBytes());
 
@@ -210,14 +243,14 @@ public class ServiceRequestFacadeTest extends BaseWebContextSensitiveTest {
 
         fhirServlet.service(request, response);
 
-        assertEquals(201, response.getStatus());
+        assertEquals(response.getContentAsString(), 201, response.getStatus());
 
         JsonNode jsonResponse = objectMapper.readTree(response.getContentAsString());
         assertEquals("ServiceRequest", jsonResponse.get("resourceType").asText());
     }
 
     @Test
-    public void createServiceRequest_shouldReturnCreatedServiceRequestGivenTestName() throws Exception {
+    public void createServiceRequest_withDisplayOnly_shouldRejectUnmappedTestName() throws Exception {
         cleanRowsInCurrentConnection(new String[] { "analysis", });
         String subjectUUID = "b479ab79-5f53-4d1f-bc9b-10f19ce04635";
         String specimenUUID = "68438220-5cef-44c4-9e6f-9f88e6b93270";
@@ -277,10 +310,10 @@ public class ServiceRequestFacadeTest extends BaseWebContextSensitiveTest {
 
         fhirServlet.service(request, response);
 
-        assertEquals(201, response.getStatus());
+        assertEquals(422, response.getStatus());
 
         JsonNode jsonResponse = objectMapper.readTree(response.getContentAsString());
-        assertEquals("ServiceRequest", jsonResponse.get("resourceType").asText());
+        assertEquals("OperationOutcome", jsonResponse.get("resourceType").asText());
     }
 
     @Test

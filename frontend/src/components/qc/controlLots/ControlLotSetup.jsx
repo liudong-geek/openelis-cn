@@ -12,7 +12,7 @@
  * - Association with analyzer/test combinations
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   Grid,
   Column,
@@ -37,12 +37,25 @@ import {
 } from "../../utils/Utils";
 import StatisticsConfigSection from "./StatisticsConfigSection";
 import PageTitle from "../../common/PageTitle/PageTitle";
+import { ConfigurationContext } from "../../layout/Layout";
+import {
+  formatDateForLocale,
+  getCarbonDateFormat,
+  getDatePickerPlaceholderMessage,
+  parseDateForLocale,
+} from "../../common/dateLocaleUtils";
 import "./ControlLotSetup.css";
 
 const ControlLotSetup = () => {
   const intl = useIntl();
   const history = useHistory();
   const { id: lotId } = useParams();
+  const { configurationProperties = {} } =
+    useContext(ConfigurationContext) || {};
+  const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "zh-CN";
+  const datePickerPlaceholder = intl.formatMessage(
+    getDatePickerPlaceholderMessage(dateLocale),
+  );
 
   const isEditMode = !!lotId;
 
@@ -155,13 +168,10 @@ const ControlLotSetup = () => {
         controlMaterial: existingLot.productName || "",
         controlLevel: existingLot.controlLevel || "",
         expirationDate: existingLot.expirationDate
-          ? (() => {
-              const d = new Date(existingLot.expirationDate);
-              const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-              const dd = String(d.getUTCDate()).padStart(2, "0");
-              const yyyy = d.getUTCFullYear();
-              return `${mm}/${dd}/${yyyy}`;
-            })()
+          ? formatDateForLocale(
+              new Date(existingLot.expirationDate),
+              dateLocale,
+            )
           : "",
         analyzerId:
           existingLot.instrumentId != null
@@ -194,8 +204,20 @@ const ControlLotSetup = () => {
       controlLevel: values.controlLevel,
       expirationDate: values.expirationDate
         ? (() => {
-            const [mm, dd, yyyy] = values.expirationDate.split("/");
-            return new Date(`${yyyy}-${mm}-${dd}T12:00:00`).toISOString();
+            const parsedDate = parseDateForLocale(
+              values.expirationDate,
+              dateLocale,
+            );
+            return parsedDate
+              ? new Date(
+                  Date.UTC(
+                    parsedDate.year,
+                    parsedDate.month - 1,
+                    parsedDate.day,
+                    12,
+                  ),
+                ).toISOString()
+              : undefined;
           })()
         : undefined,
       instrumentId: values.analyzerId
@@ -290,6 +312,10 @@ const ControlLotSetup = () => {
       {/* Error notification */}
       {error && (
         <InlineNotification
+          aria-label={intl.formatMessage({ id: "button.close" })}
+          statusIconDescription={intl.formatMessage({
+            id: "carbon.notification.error",
+          })}
           kind="error"
           title={intl.formatMessage({ id: "qc.controlLot.error.title" })}
           subtitle={error}
@@ -394,14 +420,14 @@ const ControlLotSetup = () => {
                 <FormGroup legendText="">
                   <DatePicker
                     datePickerType="single"
-                    dateFormat="m/d/Y"
+                    dateFormat={getCarbonDateFormat(dateLocale)}
                     value={values.expirationDate}
                     onChange={([date]) => {
                       if (date) {
-                        const mm = String(date.getMonth() + 1).padStart(2, "0");
-                        const dd = String(date.getDate()).padStart(2, "0");
-                        const yyyy = date.getFullYear();
-                        setFieldValue("expirationDate", `${mm}/${dd}/${yyyy}`);
+                        setFieldValue(
+                          "expirationDate",
+                          formatDateForLocale(date, dateLocale),
+                        );
                       } else {
                         setFieldValue("expirationDate", "");
                       }
@@ -409,7 +435,7 @@ const ControlLotSetup = () => {
                   >
                     <DatePickerInput
                       id="expiration-date"
-                      placeholder="mm/dd/yyyy"
+                      placeholder={datePickerPlaceholder}
                       labelText={intl.formatMessage({
                         id: "qc.controlLot.field.expiration",
                       })}

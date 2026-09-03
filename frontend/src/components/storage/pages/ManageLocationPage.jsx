@@ -27,6 +27,7 @@ export default function ManageLocationPage() {
   const history = useHistory();
   const location = useLocation();
   const intl = useIntl();
+  const isChineseLocale = intl.locale?.toLowerCase().startsWith("zh");
   const [error, setError] = useState(null);
   const { assignSampleItem, moveSampleItem } = useSampleStorage();
 
@@ -103,11 +104,16 @@ export default function ManageLocationPage() {
       navigateBack();
     } catch (e) {
       setError(
-        e.message ||
-          intl.formatMessage({
-            id: "storage.manageLocation.error.saveFailed",
-            defaultMessage: "Save failed",
-          }),
+        isChineseLocale
+          ? intl.formatMessage({
+              id: "storage.manageLocation.error.saveFailed",
+              defaultMessage: "Save failed",
+            })
+          : e.message ||
+              intl.formatMessage({
+                id: "storage.manageLocation.error.saveFailed",
+                defaultMessage: "Save failed",
+              }),
       );
     }
   };
@@ -145,7 +151,9 @@ export default function ManageLocationPage() {
           id: sample.sampleItemId || sample.id || id,
           sampleAccessionNumber: sample.sampleAccessionNumber || "",
           sampleType: sample.type || sample.sampleType || "",
-          status: sample.status || "Active",
+          status:
+            sample.status ||
+            intl.formatMessage({ id: "inventory.status.ACTIVE" }),
         }}
         currentLocation={currentLocation}
         breadcrumb={<BreadcrumbNav crumbs={crumbs} />}

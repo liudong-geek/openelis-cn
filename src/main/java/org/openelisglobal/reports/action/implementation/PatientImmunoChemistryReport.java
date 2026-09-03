@@ -12,7 +12,8 @@ import org.openelisglobal.result.valueholder.Result;
 import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.test.service.TestServiceImpl;
 
-public class PatientImmunoChemistryReport extends PatientProgramReport {
+public class PatientImmunoChemistryReport extends PatientProgramReport
+        implements ResultsScopedReportCreator.ImmunohistochemistryProgramSampleSelection {
 
     private ImmunohistochemistrySampleService immunohistochemistrySampleService = SpringContext
             .getBean(ImmunohistochemistrySampleService.class);

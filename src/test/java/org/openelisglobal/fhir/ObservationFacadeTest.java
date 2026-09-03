@@ -95,7 +95,7 @@ public class ObservationFacadeTest extends BaseWebContextSensitiveTest {
 
         fhirServlet.service(request, response);
 
-        assertEquals(200, response.getStatus());
+        assertEquals(response.getContentAsString(), 200, response.getStatus());
 
         JsonNode jsonResponse = objectMapper.readTree(response.getContentAsString());
 
@@ -183,7 +183,7 @@ public class ObservationFacadeTest extends BaseWebContextSensitiveTest {
 
         fhirServlet.service(request, response);
 
-        assertEquals(200, response.getStatus());
+        assertEquals(response.getContentAsString(), 200, response.getStatus());
 
         Result updatedResult = resultService.getResultByFhirUuid(observationFhirUuid);
 
@@ -191,7 +191,7 @@ public class ObservationFacadeTest extends BaseWebContextSensitiveTest {
     }
 
     @Test
-    public void deleteObservation_shouldReturn204() throws Exception {
+    public void deleteObservation_shouldRejectUnsafeDeletion() throws Exception {
 
         String fhirUuid = "550e8400-e29b-41d4-a716-446655440003";
 
@@ -219,7 +219,9 @@ public class ObservationFacadeTest extends BaseWebContextSensitiveTest {
 
         fhirServlet.service(request, response);
 
-        assertEquals(204, response.getStatus());
+        // A laboratory result is a regulated record. The FHIR endpoint must not
+        // erase it; corrections go through the controlled result-correction flow.
+        assertEquals(405, response.getStatus());
 
         Result deletedResult = resultService.getResultByFhirUuid(fhirUuid);
 
@@ -247,10 +249,10 @@ public class ObservationFacadeTest extends BaseWebContextSensitiveTest {
     @Test
     public void createObservation_shouldCreateNewResult() throws Exception {
         String patientFhirUuid = "550e8400-e29b-41d4-a716-446655440001";
-        String analysisFhirUuid = "f8b9e2c1-7a2d-4e8b-b3a4-9c1e7f6d2b01";
-        String specimenFhirUuid = "68438220-5cef-44c4-9e6f-9f88e6b93270";
+        String analysisFhirUuid = "f8b9e2c1-7a2d-4e8b-b3a4-9c1e7f6d2b03";
+        String specimenFhirUuid = "68438220-5cef-44c4-9e6f-9f88e6b93272";
 
-        Analysis analysis = analysisService.getAnalysisById("1");
+        Analysis analysis = analysisService.getAnalysisById("3");
 
         Localization localizationOld = new Localization();
         localizationOld.setDescription("Test Panel");
@@ -301,7 +303,7 @@ public class ObservationFacadeTest extends BaseWebContextSensitiveTest {
 
         fhirServlet.service(request, response);
 
-        assertEquals(201, response.getStatus());
+        assertEquals(response.getContentAsString(), 201, response.getStatus());
 
         String location = response.getHeader("Location");
         assertNotNull("Location header should contain the new Resource URL", location);

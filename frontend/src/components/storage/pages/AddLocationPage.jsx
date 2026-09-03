@@ -52,8 +52,24 @@ const TYPE_META = {
   },
 };
 
+const DEVICE_TYPE_MESSAGE_IDS = {
+  COLD_STORAGE_UNIT: "coldStorage.device.type.coldStorageUnit",
+  FREEZER: "coldStorage.device.type.freezer",
+  REFRIGERATOR: "coldStorage.device.type.refrigerator",
+  ULTRA_LOW_FREEZER: "coldStorage.device.type.ultraLowFreezer",
+  CABINET: "coldStorage.device.type.cabinet",
+  OTHER: "coldStorage.device.type.other",
+};
+
+const normalizeDeviceType = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/[\s-]+/g, "_")
+    .toUpperCase();
+
 export default function AddLocationPage({ type }) {
   const intl = useIntl();
+  const isChineseLocale = intl.locale?.toLowerCase().startsWith("zh");
   const history = useHistory();
   const createLocation = useCreateLocation();
   const meta = TYPE_META[type];
@@ -157,11 +173,16 @@ export default function AddLocationPage({ type }) {
       navigateBack();
     } catch (e) {
       setError(
-        e?.message ||
-          intl.formatMessage({
-            id: "storage.edit.error.saveFailed",
-            defaultMessage: "Save failed",
-          }),
+        isChineseLocale
+          ? intl.formatMessage({
+              id: "storage.edit.error.saveFailed",
+              defaultMessage: "Save failed",
+            })
+          : e?.message ||
+              intl.formatMessage({
+                id: "storage.edit.error.saveFailed",
+                defaultMessage: "Save failed",
+              }),
       );
     } finally {
       setSaving(false);
@@ -292,7 +313,14 @@ export default function AddLocationPage({ type }) {
               defaultMessage: "Select device type",
             })}
             items={deviceTypes}
-            itemToString={(item) => item || ""}
+            itemToString={(item) => {
+              if (!item) return "";
+              const messageId =
+                DEVICE_TYPE_MESSAGE_IDS[normalizeDeviceType(item)];
+              return messageId
+                ? intl.formatMessage({ id: messageId })
+                : String(item);
+            }}
             selectedItem={formData.type || null}
             onChange={({ selectedItem }) =>
               updateField("type", selectedItem || "")

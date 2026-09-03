@@ -16,7 +16,8 @@ package org.openelisglobal.reports.action.implementation;
 import org.openelisglobal.internationalization.MessageUtil;
 
 // Note both Clinical and LNSP should extend common subclass
-public class IndicatorHIVLNSP extends IndicatorHIV implements IReportCreator, IReportParameterSetter {
+public class IndicatorHIVLNSP extends IndicatorHIV
+        implements IReportCreator, IReportParameterSetter, SafeNonPatientReportCreator {
 
     static {
         HIV_TESTS.add("CD4  Compte Abs");

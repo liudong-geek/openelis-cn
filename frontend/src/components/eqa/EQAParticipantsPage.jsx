@@ -202,6 +202,17 @@ const EQAParticipantsPage = () => {
 
       {notification && (
         <InlineNotification
+          aria-label={intl.formatMessage({ id: "button.close" })}
+          statusIconDescription={intl.formatMessage({
+            id:
+              notification.kind === "error"
+                ? "carbon.notification.error"
+                : notification.kind === "success"
+                  ? "carbon.notification.success"
+                  : notification.kind === "warning"
+                    ? "carbon.notification.warning"
+                    : "carbon.notification.info",
+          })}
           kind={notification.kind}
           title={notification.message}
           onCloseButtonClick={() => setNotification(null)}
@@ -423,10 +434,15 @@ const EQAParticipantsPage = () => {
                               return (
                                 <TableCell key={cell.id}>
                                   <Tag type={tagType} size="sm">
-                                    {intl.formatMessage({
-                                      id: `eqa.enrollment.status.${(cell.value || "active").toLowerCase()}`,
-                                      defaultMessage: cell.value,
-                                    })}
+                                    {(() => {
+                                      const statusMessageId = `eqa.enrollment.status.${(cell.value || "active").toLowerCase()}`;
+                                      return intl.formatMessage({
+                                        id:
+                                          statusMessageId in intl.messages
+                                            ? statusMessageId
+                                            : "status.unknown",
+                                      });
+                                    })()}
                                   </Tag>
                                 </TableCell>
                               );

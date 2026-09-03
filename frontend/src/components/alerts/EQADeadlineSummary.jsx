@@ -18,8 +18,9 @@ const EQADeadlineSummary = ({ alerts, onFilterByProvider }) => {
 
   // Group by provider - extract from contextData or message
   const providerMap = {};
+  const unknownProvider = intl.formatMessage({ id: "alerts.provider.unknown" });
   eqaAlerts.forEach((alert) => {
-    let provider = "Unknown";
+    let provider = unknownProvider;
     if (alert.contextData) {
       try {
         const ctx = JSON.parse(alert.contextData);
@@ -28,7 +29,7 @@ const EQADeadlineSummary = ({ alerts, onFilterByProvider }) => {
         // try to extract provider from message
       }
     }
-    if (provider === "Unknown" && alert.message) {
+    if (provider === unknownProvider && alert.message) {
       const match = alert.message.match(
         /(?:CDC|WHO|CAP|UKNEQAS|EQAS|RIQAS|NHRL|NTRL|NMCP)/i,
       );

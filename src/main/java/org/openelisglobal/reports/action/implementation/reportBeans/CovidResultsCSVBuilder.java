@@ -37,8 +37,8 @@ public class CovidResultsCSVBuilder extends CovidResultsBuilderImpl {
 
     SampleService sampleService = SpringContext.getBean(SampleService.class);
 
-    public CovidResultsCSVBuilder(DateRange dateRange) {
-        super(dateRange);
+    public CovidResultsCSVBuilder(DateRange dateRange, List<Analysis> authorizedCandidates) {
+        super(dateRange, authorizedCandidates);
     }
 
     @Override

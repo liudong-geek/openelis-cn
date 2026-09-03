@@ -32,18 +32,33 @@ function Settings({ intl }) {
         }}
       >
         <SettingsIcon size={24} />
-        <Heading>System Configuration</Heading>
+        <Heading>
+          {intl.formatMessage({ id: "coldStorage.settings.title" })}
+        </Heading>
       </div>
 
       <Tabs
         selectedIndex={selectedTab}
         onChange={({ selectedIndex }) => setSelectedTab(selectedIndex)}
       >
-        <TabList aria-label="Settings tabs" contained>
-          <Tab>Device Management</Tab>
-          <Tab>Temperature Thresholds</Tab>
-          <Tab>Alert Settings</Tab>
-          <Tab>System Settings</Tab>
+        <TabList
+          aria-label={intl.formatMessage({
+            id: "coldStorage.settings.tabs.ariaLabel",
+          })}
+          contained
+        >
+          <Tab>
+            {intl.formatMessage({ id: "coldStorage.deviceManagement" })}
+          </Tab>
+          <Tab>
+            {intl.formatMessage({ id: "coldStorage.thresholdConfiguration" })}
+          </Tab>
+          <Tab>
+            {intl.formatMessage({ id: "coldStorage.alertConfiguration" })}
+          </Tab>
+          <Tab>
+            {intl.formatMessage({ id: "coldStorage.systemConfiguration" })}
+          </Tab>
         </TabList>
         <TabPanels>
           <TabPanel>
@@ -62,8 +77,7 @@ function Settings({ intl }) {
       </Tabs>
       <div style={{ marginTop: "1rem" }}>
         <p className="hist-footer">
-          Cold Storage Monitoring v2.1.0 | Compliant with CAP, CLIA, FDA, and
-          WHO guidelines | HIPAA Compliant Data Handling
+          {intl.formatMessage({ id: "coldStorage.reports.footer" })}
         </p>
       </div>
     </div>

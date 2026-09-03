@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+  <!-- China delivery profile: identifiers are master-data keys, not optional duplicates. -->
+  <changeSet author="local-chinese-edition" id="3.5.0-069-cn-patient-identity-policy">
+    <update schemaName="clinlims" tableName="site_information">
+      <column name="value" value="false"/>
+      <column name="lastupdated" valueComputed="now()"/>
+      <where>name IN ('Allow duplicate national ids', 'Allow duplicate subject number')</where>
+    </update>
+    <update schemaName="clinlims" tableName="site_information">
+      <column name="value" value="\p{L}\p{M}0-9 .'_@·•-"/>
+      <column name="lastupdated" valueComputed="now()"/>
+      <where>name IN ('firstNameCharset', 'lastNameCharset')</where>
+    </update>
+    <update schemaName="clinlims" tableName="site_information">
+      <column name="value" value="CHINESE"/>
+      <column name="lastupdated" valueComputed="now()"/>
+      <where>name = 'default nationality'</where>
+    </update>
+  </changeSet>
+
+  <!-- A QA step without configured controls is unsafe. Seed a minimal China-LIS set only when none exists. -->
+  <changeSet author="local-chinese-edition" id="3.5.0-069-cn-default-qa-checklist">
+    <preConditions onFail="MARK_RAN">
+      <and>
+        <sqlCheck expectedResult="1">
+          SELECT COUNT(*) FROM clinlims.dictionary_category WHERE name = 'QAChecklistItem'
+        </sqlCheck>
+        <sqlCheck expectedResult="0">
+          SELECT COUNT(*)
+          FROM clinlims.dictionary d
+          JOIN clinlims.dictionary_category dc ON dc.id = d.dictionary_category_id
+          WHERE dc.name = 'QAChecklistItem' AND d.is_active = 'Y'
+        </sqlCheck>
+      </and>
+    </preConditions>
+    <insert schemaName="clinlims" tableName="dictionary">
+      <column name="id" valueSequenceNext="dictionary_seq"/>
+      <column name="is_active" value="Y"/>
+      <column name="dict_entry" value="patientInfoVerified"/>
+      <column name="local_abbrev" value="患者身份信息已核对"/>
+      <column name="dictionary_category_id" valueComputed="(SELECT id FROM clinlims.dictionary_category WHERE name = 'QAChecklistItem')"/>
+      <column name="sort_order" valueNumeric="1"/>
+      <column name="lastupdated" valueComputed="now()"/>
+    </insert>
+    <insert schemaName="clinlims" tableName="dictionary">
+      <column name="id" valueSequenceNext="dictionary_seq"/>
+      <column name="is_active" value="Y"/>
+      <column name="dict_entry" value="sampleInfoVerified"/>
+      <column name="local_abbrev" value="样本类型、容器和数量已核对"/>
+      <column name="dictionary_category_id" valueComputed="(SELECT id FROM clinlims.dictionary_category WHERE name = 'QAChecklistItem')"/>
+      <column name="sort_order" valueNumeric="2"/>
+      <column name="lastupdated" valueComputed="now()"/>
+    </insert>
+    <insert schemaName="clinlims" tableName="dictionary">
+      <column name="id" valueSequenceNext="dictionary_seq"/>
+      <column name="is_active" value="Y"/>
+      <column name="dict_entry" value="requestedTestsVerified"/>
+      <column name="local_abbrev" value="检测项目与样本匹配关系已核对"/>
+      <column name="dictionary_category_id" valueComputed="(SELECT id FROM clinlims.dictionary_category WHERE name = 'QAChecklistItem')"/>
+      <column name="sort_order" valueNumeric="3"/>
+      <column name="lastupdated" valueComputed="now()"/>
+    </insert>
+    <insert schemaName="clinlims" tableName="dictionary">
+      <column name="id" valueSequenceNext="dictionary_seq"/>
+      <column name="is_active" value="Y"/>
+      <column name="dict_entry" value="labelAndReceiptVerified"/>
+      <column name="local_abbrev" value="标签、采样和接收状态已核对"/>
+      <column name="dictionary_category_id" valueComputed="(SELECT id FROM clinlims.dictionary_category WHERE name = 'QAChecklistItem')"/>
+      <column name="sort_order" valueNumeric="4"/>
+      <column name="lastupdated" valueComputed="now()"/>
+    </insert>
+  </changeSet>
+
+</databaseChangeLog>

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Column, Form, Grid, Section, Button, Link } from "@carbon/react";
+import { Button, Column, Form, Grid, Link, Loading } from "@carbon/react";
 import { ArrowLeft, ArrowRight } from "@carbon/react/icons";
-import { FormattedMessage } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import "../Style.css";
 import TestSectionSelectForm from "./TestSectionSelectForm";
 import TestSelectForm from "./TestSelectForm";
@@ -10,9 +10,9 @@ import PrioritySelectForm from "./PrioritySelectForm";
 import { getFromOpenElisServer } from "../utils/Utils";
 
 export default function WorkplanSearchForm(props) {
+  const intl = useIntl();
   const mounted = useRef(false);
   const [selectedValue, setSelectedValue] = useState("");
-  const [selectedLabel, setSelectedLabel] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [nextPage, setNextPage] = useState(null);
   const [previousPage, setPreviousPage] = useState(null);
@@ -48,7 +48,6 @@ export default function WorkplanSearchForm(props) {
   const handleSelectedValue = (v, l) => {
     if (mounted.current) {
       setSelectedValue(v);
-      setSelectedLabel(l);
       props.selectedValue(v);
       props.selectedLabel(l);
     }
@@ -56,9 +55,17 @@ export default function WorkplanSearchForm(props) {
 
   const getTestsList = (res) => {
     if (mounted.current) {
-      props.createTestsList(res);
-      if (res.paging) {
-        var { totalPages, currentPage } = res.paging;
+      const safeResponse = Array.isArray(res?.workplanTests)
+        ? res
+        : { workplanTests: [], paging: null };
+      props.createTestsList(safeResponse);
+      setPagination(false);
+      setNextPage(null);
+      setPreviousPage(null);
+      setCurrentApiPage(null);
+      setTotalApiPages(null);
+      if (safeResponse.paging) {
+        const { totalPages, currentPage } = safeResponse.paging;
         if (totalPages > 1) {
           setPagination(true);
           setCurrentApiPage(currentPage);
@@ -91,10 +98,18 @@ export default function WorkplanSearchForm(props) {
 
   useEffect(() => {
     mounted.current = true;
-    setIsLoading(true);
     setNextPage(null);
     setPreviousPage(null);
     setPagination(false);
+    if (!selectedValue) {
+      setIsLoading(false);
+      setUrl("");
+      return () => {
+        mounted.current = false;
+      };
+    }
+
+    setIsLoading(true);
     setUrl(urlToPost + selectedValue);
     getFromOpenElisServer(urlToPost + selectedValue, getTestsList);
     return () => {
@@ -109,19 +124,17 @@ export default function WorkplanSearchForm(props) {
   }, []);
 
   return (
-    <>
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          <Section>
-            <h5 className="contentHeader2">
-              <FormattedMessage id="label.form.searchby" />
-              &nbsp; {title}{" "}
-            </h5>
-          </Section>
-        </Column>
-      </Grid>
-      <Grid fullWidth={true}>
-        <Column sm={4} md={4} lg={6}>
+    <section className="oe-workplan-filter" aria-busy={isLoading}>
+      <div className="oe-workplan-filter__heading">
+        <h2>
+          <FormattedMessage id="label.form.searchby" /> {title}
+        </h2>
+        <p>
+          <FormattedMessage id="workplan.filter.help" />
+        </p>
+      </div>
+      <Grid fullWidth condensed>
+        <Column sm={4} md={5} lg={7}>
           <Form className="container-form">
             {type === "test" && (
               <TestSelectForm title={title} value={handleSelectedValue} />
@@ -140,53 +153,43 @@ export default function WorkplanSearchForm(props) {
             )}
           </Form>
         </Column>
-        <Column sm={1} md={2} lg={4}>
+        <Column sm={4} md={3} lg={3}>
           {isLoading && (
-            <img
-              src={`images/loading.gif`}
-              alt="Loading ..."
-              width="60"
-              height="60"
-            />
+            <div className="oe-workplan-filter__loading" aria-live="polite">
+              <Loading
+                small
+                withOverlay={false}
+                description={intl.formatMessage({ id: "loading.description" })}
+              />
+              <span>
+                <FormattedMessage id="loading.description" />
+              </span>
+            </div>
           )}
         </Column>
       </Grid>
-      <hr />
-      <br />
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          {selectedLabel && (
-            <Section>
-              <h4 className="contentHeader1">&nbsp;</h4>
-            </Section>
-          )}
-        </Column>
-      </Grid>
-      <>
-        {pagination && (
-          <Grid>
-            <Column lg={14} />
-            <Column
-              lg={2}
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "10px",
-                width: "110%",
-              }}
-            >
+      {!selectedValue && !isLoading && (
+        <div className="oe-workplan-filter__guidance" role="status">
+          <FormattedMessage id="workplan.filter.required" />
+        </div>
+      )}
+      {pagination && (
+        <Grid condensed className="oe-workplan-api-pagination">
+          <Column sm={4} md={8} lg={16}>
+            <div className="oe-workplan-api-pagination__controls">
               <Link>
                 {currentApiPage} / {totalApiPages}
               </Link>
-              <div style={{ display: "flex", gap: "10px" }}>
+              <div className="oe-workplan-api-pagination__buttons">
                 <Button
                   hasIconOnly
                   id="loadpreviousresults"
                   onClick={loadPreviousResultsPage}
                   disabled={previousPage != null ? false : true}
                   renderIcon={ArrowLeft}
-                  iconDescription="previous"
+                  iconDescription={intl.formatMessage({
+                    id: "pagination.previous",
+                  })}
                 ></Button>
                 <Button
                   hasIconOnly
@@ -194,13 +197,15 @@ export default function WorkplanSearchForm(props) {
                   onClick={loadNextResultsPage}
                   disabled={nextPage != null ? false : true}
                   renderIcon={ArrowRight}
-                  iconDescription="next"
+                  iconDescription={intl.formatMessage({
+                    id: "pagination.next",
+                  })}
                 ></Button>
               </div>
-            </Column>
-          </Grid>
-        )}
-      </>
-    </>
+            </div>
+          </Column>
+        </Grid>
+      )}
+    </section>
   );
 }

@@ -6,10 +6,10 @@ import {
   Search,
   Select,
   SelectItem,
-  Tag,
   TextInput,
   Tile,
 } from "@carbon/react";
+import Tag from "../common/LocalizedTag";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
@@ -86,7 +86,10 @@ const SampleType = (props) => {
   );
   const [loading, setLoading] = useState(true);
 
-  const defaultSelect = { id: "", value: "Choose Rejection Reason" };
+  const defaultSelect = {
+    id: "",
+    value: intl.formatMessage({ id: "sample.rejection.reason.select" }),
+  };
 
   function handleCollectionDate(date) {
     setSampleXml({
@@ -885,7 +888,13 @@ const SampleType = (props) => {
         </div>
 
         <div className="cds--col">
-          {selectedTests && !selectedTests.length ? "" : <h4>Order Tests</h4>}
+          {selectedTests && !selectedTests.length ? (
+            ""
+          ) : (
+            <h4>
+              <FormattedMessage id="sample.orderTests" />
+            </h4>
+          )}
           <div
             className={"searchTestText"}
             style={{ marginBottom: "1.188rem" }}

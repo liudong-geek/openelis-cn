@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Button, Column, MultiSelect } from "@carbon/react";
 import { Add, TrashCan } from "@carbon/icons-react";
+import { useIntl } from "react-intl";
 
 export default function CascadingMultiSelect({
   id,
@@ -9,6 +10,7 @@ export default function CascadingMultiSelect({
   value = "{}",
   onChange,
 }) {
+  const intl = useIntl();
   const items = useMemo(
     () =>
       dictionaryValues.map((d) => ({
@@ -111,7 +113,9 @@ export default function CascadingMultiSelect({
                     size="sm"
                     hasIconOnly
                     renderIcon={TrashCan}
-                    iconDescription="Remove"
+                    iconDescription={intl.formatMessage({
+                      id: "label.button.remove",
+                    })}
                     onClick={() => removeCascade(key)}
                   />
                 </div>

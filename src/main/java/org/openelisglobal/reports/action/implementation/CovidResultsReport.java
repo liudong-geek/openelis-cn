@@ -4,9 +4,11 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.sql.SQLException;
 import java.text.ParseException;
+import java.util.List;
 import net.sf.jasperreports.engine.JRDataSource;
 import net.sf.jasperreports.engine.JRException;
 import net.sf.jasperreports.engine.data.JRBeanCollectionDataSource;
+import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.internationalization.MessageUtil;
 import org.openelisglobal.reports.action.implementation.reportBeans.CovidResultsBuilder;
@@ -15,13 +17,21 @@ import org.openelisglobal.reports.action.implementation.reportBeans.CovidResults
 import org.openelisglobal.reports.action.implementation.reportBeans.CovidResultsJSONBuilder;
 import org.openelisglobal.reports.form.ReportForm;
 
-public class CovidResultsReport extends Report implements IReportParameterSetter, IReportCreator {
+public class CovidResultsReport extends Report
+        implements IReportParameterSetter, IReportCreator, ResultsScopedReportCreator.CovidResultsByDateSelection,
+        BulkPatientExportReportCreator {
 
     private CovidResultsBuilder covidDataBuilder;
     protected String lowDateStr;
     protected String highDateStr;
     protected DateRange dateRange;
     protected CovidReportType reportType;
+    private List<Analysis> authorizedCandidates;
+
+    @Override
+    public void setResultsAuthorizationCandidates(List<Analysis> analyses) {
+        authorizedCandidates = analyses == null ? null : List.copyOf(analyses);
+    }
 
     @Override
     protected String reportFileName() {
@@ -47,6 +57,9 @@ public class CovidResultsReport extends Report implements IReportParameterSetter
 
     @Override
     public void initializeReport(ReportForm form) {
+        if (authorizedCandidates == null) {
+            throw new IllegalStateException("COVID result candidates must be authorized before report generation");
+        }
         super.initializeReport();
         lowDateStr = form.getLowerDateRange();
         highDateStr = form.getUpperDateRange();
@@ -75,9 +88,9 @@ public class CovidResultsReport extends Report implements IReportParameterSetter
     private CovidResultsBuilder getDataBuilder() {
         switch (reportType) {
         case JSON:
-            return new CovidResultsJSONBuilder(dateRange);
+            return new CovidResultsJSONBuilder(dateRange, authorizedCandidates);
         case CSV:
-            return new CovidResultsCSVBuilder(dateRange);
+            return new CovidResultsCSVBuilder(dateRange, authorizedCandidates);
         }
         throw new IllegalStateException("type must be 'CSV' or 'JSON'");
     }

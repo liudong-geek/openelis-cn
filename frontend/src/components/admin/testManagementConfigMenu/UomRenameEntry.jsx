@@ -11,6 +11,7 @@ import {
 } from "../../common/CustomNotification";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 import RenameModelBox from "./renameModel/RenameModelBox";
 
 let breadcrumbs = [
@@ -125,7 +126,7 @@ function UomRenameEntry() {
       setNotificationVisible(true);
       setIsAddModalOpen(false);
       setTimeout(() => {
-        window.location.reload();
+        refreshCurrentRoute();
       }, 10);
     } else {
       addNotification({
@@ -135,7 +136,7 @@ function UomRenameEntry() {
       });
       setNotificationVisible(true);
       setTimeout(() => {
-        window.location.reload();
+        refreshCurrentRoute();
       }, 200);
     }
   }

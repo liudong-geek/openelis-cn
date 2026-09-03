@@ -336,6 +336,7 @@ const RuleConfigFormModal = ({
       data-testid="rule-config-form-modal"
     >
       <ModalHeader
+        iconDescription={intl.formatMessage({ id: "button.close" })}
         title={intl.formatMessage({
           id: isNew
             ? "qc.ruleConfig.modal.title.create"
@@ -347,6 +348,10 @@ const RuleConfigFormModal = ({
       <ModalBody data-testid="rule-config-form-modal-body">
         {error && (
           <InlineNotification
+            aria-label={intl.formatMessage({ id: "button.close" })}
+            statusIconDescription={intl.formatMessage({
+              id: "carbon.notification.error",
+            })}
             kind="error"
             title={intl.formatMessage({ id: "qc.ruleConfig.error.title" })}
             subtitle={error}

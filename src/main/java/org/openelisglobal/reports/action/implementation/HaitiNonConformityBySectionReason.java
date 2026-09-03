@@ -16,7 +16,8 @@ package org.openelisglobal.reports.action.implementation;
 import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.ConfigurationProperties.Property;
 
-public class HaitiNonConformityBySectionReason extends NonConformityBySectionReason {
+public class HaitiNonConformityBySectionReason extends NonConformityBySectionReason
+        implements SafeNonPatientReportCreator {
 
     public HaitiNonConformityBySectionReason() {
     }

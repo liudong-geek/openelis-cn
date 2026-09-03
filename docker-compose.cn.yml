@@ -1,0 +1,60 @@
+services:
+  certs:
+    container_name: openelis-cn-certs
+    image: openelis-cn-certs:local
+    restart: "no"
+
+  db.openelis.org:
+    container_name: openelis-cn-database
+    image: openelis-cn-database:local
+    ports: !override
+      - "25432:5432"
+
+  oe.openelis.org:
+    container_name: openelis-cn-webapp
+    image: openelis-cn-webapp:local
+    healthcheck:
+      test: ["CMD", "/healthcheck.sh"]
+      timeout: 10s
+      interval: 30s
+      # The source-built application performs a large first-start migration and
+      # Spring initialization. Give it enough time to finish without allowing
+      # autoheal to restart a healthy cold start in a loop.
+      start_period: 10m
+      retries: 10
+    ports: !override
+      - "28080:8080"
+    networks:
+      default:
+        ipv4_address: 172.26.1.121
+
+  fhir.openelis.org:
+    container_name: openelis-cn-fhir
+    image: openelis-cn-fhir:local
+    ports: !override
+      # HAPI FHIR in this source image listens on TLS 8443 (mTLS enabled).
+      # Local integrators use https://127.0.0.1:28081/fhir/ with a client cert.
+      - "28081:8443"
+
+  frontend.openelis.org:
+    container_name: openelis-cn-frontend
+    image: openelis-cn-frontend:local
+    restart: unless-stopped
+    networks:
+      default:
+        ipv4_address: 172.26.1.122
+
+  proxy:
+    container_name: openelis-cn-proxy
+    image: openelis-cn-proxy:local
+    ports: !override
+      - "18080:80"
+    volumes: !override
+      - ./volume/nginx/nginx-cn.conf:/etc/nginx/nginx.conf:ro
+
+networks:
+  default:
+    name: openelis-cn-network
+    ipam:
+      config: !override
+        - subnet: 172.26.1.0/24

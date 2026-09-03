@@ -241,7 +241,7 @@ describe("PostSavePrintDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Print" }));
 
     expect(openSpy).toHaveBeenCalledWith(
-      "/LabelMakerServlet?labNo=LAB-LEGACY-QTY&type=order&quantity=3",
+      "/api/OpenELIS-Global/LabelMakerServlet?labNo=LAB-LEGACY-QTY&type=order&quantity=3",
     );
 
     openSpy.mockRestore();

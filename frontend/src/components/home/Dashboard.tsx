@@ -20,6 +20,7 @@ import {
   Tabs,
   TabList,
   Tag,
+  Stack,
 } from "@carbon/react";
 import "./Dashboard.css";
 import {
@@ -37,8 +38,10 @@ import {
   EmailNew,
   Time,
   WarningSquareFilled,
+  Renew,
 } from "@carbon/react/icons";
 import { Copy } from "@carbon/icons-react";
+import ProductPageHeader from "../common/ProductPageHeader";
 
 // Map each metric type to a representative icon shown in the top-left of its card.
 const TILE_ICONS: Record<string, any> = {
@@ -58,8 +61,10 @@ import {
   getFromOpenElisServer,
   convertAlphaNumLabNumForDisplay,
   hasRole,
+  Roles,
 } from "../utils/Utils";
 import { FormattedMessage, useIntl } from "react-intl";
+import { useHistory } from "react-router-dom";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { NotificationContext } from "../layout/Layout";
 import { AlertDialog, NotificationKinds } from "../common/CustomNotification";
@@ -96,21 +101,41 @@ interface Notification {
   addNotification: any;
 }
 
+const EMPTY_COUNTS = {
+  ordersInProgress: 0,
+  ordersReadyForValidation: 0,
+  ordersCompletedToday: 0,
+  patiallyCompletedToday: 0,
+  orderEnterdByUserToday: 0,
+  ordersRejectedToday: 0,
+  unPritendResults: 0,
+  incomigOrders: 0,
+  averageTurnAroudTime: 0,
+  delayedTurnAround: 0,
+};
+
+export const getDashboardLabNumberRoute = (
+  metricType: MetricType,
+  labNumber: string,
+): string | null => {
+  const accessionNumber = encodeURIComponent(labNumber);
+
+  if (metricType === "ORDERS_IN_PROGRESS") {
+    return `/Results?accessionNumber=${accessionNumber}`;
+  }
+
+  if (metricType === "ORDERS_READY_FOR_VALIDATION") {
+    return `/validation?type=order&accessionNumber=${accessionNumber}`;
+  }
+
+  return null;
+};
+
 const HomeDashBoard: React.FC<DashBoardProps> = () => {
   const intl = useIntl();
+  const history = useHistory();
 
-  const [counts, setCounts] = useState({
-    ordersInProgress: 0,
-    ordersReadyForValidation: 0,
-    ordersCompletedToday: 0,
-    patiallyCompletedToday: 0,
-    orderEnterdByUserToday: 0,
-    ordersRejectedToday: 0,
-    unPritendResults: 0,
-    incomigOrders: 0,
-    averageTurnAroudTime: 0,
-    delayedTurnAround: 0,
-  });
+  const [counts, setCounts] = useState(EMPTY_COUNTS);
 
   const [timeMetrics, setTimeMetrics] = useState({
     receptionToResult: 0,
@@ -122,6 +147,7 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
   const [testSections, setTestSections] = useState([]);
   const [selectedTestSection, setSelectedTestSection] = useState("");
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const componentMounted = useRef(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
@@ -145,13 +171,18 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
   }, []);
 
   useEffect(() => {
-    getFromOpenElisServer("/rest/home-dashboard/metrics", loadCount);
+    refreshMetrics();
 
     return () => {
       // This code runs when component is unmounted
       componentMounted.current = false;
     };
   }, []);
+
+  const refreshMetrics = () => {
+    setLoading(true);
+    getFromOpenElisServer("/rest/home-dashboard/metrics", loadCount);
+  };
 
   useEffect(() => {
     if (selectedTile != null) {
@@ -179,11 +210,6 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
         );
       }
     }
-
-    return () => {
-      // This code runs when component is unmounted
-      componentMounted.current = false;
-    };
   }, [selectedTile]);
 
   useEffect(() => {
@@ -223,7 +249,17 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
 
   const loadCount = (data) => {
     if (componentMounted.current) {
-      setCounts(data);
+      if (data && typeof data === "object") {
+        setCounts({ ...EMPTY_COUNTS, ...data });
+        setLastUpdated(new Date());
+      } else {
+        addNotification({
+          kind: NotificationKinds.error,
+          title: intl.formatMessage({ id: "dashboard.error.title" }),
+          message: intl.formatMessage({ id: "dashboard.error.load" }),
+        });
+        setNotificationVisible(true);
+      }
       setLoading(false);
     }
   };
@@ -235,6 +271,13 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
     } else {
       setData([]);
     }
+
+    // Reset server-side paging first so a previous tile cannot leak stale controls.
+    setPagination(false);
+    setCurrentApiPage(null);
+    setTotalApiPages(null);
+    setNextPage(null);
+    setPreviousPage(null);
 
     // Sets next and previous page numbers based on the total pages and current page number.
     if (res && res.paging) {
@@ -364,8 +407,131 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
     "ORDERS_PARTIALLY_COMPLETED_TODAY",
   ];
 
+  const workItems = [
+    {
+      type: "INCOMING_ORDERS",
+      titleId: "dashboard.task.incoming.title",
+      descriptionId: "dashboard.task.incoming.description",
+      value: counts.incomigOrders,
+      route: "/ElectronicOrders",
+      icon: EmailNew,
+      roles: [Roles.RECEPTION],
+    },
+    {
+      type: "ORDERS_IN_PROGRESS",
+      titleId: "dashboard.task.results.title",
+      descriptionId: "dashboard.task.results.description",
+      value: counts.ordersInProgress,
+      route: "/Results?scope=pending",
+      icon: InProgress,
+      roles: [Roles.RESULTS],
+    },
+    {
+      type: "ORDERS_READY_FOR_VALIDATION",
+      titleId: "dashboard.task.validation.title",
+      descriptionId: "dashboard.task.validation.description",
+      value: counts.ordersReadyForValidation,
+      route: "/validation?type=routine",
+      icon: TaskView,
+      roles: [Roles.VALIDATION],
+    },
+    {
+      type: "UN_PRINTED_RESULTS",
+      titleId: "dashboard.task.reports.title",
+      descriptionId: "dashboard.task.reports.description",
+      value: counts.unPritendResults,
+      route: "/RoutineReports",
+      icon: Printer,
+      roles: [Roles.REPORTS],
+    },
+  ];
+
+  const quickActions = [
+    {
+      labelId: "dashboard.quick.newOrder",
+      route: "/order/enter",
+      icon: DocumentAdd,
+      kind: "primary",
+      roles: [Roles.RECEPTION],
+    },
+    {
+      labelId: "dashboard.quick.receiveSample",
+      route: "/order/collect",
+      icon: InProgress,
+      kind: "tertiary",
+      roles: [Roles.RECEPTION],
+    },
+    {
+      labelId: "dashboard.quick.enterResults",
+      route: "/Results?scope=pending",
+      icon: TaskView,
+      kind: "tertiary",
+      roles: [Roles.RESULTS],
+    },
+    {
+      labelId: "dashboard.quick.validate",
+      route: "/validation?type=routine",
+      icon: CheckmarkFilled,
+      kind: "tertiary",
+      roles: [Roles.VALIDATION],
+    },
+  ];
+
+  const userCanAccessAny = (roles: string[]) =>
+    roles.some((role) => hasRole(userSessionDetails, role));
+  const visibleWorkItems = workItems.filter((item) =>
+    userCanAccessAny(item.roles),
+  );
+  const visibleQuickActions = quickActions.filter((action) =>
+    userCanAccessAny(action.roles),
+  );
+
+  const workflowStages = [
+    {
+      labelId: "dashboard.flow.order",
+      descriptionId: "dashboard.flow.order.description",
+      route: "/order",
+      roles: [Roles.RECEPTION],
+    },
+    {
+      labelId: "dashboard.flow.sample",
+      descriptionId: "dashboard.flow.sample.description",
+      route: "/order/collect",
+      roles: [Roles.RECEPTION],
+    },
+    {
+      labelId: "dashboard.flow.testing",
+      descriptionId: "dashboard.flow.testing.description",
+      route: "/Results?scope=pending",
+      roles: [Roles.RESULTS],
+    },
+    {
+      labelId: "dashboard.flow.validation",
+      descriptionId: "dashboard.flow.validation.description",
+      route: "/validation?type=routine",
+      roles: [Roles.VALIDATION],
+    },
+    {
+      labelId: "dashboard.flow.report",
+      descriptionId: "dashboard.flow.report.description",
+      route: "/RoutineReports",
+      roles: [Roles.REPORTS],
+    },
+  ];
+
+  const operationalMetricTypes = new Set([
+    "ORDERS_COMPLETED_TODAY",
+    "ORDERS_PARTIALLY_COMPLETED_TODAY",
+    "ORDERS_ENTERED_BY_USER_TODAY",
+    "ORDERS_REJECTED_TODAY",
+    "AVERAGE_TURN_AROUND_TIME",
+    "DELAYED_TURN_AROUND",
+  ]);
+  const operationalTiles = tileList.filter((tile) =>
+    operationalMetricTypes.has(tile.type),
+  );
+
   const handleMinimizeClick = () => {
-    console.log("Icon clicked!");
     if (selectedTile.type == "ORDERS_FOR_USER") {
       const tile: Tile = {
         title: <FormattedMessage id="dashboard.user.orders.label" />,
@@ -398,7 +564,6 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
   };
 
   const viewUserOrders = (row) => {
-    console.log("Icon clicked!");
     const firstName = row.cells.find(
       (e) => e.info.header === "userFirstName",
     ).value;
@@ -430,6 +595,10 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
   };
   const renderCell = (cell, row) => {
     if (cell.info.header === "labNumber" && cell.value) {
+      const targetRoute = getDashboardLabNumberRoute(
+        selectedTile.type,
+        cell.value,
+      );
       return (
         <TableCell key={cell.id}>
           <>
@@ -449,18 +618,15 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                 hasIconOnly
                 renderIcon={Copy}
               />
-              {selectedTile.type == "ORDERS_IN_PROGRESS" ||
-              selectedTile.type == "ORDERS_READY_FOR_VALIDATION" ? (
+              {targetRoute ? (
                 <Link
-                  style={{ color: "blue" }}
-                  href={
-                    selectedTile.type == "ORDERS_IN_PROGRESS"
-                      ? "/result?type=order&doRange=false&accessionNumber=" +
-                        cell.value
-                      : "validation?type=order&accessionNumber=" + cell.value
-                  }
+                  href={targetRoute}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    history.push(targetRoute);
+                  }}
                 >
-                  <u>{convertAlphaNumLabNumForDisplay(cell.value)}</u>
+                  {convertAlphaNumLabNumForDisplay(cell.value)}
                 </Link>
               ) : (
                 <> {convertAlphaNumLabNumForDisplay(cell.value)}</>
@@ -472,7 +638,9 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
     } else if (cell.info.header === "countOfOrdersEntered" && cell.value) {
       return (
         <TableCell key={cell.id}>
-          <Link style={{ color: "blue" }}>{cell.value} </Link>
+          <Button kind="ghost" size="sm" onClick={() => viewUserOrders(row)}>
+            {cell.value}
+          </Button>
         </TableCell>
       );
     } else {
@@ -506,59 +674,320 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
   const userHeaders = [
     {
       key: "userFirstName",
-      header: "First Name",
+      header: intl.formatMessage({ id: "dashboard.user.first.name" }),
     },
     {
       key: "userLastName",
-      header: "Last Name",
+      header: intl.formatMessage({ id: "dashboard.user.last.name" }),
     },
     {
       key: "countOfOrdersEntered",
-      header: "Orders Entered",
+      header: intl.formatMessage({ id: "dashboard.user.orders.count" }),
     },
   ];
 
   return (
-    <>
-      {loading && <Loading description="Loading Dasboard..." />}
+    <section className="home-dashboard" aria-labelledby="dashboard-title">
+      {loading && (
+        <Loading
+          description={intl.formatMessage({ id: "dashboard.loading" })}
+        />
+      )}
       {notificationVisible === true ? <AlertDialog /> : ""}
       {selectedTile == null ? (
-        <div className="home-dashboard-container">
-          {tileList.map((tile, index) => {
-            const TileIcon = TILE_ICONS[tile.type];
-            return (
-              <ClickableTile
-                key={index}
-                className="dashboard-tile"
-                onClick={() => handleMaximizeClick(tile)}
-              >
-                {TileIcon && (
-                  <div className="tile-leading-icon">
-                    <TileIcon size={28} />
-                  </div>
-                )}
-                <h5 className="dashboard-tile__title">{tile.title}</h5>
-                <p className="dashboard-tile__subtitle">
-                  {tile.subTitle ?? " "}
-                </p>
-                <h2 className="dashboard-tile__value">{tile.value}</h2>
-
-                <div className="tile-icon">
-                  <div
-                    onClick={() => handleMaximizeClick(tile)}
-                    className="icon-wrapper"
-                  >
-                    <Maximize
-                      id="maximizeIcon"
-                      size={20}
-                      className="clickable-icon"
+        <>
+          <ProductPageHeader
+            titleId="dashboard-title"
+            title={<FormattedMessage id="dashboard.command.title" />}
+            subtitle={
+              <>
+                <FormattedMessage id="dashboard.command.subtitle" />
+                {lastUpdated && (
+                  <span className="dashboard-last-updated">
+                    {" · "}
+                    <FormattedMessage
+                      id="dashboard.last.updated"
+                      values={{ time: intl.formatTime(lastUpdated) }}
                     />
+                  </span>
+                )}
+              </>
+            }
+            actions={
+              <Button
+                kind="tertiary"
+                size="md"
+                renderIcon={Renew}
+                onClick={refreshMetrics}
+                disabled={loading}
+              >
+                <FormattedMessage id="dashboard.refresh" />
+              </Button>
+            }
+          />
+
+          <section
+            className="dashboard-shift-strip"
+            aria-label={intl.formatMessage({ id: "dashboard.shift.summary" })}
+          >
+            <div className="dashboard-shift-item">
+              <span>
+                <FormattedMessage id="dashboard.shift.pending" />
+              </span>
+              <strong>
+                {visibleWorkItems.reduce(
+                  (total, item) => total + Number(item.value || 0),
+                  0,
+                )}
+              </strong>
+            </div>
+            <div className="dashboard-shift-item is-success">
+              <span>
+                <FormattedMessage id="dashboard.shift.completed" />
+              </span>
+              <strong>{counts.ordersCompletedToday}</strong>
+            </div>
+            <div className="dashboard-shift-item is-warning">
+              <span>
+                <FormattedMessage id="dashboard.shift.delayed" />
+              </span>
+              <strong>{counts.delayedTurnAround}</strong>
+            </div>
+            <div className="dashboard-shift-item is-neutral">
+              <span>
+                <FormattedMessage id="dashboard.shift.incoming" />
+              </span>
+              <strong>{counts.incomigOrders}</strong>
+            </div>
+          </section>
+
+          <Grid fullWidth className="dashboard-command-grid">
+            <Column lg={10} md={5} sm={4}>
+              <Tile className="dashboard-command-panel dashboard-work-panel">
+                <div className="dashboard-section-heading">
+                  <div>
+                    <h2>
+                      <FormattedMessage id="dashboard.task.title" />
+                    </h2>
+                    <p>
+                      <FormattedMessage id="dashboard.task.subtitle" />
+                    </p>
                   </div>
+                  <Tag type="blue">
+                    <FormattedMessage
+                      id="dashboard.task.total"
+                      values={{
+                        count: visibleWorkItems.reduce(
+                          (total, item) => total + Number(item.value || 0),
+                          0,
+                        ),
+                      }}
+                    />
+                  </Tag>
                 </div>
-              </ClickableTile>
-            );
-          })}
-        </div>
+
+                <Stack gap={3} className="dashboard-task-list">
+                  {visibleWorkItems.length === 0 && (
+                    <p className="dashboard-empty-actions">
+                      <FormattedMessage id="dashboard.task.empty" />
+                    </p>
+                  )}
+                  {visibleWorkItems.map((item) => {
+                    const TaskIcon = item.icon;
+                    return (
+                      <ClickableTile
+                        key={item.type}
+                        className={`dashboard-task-item ${Number(item.value || 0) > 0 ? "has-work" : "is-clear"}`}
+                        role="button"
+                        onClick={() => history.push(item.route)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            history.push(item.route);
+                          }
+                        }}
+                      >
+                        <Grid condensed fullWidth>
+                          <Column lg={1} md={1} sm={1}>
+                            <span className="dashboard-task-icon">
+                              <TaskIcon size={22} aria-hidden="true" />
+                            </span>
+                          </Column>
+                          <Column lg={7} md={3} sm={2}>
+                            <strong>
+                              <FormattedMessage id={item.titleId} />
+                            </strong>
+                            <span className="dashboard-task-description">
+                              <FormattedMessage id={item.descriptionId} />
+                            </span>
+                          </Column>
+                          <Column lg={2} md={1} sm={1}>
+                            <span className="dashboard-task-action">
+                              <span className="dashboard-task-state">
+                                <span className="dashboard-task-count">
+                                  {item.value}
+                                </span>
+                                <small>
+                                  <FormattedMessage
+                                    id={
+                                      Number(item.value || 0) > 0
+                                        ? "dashboard.task.pending"
+                                        : "dashboard.task.clear"
+                                    }
+                                  />
+                                </small>
+                              </span>
+                              <ArrowRight size={18} aria-hidden="true" />
+                            </span>
+                          </Column>
+                        </Grid>
+                      </ClickableTile>
+                    );
+                  })}
+                </Stack>
+              </Tile>
+            </Column>
+
+            <Column lg={6} md={3} sm={4}>
+              <Tile className="dashboard-command-panel dashboard-quick-panel">
+                <h2>
+                  <FormattedMessage id="dashboard.quick.title" />
+                </h2>
+                <p>
+                  <FormattedMessage id="dashboard.quick.subtitle" />
+                </p>
+                <Stack gap={4} className="dashboard-quick-actions">
+                  {visibleQuickActions.length === 0 && (
+                    <p className="dashboard-empty-actions">
+                      <FormattedMessage id="dashboard.quick.empty" />
+                    </p>
+                  )}
+                  {visibleQuickActions.map((action) => {
+                    const ActionIcon = action.icon;
+                    return (
+                      <Button
+                        key={action.route}
+                        kind={action.kind as any}
+                        renderIcon={ActionIcon}
+                        onClick={() => history.push(action.route)}
+                      >
+                        <FormattedMessage id={action.labelId} />
+                      </Button>
+                    );
+                  })}
+                </Stack>
+              </Tile>
+            </Column>
+          </Grid>
+
+          <section
+            className="dashboard-flow-section"
+            aria-labelledby="dashboard-flow-title"
+          >
+            <div className="dashboard-section-heading">
+              <div>
+                <h2 id="dashboard-flow-title">
+                  <FormattedMessage id="dashboard.flow.title" />
+                </h2>
+                <p>
+                  <FormattedMessage id="dashboard.flow.subtitle" />
+                </p>
+              </div>
+            </div>
+            <Grid fullWidth condensed className="dashboard-flow-grid">
+              {workflowStages.map((stage, index) => (
+                <Column
+                  key={stage.labelId}
+                  lg={index === workflowStages.length - 1 ? 4 : 3}
+                  md={4}
+                  sm={4}
+                >
+                  {userCanAccessAny(stage.roles) ? (
+                    <ClickableTile
+                      className="dashboard-flow-stage dashboard-flow-stage--actionable"
+                      role="button"
+                      onClick={() => history.push(stage.route)}
+                    >
+                      <span className="dashboard-flow-number">{index + 1}</span>
+                      <h3>
+                        <FormattedMessage id={stage.labelId} />
+                      </h3>
+                      <p>
+                        <FormattedMessage id={stage.descriptionId} />
+                      </p>
+                      <ArrowRight
+                        className="dashboard-flow-open-icon"
+                        size={18}
+                        aria-hidden="true"
+                      />
+                    </ClickableTile>
+                  ) : (
+                    <Tile className="dashboard-flow-stage">
+                      <span className="dashboard-flow-number">{index + 1}</span>
+                      <h3>
+                        <FormattedMessage id={stage.labelId} />
+                      </h3>
+                      <p>
+                        <FormattedMessage id={stage.descriptionId} />
+                      </p>
+                    </Tile>
+                  )}
+                </Column>
+              ))}
+            </Grid>
+          </section>
+
+          <section
+            className="dashboard-operations-section"
+            aria-labelledby="dashboard-operations-title"
+          >
+            <div className="dashboard-section-heading">
+              <div>
+                <h2 id="dashboard-operations-title">
+                  <FormattedMessage id="dashboard.operations.title" />
+                </h2>
+                <p>
+                  <FormattedMessage id="dashboard.operations.subtitle" />
+                </p>
+              </div>
+            </div>
+            <Grid fullWidth condensed>
+              {operationalTiles.map((tile) => {
+                const TileIcon = TILE_ICONS[tile.type];
+                return (
+                  <Column key={tile.type} lg={4} md={4} sm={4}>
+                    <ClickableTile
+                      className="dashboard-tile dashboard-metric-tile"
+                      role="button"
+                      onClick={() => handleMaximizeClick(tile)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          handleMaximizeClick(tile);
+                        }
+                      }}
+                    >
+                      {TileIcon && (
+                        <div className="tile-leading-icon">
+                          <TileIcon size={24} aria-hidden="true" />
+                        </div>
+                      )}
+                      <h3 className="dashboard-tile__title">{tile.title}</h3>
+                      <p className="dashboard-tile__subtitle">
+                        {tile.subTitle ?? " "}
+                      </p>
+                      <p className="dashboard-tile__value">{tile.value}</p>
+                      <div className="dashboard-tile__action">
+                        <FormattedMessage id="lot.details.view" />
+                        <Maximize size={16} aria-hidden="true" />
+                      </div>
+                    </ClickableTile>
+                  </Column>
+                );
+              })}
+            </Grid>
+          </section>
+        </>
       ) : (
         <div className="dashboard-view">
           <Tile className="dashboard-tile">
@@ -573,17 +1002,18 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                 <h1 className="dashboard-tile__value-view">
                   {selectedTile.value}
                 </h1>
-                {
-                  <div className="tile-icon">
-                    <div onClick={handleMinimizeClick} className="icon-wrapper">
-                      <Minimize
-                        id="minimizeIcon"
-                        size={20}
-                        className="clickable-icon"
-                      />
-                    </div>
-                  </div>
-                }
+                <Button
+                  id="minimizeIcon"
+                  className="tile-icon"
+                  kind="ghost"
+                  size="md"
+                  hasIconOnly
+                  renderIcon={Minimize}
+                  iconDescription={intl.formatMessage({
+                    id: "dashboard.back.to.overview",
+                  })}
+                  onClick={handleMinimizeClick}
+                />
               </Column>
             </Grid>
             <div className="gridBoundary">
@@ -627,7 +1057,9 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                               onClick={loadPreviousResultsPage}
                               disabled={previousPage != null ? false : true}
                               renderIcon={ArrowLeft}
-                              iconDescription="previous"
+                              iconDescription={intl.formatMessage({
+                                id: "pagination.backward",
+                              })}
                             ></Button>
                             <Button
                               hasIconOnly
@@ -635,7 +1067,9 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                               onClick={loadNextResultsPage}
                               disabled={nextPage != null ? false : true}
                               renderIcon={ArrowRight}
-                              iconDescription="next"
+                              iconDescription={intl.formatMessage({
+                                id: "pagination.forward",
+                              })}
                             ></Button>
                           </div>
                         </Column>
@@ -651,7 +1085,9 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                             ) ? (
                               <TabList
                                 style={{ width: "100%" }}
-                                aria-label="List of tabs"
+                                aria-label={intl.formatMessage({
+                                  id: "dashboard.sections.label",
+                                })}
                                 contained
                               >
                                 <Tab
@@ -676,7 +1112,9 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                             ) : (
                               <TabList
                                 style={{ width: "100%" }}
-                                aria-label="List of tabs"
+                                aria-label={intl.formatMessage({
+                                  id: "dashboard.sections.label",
+                                })}
                                 contained
                               >
                                 {testSections?.map((item, id) => {
@@ -731,15 +1169,7 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                             <TableBody>
                               <>
                                 {rows.map((row) => (
-                                  <TableRow
-                                    key={row.id}
-                                    onClick={() => {
-                                      selectedTile.type ==
-                                      "ORDERS_ENTERED_BY_USER_TODAY"
-                                        ? viewUserOrders(row)
-                                        : {};
-                                    }}
-                                  >
+                                  <TableRow key={row.id}>
                                     {row.cells.map((cell) =>
                                       renderCell(cell, row),
                                     )}
@@ -808,7 +1238,7 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
           </Tile>
         </div>
       )}
-    </>
+    </section>
   );
 };
 export default HomeDashBoard;

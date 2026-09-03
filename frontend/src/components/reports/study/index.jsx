@@ -1,14 +1,9 @@
 import React, { useContext, useState, useEffect } from "react";
 import { AlertDialog } from "../../common/CustomNotification";
 import { NotificationContext } from "../../layout/Layout";
-import {
-  Heading,
-  Grid,
-  Column,
-  Section,
-  Loading,
-} from "@carbon/react";
+import { Heading, Grid, Column, Section, Loading } from "@carbon/react";
 import { injectIntl, FormattedMessage, useIntl } from "react-intl";
+import { navigateToInternalPath } from "../../utils/NavigationUtils";
 import PatientStatusReport from "../common/PatientStatusReport";
 import ReportByID from "../common/ReportByID";
 import ReportByDate from "../common/ReportByDate";
@@ -222,7 +217,7 @@ const StudyIndex = () => {
       }
       setIsLoading(false);
     } else {
-      window.location.href = "/StudyReports";
+      navigateToInternalPath("/StudyReports", { replace: true });
     }
   }, [type, report]);
 

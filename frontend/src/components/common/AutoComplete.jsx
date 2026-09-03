@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
 import "../admin/reflexTests/ReflexStyles.css";
 import { TextInput } from "@carbon/react";
+import { useIntl } from "react-intl";
 
 function AutoComplete(props) {
+  const intl = useIntl();
   const allowFreeText = props.allowFreeText;
 
   const [textValue, setTextValue] = useState("");
@@ -128,7 +130,10 @@ function AutoComplete(props) {
       suggestionsListComponent = (
         <div className="suggestions-container">
           <div className="no-suggestions">
-            <em>No suggestions available.</em>
+            <em>
+              {props.noSuggestionsText ||
+                intl.formatMessage({ id: "autocomplete.noSuggestions" })}
+            </em>
           </div>
         </div>
       );

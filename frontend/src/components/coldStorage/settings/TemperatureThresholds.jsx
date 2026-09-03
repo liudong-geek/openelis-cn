@@ -148,6 +148,9 @@ function TemperatureThresholds() {
 
         {devices.length === 0 ? (
           <InlineNotification
+            statusIconDescription={intl.formatMessage({
+              id: "carbon.notification.info",
+            })}
             kind="info"
             title={intl.formatMessage({
               id: "coldStorage.noDevicesConfigured",

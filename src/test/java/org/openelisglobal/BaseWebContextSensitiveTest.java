@@ -164,6 +164,12 @@ public abstract class BaseWebContextSensitiveTest extends AbstractTransactionalJ
      * @return a configured MockHttpServletRequest
      */
     protected MockHttpServletRequest buildFhirRequest(String method, String pathInfo) {
+        // FHIR write guards authorize against the persisted OpenELIS role model,
+        // not only Spring Security authorities. DbUnit facade fixtures replace the
+        // role tables, so make the authenticated test user a real administrator
+        // after each fixture load as part of constructing an authenticated request.
+        ensureFhirAdministratorAuthorization();
+
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setMethod(method);
         request.setContextPath("");
@@ -178,6 +184,47 @@ public abstract class BaseWebContextSensitiveTest extends AbstractTransactionalJ
 
         request.getSession().setAttribute(IActionConstants.USER_SESSION_DATA, sessionData);
         return request;
+    }
+
+    /**
+     * Ensures the FHIR test caller exists and has the canonical Global
+     * Administrator role. This is deliberately attached to the authenticated FHIR
+     * request helper; authorization-negative service tests construct their own
+     * requests and remain unaffected.
+     */
+    protected void ensureFhirAdministratorAuthorization() {
+        ensureAuditSystemUser();
+        try (Connection conn = dataSource.getConnection()) {
+            String roleId;
+            try (java.sql.PreparedStatement select = conn.prepareStatement(
+                    "SELECT id FROM clinlims.system_role WHERE btrim(name) = 'Global Administrator' LIMIT 1");
+                    java.sql.ResultSet rs = select.executeQuery()) {
+                roleId = rs.next() ? rs.getString(1) : null;
+            }
+            if (roleId == null) {
+                try (java.sql.PreparedStatement insert = conn.prepareStatement(
+                        "INSERT INTO clinlims.system_role (id, name, description, is_grouping_role, "
+                                + "display_key, active, editable) VALUES "
+                                + "(nextval('clinlims.system_role_seq'), 'Global Administrator', "
+                                + "'Test FHIR administrator', false, 'role.maintenance', true, false) "
+                                + "RETURNING id")) {
+                    try (java.sql.ResultSet rs = insert.executeQuery()) {
+                        rs.next();
+                        roleId = rs.getString(1);
+                    }
+                }
+            }
+            try (java.sql.PreparedStatement insertLink = conn.prepareStatement(
+                    "INSERT INTO clinlims.system_user_role (system_user_id, role_id) "
+                            + "SELECT 1, ?::numeric WHERE NOT EXISTS "
+                            + "(SELECT 1 FROM clinlims.system_user_role WHERE system_user_id = 1 AND role_id = ?::numeric)")) {
+                insertLink.setString(1, roleId);
+                insertLink.setString(2, roleId);
+                insertLink.executeUpdate();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to authorize the FHIR test administrator", e);
+        }
     }
 
     protected String mapToJson(Object obj) throws JsonProcessingException {

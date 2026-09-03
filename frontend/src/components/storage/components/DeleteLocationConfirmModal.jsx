@@ -27,6 +27,7 @@ export default function DeleteLocationConfirmModal({
   onDeleted,
 }) {
   const intl = useIntl();
+  const isChineseLocale = intl.locale?.toLowerCase().startsWith("zh");
   const deleteLocation = useDeleteLocation();
   const [summary, setSummary] = useState(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
@@ -67,11 +68,16 @@ export default function DeleteLocationConfirmModal({
           setSummary(response);
         } else {
           setError(
-            response?.message ||
-              intl.formatMessage({
-                id: "storage.delete.error",
-                defaultMessage: "Failed to delete location",
-              }),
+            isChineseLocale
+              ? intl.formatMessage({
+                  id: "storage.delete.error",
+                  defaultMessage: "Failed to delete location",
+                })
+              : response?.message ||
+                  intl.formatMessage({
+                    id: "storage.delete.error",
+                    defaultMessage: "Failed to delete location",
+                  }),
           );
         }
         setLoadingSummary(false);
@@ -106,11 +112,16 @@ export default function DeleteLocationConfirmModal({
       onDeleted?.();
     } catch (e) {
       setError(
-        e?.message ||
-          intl.formatMessage({
-            id: "storage.delete.error",
-            defaultMessage: "Failed to delete location",
-          }),
+        isChineseLocale
+          ? intl.formatMessage({
+              id: "storage.delete.error",
+              defaultMessage: "Failed to delete location",
+            })
+          : e?.message ||
+              intl.formatMessage({
+                id: "storage.delete.error",
+                defaultMessage: "Failed to delete location",
+              }),
       );
     } finally {
       setDeleting(false);

@@ -187,6 +187,14 @@ public class LuceneSearchResultsDAOImpl implements SearchResultsDAO {
         return patientSearchResultsList;
     }
 
+    @Override
+    public List<PatientSearchResults> getQuickSearchResults(String query) throws LIMSRuntimeException {
+        // Lucene search is no longer the primary patient search implementation.
+        // Keep a conservative compatibility fallback for deployments that still
+        // select it: identifiers are ORed by the existing query contract.
+        return getSearchResults(query, query, query, query, query, query, null, null, null, null);
+    }
+
     private String buildQueryString(String nationalID, String externalID, String STNumber, String subjectNumber,
             String guid) {
 

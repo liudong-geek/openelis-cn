@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -23,7 +24,9 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.openelisglobal.barcode.labeltype.BlockLabel;
 import org.openelisglobal.barcode.labeltype.FreezerLabel;
+import org.openelisglobal.barcode.labeltype.OrderLabel;
 import org.openelisglobal.barcode.labeltype.SlideLabel;
+import org.openelisglobal.barcode.labeltype.SpecimenLabel;
 import org.openelisglobal.barcode.valueholder.SampleBarcodeInfo;
 import org.openelisglobal.barcode.valueholder.SampleItemBarcodeInfo;
 import org.openelisglobal.sample.service.SampleService;
@@ -208,19 +211,56 @@ public class BarcodeInfoServiceImplTest {
 
         barcodeInfoService.recordPrintedCounts("2025-00001", List.of(blockLabel, slideLabel, freezerLabel));
 
-        ArgumentCaptor<SampleItemBarcodeInfo> updateCaptor = ArgumentCaptor.forClass(SampleItemBarcodeInfo.class);
-        verify(sampleItemBarcodeInfoService, org.mockito.Mockito.atLeast(1)).update(updateCaptor.capture());
+        ArgumentCaptor<SampleItemBarcodeInfo> insertCaptor = ArgumentCaptor.forClass(SampleItemBarcodeInfo.class);
+        verify(sampleItemBarcodeInfoService, times(2)).insert(insertCaptor.capture());
 
-        boolean hasBlockIncrement = updateCaptor.getAllValues().stream()
+        boolean hasBlockIncrement = insertCaptor.getAllValues().stream()
                 .anyMatch(info -> Integer.valueOf(2).equals(info.getPrintedBlockCount()));
-        boolean hasSlideIncrement = updateCaptor.getAllValues().stream()
+        boolean hasSlideIncrement = insertCaptor.getAllValues().stream()
                 .anyMatch(info -> Integer.valueOf(3).equals(info.getPrintedSlideCount()));
-        boolean hasFreezerIncrement = updateCaptor.getAllValues().stream()
+        boolean hasFreezerIncrement = insertCaptor.getAllValues().stream()
                 .anyMatch(info -> Integer.valueOf(4).equals(info.getPrintedFreezerCount()));
 
         org.junit.Assert.assertTrue("Expected pathology block labels to increment printed counts", hasBlockIncrement);
         org.junit.Assert.assertTrue("Expected pathology slide labels to increment printed counts", hasSlideIncrement);
         org.junit.Assert.assertTrue("Expected pathology freezer labels to increment printed counts", hasFreezerIncrement);
+    }
+
+    @Test
+    public void recordPrintedCounts_aggregatesRepeatedLabelsBeforeUpdatingEachCounter() {
+        when(sampleService.getSampleByAccessionNumber("2025-00001")).thenReturn(sample);
+
+        SampleBarcodeInfo existingSampleInfo = new SampleBarcodeInfo();
+        existingSampleInfo.setSample(sample);
+        existingSampleInfo.setPrintedOrderCount(4);
+        when(sampleBarcodeInfoService.getAllMatching(eq("sample"), eq(sample)))
+                .thenReturn(Collections.singletonList(existingSampleInfo));
+
+        SampleItem firstItem = sampleItems.get(0);
+        SampleItemBarcodeInfo existingItemInfo = new SampleItemBarcodeInfo();
+        existingItemInfo.setSampleItem(firstItem);
+        existingItemInfo.setPrintedSpecimenCount(3);
+        when(sampleItemBarcodeInfoService.getAllMatching(eq("sampleItem"), eq(firstItem)))
+                .thenReturn(Collections.singletonList(existingItemInfo));
+
+        OrderLabel firstOrderLabel = org.mockito.Mockito.mock(OrderLabel.class);
+        when(firstOrderLabel.getNumLabels()).thenReturn(1);
+        OrderLabel secondOrderLabel = org.mockito.Mockito.mock(OrderLabel.class);
+        when(secondOrderLabel.getNumLabels()).thenReturn(2);
+        SpecimenLabel firstSpecimenLabel = org.mockito.Mockito.mock(SpecimenLabel.class);
+        when(firstSpecimenLabel.getNumLabels()).thenReturn(2);
+        when(firstSpecimenLabel.getSampleItem()).thenReturn(firstItem);
+        SpecimenLabel secondSpecimenLabel = org.mockito.Mockito.mock(SpecimenLabel.class);
+        when(secondSpecimenLabel.getNumLabels()).thenReturn(4);
+        when(secondSpecimenLabel.getSampleItem()).thenReturn(firstItem);
+
+        barcodeInfoService.recordPrintedCounts("2025-00001",
+                List.of(firstOrderLabel, secondOrderLabel, firstSpecimenLabel, secondSpecimenLabel));
+
+        verify(sampleBarcodeInfoService, times(1)).update(existingSampleInfo);
+        assertEquals(Integer.valueOf(7), existingSampleInfo.getPrintedOrderCount());
+        verify(sampleItemBarcodeInfoService, times(1)).update(existingItemInfo);
+        assertEquals(Integer.valueOf(9), existingItemInfo.getPrintedSpecimenCount());
     }
 
 }

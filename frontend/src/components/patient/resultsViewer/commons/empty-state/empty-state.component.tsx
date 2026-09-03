@@ -1,6 +1,6 @@
 import React from "react";
 import { Layer, Link, Tile } from "@carbon/react";
-import { Trans, useTranslation } from "react-i18next";
+import { useIntl } from "react-intl";
 import { EmptyDataIllustration } from "./empty-data-illustration.component";
 import { useLayoutType } from "../utils";
 //import styles from './empty-state.scss';
@@ -13,7 +13,7 @@ export interface EmptyStateProps {
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = (props) => {
-  const { t } = useTranslation();
+  const intl = useIntl();
   const isTablet = useLayoutType() === "tablet";
 
   return (
@@ -22,23 +22,25 @@ export const EmptyState: React.FC<EmptyStateProps> = (props) => {
         <div className={isTablet ? "tabletHeading" : "desktopHeading"}>
           <h4>{props.headerTitle}</h4>
         </div>
-        <EmptyDataIllustration />
+        <EmptyDataIllustration
+          title={intl.formatMessage({
+            id: "patient.resultsViewer.empty.illustration",
+          })}
+        />
         <p className="content">
-          <Trans
-            i18nKey="emptyStateText"
-            values={{ displayText: props.displayText.toLowerCase() }}
-          >
-            There are no {props.displayText.toLowerCase()} to display for this
-            patient
-          </Trans>
+          {intl.formatMessage(
+            { id: "patient.resultsViewer.empty.message" },
+            { displayText: props.displayText },
+          )}
         </p>
         <p className="action">
           {props.launchForm && (
             <span>
               <Link onClick={() => props.launchForm()}>
-                <>
-                  {t("record", "Record")} {props.displayText.toLowerCase()}
-                </>
+                {intl.formatMessage(
+                  { id: "patient.resultsViewer.empty.record" },
+                  { displayText: props.displayText },
+                )}
               </Link>
             </span>
           )}

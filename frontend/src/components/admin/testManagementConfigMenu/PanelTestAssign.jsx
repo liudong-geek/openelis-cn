@@ -20,6 +20,7 @@ import {
 } from "../../common/CustomNotification";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 import { CustomSharedList } from "./CustomSharedList";
 
 let breadcrumbs = [
@@ -53,7 +54,7 @@ function PanelTestAssign() {
 
   const handlePostPanelTestTestAssignListCall = () => {
     if (!panelId || !selectedPanelIdData) {
-      window.location.reload();
+      refreshCurrentRoute();
       return;
     }
     postToOpenElisServerJsonResponse(
@@ -85,7 +86,7 @@ function PanelTestAssign() {
         kind: NotificationKinds.success,
       });
       setTimeout(() => {
-        window.location.reload();
+        refreshCurrentRoute();
       }, 200);
     } else {
       addNotification({
@@ -95,14 +96,14 @@ function PanelTestAssign() {
       });
       setNotificationVisible(true);
       setTimeout(() => {
-        window.location.reload();
+        refreshCurrentRoute();
       }, 200);
     }
   };
 
   const handleSelectedPanelTestList = (res) => {
     if (!res) {
-      window.location.reload();
+      refreshCurrentRoute();
     } else {
       setSelectedPanelIdData(res);
     }

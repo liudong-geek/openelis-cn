@@ -5,6 +5,7 @@ import { waitFor } from "@testing-library/dom";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import messages from "../../../../languages/en.json";
+import zhMessages from "../../../../languages/zh.json";
 
 vi.mock("../../../utils/Utils", () => ({
   getFromOpenElisServer: vi.fn(),
@@ -15,7 +16,6 @@ vi.mock("../../../utils/Utils", () => ({
 // Must import AFTER mock setup
 import { getFromOpenElisServer } from "../../../utils/Utils";
 
-
 const renderWithIntl = (component) => {
   return render(
     <IntlProvider locale="en" messages={messages}>
@@ -23,6 +23,13 @@ const renderWithIntl = (component) => {
     </IntlProvider>,
   );
 };
+
+const renderWithChineseIntl = (component) =>
+  render(
+    <IntlProvider locale="zh-CN" messages={zhMessages}>
+      {component}
+    </IntlProvider>,
+  );
 
 const mockFilters = {
   fromDate: "2026-03-01",
@@ -32,7 +39,8 @@ const mockFilters = {
 };
 
 const mockBuildQueryString = vi.fn(
-  (filters, extra) => `fromDate=${filters.fromDate}&toDate=${filters.toDate}${extra || ""}`,
+  (filters, extra) =>
+    `fromDate=${filters.fromDate}&toDate=${filters.toDate}${extra || ""}`,
 );
 
 const mockData = {
@@ -97,7 +105,10 @@ describe("TATDetailListTab", () => {
 
   test("shows no results when filters not applied", () => {
     renderWithIntl(
-      <TATDetailListTab filters={null} buildQueryString={mockBuildQueryString} />,
+      <TATDetailListTab
+        filters={null}
+        buildQueryString={mockBuildQueryString}
+      />,
     );
     expect(screen.getByText(/No results found/i)).toBeInTheDocument();
   });
@@ -108,7 +119,10 @@ describe("TATDetailListTab", () => {
     });
 
     renderWithIntl(
-      <TATDetailListTab filters={mockFilters} buildQueryString={mockBuildQueryString} />,
+      <TATDetailListTab
+        filters={mockFilters}
+        buildQueryString={mockBuildQueryString}
+      />,
     );
 
     await waitFor(() => {
@@ -124,7 +138,10 @@ describe("TATDetailListTab", () => {
     });
 
     renderWithIntl(
-      <TATDetailListTab filters={mockFilters} buildQueryString={mockBuildQueryString} />,
+      <TATDetailListTab
+        filters={mockFilters}
+        buildQueryString={mockBuildQueryString}
+      />,
     );
 
     await waitFor(() => {
@@ -141,7 +158,10 @@ describe("TATDetailListTab", () => {
     });
 
     renderWithIntl(
-      <TATDetailListTab filters={mockFilters} buildQueryString={mockBuildQueryString} />,
+      <TATDetailListTab
+        filters={mockFilters}
+        buildQueryString={mockBuildQueryString}
+      />,
     );
 
     await waitFor(() => {
@@ -157,7 +177,10 @@ describe("TATDetailListTab", () => {
     });
 
     const { container } = renderWithIntl(
-      <TATDetailListTab filters={mockFilters} buildQueryString={mockBuildQueryString} />,
+      <TATDetailListTab
+        filters={mockFilters}
+        buildQueryString={mockBuildQueryString}
+      />,
     );
 
     await waitFor(() => {
@@ -174,7 +197,10 @@ describe("TATDetailListTab", () => {
     });
 
     const { container } = renderWithIntl(
-      <TATDetailListTab filters={mockFilters} buildQueryString={mockBuildQueryString} />,
+      <TATDetailListTab
+        filters={mockFilters}
+        buildQueryString={mockBuildQueryString}
+      />,
     );
 
     await waitFor(() => {
@@ -195,12 +221,35 @@ describe("TATDetailListTab", () => {
     });
 
     renderWithIntl(
-      <TATDetailListTab filters={mockFilters} buildQueryString={mockBuildQueryString} />,
+      <TATDetailListTab
+        filters={mockFilters}
+        buildQueryString={mockBuildQueryString}
+      />,
     );
 
     await waitFor(() => {
       // Pagination component renders page size selector
       expect(screen.getByText(/1–3 of 3/i)).toBeInTheDocument();
+    });
+  });
+
+  test("China profile localizes priority, duration and pagination", async () => {
+    getFromOpenElisServer.mockImplementation((_url, callback) => {
+      callback(mockData);
+    });
+
+    renderWithChineseIntl(
+      <TATDetailListTab
+        filters={mockFilters}
+        buildQueryString={mockBuildQueryString}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("常规").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("4小时").length).toBeGreaterThan(0);
+      expect(screen.getByText("第 1–3 项，共 3 项")).toBeInTheDocument();
+      expect(screen.getByText("每页显示")).toBeInTheDocument();
     });
   });
 
@@ -210,7 +259,10 @@ describe("TATDetailListTab", () => {
     });
 
     renderWithIntl(
-      <TATDetailListTab filters={mockFilters} buildQueryString={mockBuildQueryString} />,
+      <TATDetailListTab
+        filters={mockFilters}
+        buildQueryString={mockBuildQueryString}
+      />,
     );
 
     await waitFor(() => {
@@ -224,7 +276,10 @@ describe("TATDetailListTab", () => {
     });
 
     renderWithIntl(
-      <TATDetailListTab filters={mockFilters} buildQueryString={mockBuildQueryString} />,
+      <TATDetailListTab
+        filters={mockFilters}
+        buildQueryString={mockBuildQueryString}
+      />,
     );
 
     expect(getFromOpenElisServer).toHaveBeenCalledWith(

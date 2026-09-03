@@ -112,7 +112,7 @@
         lastupdated="2024-02-12 10:00:00" />
 
     <!-- Analysis -->
-    <analysis id="1" sampitem_id="1" test_id="1" status_id="1"
+    <analysis id="1" sampitem_id="1" test_id="1" status_id="6"
         analysis_type="NORMAL" is_reportable="Y"
         lastupdated="2024-02-12 10:00:00" />
 
@@ -122,6 +122,23 @@
     <result id="1" analysis_id="1" value="5.5" test_result_id="1"
         analyte_id="1" is_reportable="Y" result_type="D"
         lastupdated="2024-02-12 10:00:00" />
+
+    <!-- A result that has only been entered must never appear on a patient
+        report. -->
+    <sample id="2" accession_number="24-00002"
+        received_date="2024-02-13 10:00:00" entered_date="2024-02-13"
+        collection_date="2024-02-13 08:30:00" status_id="1"
+        lastupdated="2024-02-13 10:00:00" />
+    <sample_human id="2" patient_id="1" samp_id="2"
+        provider_id="1" lastupdated="2024-02-13 10:00:00" />
+    <sample_item id="2" samp_id="2" sort_order="1"
+        status_id="1" typeosamp_id="1" lastupdated="2024-02-13 10:00:00" />
+    <analysis id="2" sampitem_id="2" test_id="1" status_id="1"
+        analysis_type="NORMAL" is_reportable="Y"
+        lastupdated="2024-02-13 10:00:00" />
+    <result id="2" analysis_id="2" value="99.9" test_result_id="1"
+        analyte_id="1" is_reportable="Y" result_type="D"
+        lastupdated="2024-02-13 10:00:00" />
 
     <!-- Link user to test section -->
     <system_user_section id="1" has_view="Y"

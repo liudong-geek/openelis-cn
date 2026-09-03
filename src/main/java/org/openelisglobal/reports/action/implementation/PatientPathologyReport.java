@@ -10,7 +10,8 @@ import org.openelisglobal.program.valueholder.pathology.PathologySample;
 import org.openelisglobal.reports.form.ReportForm;
 import org.openelisglobal.spring.util.SpringContext;
 
-public class PatientPathologyReport extends PatientProgramReport {
+public class PatientPathologyReport extends PatientProgramReport
+        implements ResultsScopedReportCreator.PathologyProgramSampleSelection {
     protected PathologyDisplayService pathologyDisplayService = SpringContext.getBean(PathologyDisplayService.class);
 
     private PathologySample pathologySample;

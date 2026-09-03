@@ -32,8 +32,6 @@ import org.openelisglobal.common.rest.provider.bean.PatientInfoBean;
 import org.openelisglobal.common.services.DisplayListService;
 import org.openelisglobal.common.services.DisplayListService.ListType;
 import org.openelisglobal.common.services.RequesterService;
-import org.openelisglobal.common.util.ConfigurationProperties;
-import org.openelisglobal.common.util.ConfigurationProperties.Property;
 import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.dataexchange.fhir.FhirUtil;
 import org.openelisglobal.observationhistory.service.ObservationHistoryService;
@@ -629,12 +627,8 @@ public class OrderSearchRestController extends BaseRestController {
         patientInfo.setCustomNotes(identityMap.getIdentityValue(identityList, "CUSTOM_NOTES"));
         patientInfo.setTargetDiseaseProgramme(identityMap.getIdentityValue(identityList, "DISEASE_PROGRAMME"));
 
-        String format1 = "dd/MM/yyyy";
-        String format2 = "MM/dd/yyyy";
         patientInfo.setBirthDateForDisplay(
-                ConfigurationProperties.getInstance().getPropertyValue(Property.DEFAULT_DATE_LOCALE).equals("fr-FR")
-                        ? DateUtil.formatStringDate(patient.getBirthDateForDisplay(), format1)
-                        : DateUtil.formatStringDate(patient.getBirthDateForDisplay(), format2));
+                DateUtil.formatStringDateForConfiguredLocale(patient.getBirthDateForDisplay()));
 
         patientInfo.setCommune(commune);
         patientInfo.setAddressDepartment(dept);

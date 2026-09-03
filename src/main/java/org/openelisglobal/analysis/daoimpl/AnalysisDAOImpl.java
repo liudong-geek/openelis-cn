@@ -1285,6 +1285,32 @@ public class AnalysisDAOImpl extends BaseDAOImpl<Analysis, String> implements An
 
     @Override
     @Transactional(readOnly = true)
+    public List<Analysis> getAllAnalysisByTestsAndStatusAndCompletedDateRangeExclusive(List<String> testIdList,
+            List<String> analysisStatusList, List<String> sampleStatusList, Timestamp startInclusive,
+            Timestamp endExclusive) {
+        try {
+            String sql = "from Analysis a where a.test.id IN (:testList)"
+                    + " and a.statusId IN (:analysisStatusList)"
+                    + " and a.sampleItem.sample.statusId IN (:sampleStatusList)"
+                    + " and a.completedDate >= :startInclusive"
+                    + " and a.completedDate < :endExclusive"
+                    + " order by a.sampleItem.sample.accessionNumber";
+
+            Query<Analysis> query = entityManager.unwrap(Session.class).createQuery(sql, Analysis.class);
+            query.setParameterList("testList", testIdList);
+            query.setParameterList("sampleStatusList", sampleStatusList);
+            query.setParameterList("analysisStatusList", analysisStatusList);
+            query.setParameter("startInclusive", startInclusive);
+            query.setParameter("endExclusive", endExclusive);
+            return query.list();
+        } catch (HibernateException e) {
+            handleException(e, "getAllAnalysisByTestsAndStatusAndCompletedDateRangeExclusive");
+        }
+        return null;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public List<Analysis> getAllAnalysisByTestSectionAndStatus(String testSectionId, List<String> analysisStatusList,
             List<String> sampleStatusList) throws LIMSRuntimeException {
 

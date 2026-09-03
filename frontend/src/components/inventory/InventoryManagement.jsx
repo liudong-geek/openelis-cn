@@ -8,7 +8,7 @@ import {
   Grid,
   Column,
 } from "@carbon/react";
-import { FormattedMessage } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import PageBreadCrumb from "../common/PageBreadCrumb";
 import InventoryDashboard from "./InventoryDashboard";
 import InventoryCatalog from "./InventoryCatalog";
@@ -25,6 +25,7 @@ const breadcrumbs = [
 ];
 
 const InventoryManagement = () => {
+  const intl = useIntl();
   const [selectedTab, setSelectedTab] = useState(0);
 
   return (
@@ -41,7 +42,10 @@ const InventoryManagement = () => {
               selectedIndex={selectedTab}
               onChange={({ selectedIndex }) => setSelectedTab(selectedIndex)}
             >
-              <TabList aria-label="Inventory management tabs" contained>
+              <TabList
+                aria-label={intl.formatMessage({ id: "inventory.title" })}
+                contained
+              >
                 <Tab>
                   <FormattedMessage id="inventory.tab.dashboard" />
                 </Tab>

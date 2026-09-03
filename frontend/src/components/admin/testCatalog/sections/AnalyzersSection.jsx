@@ -86,7 +86,13 @@ const AnalyzersSection = ({ testId }) => {
           })}
         />
       ) : (
-        <Table size="lg" useZebraStyles aria-label="analyzers">
+        <Table
+          size="lg"
+          useZebraStyles
+          aria-label={intl.formatMessage({
+            id: "label.testCatalog.section.analyzers",
+          })}
+        >
           <TableHead>
             <TableRow>
               <TableHeader>

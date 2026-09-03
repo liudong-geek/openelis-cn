@@ -16,8 +16,13 @@ public class NameValidator implements ConstraintValidator<ValidName, String>, Co
         USERNAME, FIRST_NAME, LAST_NAME, FULL_NAME
     }
 
-    private static final SiteInformation DEFAULT_SITE_INFORATION = new SiteInformation();
-    private static final String DEFAULT_REGEX = "0-9a-z .'_@-";
+    /**
+     * Patient and provider names are human names, not identifiers.  Use Unicode
+     * letter/mark classes so Chinese and other non-Latin scripts are accepted.
+     * Username validation intentionally keeps the legacy ASCII-oriented rule.
+     */
+    private static final String DEFAULT_PERSON_NAME_REGEX = "\\p{L}\\p{M}0-9 .'_@·•-";
+    private static final String DEFAULT_USER_NAME_REGEX = "0-9a-z .'_@-";
     private static String FIRST_NAME_REGEX;
     private static String LAST_NAME_REGEX;
     private static String USER_NAME_REGEX;
@@ -39,7 +44,6 @@ public class NameValidator implements ConstraintValidator<ValidName, String>, Co
     @Override
     public void initialize(ValidName constraint) {
         nameType = constraint.nameType();
-        DEFAULT_SITE_INFORATION.setValue(DEFAULT_REGEX);
     }
 
     private String getRegex(NameType nameType) {
@@ -75,21 +79,23 @@ public class NameValidator implements ConstraintValidator<ValidName, String>, Co
 
     @Override
     public void refreshConfiguration() {
+        SiteInformation defaultPersonName = new SiteInformation();
+        defaultPersonName.setValue(DEFAULT_PERSON_NAME_REGEX);
+        SiteInformation defaultUserName = new SiteInformation();
+        defaultUserName.setValue(DEFAULT_USER_NAME_REGEX);
 
-        FIRST_NAME_REGEX = "(?iu)^[" + escapeRegexChars(
-                siteInformationService.getMatch("name", "firstNameCharset").orElse(DEFAULT_SITE_INFORATION).getValue())
-                + "]*$";
-        LAST_NAME_REGEX = "(?iu)^[" + escapeRegexChars(
-                siteInformationService.getMatch("name", "lastNameCharset").orElse(DEFAULT_SITE_INFORATION).getValue())
-                + "]*$";
+        FIRST_NAME_REGEX = "(?iu)^[" + escapeRegexChars(siteInformationService
+                .getMatch("name", "firstNameCharset").orElse(defaultPersonName).getValue()) + "]*$";
+        LAST_NAME_REGEX = "(?iu)^[" + escapeRegexChars(siteInformationService
+                .getMatch("name", "lastNameCharset").orElse(defaultPersonName).getValue()) + "]*$";
         FULL_NAME_REGEX = "(?iu)^["
                 + escapeRegexChars(siteInformationService.getMatch("name", "firstNameCharset")
-                        .orElse(new SiteInformation()).getValue())
+                        .orElse(defaultPersonName).getValue())
                 + "]*([ ]*[" + escapeRegexChars(siteInformationService.getMatch("name", "lastNameCharset")
-                        .orElse(DEFAULT_SITE_INFORATION).getValue())
+                        .orElse(defaultPersonName).getValue())
                 + "])?$";
         USER_NAME_REGEX = "(?iu)^[" + escapeRegexChars(
-                siteInformationService.getMatch("name", "userNameCharset").orElse(DEFAULT_SITE_INFORATION).getValue())
+                siteInformationService.getMatch("name", "userNameCharset").orElse(defaultUserName).getValue())
                 + "]*$";
     }
 }

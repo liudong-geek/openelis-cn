@@ -22,10 +22,13 @@ import java.time.LocalDate;
 import java.time.Period;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.GregorianCalendar;
+import java.util.LinkedHashSet;
 import java.util.Locale;
+import java.util.Set;
 import java.util.TimeZone;
 import java.util.regex.Pattern;
 import org.apache.commons.validator.GenericValidator;
@@ -45,6 +48,11 @@ public class DateUtil {
     private static final Pattern TWO_DIGITS = Pattern.compile("\\d{2}");
     private static final Pattern DIGIT = Pattern.compile("\\d");
     private static final Pattern VALID_DATE = Pattern.compile("\\d{2}/\\d{2}/\\d{4}");
+    private static final Pattern VALID_CHINESE_DATE = Pattern.compile("\\d{4}/\\d{2}/\\d{2}");
+    private static final String US_DATE_FORMAT = "MM/dd/yyyy";
+    private static final String FRENCH_DATE_FORMAT = "dd/MM/yyyy";
+    private static final String CHINESE_DATE_FORMAT = "yyyy/MM/dd";
+    private static final String ISO_DATE_FORMAT = "yyyy-MM-dd";
     private static final long DAY_IN_MILLSEC = 1000L * 60L * 60L * 24L;
 
     private static final long WEEK_MS = DAY_IN_MILLSEC * 7L;
@@ -77,14 +85,14 @@ public class DateUtil {
     }
 
     public static LocalDate convertStringDateToLocalDate(String date) {
-        Locale locale = Locale
-                .forLanguageTag(ConfigurationProperties.getInstance().getPropertyValue(Property.DEFAULT_LANG_LOCALE));
+        Locale locale = localeForLanguageTag(
+                ConfigurationProperties.getInstance().getPropertyValue(Property.DEFAULT_LANG_LOCALE));
 
         return convertStringDateToLocalDate(date, locale);
     }
 
     private static LocalDate convertStringDateToLocalDate(String date, Locale locale) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(getDateFormat());
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(getDateFormatForLocale(locale));
         LocalDate returnDate = null;
 
         if (!StringUtil.isNullorNill(date)) {
@@ -96,7 +104,9 @@ public class DateUtil {
 
     public static java.sql.Date convertStringDateToSqlDate(String date, String stringLocale)
             throws LIMSRuntimeException {
-        SimpleDateFormat format = new SimpleDateFormat(getDateFormat());
+        Locale locale = GenericValidator.isBlankOrNull(stringLocale) ? getDateFormatLocale()
+                : localeForLanguageTag(stringLocale);
+        SimpleDateFormat format = new SimpleDateFormat(getDateFormatForLocale(locale));
         format.setLenient(false);
         java.sql.Date returnDate = null;
 
@@ -127,6 +137,7 @@ public class DateUtil {
 
     public static Timestamp convertStringDateToTruncatedTimestamp(String date) throws LIMSRuntimeException {
         SimpleDateFormat format = new SimpleDateFormat(getDateFormat());
+        format.setLenient(false);
         Timestamp returnTimestamp = null;
 
         if (!StringUtil.isNullorNill(date)) {
@@ -142,6 +153,7 @@ public class DateUtil {
 
     public static Timestamp convertStringDateToTimestamp(String date) throws LIMSRuntimeException {
         SimpleDateFormat format = new SimpleDateFormat(getDateTimeFormat());
+        format.setLenient(false);
         Timestamp returnTimestamp = null;
 
         if (!StringUtil.isNullorNill(date)) {
@@ -346,10 +358,13 @@ public class DateUtil {
     }
 
     public static Timestamp convertAmbiguousStringDateToTimestamp(String dateForDisplay) {
+        if (GenericValidator.isBlankOrNull(dateForDisplay)) {
+            return null;
+        }
 
         dateForDisplay = normalizeAmbiguousDate(dateForDisplay);
 
-        return dateForDisplay == null ? null : convertStringDateToTruncatedTimestamp(dateForDisplay);
+        return dateForDisplay == null ? null : Timestamp.valueOf(parseLocalDate(dateForDisplay).atStartOfDay());
     }
 
     public static boolean yearSpecified(String dateString) {
@@ -359,6 +374,9 @@ public class DateUtil {
     }
 
     public static String normalizeAmbiguousDate(String date) {
+        if (CHINESE_DATE_FORMAT.equals(getDateFormat()) && VALID_CHINESE_DATE.matcher(date).matches()) {
+            return date;
+        }
         if (VALID_DATE.matcher(date).find()) {
             return date;
         }
@@ -667,8 +685,24 @@ public class DateUtil {
     }
 
     public static String getDateFormat() {
-        Locale locale = getDateFormatLocale();
-        return MessageUtil.getMessage("date.format.formatKey", locale);
+        return getDateFormatForLocale(getDateFormatLocale());
+    }
+
+    /**
+     * Returns the stable date pattern used by the supported OpenELIS locales.
+     * Chinese deliberately uses a fixed-width year-first pattern rather than
+     * {@link java.text.DateFormat#SHORT}, whose output varies by JDK and may omit
+     * leading zeroes.
+     */
+    public static String getDateFormatForLocale(Locale locale) {
+        String language = locale == null ? "" : locale.getLanguage();
+        if (Locale.CHINESE.getLanguage().equalsIgnoreCase(language)) {
+            return CHINESE_DATE_FORMAT;
+        }
+        if (Locale.FRENCH.getLanguage().equalsIgnoreCase(language)) {
+            return FRENCH_DATE_FORMAT;
+        }
+        return US_DATE_FORMAT;
     }
 
     public static String getTimeFormat() {
@@ -678,17 +712,21 @@ public class DateUtil {
 
     public static String getDateTimeFormat() {
         Locale locale = getDateFormatLocale();
-        return MessageUtil.getMessage("timestamp.format.formatKey", locale);
+        return getDateFormatForLocale(locale) + " HH:mm";
     }
 
     public static String getDateTime12HourFormat() {
         Locale locale = getDateFormatLocale();
-        return MessageUtil.getMessage("timestamp.format.formatKey.12", locale);
+        return getDateFormatForLocale(locale) + " KK:mm a";
     }
 
     public static Locale getDateFormatLocale() {
-        return Locale
-                .forLanguageTag(ConfigurationProperties.getInstance().getPropertyValue(Property.DEFAULT_DATE_LOCALE));
+        return localeForLanguageTag(
+                ConfigurationProperties.getInstance().getPropertyValue(Property.DEFAULT_DATE_LOCALE));
+    }
+
+    private static Locale localeForLanguageTag(String localeTag) {
+        return Locale.forLanguageTag(localeTag == null ? "" : localeTag.replace('_', '-'));
     }
 
     public static String getTimeUserPrompt() {
@@ -730,29 +768,95 @@ public class DateUtil {
         if (dateStr == null) {
             return "";
         }
-        // Define the input date formats
-        DateTimeFormatter formatter1 = DateTimeFormatter.ofPattern("MM/dd/yyyy");
-        DateTimeFormatter formatter2 = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-
-        LocalDate date = null;
-
-        // Attempt to parse with the first format
         try {
-            date = LocalDate.parse(dateStr, formatter1);
+            return parseLocalDate(dateStr, US_DATE_FORMAT)
+                    .format(DateTimeFormatter.ofPattern(outputFormat));
         } catch (DateTimeParseException e) {
-            // Attempt to parse with the second format
-            try {
-                date = LocalDate.parse(dateStr, formatter2);
-            } catch (DateTimeParseException ex) {
-                // Handle invalid date format
-                return "Invalid date format: " + dateStr;
-            }
+            return "Invalid date format: " + dateStr;
+        }
+    }
+
+    public static String formatStringDate(String dateStr, Locale locale) {
+        return formatStringDate(dateStr, locale, getDateFormatForLocale(locale));
+    }
+
+    public static String formatStringDate(String dateStr, Locale inputLocale, String outputFormat) {
+        if (dateStr == null) {
+            return "";
+        }
+        String formattedDate = tryFormatStringDate(dateStr, inputLocale, outputFormat);
+        return formattedDate == null ? "Invalid date format: " + dateStr : formattedDate;
+    }
+
+    public static String formatStringDateForConfiguredLocale(String dateStr) {
+        return formatStringDate(dateStr, getDateFormatLocale());
+    }
+
+    public static String formatStringDateAsIsoForConfiguredLocale(String dateStr) {
+        return tryFormatStringDate(dateStr, getDateFormatLocale(), ISO_DATE_FORMAT);
+    }
+
+    /**
+     * Formats a search value in the legacy slash representation most likely to
+     * differ from the configured locale. This keeps older patient records
+     * searchable while the primary query continues to use the user's exact input.
+     */
+    public static String formatStringDateForLegacySearch(String dateStr) {
+        return formatStringDateForLegacySearch(dateStr, getDateFormatLocale());
+    }
+
+    public static String formatStringDateForLegacySearch(String dateStr, Locale locale) {
+        String configuredFormat = getDateFormatForLocale(locale);
+        String legacyFormat = US_DATE_FORMAT.equals(configuredFormat) ? FRENCH_DATE_FORMAT : US_DATE_FORMAT;
+        return tryFormatStringDate(dateStr, locale, legacyFormat);
+    }
+
+    private static String tryFormatStringDate(String dateStr, Locale inputLocale, String outputFormat) {
+        if (dateStr == null) {
+            return null;
+        }
+        try {
+            return parseLocalDate(dateStr, getDateFormatForLocale(inputLocale))
+                    .format(DateTimeFormatter.ofPattern(outputFormat));
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
+
+    public static LocalDate parseLocalDate(String dateStr) {
+        return parseLocalDate(dateStr, getDateFormatLocale());
+    }
+
+    public static LocalDate parseLocalDate(String dateStr, Locale locale) {
+        return parseLocalDate(dateStr, getDateFormatForLocale(locale));
+    }
+
+    public static Date parseDate(String dateStr) {
+        return java.sql.Date.valueOf(parseLocalDate(dateStr));
+    }
+
+    private static LocalDate parseLocalDate(String dateStr, String preferredFormat) {
+        if (dateStr == null || dateStr.isBlank()) {
+            throw new DateTimeParseException("Date must not be blank", dateStr == null ? "" : dateStr, 0);
         }
 
-        // Define the output date format
-        DateTimeFormatter outputFormatter = DateTimeFormatter.ofPattern(outputFormat);
+        Set<String> inputFormats = new LinkedHashSet<>();
+        inputFormats.add(preferredFormat);
+        inputFormats.add(ISO_DATE_FORMAT);
+        inputFormats.add(CHINESE_DATE_FORMAT);
+        inputFormats.add(US_DATE_FORMAT);
+        inputFormats.add(FRENCH_DATE_FORMAT);
 
-        // Format the parsed date to the desired output format
-        return date.format(outputFormatter);
+        for (String inputFormat : inputFormats) {
+            try {
+                String strictPattern = inputFormat.replace("yyyy", "uuuu");
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern(strictPattern)
+                        .withResolverStyle(ResolverStyle.STRICT);
+                return LocalDate.parse(dateStr, formatter);
+            } catch (DateTimeParseException ignored) {
+                // Try the next supported storage/display representation.
+            }
+        }
+        throw new DateTimeParseException("Unsupported date format", dateStr, 0);
     }
 }

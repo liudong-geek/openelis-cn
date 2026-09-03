@@ -11,7 +11,6 @@ import {
   Checkbox,
   Row,
   FlexGrid,
-  Tag,
   UnorderedList,
   ListItem,
   NumberInput,
@@ -20,7 +19,9 @@ import {
   ClickableTile,
   Loading,
 } from "@carbon/react";
+import Tag from "../../../common/LocalizedTag";
 import { FormattedMessage, useIntl } from "react-intl";
+import { refreshCurrentRoute } from "../../../utils/NavigationUtils";
 import { Formik, Form } from "formik";
 import * as Yup from "yup";
 import { CustomCommonSortableOrderList } from "./../sortableListComponent/SortableList";
@@ -888,7 +889,7 @@ export const StepOneTestNameAndTestSection = ({
                       if (cancelCall) {
                         cancelCall();
                       } else {
-                        window.location.reload();
+                        refreshCurrentRoute();
                       }
                     }}
                     kind="tertiary"

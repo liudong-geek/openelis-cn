@@ -148,9 +148,7 @@ const RuleConfigPanel = () => {
 
   const translatedConfiguredHeaders = configuredHeaders.map((h) => ({
     key: h.key,
-    header: h.header
-      ? intl.formatMessage({ id: h.header, defaultMessage: h.header })
-      : "",
+    header: h.header ? intl.formatMessage({ id: h.header }) : "",
   }));
 
   // Paginated unconfigured rows
@@ -169,9 +167,7 @@ const RuleConfigPanel = () => {
 
   const translatedUnconfiguredHeaders = unconfiguredHeaders.map((h) => ({
     key: h.key,
-    header: h.header
-      ? intl.formatMessage({ id: h.header, defaultMessage: h.header })
-      : "",
+    header: h.header ? intl.formatMessage({ id: h.header }) : "",
   }));
 
   const handleConfigPaginationChange = ({
@@ -227,6 +223,10 @@ const RuleConfigPanel = () => {
 
       {error && (
         <InlineNotification
+          aria-label={intl.formatMessage({ id: "button.close" })}
+          statusIconDescription={intl.formatMessage({
+            id: "carbon.notification.error",
+          })}
           kind="error"
           title={intl.formatMessage({ id: "qc.ruleConfig.error.title" })}
           subtitle={error}

@@ -1,5 +1,6 @@
 import React, { useContext, useState, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
+import { navigateToInternalPath } from "../utils/NavigationUtils";
 import PageBreadCrumb from "../common/PageBreadCrumb";
 import {
   Button,
@@ -18,7 +19,6 @@ import {
   FileUploaderDropContainer,
   FileUploaderItem,
   Loading,
-  Tag,
   Accordion,
   AccordionItem,
   ContentSwitcher,
@@ -37,6 +37,7 @@ import {
   Search,
   Layer,
 } from "@carbon/react";
+import Tag from "../common/LocalizedTag";
 import { Launch } from "@carbon/react/icons";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { NotificationContext } from "../layout/Layout";
@@ -224,7 +225,10 @@ const NoteBookEntryForm = () => {
         message: intl.formatMessage({ id: "error.save.msg" }),
       });
     }
-    window.location.href = "/NoteBookEntryForm/" + body.id;
+    navigateToInternalPath(
+      `/NoteBookEntryForm/${encodeURIComponent(body.id)}`,
+      { replace: true },
+    );
   };
 
   const [showPageModal, setShowPageModal] = useState(false);

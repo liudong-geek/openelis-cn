@@ -1,36 +1,70 @@
 import React, { useState } from "react";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
-import { Form, Grid, Column, Section, Button } from "@carbon/react";
+import {
+  Form,
+  Grid,
+  Column,
+  Section,
+  Button,
+  InlineNotification,
+} from "@carbon/react";
 import CustomLabNumberInput from "../../common/CustomLabNumberInput";
 import config from "../../../config.json";
+import { buildReportUrl, openReportWindow } from "./reportLaunch";
 
 function ReportByLabNo(props) {
   const intl = useIntl();
   const [values, setValues] = useState({ from: "", to: "" });
+  const [validationError, setValidationError] = useState("");
+  const [launchError, setLaunchError] = useState(false);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
+  const handleChange = (fieldName, event, rawValue) => {
+    const value = rawValue ?? event?.target?.value ?? "";
     setValues((prevState) => ({
       ...prevState,
-      [name]: value,
+      [fieldName]: value,
     }));
+    setValidationError("");
+    setLaunchError(false);
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    const baseParams = `report=${props.report}&type=patient`;
-    const baseUrl = `${config.serverBaseUrl}/ReportPrint`;
-    const url = `${baseUrl}?${baseParams}&accessionDirect=${values.from}&highAccessionDirect=${values.to}`;
+    const from = values.from.trim();
+    const to = values.to.trim();
+    if (!from && !to) {
+      setValidationError(
+        intl.formatMessage({ id: "reports.query.validation.labNumber" }),
+      );
+      return;
+    }
 
-    window.open(url, "_blank");
+    // A single number is an exact query. A two-value entry is a range.
+    const url = buildReportUrl(config.serverBaseUrl, {
+      report: props.report,
+      type: "patient",
+      accessionDirect: from || to,
+      highAccessionDirect: to || from,
+    });
+    setValidationError("");
+    setLaunchError(!openReportWindow(url));
   };
-
-  const isButtonDisabled = !values.from && !values.to;
 
   return (
     <>
       <Form onSubmit={handleSubmit}>
+        {launchError && (
+          <InlineNotification
+            kind="error"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({ id: "reports.query.error.title" })}
+            subtitle={intl.formatMessage({
+              id: "reports.query.popupBlocked",
+            })}
+          />
+        )}
         <Grid>
           <Column lg={16} md={8} sm={4}>
             <Section>
@@ -46,9 +80,9 @@ function ReportByLabNo(props) {
               <h5>
                 <FormattedMessage id="report.enter.labNumber.headline" />
               </h5>
-              <h7>
+              <p>
                 <FormattedMessage id="sample.search.scanner.instructions" />
-              </h7>
+              </p>
             </Section>
           </Column>
         </Grid>
@@ -59,11 +93,14 @@ function ReportByLabNo(props) {
               name="from"
               value={values.from}
               labelText={intl.formatMessage({
-                id: "from.title",
-                defaultMessage: "From",
+                id: "reports.query.labNumber.from",
               })}
               id="from"
-              onChange={handleChange}
+              onChange={(event, rawValue) =>
+                handleChange("from", event, rawValue)
+              }
+              invalid={!!validationError}
+              invalidText={validationError}
             />
           </Column>
           <Column lg={7} md={4} sm={3}>
@@ -71,11 +108,14 @@ function ReportByLabNo(props) {
               name="to"
               value={values.to}
               labelText={intl.formatMessage({
-                id: "to.title",
-                defaultMessage: "To",
+                id: "reports.query.labNumber.to",
               })}
               id="to"
-              onChange={handleChange}
+              onChange={(event, rawValue) =>
+                handleChange("to", event, rawValue)
+              }
+              invalid={!!validationError}
+              invalidText={validationError}
             />
           </Column>
         </Grid>
@@ -84,11 +124,7 @@ function ReportByLabNo(props) {
         <Grid fullWidth={true}>
           <Column lg={16} md={8} sm={4}>
             <Section>
-              <Button
-                data-cy="printableVersion"
-                type="submit"
-                disabled={isButtonDisabled}
-              >
+              <Button data-cy="printableVersion" type="submit">
                 <FormattedMessage id="label.button.generatePrintableVersion" />
               </Button>
             </Section>

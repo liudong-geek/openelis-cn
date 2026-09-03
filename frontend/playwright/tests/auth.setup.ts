@@ -124,7 +124,8 @@ setup("authenticate", async ({ page, request, context }, testInfo) => {
   }
 
   // Add the cookie to the browser context with root path
-  const host = new URL(process.env.BASE_URL || "https://localhost").hostname;
+  const baseUrl = new URL(process.env.BASE_URL || "https://localhost");
+  const host = baseUrl.hostname;
   await context.addCookies([
     {
       name: "JSESSIONID",
@@ -132,7 +133,7 @@ setup("authenticate", async ({ page, request, context }, testInfo) => {
       domain: host,
       path: "/",
       httpOnly: true,
-      secure: true,
+      secure: baseUrl.protocol === "https:",
       sameSite: "Lax",
     },
   ]);

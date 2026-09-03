@@ -241,7 +241,7 @@ const BoxDetails = () => {
           const type =
             s.typeOfSample && s.typeOfSample !== "-"
               ? s.typeOfSample
-              : "Unknown";
+              : intl.formatMessage({ id: "status.unknown" });
           typeCounts[type] = (typeCounts[type] || 0) + 1;
         });
 

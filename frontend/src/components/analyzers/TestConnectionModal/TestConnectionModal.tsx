@@ -134,19 +134,19 @@ const TestConnectionModal = ({
         {analyzer && (
           <div data-testid="test-connection-analyzer-info">
             <p>
-              <strong>Name:</strong> {analyzer.name}
+              <strong>分析仪名称：</strong> {analyzer.name}
             </p>
             {analyzer.importDirectory ? (
               <p>
-                <strong>Import Directory:</strong> {analyzer.importDirectory}
+                <strong>结果文件接收目录：</strong> {analyzer.importDirectory}
               </p>
             ) : (
               <>
                 <p>
-                  <strong>IP:</strong> {analyzer.ipAddress}
+                  <strong>IP地址：</strong> {analyzer.ipAddress}
                 </p>
                 <p>
-                  <strong>Port:</strong> {analyzer.port}
+                  <strong>端口：</strong> {analyzer.port}
                 </p>
               </>
             )}

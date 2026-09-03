@@ -1,7 +1,10 @@
 # Use the official PostgreSQL 14.4 image as base
 FROM postgres:14.4
 
-RUN apt-get update && apt-get install -y gettext-base && rm -rf /var/lib/apt/lists/*
+RUN apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=60 update \
+    && apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=60 \
+        -y --no-install-recommends install gettext-base \
+    && rm -rf /var/lib/apt/lists/*
 # Copy initialization scripts and data files into the container
 # PostgreSQL will automatically run any *.sql or *.sh files in this folder
 COPY ./db/dbInit /docker-entrypoint-initdb.d

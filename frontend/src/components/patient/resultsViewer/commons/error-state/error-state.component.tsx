@@ -1,6 +1,6 @@
 import React from "react";
 import { Layer, Tile } from "@carbon/react";
-import { useTranslation } from "react-i18next";
+import { useIntl } from "react-intl";
 import { useLayoutType } from "../utils";
 //import styles from './error-state.scss';
 import "./error-state.scss";
@@ -14,8 +14,9 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
   error,
   headerTitle,
 }) => {
-  const { t } = useTranslation();
+  const intl = useIntl();
   const isTablet = useLayoutType() === "tablet";
+  const statusCode = error?.response?.status;
 
   return (
     <Layer>
@@ -24,14 +25,17 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
           <h4>{headerTitle}</h4>
         </div>
         <p className="errorMessage">
-          {t("error", "Error")} {`${error?.response?.status}: `}
-          {error?.response?.statusText}
+          {statusCode
+            ? intl.formatMessage(
+                { id: "patient.resultsViewer.error.withCode" },
+                { status: statusCode },
+              )
+            : intl.formatMessage({
+                id: "patient.resultsViewer.error.label",
+              })}
         </p>
         <p className="errorCopy">
-          {t(
-            "errorCopy",
-            "Sorry, there was a problem displaying this information. You can try to reload this page, or contact the site administrator and quote the error code above.",
-          )}
+          {intl.formatMessage({ id: "patient.resultsViewer.error.copy" })}
         </p>
       </Tile>
     </Layer>

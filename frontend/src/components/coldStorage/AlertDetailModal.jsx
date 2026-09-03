@@ -44,7 +44,7 @@ const AlertDetailModal = ({
       const data = await fetchAlertDetails(alertId);
       setAlert(data);
     } catch (err) {
-      setError(err.message || "Failed to load alert details");
+      setError(intl.formatMessage({ id: "freezer.alert.detail.loadFailed" }));
     } finally {
       setLoading(false);
     }
@@ -60,10 +60,10 @@ const AlertDetailModal = ({
           dateTimeString < 4102444800000
             ? dateTimeString * 1000
             : dateTimeString;
-        return new Date(timestamp).toLocaleString();
+        return new Date(timestamp).toLocaleString("zh-CN");
       }
       // Handle ISO 8601 strings (e.g., "2024-01-01T00:00:00Z")
-      return new Date(dateTimeString).toLocaleString();
+      return new Date(dateTimeString).toLocaleString("zh-CN");
     } catch (error) {
       console.error("Error formatting date:", dateTimeString, error);
       return dateTimeString;
@@ -78,7 +78,9 @@ const AlertDetailModal = ({
       setNotes("");
       onClose(); // Close modal immediately after successful action
     } catch (err) {
-      setError(err.message || "Failed to acknowledge alert");
+      setError(
+        intl.formatMessage({ id: "freezer.alert.detail.acknowledgeFailed" }),
+      );
       setActionInProgress(false);
     }
   };
@@ -87,11 +89,18 @@ const AlertDetailModal = ({
     setActionInProgress(true);
     setError(null);
     try {
-      await resolveAlert(alertId, currentUserId, notes || "Resolved");
+      await resolveAlert(
+        alertId,
+        currentUserId,
+        notes ||
+          intl.formatMessage({ id: "freezer.alert.detail.resolvedNote" }),
+      );
       setNotes("");
       onClose(); // Close modal immediately after successful action
     } catch (err) {
-      setError(err.message || "Failed to resolve alert");
+      setError(
+        intl.formatMessage({ id: "freezer.alert.detail.resolveFailed" }),
+      );
       setActionInProgress(false);
     }
   };
@@ -99,9 +108,17 @@ const AlertDetailModal = ({
   const getSeverityTag = (severity) => {
     switch (severity) {
       case "CRITICAL":
-        return <Tag type="red">Critical</Tag>;
+        return (
+          <Tag type="red">
+            {intl.formatMessage({ id: "coldStorage.status.critical" })}
+          </Tag>
+        );
       case "WARNING":
-        return <Tag type="warm-gray">Warning</Tag>;
+        return (
+          <Tag type="warm-gray">
+            {intl.formatMessage({ id: "coldStorage.status.warning" })}
+          </Tag>
+        );
       default:
         return <Tag>{severity}</Tag>;
     }
@@ -110,15 +127,37 @@ const AlertDetailModal = ({
   const getStatusTag = (status) => {
     switch (status) {
       case "OPEN":
-        return <Tag type="red">Open</Tag>;
+        return (
+          <Tag type="red">
+            {intl.formatMessage({ id: "coldStorage.reports.status.open" })}
+          </Tag>
+        );
       case "ACKNOWLEDGED":
-        return <Tag type="blue">Acknowledged</Tag>;
+        return (
+          <Tag type="blue">
+            {intl.formatMessage({
+              id: "coldStorage.reports.status.acknowledged",
+            })}
+          </Tag>
+        );
       case "ESCALATED":
-        return <Tag type="magenta">Escalated</Tag>;
+        return (
+          <Tag type="magenta">
+            {intl.formatMessage({ id: "freezer.alert.detail.escalated" })}
+          </Tag>
+        );
       case "RESOLVED":
-        return <Tag type="green">Resolved</Tag>;
+        return (
+          <Tag type="green">
+            {intl.formatMessage({ id: "coldStorage.reports.status.resolved" })}
+          </Tag>
+        );
       case "CLOSED":
-        return <Tag type="gray">Closed</Tag>;
+        return (
+          <Tag type="gray">
+            {intl.formatMessage({ id: "freezer.alert.detail.closed" })}
+          </Tag>
+        );
       default:
         return <Tag>{status}</Tag>;
     }
@@ -127,33 +166,18 @@ const AlertDetailModal = ({
   return (
     <Modal
       open={open}
+      closeButtonLabel={intl.formatMessage({ id: "button.close" })}
       onRequestClose={onClose}
-      modalHeading={
-        <FormattedMessage
-          id="freezer.alert.detail.title"
-          defaultMessage="Alert Details"
-        />
-      }
+      modalHeading={<FormattedMessage id="freezer.alert.detail.title" />}
       size="lg"
       primaryButtonText={
         alert && alert.status === "OPEN" ? (
-          <FormattedMessage
-            id="freezer.alert.detail.acknowledge"
-            defaultMessage="Acknowledge"
-          />
+          <FormattedMessage id="freezer.alert.detail.acknowledge" />
         ) : alert && alert.status === "ACKNOWLEDGED" ? (
-          <FormattedMessage
-            id="freezer.alert.detail.resolve"
-            defaultMessage="Resolve"
-          />
+          <FormattedMessage id="freezer.alert.detail.resolve" />
         ) : undefined
       }
-      secondaryButtonText={
-        <FormattedMessage
-          id="freezer.alert.detail.close"
-          defaultMessage="Close"
-        />
-      }
+      secondaryButtonText={<FormattedMessage id="freezer.alert.detail.close" />}
       onRequestSubmit={
         alert && alert.status === "OPEN"
           ? handleAcknowledge
@@ -164,12 +188,22 @@ const AlertDetailModal = ({
       onSecondarySubmit={onClose}
       primaryButtonDisabled={actionInProgress || loading}
     >
-      {loading && <Loading />}
+      {loading && (
+        <Loading
+          description={intl.formatMessage({
+            id: "freezer.alert.detail.loading",
+          })}
+        />
+      )}
 
       {error && (
         <InlineNotification
+          aria-label={intl.formatMessage({ id: "button.close" })}
+          statusIconDescription={intl.formatMessage({
+            id: "carbon.notification.error",
+          })}
           kind="error"
-          title="Error"
+          title={intl.formatMessage({ id: "freezer.alert.detail.error" })}
           subtitle={error}
           onCloseButtonClick={() => setError(null)}
         />
@@ -179,10 +213,7 @@ const AlertDetailModal = ({
         <div style={{ padding: "1rem 0" }}>
           <Section style={{ marginBottom: "1.5rem" }}>
             <h5 style={{ marginBottom: "1rem" }}>
-              <FormattedMessage
-                id="freezer.alert.detail.overview"
-                defaultMessage="Alert Overview"
-              />
+              <FormattedMessage id="freezer.alert.detail.overview" />
             </h5>
             <div
               style={{
@@ -199,10 +230,7 @@ const AlertDetailModal = ({
                     fontSize: "0.875rem",
                   }}
                 >
-                  <FormattedMessage
-                    id="freezer.alert.detail.id"
-                    defaultMessage="Alert ID"
-                  />
+                  <FormattedMessage id="freezer.alert.detail.id" />
                 </p>
                 <p>{alert.id}</p>
               </div>
@@ -215,12 +243,13 @@ const AlertDetailModal = ({
                     fontSize: "0.875rem",
                   }}
                 >
-                  <FormattedMessage
-                    id="freezer.alert.detail.freezer"
-                    defaultMessage="Freezer"
-                  />
+                  <FormattedMessage id="freezer.alert.detail.freezer" />
                 </p>
-                <p>{alert.freezer?.name || alert.freezer?.code || "Unknown"}</p>
+                <p>
+                  {alert.freezer?.name ||
+                    alert.freezer?.code ||
+                    intl.formatMessage({ id: "not.specified" })}
+                </p>
               </div>
 
               <div>
@@ -231,10 +260,7 @@ const AlertDetailModal = ({
                     fontSize: "0.875rem",
                   }}
                 >
-                  <FormattedMessage
-                    id="freezer.alert.detail.severity"
-                    defaultMessage="Severity"
-                  />
+                  <FormattedMessage id="freezer.alert.detail.severity" />
                 </p>
                 {getSeverityTag(alert.severity)}
               </div>
@@ -247,10 +273,7 @@ const AlertDetailModal = ({
                     fontSize: "0.875rem",
                   }}
                 >
-                  <FormattedMessage
-                    id="freezer.alert.detail.status"
-                    defaultMessage="Status"
-                  />
+                  <FormattedMessage id="freezer.alert.detail.status" />
                 </p>
                 {getStatusTag(alert.status)}
               </div>
@@ -263,10 +286,7 @@ const AlertDetailModal = ({
                     fontSize: "0.875rem",
                   }}
                 >
-                  <FormattedMessage
-                    id="freezer.alert.detail.startTime"
-                    defaultMessage="Start Time"
-                  />
+                  <FormattedMessage id="freezer.alert.detail.startTime" />
                 </p>
                 <p>{formatDateTime(alert.startTime)}</p>
               </div>
@@ -281,10 +301,7 @@ const AlertDetailModal = ({
                         fontSize: "0.875rem",
                       }}
                     >
-                      <FormattedMessage
-                        id="freezer.alert.detail.acknowledgedAt"
-                        defaultMessage="Acknowledged At"
-                      />
+                      <FormattedMessage id="freezer.alert.detail.acknowledgedAt" />
                     </p>
                     <p>{formatDateTime(alert.acknowledgedAt)}</p>
                   </div>
@@ -297,10 +314,7 @@ const AlertDetailModal = ({
                         fontSize: "0.875rem",
                       }}
                     >
-                      <FormattedMessage
-                        id="freezer.alert.detail.acknowledgedBy"
-                        defaultMessage="Acknowledged By"
-                      />
+                      <FormattedMessage id="freezer.alert.detail.acknowledgedBy" />
                     </p>
                     <p>{alert.acknowledgedBy || "-"}</p>
                   </div>
@@ -317,10 +331,7 @@ const AlertDetailModal = ({
                         fontSize: "0.875rem",
                       }}
                     >
-                      <FormattedMessage
-                        id="freezer.alert.detail.resolvedAt"
-                        defaultMessage="Resolved At"
-                      />
+                      <FormattedMessage id="freezer.alert.detail.resolvedAt" />
                     </p>
                     <p>{formatDateTime(alert.resolvedAt)}</p>
                   </div>
@@ -333,10 +344,7 @@ const AlertDetailModal = ({
                         fontSize: "0.875rem",
                       }}
                     >
-                      <FormattedMessage
-                        id="freezer.alert.detail.resolvedBy"
-                        defaultMessage="Resolved By"
-                      />
+                      <FormattedMessage id="freezer.alert.detail.resolvedBy" />
                     </p>
                     <p>{alert.resolvedBy || "-"}</p>
                   </div>
@@ -353,10 +361,7 @@ const AlertDetailModal = ({
                     fontSize: "0.875rem",
                   }}
                 >
-                  <FormattedMessage
-                    id="freezer.alert.detail.message"
-                    defaultMessage="Message"
-                  />
+                  <FormattedMessage id="freezer.alert.detail.message" />
                 </p>
                 <p>{alert.message}</p>
               </div>
@@ -367,14 +372,10 @@ const AlertDetailModal = ({
                 <TextArea
                   id="alert-notes"
                   labelText={
-                    <FormattedMessage
-                      id="freezer.alert.detail.notes"
-                      defaultMessage="Notes"
-                    />
+                    <FormattedMessage id="freezer.alert.detail.notes" />
                   }
                   placeholder={intl.formatMessage({
                     id: "freezer.alert.detail.notesPlaceholder",
-                    defaultMessage: "Add notes about this alert...",
                   })}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
@@ -392,10 +393,7 @@ const AlertDetailModal = ({
                     fontSize: "0.875rem",
                   }}
                 >
-                  <FormattedMessage
-                    id="freezer.alert.detail.resolutionNotes"
-                    defaultMessage="Resolution Notes"
-                  />
+                  <FormattedMessage id="freezer.alert.detail.resolutionNotes" />
                 </p>
                 <p>{alert.resolutionNotes}</p>
               </div>
@@ -410,10 +408,7 @@ const AlertDetailModal = ({
                     fontSize: "0.875rem",
                   }}
                 >
-                  <FormattedMessage
-                    id="freezer.alert.detail.correctiveAction"
-                    defaultMessage="Corrective Action"
-                  />
+                  <FormattedMessage id="freezer.alert.detail.correctiveAction" />
                 </p>
                 <p>{alert.correctiveAction}</p>
               </div>
@@ -423,10 +418,7 @@ const AlertDetailModal = ({
           {alert.notifications && alert.notifications.length > 0 && (
             <Section style={{ marginBottom: "1.5rem" }}>
               <h5 style={{ marginBottom: "1rem" }}>
-                <FormattedMessage
-                  id="freezer.alert.detail.notifications"
-                  defaultMessage="Notifications Sent"
-                />
+                <FormattedMessage id="freezer.alert.detail.notifications" />
               </h5>
               <DataTable
                 rows={alert.notifications.map((notif, idx) => ({
@@ -434,10 +426,30 @@ const AlertDetailModal = ({
                   ...notif,
                 }))}
                 headers={[
-                  { key: "recipient", header: "Recipient" },
-                  { key: "method", header: "Method" },
-                  { key: "sentAt", header: "Sent At" },
-                  { key: "status", header: "Status" },
+                  {
+                    key: "recipient",
+                    header: intl.formatMessage({
+                      id: "freezer.alert.detail.notification.recipient",
+                    }),
+                  },
+                  {
+                    key: "method",
+                    header: intl.formatMessage({
+                      id: "freezer.alert.detail.notification.method",
+                    }),
+                  },
+                  {
+                    key: "sentAt",
+                    header: intl.formatMessage({
+                      id: "freezer.alert.detail.notification.sentAt",
+                    }),
+                  },
+                  {
+                    key: "status",
+                    header: intl.formatMessage({
+                      id: "freezer.alert.detail.status",
+                    }),
+                  },
                 ]}
               >
                 {({
@@ -482,10 +494,7 @@ const AlertDetailModal = ({
           {alert.actions && alert.actions.length > 0 && (
             <Section>
               <h5 style={{ marginBottom: "1rem" }}>
-                <FormattedMessage
-                  id="freezer.alert.detail.actions"
-                  defaultMessage="Actions Taken"
-                />
+                <FormattedMessage id="freezer.alert.detail.actions" />
               </h5>
               <DataTable
                 rows={alert.actions.map((action, idx) => ({
@@ -493,9 +502,24 @@ const AlertDetailModal = ({
                   ...action,
                 }))}
                 headers={[
-                  { key: "summary", header: "Summary" },
-                  { key: "takenBy", header: "Taken By" },
-                  { key: "takenAt", header: "Taken At" },
+                  {
+                    key: "summary",
+                    header: intl.formatMessage({
+                      id: "freezer.alert.detail.action.summary",
+                    }),
+                  },
+                  {
+                    key: "takenBy",
+                    header: intl.formatMessage({
+                      id: "freezer.alert.detail.action.takenBy",
+                    }),
+                  },
+                  {
+                    key: "takenAt",
+                    header: intl.formatMessage({
+                      id: "freezer.alert.detail.action.takenAt",
+                    }),
+                  },
                 ]}
               >
                 {({

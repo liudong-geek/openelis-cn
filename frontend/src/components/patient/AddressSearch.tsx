@@ -143,7 +143,12 @@ const AddressSearch = ({
 
   const getLevelName = (levelNum?: number) => {
     const level = addressHierarchyLevels.find((l) => l.level === levelNum);
-    return level ? level.typeName : `Level ${levelNum}`;
+    return level
+      ? level.typeName
+      : intl.formatMessage(
+          { id: "address.search.level" },
+          { level: levelNum ?? "" },
+        );
   };
 
   const defaultPlaceholder = intl.formatMessage({
@@ -178,7 +183,7 @@ const AddressSearch = ({
               type="button"
               className="address-search-clear"
               onClick={handleClear}
-              aria-label="Clear search"
+              aria-label={intl.formatMessage({ id: "address.search.clear" })}
             >
               <Close size={16} />
             </button>
@@ -193,7 +198,7 @@ const AddressSearch = ({
           <ul
             className="address-search-results"
             role="listbox"
-            aria-label="Address search results"
+            aria-label={intl.formatMessage({ id: "address.search.results" })}
           >
             {searchResults.map((result, index) => (
               <li

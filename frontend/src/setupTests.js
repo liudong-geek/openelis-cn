@@ -6,6 +6,33 @@ import "@testing-library/jest-dom";
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 
+// Node 25 exposes an experimental global `localStorage`. When Node is started
+// without a backing file that object exists but does not implement the Storage
+// API, and it can also shadow jsdom's implementation. Install a deterministic
+// in-memory Storage implementation so the suite behaves identically on
+// developer machines and in CI.
+const testStorageValues = new Map();
+const testStorage = {
+  get length() {
+    return testStorageValues.size;
+  },
+  clear: () => testStorageValues.clear(),
+  getItem: (key) => testStorageValues.get(String(key)) ?? null,
+  key: (index) => Array.from(testStorageValues.keys())[index] ?? null,
+  removeItem: (key) => testStorageValues.delete(String(key)),
+  setItem: (key, value) =>
+    testStorageValues.set(String(key), String(value)),
+};
+
+Object.defineProperty(window, "localStorage", {
+  configurable: true,
+  value: testStorage,
+});
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  value: testStorage,
+});
+
 // Explicit DOM cleanup between tests. @testing-library/react's auto-cleanup
 // relies on process.env.VITEST being set; registering afterEach(cleanup)
 // here guarantees isolation across tests that render multiple components

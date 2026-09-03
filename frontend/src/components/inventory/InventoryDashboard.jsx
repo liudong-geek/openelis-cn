@@ -80,18 +80,39 @@ const InventoryDashboard = () => {
 
   const itemTypes = [
     { id: "ALL", text: intl.formatMessage({ id: "inventory.filter.all" }) },
-    { id: "REAGENT", text: "Reagent" },
+    {
+      id: "REAGENT",
+      text: intl.formatMessage({ id: "inventory.itemType.REAGENT" }),
+    },
     { id: "RDT", text: "RDT" },
-    { id: "CARTRIDGE", text: "Cartridge" },
+    {
+      id: "CARTRIDGE",
+      text: intl.formatMessage({ id: "inventory.itemType.CARTRIDGE" }),
+    },
   ];
 
   const statusOptions = [
     { id: "ALL", text: intl.formatMessage({ id: "inventory.filter.all" }) },
-    { id: "ACTIVE", text: "Active" },
-    { id: "IN_USE", text: "In Use" },
-    { id: "EXPIRED", text: "Expired" },
-    { id: "CONSUMED", text: "Consumed" },
-    { id: "QUARANTINED", text: "Quarantined" },
+    {
+      id: "ACTIVE",
+      text: intl.formatMessage({ id: "inventory.status.ACTIVE" }),
+    },
+    {
+      id: "IN_USE",
+      text: intl.formatMessage({ id: "inventory.status.IN_USE" }),
+    },
+    {
+      id: "EXPIRED",
+      text: intl.formatMessage({ id: "inventory.status.EXPIRED" }),
+    },
+    {
+      id: "CONSUMED",
+      text: intl.formatMessage({ id: "inventory.status.CONSUMED" }),
+    },
+    {
+      id: "QUARANTINED",
+      text: intl.formatMessage({ id: "inventory.status.QUARANTINED" }),
+    },
   ];
 
   const headers = [
@@ -171,7 +192,7 @@ const InventoryDashboard = () => {
       addNotification({
         kind: "error",
         title: intl.formatMessage({ id: "notification.error" }),
-        message: "Error loading inventory data",
+        message: intl.formatMessage({ id: "inventory.load.error" }),
       });
     } finally {
       setLoading(false);
@@ -238,28 +259,47 @@ const InventoryDashboard = () => {
       );
 
       if (daysUntilExpiry < 0) {
-        return { type: "expired", label: "Expired", kind: "red" };
+        return {
+          type: "expired",
+          label: intl.formatMessage({ id: "stock.status.expired" }),
+          kind: "red",
+        };
       }
 
       const alertDays = item.expirationAlertDays || 30;
       if (daysUntilExpiry <= alertDays) {
         return {
           type: "expiring",
-          label: `Expiring (${daysUntilExpiry}d)`,
+          label: intl.formatMessage(
+            { id: "stock.status.expiringDays" },
+            { days: daysUntilExpiry },
+          ),
           kind: "warm-gray",
         };
       }
     }
 
     if (currentQty === 0) {
-      return { type: "outOfStock", label: "Out of Stock", kind: "red" };
+      return {
+        type: "outOfStock",
+        label: intl.formatMessage({ id: "stock.status.outOfStock" }),
+        kind: "red",
+      };
     }
 
     if (currentQty < minStock) {
-      return { type: "lowStock", label: "Low Stock", kind: "warm-gray" };
+      return {
+        type: "lowStock",
+        label: intl.formatMessage({ id: "stock.status.lowStock" }),
+        kind: "warm-gray",
+      };
     }
 
-    return { type: "inStock", label: "In Stock", kind: "green" };
+    return {
+      type: "inStock",
+      label: intl.formatMessage({ id: "stock.status.inStock" }),
+      kind: "green",
+    };
   };
 
   const getFilteredLots = () => {
@@ -299,14 +339,22 @@ const InventoryDashboard = () => {
 
     return {
       id: String(lot.id),
-      name: item?.name || "Unknown",
+      name: item?.name || intl.formatMessage({ id: "status.unknown" }),
       lotNumber: lot.lotNumber,
-      itemType: item?.itemType || "",
+      itemType: item?.itemType
+        ? intl.formatMessage({
+            id: `inventory.itemType.${item.itemType}`,
+            defaultMessage: item.itemType,
+          })
+        : "",
       currentQuantity: `${lot.currentQuantity || 0} ${item?.units || ""}`,
       expirationDate: lot.expirationDate
         ? new Date(lot.expirationDate).toLocaleDateString()
-        : "N/A",
-      status: lot.status,
+        : intl.formatMessage({ id: "storage.expanded.notAvailable" }),
+      status: intl.formatMessage({
+        id: `inventory.status.${lot.status}`,
+        defaultMessage: lot.status,
+      }),
       stockStatus: stockStatus,
     };
   });
@@ -494,12 +542,14 @@ const InventoryDashboard = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={headers.length}>Loading...</TableCell>
+                    <TableCell colSpan={headers.length}>
+                      {intl.formatMessage({ id: "label.loading" })}
+                    </TableCell>
                   </TableRow>
                 ) : rows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={headers.length}>
-                      No inventory items found
+                      {intl.formatMessage({ id: "inventory.empty" })}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -596,9 +646,11 @@ const InventoryDashboard = () => {
 
             {!loading && rows.length > 0 && (
               <Pagination
-                backwardText="Previous page"
-                forwardText="Next page"
-                itemsPerPageText="Items per page:"
+                backwardText={intl.formatMessage({ id: "pagination.backward" })}
+                forwardText={intl.formatMessage({ id: "pagination.forward" })}
+                itemsPerPageText={intl.formatMessage({
+                  id: "pagination.itemsPerPage",
+                })}
                 page={page}
                 pageSize={pageSize}
                 pageSizes={[10, 20, 30, 40, 50]}

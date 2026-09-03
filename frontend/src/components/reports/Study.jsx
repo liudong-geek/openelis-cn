@@ -8,6 +8,7 @@ import {
 } from "@carbon/icons-react";
 import config from "../../config.json";
 import PageBreadCrumb from "../common/PageBreadCrumb";
+import ProductPageHeader from "../common/ProductPageHeader";
 
 let breadcrumbs = [{ label: "home.label", link: "/" }];
 export const RoutineReportsMenu = {
@@ -100,6 +101,7 @@ export const RoutineReportsMenu = {
           label: (
             <FormattedMessage id="sideNav.label.collectedarvpatientreports" />
           ),
+          securityRestricted: true,
         },
       ],
     },
@@ -112,6 +114,7 @@ export const RoutineReportsMenu = {
           label: (
             <FormattedMessage id="sideNav.label.associatedpatientreport" />
           ),
+          securityRestricted: true,
         },
       ],
     },
@@ -124,6 +127,7 @@ export const RoutineReportsMenu = {
             config.serverBaseUrl +
             "/ReportPrint?type=indicator&report=indicatorSectionPerformance",
           label: <FormattedMessage id="sideNav.label.sectionperformance" />,
+          securityRestricted: true,
         },
         {
           link:
@@ -142,6 +146,7 @@ export const RoutineReportsMenu = {
           label: (
             <FormattedMessage id="sideNav.label.noncomformityreportsbydate" />
           ),
+          securityRestricted: true,
         },
         {
           link: "/StudyReport?type=patient&report=retroCInonConformityBySectionReason",
@@ -154,16 +159,19 @@ export const RoutineReportsMenu = {
           label: (
             <FormattedMessage id="sideNav.label.noncomformityreportsbylabno" />
           ),
+          securityRestricted: true,
         },
         {
           link: "/StudyReport?type=patient&report=retroCInonConformityNotification",
           label: (
             <FormattedMessage id="sideNav.label.noncomformitynotification" />
           ),
+          securityRestricted: true,
         },
         {
           link: "/StudyReport?type=patient&report=retroCIFollowupRequiredByLocation",
           label: <FormattedMessage id="sideNav.label.followuprequired" />,
+          securityRestricted: true,
         },
       ],
     },
@@ -174,10 +182,12 @@ export const RoutineReportsMenu = {
         {
           link: "/StudyReport?type=patient&report=CIStudyExport",
           label: <FormattedMessage id="sideNav.label.generalreport" />,
+          securityRestricted: true,
         },
         {
           link: "/StudyReport?type=patient&report=Trends",
           label: <FormattedMessage id="sideNav.label.viralloaddataexport" />,
+          securityRestricted: true,
         },
       ],
     },
@@ -198,9 +208,15 @@ export const RoutineReportsMenu = {
 const Study = () => {
   return (
     <>
-      <div style={{ marginLeft: "1%" }}>
-        <PageBreadCrumb breadcrumbs={breadcrumbs} />
-      </div>
+      <PageBreadCrumb breadcrumbs={breadcrumbs} />
+      <ProductPageHeader
+        title={
+          <>
+            <FormattedMessage id="sidenav.label.reports" /> ·{" "}
+            <FormattedMessage id="sidenav.label.reports.study" />
+          </>
+        }
+      />
       <GlobalSideBar sideNav={RoutineReportsMenu} />
     </>
   );

@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.ObjectUtils;
@@ -24,6 +25,7 @@ import org.openelisglobal.login.valueholder.UserSessionData;
 import org.openelisglobal.program.service.ProgramService;
 import org.openelisglobal.resultvalidation.bean.AnalysisItem;
 import org.openelisglobal.role.service.RoleService;
+import org.openelisglobal.role.valueholder.Role;
 import org.openelisglobal.systemuser.controller.UnifiedSystemUserController;
 import org.openelisglobal.systemuser.valueholder.SystemUser;
 import org.openelisglobal.test.beanItems.TestResultItem;
@@ -208,17 +210,9 @@ public class UserServiceImpl implements UserService {
                 UserSessionData usd = (UserSessionData) session.getAttribute("userSessionData");
                 String adminRoleId = roleService.getRoleByName(Constants.ROLE_GLOBAL_ADMIN).getId();
                 Boolean isadmin = userRoleService.getRoleIdsForUser(systemUserId).contains(adminRoleId);
-                TestSection logintestSection = null;
                 if (requireLabUnitAtLogin && !isadmin) {
-                    if (usd.getLoginLabUnit() != 0) {
-                        logintestSection = testSectionService.getTestSectionById(String.valueOf(usd.getLoginLabUnit()));
-                        if (logintestSection != null) {
-                            userTestSections.add(
-                                    new IdValuePair(logintestSection.getId(), logintestSection.getLocalizedName()));
-                            return userTestSections;
-                        }
-                    }
-
+                    return localizeTestSectionsForDisplay(
+                            restrictRequiredLoginTestSection(systemUserId, roleId, usd));
                 }
 
                 List<String> userLabUnits = new ArrayList<>();
@@ -246,7 +240,7 @@ public class UserServiceImpl implements UserService {
                     org.openelisglobal.common.log.LogEvent.logInfo(this.getClass().getSimpleName(),
                             "getUserTestSections",
                             "User has AllLabUnits, returning all " + allTestSections.size() + " test sections");
-                    return allTestSections;
+                    return localizeTestSectionsForDisplay(allTestSections);
                 } else {
                     userTestSections = allTestSections.stream()
                             .filter(testSection -> userLabUnits.contains(testSection.getId()))
@@ -254,7 +248,7 @@ public class UserServiceImpl implements UserService {
                     org.openelisglobal.common.log.LogEvent.logInfo(this.getClass().getSimpleName(),
                             "getUserTestSections", "User has " + userLabUnits.size() + " lab units, returning "
                                     + userTestSections.size() + " test sections");
-                    return userTestSections;
+                    return localizeTestSectionsForDisplay(userTestSections);
                 }
             } else if (principal instanceof DefaultSaml2AuthenticatedPrincipal
                     || principal instanceof DefaultOAuth2User) {
@@ -267,7 +261,7 @@ public class UserServiceImpl implements UserService {
                             List<IdValuePair> allTestSections = DisplayListService.getInstance()
                                     .getList(ListType.TEST_SECTION_ACTIVE);
                             if (UnifiedSystemUserController.ALL_LAB_UNITS.equals(authorityExplode[2])) {
-                                return allTestSections;
+                                return localizeTestSectionsForDisplay(allTestSections);
                             } else {
                                 List<IdValuePair> userTestSections = allTestSections.stream()
                                         .filter(testSection -> testSection.getValue().equals(authorityExplode[2]))
@@ -278,11 +272,72 @@ public class UserServiceImpl implements UserService {
                         }
                     }
                 }
-                return testSections;
+                return localizeTestSectionsForDisplay(testSections);
             }
         }
 
         return new ArrayList<>();
+    }
+
+    /**
+     * Localizes only the display labels after the caller's authorized section set
+     * has been resolved. Returning fresh pairs keeps the cached display list and the
+     * IDs used by authorization unchanged.
+     */
+    List<IdValuePair> localizeTestSectionsForDisplay(List<IdValuePair> authorizedTestSections) {
+        if (authorizedTestSections == null || authorizedTestSections.isEmpty()) {
+            return List.of();
+        }
+
+        List<IdValuePair> localizedTestSections = new ArrayList<>(authorizedTestSections.size());
+        for (IdValuePair authorizedTestSection : authorizedTestSections) {
+            if (authorizedTestSection == null) {
+                localizedTestSections.add(null);
+                continue;
+            }
+
+            String localizedName = null;
+            if (StringUtils.isNotBlank(authorizedTestSection.getId())) {
+                TestSection testSection = testSectionService.getTestSectionById(authorizedTestSection.getId());
+                if (testSection != null) {
+                    localizedName = testSection.getLocalizedName();
+                }
+            }
+            localizedTestSections.add(new IdValuePair(authorizedTestSection.getId(),
+                    StringUtils.defaultIfBlank(localizedName, authorizedTestSection.getValue())));
+        }
+        return localizedTestSections;
+    }
+
+    List<IdValuePair> restrictRequiredLoginTestSection(String systemUserId, String requestedRoleId,
+            UserSessionData userSessionData) {
+        if (userSessionData == null || userSessionData.getLoginLabUnit() == 0) {
+            return List.of();
+        }
+        TestSection loginTestSection = testSectionService
+                .getTestSectionById(String.valueOf(userSessionData.getLoginLabUnit()));
+        if (loginTestSection == null) {
+            return List.of();
+        }
+        return restrictLoginTestSectionToRequestedRole(systemUserId, requestedRoleId, loginTestSection);
+    }
+
+    List<IdValuePair> restrictLoginTestSectionToRequestedRole(String systemUserId, String requestedRoleId,
+            TestSection loginTestSection) {
+        if (loginTestSection == null || StringUtils.isBlank(loginTestSection.getId())) {
+            return List.of();
+        }
+        UserLabUnitRoles userLabRoles = getUserLabUnitRoles(systemUserId);
+        if (userLabRoles == null || userLabRoles.getLabUnitRoleMap() == null) {
+            return List.of();
+        }
+        boolean authorized = userLabRoles.getLabUnitRoleMap().stream().filter(roles -> roles != null)
+                .filter(roles -> loginTestSection.getId().equals(roles.getLabUnit())
+                        || UnifiedSystemUserController.ALL_LAB_UNITS.equals(roles.getLabUnit()))
+                .anyMatch(roles -> requestedRoleId == null
+                        || (roles.getRoles() != null && roles.getRoles().contains(requestedRoleId)));
+        return authorized ? List.of(new IdValuePair(loginTestSection.getId(), loginTestSection.getLocalizedName()))
+                : List.of();
     }
 
     @Override
@@ -433,17 +488,18 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public List<Analysis> filterAnalysesByLabUnitRoles(String SystemUserId, List<Analysis> results, String roleName) {
-        String resultsRoleId = roleService.getRoleByName(roleName).getId();
-        List<IdValuePair> testSections = getUserTestSections(SystemUserId, resultsRoleId);
-        List<String> testUnitIds = new ArrayList<>();
-        if (testSections != null) {
-            testSections.forEach(testSection -> testUnitIds.add(testSection.getId()));
+        Role role = roleService.getRoleByName(roleName);
+        if (role == null || StringUtils.isBlank(role.getId()) || results == null) {
+            return List.of();
         }
-
-        List<Test> allTests = testService.getTestsByTestSectionIds(testUnitIds);
-        List<String> allTestsIds = new ArrayList<>();
-        allTests.forEach(test -> allTestsIds.add(test.getId()));
-        return results.stream().filter(result -> allTestsIds.contains(result.getTest().getId()))
+        List<IdValuePair> testSections = getUserTestSections(SystemUserId, role.getId());
+        if (testSections == null) {
+            return List.of();
+        }
+        Set<String> testSectionIds = testSections.stream().filter(Objects::nonNull).map(IdValuePair::getId)
+                .filter(StringUtils::isNotBlank).collect(Collectors.toSet());
+        return results.stream().filter(Objects::nonNull).filter(analysis -> analysis.getTestSection() != null)
+                .filter(analysis -> testSectionIds.contains(analysis.getTestSection().getId()))
                 .collect(Collectors.toList());
     }
 

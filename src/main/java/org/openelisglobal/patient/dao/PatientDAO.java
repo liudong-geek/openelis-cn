@@ -37,6 +37,10 @@ public interface PatientDAO extends BaseDAO<Patient, String> {
 
     List<Patient> getPageOfPatients(int startingRecNo) throws LIMSRuntimeException;
 
+    List<Patient> getPatientManagementPage(int offset, int pageSize) throws LIMSRuntimeException;
+
+    int getPatientManagementCount() throws LIMSRuntimeException;
+
     void getData(Patient patient) throws LIMSRuntimeException;
 
     // public void updateData(Patient patient) throws LIMSRuntimeException;

@@ -1,0 +1,1468 @@
+/*
+ * OpenELIS CN product UI foundation
+ *
+ * A restrained clinical workspace shared by legacy and modern screens. The
+ * rules are intentionally scoped to the application shell so public embeds
+ * and printable labels retain their own presentation.
+ */
+
+:root {
+  --oe-page-gutter: clamp(1rem, 2vw, 2rem);
+  --oe-page-gutter-compact: 1rem;
+  --oe-content-max-width: 88rem;
+  --oe-surface-radius: 0.625rem;
+  --oe-control-radius: 0.375rem;
+  --oe-surface-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  --oe-surface-shadow-raised: 0 8px 24px rgb(15 23 42 / 8%);
+  --oe-brand: #1769e0;
+  --oe-brand-strong: #0b4fb3;
+  --oe-brand-soft: #eef5ff;
+  --oe-success: #16805b;
+  --oe-warning: #b7791f;
+  --oe-danger: #c2414b;
+  --oe-text: #172033;
+  --oe-text-muted: #667085;
+  --oe-border: #e4e8ef;
+  --oe-border-strong: #cdd5df;
+  --oe-page: #f6f8fb;
+  --oe-surface: #ffffff;
+  --oe-surface-subtle: #f9fafc;
+}
+
+html {
+  background: var(--oe-page);
+  scroll-behavior: smooth;
+}
+
+body {
+  color: var(--oe-text);
+  background: var(--oe-page);
+  font-family:
+    "IBM Plex Sans", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC",
+    Arial, sans-serif;
+  line-height: 1.5;
+}
+
+.oe-app-shell {
+  background: var(--oe-page);
+}
+
+.oe-main-content.cds--content {
+  min-height: calc(100vh - 3rem);
+  padding: 0 0 2rem;
+  background: var(--oe-page);
+}
+
+.oe-main-content > * {
+  box-sizing: border-box;
+}
+
+/* Header: one quiet brand strip, without the heavy dark toolbar treatment. */
+#mainHeader.mainHeader {
+  border-bottom: 1px solid var(--oe-border);
+  background: var(--oe-surface);
+  box-shadow: 0 1px 8px rgb(15 23 42 / 5%);
+}
+
+#mainHeader .cds--header__name {
+  color: var(--oe-text);
+}
+
+#mainHeader #header-logo {
+  display: flex;
+  align-items: center;
+  margin: 0 0.75rem 0 0.75rem;
+}
+
+#mainHeader .logo {
+  width: auto;
+  height: 2rem;
+}
+
+#mainHeader .banner {
+  display: flex;
+  min-width: 8rem;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.1;
+}
+
+#mainHeader .banner h5 {
+  margin: 0;
+  color: var(--oe-text);
+  font-size: 0.9375rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+#mainHeader .banner p {
+  margin-top: 0.1875rem;
+  color: var(--oe-text-muted);
+  font-size: 0.6875rem;
+}
+
+#mainHeader .cds--header__action,
+#mainHeader .cds--header__menu-trigger {
+  color: #475467;
+  background: transparent;
+}
+
+#mainHeader .cds--header__action svg,
+#mainHeader .cds--header__menu-trigger svg {
+  fill: currentColor;
+}
+
+#mainHeader .cds--header__action:hover,
+#mainHeader .cds--header__menu-trigger:hover {
+  color: var(--oe-brand-strong);
+  background: var(--oe-brand-soft);
+}
+
+#mainHeader .headerPanel {
+  border: 1px solid var(--oe-border);
+  color: var(--oe-text);
+  background: var(--oe-surface);
+  box-shadow: var(--oe-surface-shadow-raised);
+}
+
+/* Carbon collapses closed header panels to zero width, but their padded
+ * children and our one-pixel border can still enlarge the document by a few
+ * pixels. Closed panels are not interactive, so remove them from layout and
+ * restore them only when Carbon marks them expanded. */
+#mainHeader .cds--header-panel:not(.cds--header-panel--expanded) {
+  display: none;
+}
+
+#mainHeader .headerPanel .userDetails,
+#mainHeader .headerPanel .oe-header-panel-action,
+#mainHeader .headerPanel .cds--label {
+  color: var(--oe-text) !important;
+}
+
+#mainHeader .headerPanel .oe-header-panel-action:hover,
+#mainHeader .headerPanel .clickableUserDetails:hover {
+  background: var(--oe-brand-soft);
+}
+
+/* Navigation: clearer hierarchy, one active state, no blue blocks. */
+#mainHeader .cds--side-nav,
+#mainHeader .admin-shell-side-nav {
+  --cds-background: #ffffff;
+  --cds-background-hover: #f6f8fb;
+  --cds-layer-hover-01: #f6f8fb;
+  --cds-layer-selected-01: #eef5ff;
+  --cds-link-primary: var(--oe-brand);
+  border-right: 1px solid var(--oe-border) !important;
+  background: var(--oe-surface) !important;
+  box-shadow: 3px 0 14px rgb(15 23 42 / 4%);
+  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-width: thin;
+}
+
+#mainHeader .cds--side-nav__navigation {
+  padding-top: 0.375rem !important;
+}
+
+/* The side nav is rendered inside the fixed header. Keep its block size tied
+   to the viewport; visual effects such as backdrop filters can otherwise make
+   percentage heights resolve against the 3rem header and collapse it to 6px. */
+#mainHeader .oe-app-sidenav {
+  height: calc(100vh - 3rem) !important;
+  height: calc(100dvh - 3rem) !important;
+  max-height: calc(100vh - 3rem) !important;
+  max-height: calc(100dvh - 3rem) !important;
+}
+
+#mainHeader .sidenav-pin-row {
+  min-height: 2.25rem;
+  align-items: center;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+#mainHeader .cds--side-nav__link,
+#mainHeader .cds--side-nav__submenu {
+  min-height: 2.5rem !important;
+  color: #344054 !important;
+  border-radius: 0 0.375rem 0.375rem 0;
+}
+
+#mainHeader .cds--side-nav__submenu-title,
+#mainHeader .cds--side-nav__link-text {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+#mainHeader .top-level-menu-item > .cds--side-nav__submenu,
+#mainHeader .top-level-menu-item > .cds--side-nav__link {
+  color: #24324a !important;
+  font-weight: 620;
+}
+
+#mainHeader
+  nav.cds--side-nav
+  .cds--side-nav__item.menu-expanded
+  > .cds--side-nav__submenu,
+#mainHeader nav.cds--side-nav .cds--side-nav__submenu[aria-expanded="true"] {
+  border-left: 0 !important;
+  color: var(--oe-brand-strong) !important;
+  background: #f7faff !important;
+}
+
+#mainHeader nav.cds--side-nav .cds--side-nav__link--current,
+#mainHeader nav.cds--side-nav .cds--side-nav__link[aria-current="page"] {
+  border-left: 3px solid var(--oe-brand) !important;
+  color: var(--oe-brand-strong) !important;
+  background: var(--oe-brand-soft) !important;
+  font-weight: 620;
+}
+
+#mainHeader .cds--side-nav::-webkit-scrollbar {
+  display: block;
+  width: 0.3125rem;
+}
+
+#mainHeader .cds--side-nav::-webkit-scrollbar-thumb {
+  border-radius: 1rem;
+  background: #cbd5e1;
+}
+
+/* A pinned desktop nav and its content offset must never get out of sync.
+   Carbon may retain its transient hidden class while async menu data loads;
+   the explicit persistent class is the source of truth for desktop layout. */
+@media (min-width: 1024px) {
+  #mainHeader .oe-app-sidenav--persistent {
+    width: 16rem !important;
+    visibility: visible !important;
+    transform: translate3d(0, 0, 0) !important;
+  }
+}
+
+#mainHeader .oe-sidenav-status {
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  padding: 2rem 1.25rem;
+  color: var(--oe-text-muted);
+  text-align: center;
+}
+
+#mainHeader .oe-sidenav-status p {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+#mainHeader .oe-sidenav-status__spinner {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid #dbe5f3;
+  border-top-color: var(--oe-brand);
+  border-radius: 50%;
+  animation: oe-sidenav-spin 700ms linear infinite;
+}
+
+#mainHeader .oe-sidenav-status__retry {
+  min-height: 2.25rem;
+  padding: 0.375rem 0.875rem;
+  border: 1px solid var(--oe-brand);
+  border-radius: var(--oe-control-radius);
+  color: var(--oe-brand-strong);
+  background: var(--oe-surface);
+  cursor: pointer;
+}
+
+#mainHeader .oe-sidenav-status__retry:hover {
+  background: var(--oe-brand-soft);
+}
+
+#mainHeader .oe-sidenav-security-restricted,
+#mainHeader .oe-sidenav-security-restricted > .cds--side-nav__link {
+  cursor: not-allowed;
+  color: #697586;
+  background: #f7f8fa;
+}
+
+#mainHeader .oe-sidenav-security-restricted:hover,
+#mainHeader .oe-sidenav-security-restricted:focus,
+#mainHeader .oe-sidenav-security-restricted > .cds--side-nav__link:hover,
+#mainHeader .oe-sidenav-security-restricted > .cds--side-nav__link:focus {
+  color: #697586;
+  background: #f7f8fa;
+}
+
+#mainHeader .oe-sidenav-security-restricted .cds--side-nav__link-text,
+#mainHeader .oe-sidenav-security-restricted .oe-sidenav-leaf-content {
+  width: 100%;
+}
+
+#mainHeader .oe-sidenav-security-restricted__status {
+  flex: 0 0 auto;
+  padding: 0.125rem 0.375rem;
+  border-radius: 999px;
+  color: #8a5b00;
+  background: #fff2cc;
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+@keyframes oe-sidenav-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Keyboard users can bypass the long application navigation. */
+.oe-skip-link {
+  position: fixed;
+  z-index: 10000;
+  top: 0.5rem;
+  left: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--oe-control-radius);
+  color: #ffffff;
+  background: var(--oe-brand);
+  text-decoration: none;
+  transform: translateY(-160%);
+  transition: transform 110ms ease;
+}
+
+.oe-skip-link:focus {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+  transform: translateY(0);
+}
+
+/* Shared page rhythm used across all route families. */
+.oe-page-breadcrumb,
+.oe-page-header,
+.pageContent,
+.adminPageContent,
+.orderLegendBody,
+.order-dashboard,
+.patient-management-surface {
+  width: calc(100% - (2 * var(--oe-page-gutter)));
+  max-width: var(--oe-content-max-width);
+  margin-right: auto !important;
+  margin-left: auto !important;
+}
+
+.oe-page-breadcrumb {
+  padding: 0.875rem 0 0.25rem;
+}
+
+.oe-page-breadcrumb .cds--grid {
+  padding: 0;
+}
+
+.oe-page-breadcrumb .cds--breadcrumb {
+  min-height: 1.5rem;
+  align-items: center;
+}
+
+.oe-page-breadcrumb .cds--breadcrumb-item,
+.oe-page-breadcrumb .cds--breadcrumb-item a {
+  color: var(--oe-text-muted);
+  font-size: 0.8125rem;
+}
+
+.oe-page-breadcrumb .cds--breadcrumb-item:last-child {
+  color: #344054;
+  font-weight: 550;
+}
+
+.oe-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0 1rem;
+}
+
+.oe-page-header__copy {
+  min-width: 0;
+}
+
+.oe-page-header__title {
+  margin: 0;
+  color: var(--oe-text);
+  font-size: clamp(1.5rem, 2vw, 2rem);
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+}
+
+.oe-page-header__subtitle {
+  max-width: 52rem;
+  margin: 0.375rem 0 0;
+  color: var(--oe-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.oe-page-header__actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pageContent,
+.adminPageContent {
+  padding-top: 0.5rem;
+  padding-bottom: 1.5rem;
+}
+
+.orderLegendBody {
+  margin-bottom: 1rem !important;
+  padding: clamp(1rem, 1.5vw, 1.5rem);
+  border: 1px solid var(--oe-border) !important;
+  border-radius: var(--oe-surface-radius) !important;
+  background: var(--oe-surface) !important;
+  box-shadow: var(--oe-surface-shadow) !important;
+}
+
+/* Result entry is a task workbench, not a legacy search form. Keep its filters,
+   work list and actions visually grouped at every desktop width. */
+.results-workbench {
+  width: calc(100% - (2 * var(--oe-page-gutter)));
+  max-width: var(--oe-content-max-width);
+  margin: 0 auto;
+  padding-bottom: 2rem;
+}
+
+.results-workbench__filters,
+.results-workbench__list {
+  margin-bottom: 1rem;
+  padding: clamp(1rem, 1.5vw, 1.5rem);
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  background: var(--oe-surface);
+  box-shadow: var(--oe-surface-shadow);
+}
+
+.results-workbench__section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.results-workbench__section-heading h2 {
+  margin: 0;
+  color: var(--oe-text);
+  font-size: 1.125rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.results-workbench__section-heading p {
+  margin: 0.25rem 0 0;
+  color: var(--oe-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.results-workbench__filter-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(15rem, 1.6fr) minmax(13rem, 1fr) minmax(12rem, 1fr)
+    auto;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.results-workbench__field,
+.results-workbench__filter-grid .cds--select,
+.results-workbench__filter-grid .cds--date-picker,
+.results-workbench__filter-grid .cds--date-picker-container,
+.results-workbench__filter-grid .cds--date-picker-input__wrapper,
+.results-workbench__filter-grid .cds--date-picker__input {
+  width: 100%;
+}
+
+.results-workbench__filter-grid > .cds--btn {
+  min-width: 8rem;
+  justify-content: center;
+}
+
+.results-workbench__status-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--oe-border);
+}
+
+.results-workbench__status-filters .cds--btn {
+  min-height: 2rem;
+  padding-right: 1rem;
+}
+
+.results-workbench__table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--oe-border);
+  border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.results-workbench__table-scroll .cds--data-table-container,
+.results-workbench__table-scroll .cds--data-table-content {
+  min-width: 58rem;
+}
+
+.results-workbench__table-scroll .cds--data-table th {
+  white-space: nowrap;
+}
+
+.results-workbench__table-scroll .cds--data-table td {
+  vertical-align: middle;
+}
+
+.results-workbench__empty {
+  width: 100%;
+  max-width: none;
+}
+
+.results-workbench__list > .cds--pagination {
+  border: 1px solid var(--oe-border);
+  border-top: 0;
+}
+
+.admin-dashboard {
+  width: calc(100% - (2 * var(--oe-page-gutter)));
+  max-width: var(--oe-content-max-width);
+  margin: 0 auto;
+  padding: 1.25rem 0 2rem;
+}
+
+.oe-main-content .admin-dashboard .admin-dashboard__tile.cds--tile {
+  min-height: 7rem;
+  padding: 1.125rem !important;
+  border-color: var(--oe-border) !important;
+  border-radius: var(--oe-surface-radius) !important;
+  background: #ffffff !important;
+  box-shadow: var(--oe-surface-shadow);
+}
+
+.oe-main-content .admin-dashboard .admin-dashboard__tile.cds--tile:hover {
+  border-color: #b8cff4 !important;
+  background: #f8fbff !important;
+  box-shadow: 0 8px 22px rgb(15 23 42 / 7%);
+}
+
+.oe-main-content .admin-dashboard__tile-icon {
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  color: var(--oe-brand);
+  background: var(--oe-brand-soft);
+}
+
+/* Legacy section wrappers no longer look like cards nested inside cards. */
+.oe-main-content .gridBoundary,
+.oe-main-content .ruleBody,
+.oe-main-content .columnBoundary.section,
+.oe-main-content .resultBody {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent;
+  box-shadow: none !important;
+}
+
+.oe-main-content .gridBoundary {
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.oe-main-content h1,
+.oe-main-content h2,
+.oe-main-content h3,
+.oe-main-content h4,
+.oe-main-content h5,
+.oe-main-content h6 {
+  color: var(--oe-text);
+  letter-spacing: -0.012em;
+}
+
+/* Carbon controls: consistent size, outline and state feedback. */
+.oe-main-content .cds--btn {
+  min-height: 2.5rem;
+  border-radius: var(--oe-control-radius);
+  font-weight: 550;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.oe-main-content .cds--btn:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.oe-main-content .cds--btn--primary {
+  background: var(--oe-brand);
+}
+
+.oe-main-content .cds--btn--primary:hover:not(:disabled) {
+  background: var(--oe-brand-strong);
+}
+
+.oe-main-content .cds--btn--secondary {
+  background: #344054;
+}
+
+.oe-main-content .cds--btn--tertiary {
+  border-color: var(--oe-border-strong);
+  color: #344054;
+  background: #ffffff;
+}
+
+.oe-main-content
+  :where(
+    .cds--text-input,
+    .cds--search-input,
+    .cds--select-input,
+    .cds--number input,
+    .cds--date-picker__input,
+    .cds--time-picker__input,
+    .cds--text-area,
+    .cds--dropdown
+  ) {
+  min-height: 2.5rem;
+  border: 1px solid var(--oe-border-strong);
+  border-radius: var(--oe-control-radius);
+  color: var(--oe-text);
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.oe-main-content
+  :where(
+    .cds--text-input,
+    .cds--search-input,
+    .cds--select-input,
+    .cds--number input,
+    .cds--date-picker__input,
+    .cds--time-picker__input,
+    .cds--text-area,
+    .cds--dropdown
+  ):hover:not(:disabled) {
+  border-color: #98a2b3;
+  box-shadow: none;
+}
+
+.oe-main-content
+  :where(
+    .cds--text-input,
+    .cds--search-input,
+    .cds--select-input,
+    .cds--number input,
+    .cds--date-picker__input,
+    .cds--time-picker__input,
+    .cds--text-area
+  ):focus {
+  border-color: var(--oe-brand);
+  outline: 3px solid rgb(23 105 224 / 13%);
+  outline-offset: 0;
+}
+
+.oe-main-content .cds--label,
+.oe-main-content .cds--form__helper-text {
+  color: #475467;
+}
+
+.oe-main-content .cds--label {
+  margin-bottom: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 550;
+}
+
+/* Forms across legacy and modern routes share one alignment contract. Carbon
+ * components otherwise bring different intrinsic widths and several pages
+ * end up with narrow selects beside full-width inputs or labels detached from
+ * their controls. Keep the rule inside the application shell so printable
+ * reports and labels are unaffected. */
+.oe-main-content form .cds--grid {
+  row-gap: 1rem;
+}
+
+.oe-main-content .cds--column,
+.oe-main-content .cds--form-item {
+  min-width: 0;
+}
+
+.oe-main-content
+  :where(
+    .cds--form-item,
+    .cds--text-input-wrapper,
+    .cds--select,
+    .cds--select-input__wrapper,
+    .cds--dropdown,
+    .cds--combo-box,
+    .cds--list-box,
+    .cds--date-picker,
+    .cds--date-picker-container,
+    .cds--date-picker-input__wrapper,
+    .cds--number,
+    .cds--text-area__wrapper
+  ) {
+  width: 100%;
+  max-width: none;
+}
+
+.oe-main-content :where(.cds--select-input, .cds--date-picker__input) {
+  width: 100%;
+  max-width: none;
+}
+
+.oe-main-content .cds--form__helper-text {
+  max-width: 48rem;
+  margin-top: 0.375rem;
+  line-height: 1.45;
+}
+
+/* Accordion groups are task sections, not disabled grey bars. This shared
+ * treatment fixes the same visual defect on order labels, configuration,
+ * storage, quality and report-filter pages. */
+.oe-main-content .cds--accordion {
+  overflow: hidden;
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  background: var(--oe-surface);
+}
+
+.oe-main-content .cds--accordion__item {
+  border: 0;
+  border-bottom: 1px solid var(--oe-border);
+}
+
+.oe-main-content .cds--accordion__item:last-child {
+  border-bottom: 0;
+}
+
+.oe-main-content .cds--accordion__heading {
+  min-height: 3rem;
+  border: 0;
+  background: #fbfcfe;
+}
+
+.oe-main-content .cds--accordion__heading:hover,
+.oe-main-content .cds--accordion__heading:focus-visible,
+.oe-main-content .cds--accordion__item--active > .cds--accordion__heading {
+  background: var(--oe-brand-soft);
+}
+
+.oe-main-content .cds--accordion__title {
+  color: #344054;
+  font-size: 0.875rem;
+  font-weight: 620;
+  line-height: 1.4;
+}
+
+.oe-main-content .cds--accordion__content {
+  padding: 1rem 1.25rem 1.25rem;
+  background: var(--oe-surface);
+}
+
+.oe-main-content .cds--tile {
+  border-radius: var(--oe-surface-radius);
+}
+
+.oe-main-content .cds--inline-notification,
+.oe-main-content .cds--toast-notification {
+  max-width: none;
+  border-radius: 0.5rem;
+}
+
+.oe-main-content .cds--tabs__nav-link {
+  min-height: 2.75rem;
+  font-weight: 550;
+}
+
+/* Tables are one clean surface: no zebra striping or heavy header blocks. */
+.oe-main-content .cds--data-table-container {
+  overflow: hidden;
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  background: var(--oe-surface);
+  box-shadow: none;
+}
+
+.oe-main-content .cds--data-table thead th {
+  border-bottom: 1px solid var(--oe-border);
+  color: #475467;
+  background: #f8fafc;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.oe-main-content .cds--data-table tbody td {
+  border-bottom-color: #edf0f4;
+  background: #ffffff;
+}
+
+.oe-main-content .cds--data-table tbody tr:nth-child(even) td {
+  background: #ffffff;
+}
+
+.oe-main-content .cds--data-table tbody tr:hover td {
+  background: #f7faff;
+}
+
+.oe-main-content .cds--pagination {
+  border-top: 0;
+  background: #ffffff;
+}
+
+.oe-main-content .cds--modal-container {
+  overflow: hidden;
+  border-radius: 0.75rem;
+  box-shadow: 0 24px 64px rgb(15 23 42 / 20%);
+}
+
+.oe-empty-state {
+  display: flex;
+  min-height: 11rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--oe-border-strong);
+  border-radius: var(--oe-surface-radius);
+  color: var(--oe-text-muted);
+  background: var(--oe-surface-subtle);
+  text-align: center;
+}
+
+/* Route bundles always show a stable in-page loading state. Never replace the
+ * entire screen with an overlay or an empty Suspense fallback. */
+.oe-page-loading {
+  display: grid;
+  width: calc(100% - (2 * var(--oe-page-gutter)));
+  max-width: var(--oe-content-max-width);
+  min-height: 16rem;
+  place-content: center;
+  justify-items: center;
+  gap: 1rem;
+  margin: 1rem auto;
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  color: var(--oe-text-muted);
+  background: var(--oe-surface);
+}
+
+.oe-page-loading .cds--loading {
+  position: static;
+}
+
+.oe-page-loading p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.oe-route-error {
+  width: calc(100% - (2 * var(--oe-page-gutter)));
+  max-width: var(--oe-content-max-width);
+  margin: 1rem auto;
+  background: transparent;
+}
+
+.oe-route-error__surface.cds--tile {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+  border: 1px solid #f2c9ce;
+  border-radius: var(--oe-surface-radius);
+  background: #fff8f8;
+  box-shadow: var(--oe-surface-shadow);
+}
+
+.oe-route-error__surface h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.oe-route-error__surface p {
+  margin: 0.5rem 0 1rem;
+  color: var(--oe-text-muted);
+}
+
+/* Patient screens share the same search/worklist pattern. */
+.patient-management-surface {
+  margin-bottom: 2rem !important;
+  padding: 1.25rem;
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  background: var(--oe-surface);
+  box-shadow: var(--oe-surface-shadow);
+}
+
+.patient-management-mode-switcher {
+  display: inline-flex;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--oe-border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.patient-management-mode-switcher .cds--btn {
+  min-width: 8rem;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+}
+
+.patient-search-grid {
+  row-gap: 1rem;
+}
+
+.patient-search-actions,
+.patient-api-pagination__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.patient-search-actions {
+  padding-top: 0.5rem;
+}
+
+.patient-compact-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.75rem;
+  max-width: 64rem;
+}
+
+.patient-compact-search__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.patient-compact-search__helper {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--oe-text-muted);
+  font-size: 0.875rem;
+}
+
+.patient-advanced-search__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--oe-border);
+}
+
+.patient-search-results {
+  margin-top: 1.5rem;
+}
+
+.patient-master-list__toolbar {
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--oe-border);
+}
+
+.patient-master-list__search {
+  display: grid;
+  grid-template-columns: minmax(18rem, 42rem) auto auto;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.patient-master-list__helper,
+.patient-master-list__heading p {
+  margin: 0.5rem 0 0;
+  color: var(--oe-text-muted);
+  font-size: 0.875rem;
+}
+
+.patient-master-list__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 1.5rem 0 1rem;
+}
+
+.patient-master-list__heading h2,
+.patient-master-list__empty h3 {
+  margin: 0;
+}
+
+.patient-master-list__loading {
+  min-height: 10rem;
+  display: grid;
+  place-items: center;
+}
+
+.patient-master-list__error {
+  display: flex;
+  align-items: stretch;
+  gap: 0.75rem;
+}
+
+.patient-master-list__error .cds--inline-notification {
+  flex: 1;
+  max-width: none;
+}
+
+.patient-master-list__table {
+  overflow-x: auto;
+  border: 1px solid var(--oe-border);
+  border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.patient-master-list__table .cds--data-table {
+  width: 100%;
+  min-width: 50rem;
+  table-layout: fixed;
+}
+
+.patient-master-list__table th:nth-child(1) {
+  width: 11%;
+}
+
+.patient-master-list__table th:nth-child(2) {
+  width: 12%;
+}
+
+.patient-master-list__table th:nth-child(3) {
+  width: 7%;
+}
+
+.patient-master-list__table th:nth-child(4) {
+  width: 12%;
+}
+
+.patient-master-list__table th:nth-child(5) {
+  width: 18%;
+}
+
+.patient-master-list__table th:nth-child(6) {
+  width: 11%;
+}
+
+.patient-master-list__table th:nth-child(7) {
+  width: 9%;
+}
+
+.patient-master-list__table th:nth-child(8) {
+  width: 20%;
+}
+
+.patient-master-list__table td:not(:last-child) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.patient-master-list__table th,
+.patient-master-list__table td {
+  padding-inline: 0.75rem;
+}
+
+.patient-master-list__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.patient-master-list__actions .cds--btn {
+  min-width: 0;
+  padding-inline: 0.5rem;
+}
+
+.patient-master-list__empty {
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  min-height: 16rem;
+  padding: 3rem 1rem;
+  border: 1px dashed var(--oe-border);
+  border-radius: 0.5rem;
+  text-align: center;
+}
+
+.patient-master-list__empty p {
+  margin: 0;
+  color: var(--oe-text-muted);
+}
+
+.patient-api-pagination__controls {
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}
+
+.patient-api-pagination__count {
+  margin-right: 0.5rem;
+  color: var(--oe-text-muted);
+  font-size: 0.8125rem;
+}
+
+/* Report landing pages use a browseable catalog instead of a second fixed
+ * sidenav competing with the application's main navigation. */
+.oe-report-catalog {
+  width: calc(100% - (2 * var(--oe-page-gutter)));
+  max-width: var(--oe-content-max-width);
+  margin: 0 auto 2rem;
+}
+
+.oe-report-catalog__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+  gap: 1rem;
+}
+
+.oe-report-group {
+  overflow: hidden;
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  background: #ffffff;
+  box-shadow: var(--oe-surface-shadow);
+}
+
+.oe-report-group__header {
+  display: flex;
+  min-height: 3.75rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid #edf0f4;
+  background: #f9fafc;
+}
+
+.oe-report-group__header h2 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 650;
+}
+
+.oe-report-group__icon {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  color: var(--oe-brand);
+  background: var(--oe-brand-soft);
+}
+
+.oe-report-group__links {
+  margin: 0;
+  padding: 0.375rem;
+  list-style: none;
+}
+
+.oe-report-group__links a,
+.oe-report-group__disabled {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.375rem;
+  color: #344054;
+  font-size: 0.8125rem;
+  text-decoration: none;
+}
+
+.oe-report-group__disabled {
+  cursor: not-allowed;
+  color: #697586;
+  background: #f7f8fa;
+}
+
+.oe-report-group__status {
+  flex: 0 0 auto;
+  padding: 0.1875rem 0.5rem;
+  border-radius: 999px;
+  color: #8a5b00;
+  background: #fff2cc;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.oe-report-group__links a:hover {
+  color: var(--oe-brand-strong);
+  background: var(--oe-brand-soft);
+}
+
+.oe-report-group__links svg {
+  flex: 0 0 auto;
+  color: #98a2b3;
+}
+
+.oe-report-catalog__content {
+  margin-top: 1rem;
+}
+
+/* Login is a focused product entry, not a loose form floating in a grid. */
+.oe-app-shell[data-page-family="auth"] #mainHeader {
+  display: none;
+}
+
+.oe-app-shell[data-page-family="auth"] .oe-main-content {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  background:
+    radial-gradient(
+      circle at 14% 18%,
+      rgb(23 105 224 / 10%),
+      transparent 32rem
+    ),
+    var(--oe-page);
+}
+
+.oe-loginPageCenter {
+  width: min(100% - 2rem, 31rem) !important;
+  margin: 2rem auto !important;
+  padding: clamp(1.5rem, 4vw, 2.25rem);
+  border: 1px solid var(--oe-border);
+  border-radius: 0.875rem;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 18px 48px rgb(15 23 42 / 10%);
+}
+
+.oe-loginPageCenter > .cds--grid {
+  padding: 0;
+}
+
+.oe-login-brand {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+  text-align: center;
+}
+
+.oe-login-brand img {
+  display: block;
+  width: min(100%, 17rem);
+  height: 3.5rem;
+  object-fit: contain;
+}
+
+.oe-login-notice {
+  width: 100%;
+  margin: 0;
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.5rem;
+  color: #7a5b13;
+  background: #fff9e8;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.oe-login-form {
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--oe-border);
+}
+
+.oe-login-heading h1,
+.oe-login-heading h2,
+.oe-login-heading h3 {
+  margin: 0;
+  color: var(--oe-text);
+  font-size: 1.375rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.oe-login-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.oe-login-actions .cds--btn {
+  width: 100%;
+  max-width: none;
+  justify-content: center;
+}
+
+.oe-login-redirecting {
+  padding: 2rem 0;
+  text-align: center;
+}
+
+.oe-login-redirecting p {
+  margin-top: 1rem;
+  color: var(--oe-text-muted);
+}
+
+/* Restore a visible focus indicator where older legacy rules removed it. */
+#main-content :where(button, a, input, select, textarea):focus-visible,
+#mainHeader .cds--header__action:focus-visible,
+#mainHeader .cds--btn--icon-only:focus-visible {
+  outline: 2px solid var(--oe-brand) !important;
+  outline-offset: 2px !important;
+  box-shadow: none !important;
+}
+
+#mainHeader .cds--header__action:focus-visible,
+#mainHeader .cds--btn--icon-only:focus-visible {
+  outline-offset: -4px !important;
+}
+
+.oe-nav-scrim {
+  position: fixed;
+  z-index: 7999;
+  inset: 3rem 0 0;
+  width: 100%;
+  height: calc(100vh - 3rem);
+  padding: 0;
+  border: 0;
+  background: rgb(15 23 42 / 36%);
+  cursor: pointer;
+  backdrop-filter: blur(1px);
+}
+
+@media (max-width: 65.9375rem) {
+  :root {
+    --oe-page-gutter: var(--oe-page-gutter-compact);
+  }
+
+  .results-workbench__filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 41.9375rem) {
+  .oe-page-header {
+    flex-direction: column;
+  }
+
+  .oe-page-header__actions,
+  .oe-page-header__actions .cds--btn {
+    width: 100%;
+    max-width: none;
+  }
+
+  .patient-management-surface,
+  .orderLegendBody {
+    padding: 1rem;
+  }
+
+  .results-workbench__filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .results-workbench__filter-grid > .cds--btn {
+    width: 100%;
+    max-width: none;
+  }
+
+  .patient-management-mode-switcher,
+  .patient-management-mode-switcher .cds--btn,
+  .patient-search-actions,
+  .patient-search-actions .cds--btn {
+    width: 100%;
+    max-width: none;
+  }
+
+  .patient-search-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .patient-compact-search {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-compact-search__actions,
+  .patient-compact-search__actions .cds--btn {
+    width: 100%;
+    max-width: none;
+  }
+
+  .patient-compact-search__actions {
+    flex-direction: column;
+  }
+
+  .patient-compact-search__helper {
+    grid-column: 1;
+  }
+
+  .patient-master-list__search {
+    grid-template-columns: 1fr;
+  }
+
+  .patient-master-list__search .cds--btn {
+    width: 100%;
+    max-width: none;
+  }
+
+  .oe-login-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+/* List-driven workspaces: contextual actions stay compact and aligned. */
+.list-return-button {
+  margin-bottom: 0.75rem;
+}
+.order-dashboard .order-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.125rem;
+}
+.order-dashboard .order-actions .cds--btn {
+  min-width: auto;
+  padding-inline: 0.5rem;
+  white-space: nowrap;
+}
+.master-data-workspace__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.master-data-workspace__card {
+  padding: 1.25rem;
+  background: #fff;
+  border: 1px solid #e0e6ee;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.master-data-workspace__card h2 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.master-data-workspace__card p {
+  color: #64748b;
+  line-height: 1.6;
+  flex: 1;
+}
+.master-data-workspace__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+}
+@media (max-width: 850px) {
+  .master-data-workspace__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

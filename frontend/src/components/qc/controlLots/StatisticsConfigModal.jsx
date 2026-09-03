@@ -96,6 +96,7 @@ const StatisticsConfigModal = ({ open, config, onClose, onSave }) => {
       data-testid="statistics-config-modal"
     >
       <ModalHeader
+        iconDescription={intl.formatMessage({ id: "button.close" })}
         title={intl.formatMessage({
           id: "qc.controlLot.statistics.config.title",
         })}

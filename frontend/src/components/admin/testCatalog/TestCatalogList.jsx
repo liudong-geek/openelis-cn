@@ -35,6 +35,7 @@ import { getFromOpenElisServer } from "../../utils/Utils";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import useDomains from "../../common/useDomains";
 import { DEFAULT_SECTION } from "./sectionConfig";
+import "./TestCatalogList.css";
 
 /**
  * OGC-949 / OGC-1112 — Test List View.
@@ -83,6 +84,7 @@ const TestCatalogList = () => {
   const initParams = new URLSearchParams(history.location.search);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [pageData, setPageData] = useState({ rows: [], total: 0 });
   const [page, setPage] = useState(Number(initParams.get("page")) || 1);
   const [pageSize, setPageSize] = useState(
@@ -166,6 +168,7 @@ const TestCatalogList = () => {
     page,
     pageSize,
     history,
+    reloadKey,
   ]);
 
   const breadcrumbs = [
@@ -199,6 +202,10 @@ const TestCatalogList = () => {
     {
       key: "status",
       header: intl.formatMessage({ id: "label.testCatalog.list.col.status" }),
+    },
+    {
+      key: "actions",
+      header: intl.formatMessage({ id: "label.testCatalog.list.col.actions" }),
     },
   ];
 
@@ -237,7 +244,22 @@ const TestCatalogList = () => {
     (domain ? 1 : 0) +
     (status && status !== "all" ? 1 : 0) +
     (amr ? 1 : 0) +
-    (sampleType ? 1 : 0);
+    (sampleType ? 1 : 0) +
+    (issuesOnly ? 1 : 0);
+
+  const hasActiveQuery =
+    activeFilterCount > 0 || Boolean(search.trim()) || issuesOnly;
+
+  const clearFilters = () => {
+    setPage(1);
+    setDomain("");
+    setStatus("all");
+    setAmr("");
+    setSampleType("");
+    setSearch("");
+    setDebouncedSearch("");
+    setIssuesOnly(false);
+  };
 
   const baseRows = (pageData.rows || []).map((r) => ({
     id: r.testId,
@@ -252,6 +274,7 @@ const TestCatalogList = () => {
     coverageIncomplete: r.coverageIncomplete,
     hasLoinc: r.hasLoinc,
     findings: r.findings || [],
+    actions: "",
   }));
 
   // OGC-1145 Phase 3: the variant grouped view retired with the variant
@@ -266,20 +289,43 @@ const TestCatalogList = () => {
         ? "warm-gray"
         : "gray";
 
+  const translateBatchAction = (messageId, args = {}) => {
+    switch (messageId) {
+      case "carbon.table.batch.cancel":
+        return intl.formatMessage({ id: "button.cancel" });
+      case "carbon.table.batch.item.selected":
+      case "carbon.table.batch.items.selected":
+        return intl.formatMessage(
+          { id: "label.testCatalog.list.selectedCount" },
+          { count: args.totalSelected || 0 },
+        );
+      case "carbon.table.batch.selectAll":
+        return intl.formatMessage(
+          { id: "button.testCatalog.selectAll" },
+          { count: args.totalCount || 0 },
+        );
+      default:
+        return messageId;
+    }
+  };
+
   return (
-    <>
+    <div className="testCatalogList">
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
       <Grid fullWidth>
         <Column lg={16} md={8} sm={4}>
-          <Section>
+          <Section className="testCatalogList__header">
             <Heading>
               <FormattedMessage id="label.testCatalog.list" />
             </Heading>
+            <p className="testCatalogList__subtitle">
+              <FormattedMessage id="label.testCatalog.list.subtitle" />
+            </p>
           </Section>
         </Column>
 
         <Column lg={16} md={8} sm={4}>
-          <div style={{ margin: "1rem 0" }}>
+          <div className="testCatalogList__filterBar">
             <Button
               kind="ghost"
               size="sm"
@@ -295,15 +341,7 @@ const TestCatalogList = () => {
                 : intl.formatMessage({ id: "label.testCatalog.list.filters" })}
             </Button>
             {filtersOpen && (
-              <div
-                style={{
-                  display: "flex",
-                  gap: "1rem",
-                  flexWrap: "wrap",
-                  marginTop: "0.5rem",
-                  alignItems: "flex-end",
-                }}
-              >
+              <div className="testCatalogList__filters">
                 <Dropdown
                   id="filter-domain"
                   titleText={intl.formatMessage({
@@ -381,6 +419,13 @@ const TestCatalogList = () => {
                     setIssuesOnly(checked);
                   }}
                 />
+                {hasActiveQuery && (
+                  <Button kind="tertiary" size="md" onClick={clearFilters}>
+                    {intl.formatMessage({
+                      id: "button.testCatalog.clearFilters",
+                    })}
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -423,17 +468,39 @@ const TestCatalogList = () => {
 
         <Column lg={16} md={8} sm={4}>
           {loading ? (
-            <Loading
-              description={intl.formatMessage({ id: "label.loading" })}
-              withOverlay={false}
-            />
+            <div className="testCatalogList__state" role="status">
+              <Loading
+                small
+                description={intl.formatMessage({ id: "label.loading" })}
+                withOverlay={false}
+              />
+              <span>
+                {intl.formatMessage({
+                  id: "label.testCatalog.list.loading",
+                })}
+              </span>
+            </div>
           ) : error ? (
-            <InlineNotification
-              kind="error"
-              lowContrast
-              hideCloseButton
-              title={intl.formatMessage({ id: "label.testCatalog.list.error" })}
-            />
+            <div className="testCatalogList__state" role="alert">
+              <InlineNotification
+                kind="error"
+                lowContrast
+                hideCloseButton
+                title={intl.formatMessage({
+                  id: "label.testCatalog.list.error",
+                })}
+                subtitle={intl.formatMessage({
+                  id: "label.testCatalog.list.errorDetail",
+                })}
+              />
+              <Button
+                kind="tertiary"
+                size="sm"
+                onClick={() => setReloadKey((value) => value + 1)}
+              >
+                {intl.formatMessage({ id: "button.testCatalog.retry" })}
+              </Button>
+            </div>
           ) : (
             <DataTable rows={tableRows} headers={headers}>
               {({
@@ -449,7 +516,10 @@ const TestCatalogList = () => {
               }) => (
                 <TableContainer>
                   <TableToolbar {...getToolbarProps()}>
-                    <TableBatchActions {...getBatchActionProps()}>
+                    <TableBatchActions
+                      {...getBatchActionProps()}
+                      translateWithId={translateBatchAction}
+                    >
                       <TableBatchAction
                         renderIcon={Edit}
                         disabled={selectedRows.length < 2}
@@ -467,6 +537,9 @@ const TestCatalogList = () => {
                         labelText={intl.formatMessage({ id: "label.search" })}
                         placeholder={intl.formatMessage({
                           id: "label.testCatalog.list.search",
+                        })}
+                        closeButtonLabelText={intl.formatMessage({
+                          id: "label.testCatalog.list.clearSearch",
                         })}
                         onChange={(e) => {
                           setPage(1);
@@ -486,19 +559,42 @@ const TestCatalogList = () => {
                     </TableToolbarContent>
                   </TableToolbar>
                   {tableRows.length === 0 ? (
-                    <InlineNotification
-                      kind="info"
-                      lowContrast
-                      hideCloseButton
-                      title={intl.formatMessage({
-                        id: "label.testCatalog.list.empty",
-                      })}
-                    />
+                    <div className="testCatalogList__state" role="status">
+                      <InlineNotification
+                        kind="info"
+                        lowContrast
+                        hideCloseButton
+                        title={intl.formatMessage({
+                          id: "label.testCatalog.list.empty",
+                        })}
+                        subtitle={intl.formatMessage({
+                          id: hasActiveQuery
+                            ? "label.testCatalog.list.emptyFilteredDetail"
+                            : "label.testCatalog.list.emptyDefaultDetail",
+                        })}
+                      />
+                      {hasActiveQuery && (
+                        <Button
+                          kind="tertiary"
+                          size="sm"
+                          onClick={clearFilters}
+                        >
+                          {intl.formatMessage({
+                            id: "button.testCatalog.clearFilters",
+                          })}
+                        </Button>
+                      )}
+                    </div>
                   ) : (
                     <Table {...getTableProps()}>
                       <TableHead>
                         <TableRow>
-                          <TableSelectAll {...getSelectionProps()} />
+                          <TableSelectAll
+                            {...getSelectionProps()}
+                            aria-label={intl.formatMessage({
+                              id: "button.testCatalog.selectAllRows",
+                            })}
+                          />
                           {hdrs.map((header) => (
                             <TableHeader
                               key={header.key}
@@ -530,6 +626,12 @@ const TestCatalogList = () => {
                                 {/* Selecting a row must not open the editor. */}
                                 <TableSelectRow
                                   {...getSelectionProps({ row })}
+                                  aria-label={intl.formatMessage(
+                                    {
+                                      id: "button.testCatalog.selectTestAria",
+                                    },
+                                    { name: source?.name || "" },
+                                  )}
                                   onClick={(e) => e.stopPropagation()}
                                 />
                                 {row.cells.map((cell) => (
@@ -581,6 +683,23 @@ const TestCatalogList = () => {
                                           },
                                         )}
                                       </span>
+                                    ) : cell.info.header === "actions" ? (
+                                      <Button
+                                        kind="ghost"
+                                        size="sm"
+                                        hasIconOnly
+                                        renderIcon={Edit}
+                                        iconDescription={intl.formatMessage(
+                                          {
+                                            id: "button.testCatalog.editTestAria",
+                                          },
+                                          { name: source?.name || "" },
+                                        )}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          openEditor(row.id);
+                                        }}
+                                      />
                                     ) : (
                                       cell.value
                                     )}
@@ -639,12 +758,41 @@ const TestCatalogList = () => {
               )}
             </DataTable>
           )}
-          {!loading && !error && (
+          {!loading && !error && pageData.total > 0 && (
             <Pagination
+              className="testCatalogList__pagination"
               page={page}
               pageSize={pageSize}
               pageSizes={[10, 25, 50, 100]}
               totalItems={pageData.total || 0}
+              backwardText={intl.formatMessage({
+                id: "pagination.previousPage",
+              })}
+              forwardText={intl.formatMessage({ id: "pagination.nextPage" })}
+              itemText={(min, max) =>
+                intl.formatMessage({ id: "pagination.item" }, { min, max })
+              }
+              itemRangeText={(min, max, total) =>
+                intl.formatMessage(
+                  { id: "pagination.item-range" },
+                  { min, max, total },
+                )
+              }
+              itemsPerPageText={intl.formatMessage({
+                id: "pagination.itemsPerPage",
+              })}
+              pageRangeText={(_current, total) =>
+                intl.formatMessage({ id: "pagination.page-range" }, { total })
+              }
+              pageSelectLabelText={(total) =>
+                intl.formatMessage({ id: "pagination.page-select" }, { total })
+              }
+              pageText={(selectedPage) =>
+                intl.formatMessage(
+                  { id: "pagination.page" },
+                  { page: selectedPage },
+                )
+              }
               onChange={({ page: p, pageSize: ps }) => {
                 setPage(p);
                 setPageSize(ps);
@@ -653,7 +801,7 @@ const TestCatalogList = () => {
           )}
         </Column>
       </Grid>
-    </>
+    </div>
   );
 };
 

@@ -41,7 +41,7 @@ import org.openelisglobal.test.service.TestService;
 import org.openelisglobal.test.service.TestServiceImpl;
 import org.openelisglobal.test.valueholder.Test;
 
-public class IPCIRealisationReport extends Report {
+public class IPCIRealisationReport extends Report implements SafeNonPatientReportCreator {
 
     protected List<IPCIRealisationTest> reportItems;
 

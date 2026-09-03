@@ -77,16 +77,16 @@ export class Sidenav {
   }
 
   /**
-   * Return visible sidenav link info. This intentionally only captures "real" links
-   * (anchor tags) and skips menu toggle buttons.
+   * Return every authorized sidenav link. Carbon keeps the permitted anchor
+   * elements mounted when their parent submenu is collapsed, so reading the
+   * DOM directly is both faster and more complete than trying to open every
+   * accordion (opening one branch can close another branch at the same level).
+   * This intentionally captures only real links and skips toggle buttons.
    */
   async getVisibleLinkInfos(): Promise<
     Array<{ name: string; href: string; target: string | null }>
   > {
     await this.ensureExpanded();
-    // Expand all menus so nested links are visible
-    await this.expandAllMenus();
-
     const links = this.nav.locator("a.cds--side-nav__link");
     const count = await links.count();
     const infos: Array<{ name: string; href: string; target: string | null }> =
@@ -94,7 +94,6 @@ export class Sidenav {
 
     for (let i = 0; i < count; i++) {
       const link = links.nth(i);
-      if (!(await link.isVisible())) continue;
       const href = (await link.getAttribute("href")) || "";
       if (!href) continue;
       const target = await link.getAttribute("target");

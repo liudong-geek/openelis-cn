@@ -181,10 +181,11 @@ export function exist(...args: any[]): boolean {
 export const assessValue =
   (meta: ObsMetaInfo) =>
   (value: string): OBSERVATION_INTERPRETATION => {
-    if (isNaN(parseFloat(value))) {
-      return "NORMAL";
+    const normalizedValue = String(value ?? "").trim();
+    const numericValue = Number(normalizedValue);
+    if (!normalizedValue || !Number.isFinite(numericValue)) {
+      return "UNKNOWN";
     }
-    const numericValue = parseFloat(value);
     if (exist(meta.hiAbsolute) && numericValue > meta.hiAbsolute) {
       return "OFF_SCALE_HIGH";
     }
@@ -209,7 +210,10 @@ export const assessValue =
       return "LOW";
     }
 
-    return "NORMAL";
+    // A value is only demonstrably normal when the test defines at least one
+    // normal bound. Without a reference interval the result is unassessed,
+    // not normal.
+    return exist(meta.lowNormal) || exist(meta.hiNormal) ? "NORMAL" : "UNKNOWN";
   };
 
 export function extractMetaInformation(

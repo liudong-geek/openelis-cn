@@ -1,0 +1,13 @@
+FROM openelis-cn-frontend-base:ui-check
+
+RUN apk add --no-cache \
+  chromium \
+  font-noto-cjk \
+  freetype \
+  harfbuzz \
+  nss \
+  ttf-freefont
+
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium-browser
+WORKDIR /app
+COPY . ./

@@ -196,7 +196,12 @@ const DisplayOrderSection = () => {
           })}
         />
       ) : (
-        <Table size="lg" aria-label="display-order">
+        <Table
+          size="lg"
+          aria-label={intl.formatMessage({
+            id: "label.testCatalog.section.display-order",
+          })}
+        >
           <TableHead>
             <TableRow>
               <TableHeader>

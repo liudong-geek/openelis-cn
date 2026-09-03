@@ -116,6 +116,15 @@
     -->
           <Engine name="Catalina" defaultHost="localhost">
 
+               <!-- Honor the original browser origin supplied by the trusted edge
+                    proxy.  This keeps form-login/session redirects on local HTTP
+                    (including port 18080) while preserving HTTPS in production. -->
+               <Valve className="org.apache.catalina.valves.RemoteIpValve"
+                    remoteIpHeader="x-forwarded-for"
+                    protocolHeader="x-forwarded-proto"
+                    hostHeader="x-forwarded-host"
+                    portHeader="x-forwarded-port" />
+
                <!--For
             clustering, please take a look at documentation at:
           /docs/cluster-howto.html  (simple how to)
@@ -135,12 +144,16 @@
                          resourceName="UserDatabase" />
                </Realm>
 
+               <!-- Applications are declared explicitly below. Disable HostConfig's
+                    automatic scan so OpenELIS-Global.war is not initialized a
+                    second time at /OpenELIS-Global in addition to the public
+                    /api/OpenELIS-Global context. -->
                <Host name="localhost" appBase="webapps"
-                    unpackWARs="true" autoDeploy="true">
+                    unpackWARs="true" autoDeploy="false" deployOnStartup="false">
 
                     <Context docBase="ROOT" path="/api" />
                     <Context docBase="OpenELIS-Global"
-                         path="/api/OpenELIS-Global/" logEffectiveWebXml="true">
+                         path="/api/OpenELIS-Global" logEffectiveWebXml="true">
                          <Resources cacheMaxSize="102400" />
                          <Resource auth="Container"
                               driverClassName="org.postgresql.Driver" maxTotal="20" maxIdle="10"

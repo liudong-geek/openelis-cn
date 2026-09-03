@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useContext, useEffect } from "react";
 import { useIntl, FormattedMessage } from "react-intl";
 import {
   Tile,
@@ -16,6 +16,14 @@ import {
   Link,
 } from "@carbon/react";
 import { Printer } from "@carbon/icons-react";
+import { ConfigurationContext } from "../../../layout/Layout";
+import {
+  formatIsoDateForPicker,
+  getDatePickerFormat,
+  getDatePickerPlaceholderMessage,
+  toLocalIsoDate,
+} from "../../orderDateUtils";
+import { localizeSampleType } from "../../sampleTypeIntl";
 
 /**
  * SampleCollectionCard - Card for a single sample with collection details
@@ -43,6 +51,9 @@ const SampleCollectionCard = ({
   canRemove,
 }) => {
   const intl = useIntl();
+  const { configurationProperties = {} } =
+    useContext(ConfigurationContext) || {};
+  const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "en-US";
 
   // Auto-populate dates/times for new samples that don't have values yet
   // collectionDate/Time default to now; receivedDate/Time default to server values
@@ -91,30 +102,10 @@ const SampleCollectionCard = ({
     sample.sampleTypeName ||
     sampleTypes.find((st) => st.id === sample.sampleTypeId)?.value ||
     "";
+  const localizedSampleTypeName = localizeSampleType(intl, sampleTypeName);
 
   const handleFieldChange = (field, value) => {
     onUpdate(sampleIndex, { [field]: value });
-  };
-
-  const formatDateForPicker = (dateStr) => {
-    if (!dateStr) return "";
-    if (dateStr.includes("/")) {
-      return dateStr;
-    }
-    const parts = dateStr.split("-");
-    if (parts.length === 3) {
-      return `${parts[1]}/${parts[2]}/${parts[0]}`;
-    }
-    return dateStr;
-  };
-
-  const parseDateFromPicker = (dateStr) => {
-    if (!dateStr) return "";
-    const parts = dateStr.split("/");
-    if (parts.length === 3) {
-      return `${parts[2]}-${parts[0].padStart(2, "0")}-${parts[1].padStart(2, "0")}`;
-    }
-    return dateStr;
   };
 
   return (
@@ -125,7 +116,10 @@ const SampleCollectionCard = ({
           <FormattedMessage
             id="collect.sample.header"
             defaultMessage="Sample {number} — {sampleType}"
-            values={{ number: sampleIndex + 1, sampleType: sampleTypeName }}
+            values={{
+              number: sampleIndex + 1,
+              sampleType: localizedSampleTypeName,
+            }}
           />
         </h5>
         <div className="sample-card-actions">
@@ -211,7 +205,11 @@ const SampleCollectionCard = ({
           >
             <SelectItem value="" text="" />
             {sampleTypes.map((type) => (
-              <SelectItem key={type.id} value={type.id} text={type.value} />
+              <SelectItem
+                key={type.id}
+                value={type.id}
+                text={localizeSampleType(intl, type.value)}
+              />
             ))}
           </Select>
         </Column>
@@ -278,8 +276,9 @@ const SampleCollectionCard = ({
         <Column lg={4} md={4} sm={4}>
           <DatePicker
             datePickerType="single"
-            maxDate={new Date().toISOString()}
-            value={formatDateForPicker(sample.collectionDate)}
+            dateFormat={getDatePickerFormat(dateLocale)}
+            maxDate={formatIsoDateForPicker(toLocalIsoDate(), dateLocale)}
+            value={formatIsoDateForPicker(sample.collectionDate, dateLocale)}
             onChange={(dates) => {
               if (dates && dates[0]) {
                 const month = String(dates[0].getMonth() + 1).padStart(2, "0");
@@ -306,7 +305,9 @@ const SampleCollectionCard = ({
                   </span>
                 </>
               }
-              placeholder="mm/dd/yyyy"
+              placeholder={intl.formatMessage(
+                getDatePickerPlaceholderMessage(dateLocale),
+              )}
               disabled={isReadOnly}
             />
           </DatePicker>
@@ -366,7 +367,14 @@ const SampleCollectionCard = ({
           <Column lg={4} md={4} sm={4}>
             <DatePicker
               datePickerType="single"
-              maxDate={new Date().toISOString()}
+              dateFormat={getDatePickerFormat(dateLocale)}
+              maxDate={formatIsoDateForPicker(toLocalIsoDate(), dateLocale)}
+              value={formatIsoDateForPicker(
+                // Use stored value if editing existing sample, otherwise use server time for new samples
+                sample.receivedDate ||
+                  (sample.sampleItemId ? "" : serverReceivedDate),
+                dateLocale,
+              )}
               onChange={(dates) => {
                 if (dates && dates[0]) {
                   const month = String(dates[0].getMonth() + 1).padStart(
@@ -385,11 +393,8 @@ const SampleCollectionCard = ({
                   id: "collect.sample.receivedDate",
                   defaultMessage: "Received Date",
                 })}
-                placeholder="mm/dd/yyyy"
-                value={formatDateForPicker(
-                  // Use stored value if editing existing sample, otherwise use server time for new samples
-                  sample.receivedDate ||
-                    (sample.sampleItemId ? "" : serverReceivedDate),
+                placeholder={intl.formatMessage(
+                  getDatePickerPlaceholderMessage(dateLocale),
                 )}
                 disabled={isReadOnly}
               />

@@ -86,4 +86,13 @@ public class SamplePatientEntryFormLabelBindingTest {
         assertNull("a save body without labelPersistRequest leaves the field null (hook stays guarded)",
                 form.getLabelPersistRequest());
     }
+
+    @Test
+    public void optionalRememberPreferenceDefaultsToFalse() throws Exception {
+        assertEquals(Boolean.FALSE, JSON.readValue("{}", SamplePatientEntryForm.class).getRememberSiteAndRequester());
+        assertEquals(Boolean.FALSE, JSON.readValue("{\"rememberSiteAndRequester\":null}", SamplePatientEntryForm.class)
+                .getRememberSiteAndRequester());
+        assertEquals(Boolean.TRUE, JSON.readValue("{\"rememberSiteAndRequester\":true}", SamplePatientEntryForm.class)
+                .getRememberSiteAndRequester());
+    }
 }

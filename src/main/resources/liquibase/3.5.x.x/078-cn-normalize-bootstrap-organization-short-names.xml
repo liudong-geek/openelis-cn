@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+  <changeSet author="local-chinese-edition" id="3.5.0-078-cn-normalize-bootstrap-organization-short-names">
+    <comment>
+      PostgreSQL's legacy organization short-name default is the literal value "". Normalize only
+      the China bootstrap records so facility selectors render 本院 instead of "" - 本院.
+    </comment>
+    <sql><![CDATA[
+      UPDATE clinlims.organization
+         SET short_name = NULL,
+             lastupdated = now()
+       WHERE code IN ('CN-LOCAL', 'CN-OPD', 'CN-ED', 'CN-IPD', 'CN-PE')
+         AND short_name = '""';
+    ]]></sql>
+  </changeSet>
+
+</databaseChangeLog>

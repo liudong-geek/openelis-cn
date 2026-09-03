@@ -61,11 +61,40 @@ const TYPE_META = {
   },
 };
 
+const DEVICE_TYPE_MESSAGE_IDS = {
+  COLD_STORAGE_UNIT: "coldStorage.device.type.coldStorageUnit",
+  FREEZER: "coldStorage.device.type.freezer",
+  REFRIGERATOR: "coldStorage.device.type.refrigerator",
+  ULTRA_LOW_FREEZER: "coldStorage.device.type.ultraLowFreezer",
+  CABINET: "coldStorage.device.type.cabinet",
+  OTHER: "coldStorage.device.type.other",
+};
+
+const normalizeDeviceType = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/[\s-]+/g, "_")
+    .toUpperCase();
+
 export default function EditLocationPage({ type }) {
   const { id } = useParams();
   const history = useHistory();
   const intl = useIntl();
+  const isChineseLocale = intl.locale?.toLowerCase().startsWith("zh");
   const meta = TYPE_META[type];
+  const typeLabel = intl.formatMessage({
+    id: `storage.type.${type}`,
+    defaultMessage: intl.formatMessage({
+      id: "storage.location.label",
+      defaultMessage: "Storage location",
+    }),
+  });
+  const parentTypeLabel = meta.parentLabelId
+    ? intl.formatMessage({
+        id: meta.parentLabelId,
+        defaultMessage: meta.parentLabel,
+      })
+    : "";
 
   const [formData, setFormData] = useState(null);
   const [parentOptions, setParentOptions] = useState([]);
@@ -101,12 +130,17 @@ export default function EditLocationPage({ type }) {
           });
         } else {
           setError(
-            response?.error ||
-              response?.message ||
-              intl.formatMessage({
-                id: "storage.edit.error.loadLocation",
-                defaultMessage: "Failed to load location",
-              }),
+            isChineseLocale
+              ? intl.formatMessage({
+                  id: "storage.edit.error.loadLocation",
+                  defaultMessage: "Failed to load location",
+                })
+              : response?.error ||
+                  response?.message ||
+                  intl.formatMessage({
+                    id: "storage.edit.error.loadLocation",
+                    defaultMessage: "Failed to load location",
+                  }),
           );
         }
         setLoading(false);
@@ -171,24 +205,37 @@ export default function EditLocationPage({ type }) {
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw new Error(
-          body.message ||
-            intl.formatMessage(
-              {
-                id: "storage.edit.error.saveHttp",
-                defaultMessage: "Save failed (HTTP {status})",
-              },
-              { status: response.status },
-            ),
+          isChineseLocale
+            ? intl.formatMessage(
+                {
+                  id: "storage.edit.error.saveHttp",
+                  defaultMessage: "Save failed (HTTP {status})",
+                },
+                { status: response.status },
+              )
+            : body.message ||
+                intl.formatMessage(
+                  {
+                    id: "storage.edit.error.saveHttp",
+                    defaultMessage: "Save failed (HTTP {status})",
+                  },
+                  { status: response.status },
+                ),
         );
       }
       navigateBack();
     } catch (e) {
       setError(
-        e.message ||
-          intl.formatMessage({
-            id: "storage.edit.error.saveFailed",
-            defaultMessage: "Save failed",
-          }),
+        isChineseLocale
+          ? intl.formatMessage({
+              id: "storage.edit.error.saveFailed",
+              defaultMessage: "Save failed",
+            })
+          : e.message ||
+              intl.formatMessage({
+                id: "storage.edit.error.saveFailed",
+                defaultMessage: "Save failed",
+              }),
       );
     } finally {
       setSaving(false);
@@ -257,7 +304,7 @@ export default function EditLocationPage({ type }) {
         <FormattedMessage
           id="storage.edit.heading"
           defaultMessage="Edit {type}"
-          values={{ type: type.charAt(0).toUpperCase() + type.slice(1) }}
+          values={{ type: typeLabel }}
         />
       </h1>
 
@@ -318,7 +365,7 @@ export default function EditLocationPage({ type }) {
                 id: "storage.edit.selectParent",
                 defaultMessage: "Select {parent}",
               },
-              { parent: meta.parentLabel?.toLowerCase() },
+              { parent: parentTypeLabel },
             )}
             items={parentOptions}
             itemToString={(item) => (item ? item.name || item.label || "" : "")}
@@ -347,7 +394,14 @@ export default function EditLocationPage({ type }) {
               defaultMessage: "Select device type",
             })}
             items={deviceTypes}
-            itemToString={(item) => item || ""}
+            itemToString={(item) => {
+              if (!item) return "";
+              const messageId =
+                DEVICE_TYPE_MESSAGE_IDS[normalizeDeviceType(item)];
+              return messageId
+                ? intl.formatMessage({ id: messageId })
+                : String(item);
+            }}
             selectedItem={formData.type || null}
             onChange={({ selectedItem }) =>
               updateField("type", selectedItem || "")

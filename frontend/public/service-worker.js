@@ -40,14 +40,14 @@ self.addEventListener("push", (event) => {
   if (event.data) {
     const data = event.data.json();
     const notificationOptions = {
-      body: data.body || "Message Received from OpenELIS",
+      body: data.body || "您收到一条来自临床检验信息系统的新消息",
       tag: data.external_id || "default-tag",
       icon: "images/openelis_logo.png",
     };
 
     event.waitUntil(
       self.registration.showNotification(
-        "OpenELIS Message Received",
+        "临床检验信息系统消息",
         notificationOptions,
       ),
     );

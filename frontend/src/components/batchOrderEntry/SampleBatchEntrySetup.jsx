@@ -21,6 +21,7 @@ import { NotificationContext } from "../layout/Layout";
 import { AlertDialog } from "../common/CustomNotification";
 import AutoComplete from "../common/AutoComplete";
 import "../Style.css";
+import "../order/order-workflow.scss";
 import {
   getFromOpenElisServer,
   postToOpenElisServerFullResponse,
@@ -39,11 +40,13 @@ const SampleBatchEntrySetup = () => {
   const componentMounted = useRef(false);
   const history = useHistory();
   const [siteNames, setSiteNames] = useState([]);
+  const [siteNamesLoaded, setSiteNamesLoaded] = useState(false);
   const [departments, setDepartments] = useState([]);
+  const [departmentsLoaded, setDepartmentsLoaded] = useState(false);
   const [facilityChecked, setFacilityChecked] = useState(false);
   const [patientChecked, setPatientChecked] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState("");
-  const [selectedForm, setSelectedForm] = useState("");
+  const [selectedForm] = useState("routine");
   const [innitialized, setInnitialized] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showSampleComponent, setShowSampleComponent] = useState(false);
@@ -83,22 +86,9 @@ const SampleBatchEntrySetup = () => {
       sampleOrderItems: {
         ...orderFormValues.sampleOrderItems,
         referringSiteDepartmentId: e.target.value,
-        referringSiteDepartmentName: depart.value,
+        referringSiteDepartmentName: depart?.value || "",
       },
     });
-  }
-
-  function handleSiteName(e) {
-    setOrderFormValues({
-      ...orderFormValues,
-      facilityIDCheck: true,
-      sampleOrderItems: {
-        ...orderFormValues.sampleOrderItems,
-        referringSiteName: e.target.value,
-        referringSiteId: "",
-      },
-    });
-    setFacilityChecked(true);
   }
 
   function handleDatePickerChange(datePicker, date) {
@@ -155,16 +145,23 @@ const SampleBatchEntrySetup = () => {
   }, []);
 
   useEffect(() => {
+    const referringSiteId = orderFormValues.sampleOrderItems.referringSiteId;
+    if (!referringSiteId) {
+      setDepartments([]);
+      setDepartmentsLoaded(false);
+      return;
+    }
+    setDepartmentsLoaded(false);
     getFromOpenElisServer(
-      "/rest/departments-for-site?refferingSiteId=" +
-        (orderFormValues.sampleOrderItems.referringSiteId || ""),
+      "/rest/departments-for-site?refferingSiteId=" + referringSiteId,
       loadDepartments,
     );
   }, [orderFormValues.sampleOrderItems.referringSiteId]);
 
   const getSampleEntryPreform = (response) => {
     if (componentMounted.current) {
-      setSiteNames(response.sampleOrderItems.referringSiteList);
+      setSiteNames(response?.sampleOrderItems?.referringSiteList || []);
+      setSiteNamesLoaded(true);
     }
   };
 
@@ -172,6 +169,7 @@ const SampleBatchEntrySetup = () => {
   // .find()/.map() over departments.
   const loadDepartments = (data) => {
     setDepartments(data || []);
+    setDepartmentsLoaded(true);
   };
 
   const updateFormValues = (updatedValues) => {
@@ -306,12 +304,15 @@ const SampleBatchEntrySetup = () => {
 
   function handleAutoCompleteSiteName(siteId) {
     var site = siteNames.find((site) => site.id == siteId);
+    if (!site) return;
     setOrderFormValues({
       ...orderFormValues,
       sampleOrderItems: {
         ...orderFormValues.sampleOrderItems,
         referringSiteId: siteId,
         referringSiteName: site.value,
+        referringSiteDepartmentId: "",
+        referringSiteDepartmentName: "",
       },
       facilityID: siteId,
     });
@@ -339,11 +340,6 @@ const SampleBatchEntrySetup = () => {
     }
   }
 
-  function handleFormChange(event) {
-    const selectedForm = event.target.value;
-    setSelectedForm(selectedForm);
-  }
-
   return (
     <>
       {postRequestMade ? (
@@ -354,7 +350,11 @@ const SampleBatchEntrySetup = () => {
       ) : (
         <>
           {notificationVisible === true ? <AlertDialog /> : ""}
-          {loading && <Loading description="Loading Dasboard..." />}
+          {loading && (
+            <Loading
+              description={intl.formatMessage({ id: "loading.description" })}
+            />
+          )}
           <PageBreadCrumb breadcrumbs={breadcrumbs} />
           {!showSampleComponent && (
             <>
@@ -455,44 +455,39 @@ const SampleBatchEntrySetup = () => {
                   </Column>
                   <Column lg={8}></Column>
                   <Column lg={10} md={6} sm={4}>
-                    <Select
-                      id="form-dropdown"
-                      labelText={
-                        <>
-                          <FormattedMessage id="order.form.label" />
-                          <span className="requiredlabel">*</span>
-                        </>
-                      }
-                      onChange={handleFormChange}
-                      defaultValue=""
-                    >
-                      <SelectItem
-                        value=""
-                        text={intl.formatMessage({ id: "order.form.select" })}
-                      />
-                      <SelectItem
-                        value="routine"
-                        text={intl.formatMessage({
-                          id: "banner.menu.resultvalidation_routine",
-                        })}
-                      />
-                      <SelectItem
-                        value="EID"
-                        text={intl.formatMessage({
-                          id: "project.EIDStudy.name",
-                        })}
-                      />
-                      <SelectItem
-                        value="viralLoad"
-                        text={intl.formatMessage({
-                          id: "banner.menu.resultvalidation.viralload",
-                        })}
-                      />
-                    </Select>
+                    <p className="batch-application-type">
+                      <span>
+                        <FormattedMessage id="order.form.label" />
+                      </span>
+                      <strong>
+                        <FormattedMessage id="order.form.routine" />
+                      </strong>
+                    </p>
                   </Column>
                   <Column lg={6}> </Column>
                 </Grid>
               </div>
+              {siteNamesLoaded && siteNames.length === 0 && (
+                <div className="master-data-required batch-master-data-required">
+                  <div>
+                    <strong>
+                      <FormattedMessage id="order.masterData.missing.title" />
+                    </strong>
+                    <p>
+                      <FormattedMessage id="order.masterData.missing.description" />
+                    </p>
+                  </div>
+                  <Button
+                    kind="tertiary"
+                    size="sm"
+                    onClick={() =>
+                      history.push("/MasterListsPage/organizationManagement")
+                    }
+                  >
+                    <FormattedMessage id="order.masterData.manage" />
+                  </Button>
+                </div>
+              )}
               <div>
                 {selectedForm === "routine" && (
                   <>
@@ -669,7 +664,7 @@ const SampleBatchEntrySetup = () => {
                     <Checkbox
                       labelText={
                         <FormattedMessage
-                          id="order.legend.patient1"
+                          id="patient.label.info"
                           defaultMessage={"Patient Info"}
                         />
                       }
@@ -683,20 +678,10 @@ const SampleBatchEntrySetup = () => {
                     <AutoComplete
                       name="siteName"
                       id="siteName"
-                      allowFreeText={
-                        !(
-                          configurationProperties.restrictFreeTextRefSiteEntry ===
-                          "true"
-                        )
-                      }
-                      value={
-                        orderFormValues.sampleOrderItems.referringSiteId != ""
-                          ? orderFormValues.sampleOrderItems.referringSiteId
-                          : orderFormValues.sampleOrderItems.referringSiteName
-                      }
-                      //onChange={handleSiteName}
+                      allowFreeText={false}
+                      value={orderFormValues.sampleOrderItems.referringSiteName}
                       onSelect={handleAutoCompleteSiteName}
-                      label={<FormattedMessage id="order.legend.siteName" />}
+                      label={<FormattedMessage id="order.facility" />}
                       style={{ width: "!important 100%" }}
                       suggestions={siteNames.length > 0 ? siteNames : []}
                     />
@@ -705,10 +690,24 @@ const SampleBatchEntrySetup = () => {
                     <Select
                       id="requesterDepartmentId"
                       name="requesterDepartmentId"
-                      labelText={<FormattedMessage id="sample.label.dept" />}
+                      labelText={
+                        <FormattedMessage id="order.requester.department" />
+                      }
                       onChange={handleRequesterDept}
+                      value={
+                        orderFormValues.sampleOrderItems
+                          .referringSiteDepartmentId || ""
+                      }
+                      disabled={
+                        !orderFormValues.sampleOrderItems.referringSiteId
+                      }
                     >
-                      <SelectItem value="" text="" />
+                      <SelectItem
+                        value=""
+                        text={intl.formatMessage({
+                          id: "order.requester.department.select",
+                        })}
+                      />
                       {departments.map((department, index) => (
                         <SelectItem
                           key={index}
@@ -717,6 +716,13 @@ const SampleBatchEntrySetup = () => {
                         />
                       ))}
                     </Select>
+                    {departmentsLoaded &&
+                      orderFormValues.sampleOrderItems.referringSiteId &&
+                      departments.length === 0 && (
+                        <p className="batch-master-data-empty">
+                          <FormattedMessage id="order.requester.department.empty" />
+                        </p>
+                      )}
                   </Column>
                   <Column lg={8}> </Column>
                   <Column lg={16} md={8} sm={4}>
@@ -728,7 +734,8 @@ const SampleBatchEntrySetup = () => {
                       onClick={handleSubmitButton1}
                       disabled={
                         !orderFormValues.tests?.length > 0 ||
-                        !orderFormValues.method
+                        !orderFormValues.method ||
+                        !orderFormValues.sampleOrderItems.referringSiteId
                       }
                       data-testid="next-button-BatchOrderEntry"
                     >

@@ -18,9 +18,7 @@ const PendingCodesPanel = ({ analyzerId, pendingCodes = [], onUpdated }) => {
         setBusyId(null);
         if (response?.error || response?.statusCode >= 400) {
           setError(
-            response?.error ||
-              response?.message ||
-              "Failed to update pending code status.",
+            response?.error || response?.message || "待处理代码状态更新失败。",
           );
           return;
         }
@@ -33,20 +31,20 @@ const PendingCodesPanel = ({ analyzerId, pendingCodes = [], onUpdated }) => {
     if (status === "PENDING") {
       return (
         <Tag type="warm-gray" size="sm">
-          {status}
+          待处理
         </Tag>
       );
     }
     if (status === "MAPPED") {
       return (
         <Tag type="green" size="sm">
-          {status}
+          已映射
         </Tag>
       );
     }
     return (
       <Tag type="gray" size="sm">
-        {status}
+        {status === "IGNORED" ? "已忽略" : status}
       </Tag>
     );
   };
@@ -77,7 +75,7 @@ const PendingCodesPanel = ({ analyzerId, pendingCodes = [], onUpdated }) => {
         <table
           className="pending-codes-table"
           data-testid="pending-codes-table"
-          aria-label="Pending analyzer codes"
+          aria-label="待处理分析仪代码"
         >
           <thead>
             <tr>

@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useContext } from "react";
 import { AlertDialog } from "../../common/CustomNotification";
 import { NotificationContext } from "../../layout/Layout";
-import { useLocation } from "react-router-dom";
+import { useHistory, useLocation } from "react-router-dom";
 import { Loading } from "@carbon/react";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import AuditTrailReport from "./AuditTrailReport";
 import SystemAuditEvents from "./SystemAuditEvents";
+import { useIntl } from "react-intl";
 
 const AuditTrailReportIndex = () => {
   const { notificationVisible } = useContext(NotificationContext);
+  const history = useHistory();
   const location = useLocation();
+  const intl = useIntl();
 
   const [type, setType] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -21,9 +24,9 @@ const AuditTrailReportIndex = () => {
       setType(paramType);
       setIsLoading(false);
     } else {
-      window.location.href = "/AuditTrailReport?type=system";
+      history.replace("/AuditTrailReport?type=system");
     }
-  }, [location.search]);
+  }, [history, location.search]);
 
   return (
     <>
@@ -39,7 +42,11 @@ const AuditTrailReportIndex = () => {
       />
       <div className="orderLegendBody">
         {notificationVisible === true && <AlertDialog />}
-        {isLoading && <Loading />}
+        {isLoading && (
+          <Loading
+            description={intl.formatMessage({ id: "loading.description" })}
+          />
+        )}
         {!isLoading && type === "system" && <SystemAuditEvents />}
         {!isLoading && type === "order" && (
           <AuditTrailReport report={"auditTrail"} id={"reports.auditTrail"} />

@@ -68,6 +68,7 @@ import org.openelisglobal.samplehuman.valueholder.SampleHuman;
 import org.openelisglobal.sampleitem.dao.SampleItemDAO;
 import org.openelisglobal.sampleitem.service.SampleItemService;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
+import org.openelisglobal.sampletyperequest.service.SampleTypeRequestService;
 import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.test.service.TestSectionService;
 import org.openelisglobal.test.service.TestService;
@@ -132,6 +133,8 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
     @Autowired
     private OrderLabelRequestService orderLabelRequestService;
+    @Autowired
+    private SampleTypeRequestService sampleTypeRequestService;
 
     @Transactional
     @Override
@@ -344,6 +347,7 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
 
         // Process sample items and tests (may be empty in decoupled workflow)
         Map<SampleItem, Integer> specimenLabelQuantities = new LinkedHashMap<>();
+        List<SampleItem> persistedSampleItems = new ArrayList<>();
         Integer orderLabelQuantity = null;
         for (SampleTestCollection sampleTestCollection : updateData.getSampleItemsTests()) {
             SampleItem savedItem = null;
@@ -398,6 +402,7 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
             // entity
             // This prevents "transient instance" errors when creating Analysis objects
             sampleTestCollection.item = savedItem;
+            persistedSampleItems.add(savedItem);
 
             if (savedItem.isRejected()) {
                 String rejectReasonId = savedItem.getRejectReasonId();
@@ -434,6 +439,11 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
                 }
             }
         }
+
+        // Decoupled order workflow: collecting a specimen fulfills its original
+        // request in the same transaction.  This prevents a saved sample and a
+        // still-pending request from diverging when a second client call fails.
+        sampleTypeRequestService.fulfillMatchingRequests(updateData.getSample().getId(), persistedSampleItems);
 
         persistOrderSpecimenBarcodeCounts(updateData.getSample(), orderLabelQuantity, specimenLabelQuantities);
         updateData.buildSampleHuman();

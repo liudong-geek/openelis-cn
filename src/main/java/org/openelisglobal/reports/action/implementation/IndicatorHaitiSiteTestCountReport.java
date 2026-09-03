@@ -42,7 +42,7 @@ import org.openelisglobal.reports.form.ReportForm;
 import org.openelisglobal.spring.util.SpringContext;
 
 public class IndicatorHaitiSiteTestCountReport extends CSVExportReport
-        implements IReportCreator, IReportParameterSetter {
+        implements IReportCreator, IReportParameterSetter, SafeNonPatientReportCreator {
     private ReportExternalImportService reportExternalImportService = SpringContext
             .getBean(ReportExternalImportService.class);
     private String EOL = System.getProperty("line.separator");

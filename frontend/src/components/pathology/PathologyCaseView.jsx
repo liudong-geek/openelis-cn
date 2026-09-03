@@ -14,12 +14,12 @@ import {
   Checkbox,
   Section,
   FileUploader,
-  Tag,
   TextArea,
   Loading,
   InlineLoading,
   Link,
 } from "@carbon/react";
+import Tag from "../common/LocalizedTag";
 import { Launch, Subtract, ArrowLeft, ArrowRight } from "@carbon/react/icons";
 import {
   getFromOpenElisServer,

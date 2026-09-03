@@ -1,4 +1,5 @@
 testName,testSection,sampleType,loinc,isActive,isOrderable,sortOrder,unitOfMeasure,englishName,frenchName
+# Import revision 2: preserve percent (%) and absolute (#) analyzer tests as distinct records.
 WBC,Hematology,Whole Blood,6690-2,Y,Y,1,10^3/uL,White Blood Cells,Leucocytes
 RBC,Hematology,Whole Blood,789-8,Y,Y,2,10^6/uL,Red Blood Cells,Érythrocytes
 HGB,Hematology,Whole Blood,718-7,Y,Y,3,g/dL,Hemoglobin,Hémoglobine

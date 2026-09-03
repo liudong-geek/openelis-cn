@@ -21,4 +21,14 @@ public interface PatientReportService {
      *         not exist
      */
     ReportingData buildPatientResultsReport(String patientId, String sysUserId);
+
+    /**
+     * Build a printable Chinese PDF preview from the same clinically filtered data
+     * as {@link #buildPatientResultsReport(String, String)}.
+     *
+     * @param patientId the patient identifier
+     * @param sysUserId the authenticated system user id for audit/security
+     * @return PDF bytes, or {@code null} if the patient does not exist
+     */
+    byte[] buildPatientResultsPdf(String patientId, String sysUserId);
 }

@@ -1188,7 +1188,7 @@ for (const nationality of nationalityDetails) {
   const nationalityItem = nationality;
   valuesList.push({
     value: nationalityItem.value,
-    label: nationalityItem.value,
+    label: nationalityItem.label,
   });
 }
 

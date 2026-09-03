@@ -1,102 +1,118 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import {
+  Button,
   Heading,
   Grid,
   Column,
   Section,
-  Loading,
+  InlineLoading,
+  InlineNotification,
   Breadcrumb,
   BreadcrumbItem,
+  Stack,
+  Tag,
+  Tile,
 } from "@carbon/react";
-import { useTranslation } from "react-i18next";
+import { DocumentPdf } from "@carbon/react/icons";
 import { EmptyState, ErrorState } from "./commons";
-import { FilterProvider } from "./filter";
 import { useGetManyObstreeData } from "./grouped-timeline";
 import "./results-viewer.styles.scss";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
+import { listReturnLocation } from "../../common/listWorkspace";
 import TreeViewWrapper from "./tree-view";
-import { FormattedMessage, injectIntl, useIntl } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import config from "../../../config.json";
-import { getFromOpenElisServer } from "../../utils/Utils";
-import PatientHeader from "../../common/PatientHeader";
+import { getFromOpenElisServer, hasRole, Roles } from "../../utils/Utils";
+import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
+import PatientReportReleasePanel from "./PatientReportReleasePanel";
 
 interface ResultsViewerProps {
   basePath: string;
   patientId?: string;
   loading?: boolean;
+  roots?: unknown[];
 }
 
 interface Patient {
-  firstName: string;
-  lastName: string;
-  gender: string;
-  birthDateForDisplay: string;
-  subjectNumber: string;
-  nationalId: string;
-  patientPK: number;
+  firstName?: string;
+  lastName?: string;
+  gender?: string;
+  birthDateForDisplay?: string;
+  birthdate?: string;
+  dob?: string;
+  patientID?: string;
+  stNumber?: string;
+  STnumber?: string;
+  subjectNumber?: string;
+  nationalId?: string;
+  patientPK?: string | number;
 }
 const RoutedResultsViewer: React.FC<ResultsViewerProps> = () => {
-  const patientObj: Patient = {
-    firstName: "",
-    lastName: "",
-    gender: "",
-    birthDateForDisplay: "",
-    subjectNumber: "",
-    nationalId: "",
-    patientPK: null,
-  };
-
   const { patientId } = useParams();
-  const [patient, setPatient] = useState(patientObj);
-
-  const componentMounted = useRef(false);
+  const location = useLocation();
+  const [patient, setPatient] = useState<Patient | null>(null);
+  const [patientLoading, setPatientLoading] = useState(true);
+  const [patientError, setPatientError] = useState<Error | null>(null);
+  const { userSessionDetails } = useContext(UserSessionDetailsContext) as {
+    userSessionDetails?: { roles?: string[] };
+  };
 
   useEffect(() => {
-    componentMounted.current = true;
+    const controller = new AbortController();
+    setPatient(null);
+    setPatientError(null);
+    setPatientLoading(true);
+
     getFromOpenElisServer(
       "/rest/patient-details?patientID=" + patientId,
-      loadPatient,
-    );
-    return () => {
-      componentMounted.current = false;
-    };
-  }, [patientId]);
+      (response: Patient | undefined) => {
+        if (!response || !response.patientPK) {
+          setPatientError(new Error("Patient details request failed"));
+          setPatientLoading(false);
+          return;
+        }
 
-  const loadPatient = (patient) => {
-    if (componentMounted.current) {
-      setPatient(patient);
-    }
-  };
+        setPatient(response);
+        setPatientLoading(false);
+      },
+      controller.signal,
+    );
+
+    return () => controller.abort();
+  }, [patientId]);
   const intl = useIntl();
+  const canPreviewReport =
+    hasRole(userSessionDetails, Roles.RESULTS) ||
+    hasRole(userSessionDetails, Roles.REPORTS);
+  const canManageReport = hasRole(userSessionDetails, Roles.REPORTS);
+  const reportPreviewUrl = `${config.serverBaseUrl}/rest/reports/patient-results.pdf?${new URLSearchParams(
+    { patientId: String(patientId || "") },
+  ).toString()}`;
 
   const { roots, loading, error } = useGetManyObstreeData(patientId);
 
-  const { t } = useTranslation();
-
-  if (error) {
+  if (error || patientError) {
     return (
       <ErrorState
-        error={error}
-        headerTitle={t("dataLoadError", "Data Load Error")}
+        error={error || patientError}
+        headerTitle={intl.formatMessage({
+          id: "patient.resultsViewer.error.title",
+        })}
       />
     );
   }
 
-  if (loading) {
+  if (loading || patientLoading) {
     return (
-      <>
-        <Loading></Loading>
-        <Grid fullWidth={true}>
-          <Column lg={16} md={8} sm={4}>
-            <EmptyState
-              headerTitle={intl.formatMessage({ id: "label.test.results" })}
-              displayText={intl.formatMessage({
-                id: "label.test.resultsData",
-              })}
-            />
-          </Column>
-        </Grid>
-      </>
+      <Grid fullWidth={true}>
+        <Column lg={16} md={8} sm={4}>
+          <InlineLoading
+            description={intl.formatMessage({
+              id: "patient.resultsViewer.loading",
+            })}
+          />
+        </Column>
+      </Grid>
     );
   }
 
@@ -109,58 +125,66 @@ const RoutedResultsViewer: React.FC<ResultsViewerProps> = () => {
               <Link to="/">{intl.formatMessage({ id: "home.label" })}</Link>
             </BreadcrumbItem>
             <BreadcrumbItem>
-              <Link to="/PatientHistory">
-                {intl.formatMessage({ id: "label.search.patient" })}
+              <Link
+                to={listReturnLocation(location.state, "/PatientManagement")}
+              >
+                {intl.formatMessage({ id: "patient.management.title" })}
               </Link>
             </BreadcrumbItem>
           </Breadcrumb>
         </Column>
       </Grid>
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
+      <Grid fullWidth={true} className="patient-results-page-header">
+        <Column lg={canPreviewReport ? 12 : 16} md={6} sm={4}>
           <Section>
             <Section>
               <Heading>
-                <FormattedMessage id="label.page.patientHistory" />
+                <FormattedMessage id="patient.history.title" />
               </Heading>
             </Section>
           </Section>
         </Column>
+        {canPreviewReport && (
+          <Column lg={4} md={2} sm={4} className="patient-results-page-actions">
+            <Button
+              as="a"
+              href={reportPreviewUrl}
+              target="_blank"
+              rel="noreferrer"
+              renderIcon={DocumentPdf}
+            >
+              <FormattedMessage
+                id="patient.report.previewPdf"
+                defaultMessage="预览中文检验报告"
+              />
+            </Button>
+          </Column>
+        )}
       </Grid>
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          <PatientHeader
-            id={patient.patientPK}
-            lastName={patient.lastName}
-            firstName={patient.firstName}
-            gender={patient.gender}
-            dob={patient.birthDateForDisplay}
-            subjectNumber={patient.subjectNumber}
-            nationalId={patient.nationalId}
-            className="patient-header2"
-          >
-            {" "}
-          </PatientHeader>
-        </Column>
-      </Grid>
+      {patient && <PatientIdentity patient={patient} />}
+      {canPreviewReport && patientId && (
+        <PatientReportReleasePanel
+          patientId={String(patientId)}
+          canManage={canManageReport}
+        />
+      )}
 
       {roots?.length ? (
         <Grid fullWidth={true} className="orderLegendBody">
           <Column lg={16} md={8} sm={4}>
-            <FilterProvider roots={loading ? roots : []}>
-              <ResultsViewer
-                patientId={patientId}
-                basePath={config.serverBaseUrl}
-                loading={loading}
-              />
-            </FilterProvider>
+            <ResultsViewer
+              patientId={patientId}
+              basePath={config.serverBaseUrl}
+              loading={false}
+              roots={roots}
+            />
           </Column>
         </Grid>
       ) : (
         <Grid fullWidth={true} className="orderLegendBody">
           <Column lg={16}>
             <EmptyState
-              headerTitle={intl.formatMessage({ id: "label.test.results" })}
+              headerTitle={intl.formatMessage({ id: "patient.history.title" })}
               displayText={intl.formatMessage({
                 id: "label.test.resultsData",
               })}
@@ -172,20 +196,97 @@ const RoutedResultsViewer: React.FC<ResultsViewerProps> = () => {
   );
 };
 
+const PatientIdentity: React.FC<{ patient: Patient }> = ({ patient }) => {
+  const intl = useIntl();
+  const notRecorded = intl.formatMessage({ id: "patient.merge.notRecorded" });
+  const name = [patient.lastName, patient.firstName].filter(Boolean).join(" ");
+  const identifier =
+    patient.patientID ||
+    patient.stNumber ||
+    patient.STnumber ||
+    patient.subjectNumber ||
+    patient.nationalId;
+  const dob =
+    patient.birthDateForDisplay || patient.birthdate || patient.dob || null;
+  const sex =
+    patient.gender === "M"
+      ? intl.formatMessage({ id: "patient.male" })
+      : patient.gender === "F"
+        ? intl.formatMessage({ id: "patient.female" })
+        : notRecorded;
+
+  return (
+    <Grid fullWidth={true}>
+      <Column lg={16} md={8} sm={4}>
+        <Tile>
+          <Stack gap={4}>
+            <InlineNotification
+              kind="info"
+              lowContrast
+              hideCloseButton
+              title={intl.formatMessage({ id: "patient.label.info" })}
+              subtitle={intl.formatMessage({
+                id: "patient.history.identity.help",
+                defaultMessage:
+                  "Verify the patient's name, identifier, date of birth, and sex before using these results.",
+              })}
+            />
+            <Grid condensed>
+              <Column lg={4} md={4} sm={4}>
+                <strong>
+                  <FormattedMessage id="patient.label.name" />
+                </strong>
+                <p>{name || notRecorded}</p>
+              </Column>
+              <Column lg={4} md={4} sm={4}>
+                <strong>
+                  <FormattedMessage id="patient.id" />
+                </strong>
+                <p>
+                  {identifier ? (
+                    <Tag type="blue">{identifier}</Tag>
+                  ) : (
+                    notRecorded
+                  )}
+                </p>
+              </Column>
+              <Column lg={4} md={4} sm={4}>
+                <strong>
+                  <FormattedMessage id="patient.dob" />
+                </strong>
+                <p>{dob || notRecorded}</p>
+              </Column>
+              <Column lg={4} md={4} sm={4}>
+                <strong>
+                  <FormattedMessage id="patient.gender" />
+                </strong>
+                <p>{sex}</p>
+              </Column>
+            </Grid>
+          </Stack>
+        </Tile>
+      </Column>
+    </Grid>
+  );
+};
+
 const ResultsViewer: React.FC<ResultsViewerProps> = ({
   patientId,
   basePath,
+  roots = [],
 }) => {
   const { type, testUuid } = useParams();
   return (
     <div className="resultsContainer">
       <div className="flex">
         <TreeViewWrapper
-          patientUuid={patientId}
+          patientUuid={patientId || ""}
           basePath={basePath}
           type={type}
           expanded={true}
           testUuid={testUuid}
+          roots={roots}
+          loading={false}
         />
       </div>
     </div>

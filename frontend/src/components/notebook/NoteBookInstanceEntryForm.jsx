@@ -1,5 +1,6 @@
 import React, { useContext, useState, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
+import { navigateToInternalPath } from "../utils/NavigationUtils";
 import PageBreadCrumb from "../common/PageBreadCrumb";
 import {
   Button,
@@ -18,7 +19,6 @@ import {
   FileUploaderDropContainer,
   FileUploaderItem,
   Loading,
-  Tag,
   Accordion,
   AccordionItem,
   ContentSwitcher,
@@ -33,6 +33,7 @@ import {
   TableRow,
   Pagination,
 } from "@carbon/react";
+import Tag from "../common/LocalizedTag";
 import { Launch, Checkmark } from "@carbon/react/icons";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { NotificationContext } from "../layout/Layout";
@@ -201,7 +202,10 @@ const NoteBookInstanceEntryForm = () => {
         message: intl.formatMessage({ id: "error.save.msg" }),
       });
     }
-    window.location.href = "/NoteBookInstanceEditForm/" + body.id;
+    navigateToInternalPath(
+      `/NoteBookInstanceEditForm/${encodeURIComponent(body.id)}`,
+      { replace: true },
+    );
   };
 
   // Check if a sample is already added (by sampleItemId)
@@ -562,7 +566,7 @@ const NoteBookInstanceEntryForm = () => {
       setNotificationVisible(true);
       // Redirect back to dashboard
       setTimeout(() => {
-        window.location.href = "/NoteBookDashboard";
+        navigateToInternalPath("/NoteBookDashboard", { replace: true });
       }, 100);
       return false;
     }

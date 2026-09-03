@@ -171,6 +171,9 @@ function SystemSettings() {
         </div>
 
         <InlineNotification
+          statusIconDescription={intl.formatMessage({
+            id: "carbon.notification.warning",
+          })}
           kind="warning"
           title={intl.formatMessage({ id: "coldStorage.configMoved" })}
           subtitle={intl.formatMessage({ id: "coldStorage.configMovedDesc" })}
@@ -366,6 +369,9 @@ function SystemSettings() {
             </Tile>
 
             <InlineNotification
+              statusIconDescription={intl.formatMessage({
+                id: "carbon.notification.info",
+              })}
               kind="info"
               title={intl.formatMessage({ id: "coldStorage.readOnlyMode" })}
               subtitle={intl.formatMessage({

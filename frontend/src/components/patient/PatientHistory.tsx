@@ -1,49 +1,20 @@
 import React from "react";
-import { FormattedMessage, injectIntl } from "react-intl";
-import { useHistory } from "react-router-dom";
-import "../Style.css";
-import { Heading, Grid, Column, Section } from "@carbon/react";
-import SearchPatientForm from "./SearchPatientForm";
-import PageBreadCrumb from "../common/PageBreadCrumb";
-import type { PatientRecord } from "./types";
+import { Redirect, useLocation } from "react-router-dom";
 
-const breadcrumbs = [
-  { label: "home.label", link: "/" },
-  { label: "label.page.patientHistory", link: "/PatientHistory" },
-];
-const PatientHistory = () => {
-  const history = useHistory();
-
-  const getSelectedPatient = (patient: PatientRecord) => {
-    if (patient?.patientPK) {
-      history.push("/PatientResults/" + patient.patientPK);
-    }
-  };
-
+// Compatibility only: history is an action on the patient list, not a second
+// patient search workflow. Preserve bookmarks that already identify a patient.
+export default function PatientHistory() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const patientId = params.get("patientId") || params.get("patientID");
   return (
-    <>
-      <PageBreadCrumb breadcrumbs={breadcrumbs} />
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          <Section>
-            <Section>
-              <Heading>
-                <FormattedMessage id="label.page.patientHistory" />
-              </Heading>
-            </Section>
-          </Section>
-        </Column>
-      </Grid>
-      <br></br>
-
-      <div className="orderLegendBody">
-        <Grid fullWidth={true}>
-          <Column lg={16} md={8} sm={4}>
-            <SearchPatientForm getSelectedPatient={getSelectedPatient} />
-          </Column>
-        </Grid>
-      </div>
-    </>
+    <Redirect
+      to={{
+        pathname: patientId
+          ? `/PatientResults/${encodeURIComponent(patientId)}`
+          : "/PatientManagement",
+        state: location.state,
+      }}
+    />
   );
-};
-export default injectIntl(PatientHistory);
+}

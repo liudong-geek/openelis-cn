@@ -20,6 +20,8 @@ import org.junit.Test;
 import org.openelisglobal.BaseWebContextSensitiveTest;
 import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.valueholder.Sample;
+import org.openelisglobal.sampleitem.service.SampleItemService;
+import org.openelisglobal.sampleitem.valueholder.SampleItem;
 import org.openelisglobal.sampletyperequest.service.SampleTypeRequestService;
 import org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest;
 import org.openelisglobal.typeofsample.service.TypeOfSampleService;
@@ -50,6 +52,9 @@ public class SampleTypeRequestServiceTest extends BaseWebContextSensitiveTest {
 
     @Autowired
     private TypeOfSampleService typeOfSampleService;
+
+    @Autowired
+    private SampleItemService sampleItemService;
 
     @Before
     public void setUp() throws Exception {
@@ -133,9 +138,10 @@ public class SampleTypeRequestServiceTest extends BaseWebContextSensitiveTest {
 
     @Test
     public void fulfillRequest_shouldLinkSampleItemAndMarkCollected() {
-        sampleTypeRequestService.fulfillRequest(101, "2");
+        SampleTypeRequest response = sampleTypeRequestService.fulfillRequest(101, "2");
 
         SampleTypeRequest fulfilled = sampleTypeRequestService.get(101);
+        assertEquals(Integer.valueOf(101), response.getId());
         assertEquals(SampleTypeRequest.Status.COLLECTED, fulfilled.getStatus());
         assertEquals("2", fulfilled.getSampleItem().getId());
         assertTrue(fulfilled.isFulfilled());
@@ -161,6 +167,26 @@ public class SampleTypeRequestServiceTest extends BaseWebContextSensitiveTest {
     @Test(expected = IllegalStateException.class)
     public void fulfillRequest_shouldRejectCancelledRequest() {
         sampleTypeRequestService.fulfillRequest(104, "4");
+    }
+
+    @Test
+    public void fulfillRequest_sameSampleItem_isIdempotent() {
+        SampleTypeRequest response = sampleTypeRequestService.fulfillRequest(103, "1");
+
+        assertEquals(SampleTypeRequest.Status.COLLECTED, response.getStatus());
+        assertEquals("1", response.getSampleItem().getId());
+    }
+
+    @Test
+    public void fulfillMatchingRequests_linksSameTypeInsideOrderSave() {
+        SampleItem wholeBlood = sampleItemService.get("2");
+
+        int fulfilled = sampleTypeRequestService.fulfillMatchingRequests("2", List.of(wholeBlood));
+
+        assertEquals(1, fulfilled);
+        assertEquals(SampleTypeRequest.Status.COLLECTED, sampleTypeRequestService.get(102).getStatus());
+        assertEquals("2", sampleTypeRequestService.get(102).getSampleItem().getId());
+        assertEquals(SampleTypeRequest.Status.REQUESTED, sampleTypeRequestService.get(101).getStatus());
     }
 
     @Test

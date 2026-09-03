@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+  <!--
+    China delivery master-data overlay.
+
+    Core names remain the canonical English master values.  The generic
+    localization_value model supplies a zh value to both zh and zh_CN users
+    (Localization resolves by Locale#getLanguage), so English installations
+    and integrations are not rewritten.
+  -->
+  <changeSet author="local-chinese-edition" id="3.5.0-071-cn-common-master-data-localization">
+    <preConditions onFail="MARK_RAN">
+      <and>
+        <tableExists tableName="localization_value" schemaName="clinlims"/>
+        <sequenceExists sequenceName="localization_value_seq" schemaName="clinlims"/>
+        <columnExists tableName="test_section" schemaName="clinlims" columnName="name_localization_id"/>
+        <columnExists tableName="type_of_sample" schemaName="clinlims" columnName="name_localization_id"/>
+        <columnExists tableName="test" schemaName="clinlims" columnName="name_localization_id"/>
+      </and>
+    </preConditions>
+    <sqlFile path="071-cn-common-master-data-localization.sql" relativeToChangelogFile="true"
+      encoding="UTF-8" splitStatements="true" stripComments="true"/>
+  </changeSet>
+
+</databaseChangeLog>

@@ -1,0 +1,127 @@
+.landing-page {
+  display: flex;
+  min-height: calc(100vh - var(--cds-spacing-09, 4rem));
+  align-items: center;
+  justify-content: center;
+  padding: clamp(1rem, 4vw, 3rem);
+  background:
+    radial-gradient(
+      circle at top right,
+      rgb(23 105 224 / 10%),
+      transparent 38%
+    ),
+    var(--oe-page-background, #f5f7fb);
+}
+
+.landing-card {
+  width: min(100%, 34rem);
+  padding: clamp(1.5rem, 5vw, 2.5rem);
+  border: 1px solid var(--oe-border, #e4e8ef);
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: 0 18px 50px rgb(15 23 42 / 10%);
+}
+
+.landing-heading {
+  margin-bottom: 1.5rem;
+}
+
+.landing-kicker {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--oe-brand, #1769e0);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.landing-heading h1 {
+  margin: 0;
+  color: var(--oe-text, #172033);
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.landing-heading p {
+  margin: 0.625rem 0 0;
+  color: var(--oe-text-muted, #667085);
+  line-height: 1.5;
+}
+
+.landing-form {
+  margin-top: 1rem;
+}
+
+.department-list {
+  display: grid;
+  max-height: min(42vh, 22rem);
+  gap: 0.5rem;
+  margin: 1rem 0;
+  padding: 0.25rem;
+  overflow-y: auto;
+}
+
+.department-option {
+  display: flex;
+  width: 100%;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--oe-border, #d8dee9);
+  border-radius: 0.5rem;
+  color: var(--oe-text, #172033);
+  background: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.department-option:hover {
+  border-color: #8bb4ee;
+  background: #f6f9ff;
+}
+
+.department-option:focus-visible {
+  outline: 2px solid var(--cds-focus, #0f62fe);
+  outline-offset: 2px;
+}
+
+.department-option.is-selected {
+  border-color: var(--oe-brand, #1769e0);
+  background: var(--oe-brand-soft, #eef5ff);
+  box-shadow: inset 3px 0 0 var(--oe-brand, #1769e0);
+}
+
+.department-option-state {
+  color: var(--oe-brand, #1769e0);
+  font-weight: 600;
+}
+
+.landing-empty {
+  margin: 0;
+  padding: 1.5rem 1rem;
+  color: var(--oe-text-muted, #667085);
+  background: #f8fafc;
+  text-align: center;
+}
+
+.landing-continue.cds--btn {
+  width: 100%;
+  max-width: none;
+  justify-content: center;
+}
+
+@media (max-width: 42rem) {
+  .landing-page {
+    align-items: flex-start;
+    padding: 1rem;
+  }
+
+  .landing-card {
+    padding: 1.25rem;
+  }
+}

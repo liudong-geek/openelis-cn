@@ -1,38 +1,31 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState } from "react";
 import SearchPatientForm from "../patient/SearchPatientForm";
 import { Button, Column, Grid, Form } from "@carbon/react";
-import { FormattedMessage } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
+import { useHistory } from "react-router-dom";
 import CustomLabNumberInput from "../common/CustomLabNumberInput";
 
 function SearchOrder() {
-  const [selectedPatient, setSelectedPatient] = useState({});
-  const componentMounted = useRef(false);
+  const intl = useIntl();
+  const history = useHistory();
   const [accessionNumber, setAccessionNumber] = useState("");
 
   const getSelectedPatient = (patient) => {
-    setSelectedPatient(patient);
-    console.debug("selectedPatient:" + selectedPatient);
-  };
-
-  useEffect(() => {
-    componentMounted.current = true;
-    openPatientResults(selectedPatient.patientPK);
-
-    return () => {
-      componentMounted.current = false;
-    };
-  }, [selectedPatient]);
-
-  const openPatientResults = (patientId) => {
-    if (patientId) {
-      window.location.href = "/ModifyOrder?patientId=" + patientId;
+    if (patient?.patientPK) {
+      history.push(
+        `/ModifyOrder?patientId=${encodeURIComponent(patient.patientPK)}`,
+      );
     }
   };
 
   const handleSearch = (e) => {
     e.preventDefault();
-    var labNumber = accessionNumber ? accessionNumber.split("-")[0] : "";
-    window.location.href = "/ModifyOrder?accessionNumber=" + labNumber;
+    const labNumber = accessionNumber.trim();
+    if (labNumber) {
+      history.push(
+        `/ModifyOrder?accessionNumber=${encodeURIComponent(labNumber)}`,
+      );
+    }
   };
 
   return (
@@ -47,7 +40,9 @@ function SearchOrder() {
             </Column>
             <Column lg={16} md={8} sm={4}>
               <CustomLabNumberInput
-                placeholder={"Enter Lab No"}
+                placeholder={intl.formatMessage({
+                  id: "input.placeholder.labNo",
+                })}
                 id="labNumber"
                 name="labNumber"
                 value={accessionNumber}
@@ -61,7 +56,11 @@ function SearchOrder() {
               <br></br>
             </Column>
             <Column lg={16} md={8} sm={4}>
-              <Button data-cy="submit-button" type="submit">
+              <Button
+                data-cy="submit-button"
+                type="submit"
+                disabled={!accessionNumber.trim()}
+              >
                 <FormattedMessage id="label.button.submit" />
               </Button>
             </Column>

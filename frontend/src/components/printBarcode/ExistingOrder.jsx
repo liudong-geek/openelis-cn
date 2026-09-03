@@ -14,22 +14,28 @@ import {
   TableHeader,
   TableBody,
   TableCell,
+  InlineLoading,
+  InlineNotification,
 } from "@carbon/react";
 import CustomLabNumberInput from "../common/CustomLabNumberInput";
 import { NotificationContext } from "../layout/Layout";
 import { AlertDialog, NotificationKinds } from "../common/CustomNotification";
 import { getFromOpenElisServer } from "../utils/Utils";
 import PostSavePrintDialog from "../barcodeWorkflow/PostSavePrintDialog";
+import { buildLabelMakerUrl } from "../barcodeWorkflow/labelMakerUrl";
 
-const ExistingOrder = () => {
+const ExistingOrder = ({ initialLabNumber = "" }) => {
   const intl = useIntl();
   const componentMounted = useRef(false);
-  const [accessionNumber, setAccessionNumber] = useState("");
+  const requestSequence = useRef(0);
+  const [accessionNumber, setAccessionNumber] = useState(initialLabNumber);
   const [orderLabels, setOrderLabels] = useState(1);
   const [patientSearchResults, setPatientSearchResults] = useState(null);
   const [orderResults, setOrderResults] = useState(null);
   const [source, setSource] = useState("about:blank");
   const [renderBarcode, setRenderBarcode] = useState(false);
+  const [pending, setPending] = useState(0);
+  const [loadError, setLoadError] = useState(false);
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
   useEffect(() => {
@@ -37,10 +43,14 @@ const ExistingOrder = () => {
     return () => {
       componentMounted.current = false;
     };
-  }, [accessionNumber]);
+  }, []);
   const fetchPatientData = (res) => {
     if (componentMounted.current) {
-      let patientsResults = res.patientSearchResults;
+      let patientsResults = res?.patientSearchResults;
+      if (!Array.isArray(patientsResults)) {
+        setLoadError(true);
+        return;
+      }
       if (patientsResults.length > 0) {
         setPatientSearchResults(patientsResults[0]);
       } else {
@@ -57,40 +67,72 @@ const ExistingOrder = () => {
 
   const fetchOrderData = (res) => {
     if (componentMounted.current) {
-      let orderResults = res.existingTests;
-      setOrderResults(orderResults);
+      if (!Array.isArray(res?.existingTests)) {
+        setLoadError(true);
+        return;
+      }
+      setOrderResults(res.existingTests);
     }
   };
 
   const handleSearch = (e) => {
-    e.preventDefault();
+    e?.preventDefault();
+    if (!accessionNumber.trim()) return;
+    const sequence = ++requestSequence.current;
+    setPatientSearchResults(null);
+    setOrderResults(null);
+    setRenderBarcode(false);
+    setLoadError(false);
+    setPending(2);
+    const complete = (callback) => (response) => {
+      if (!componentMounted.current || sequence !== requestSequence.current)
+        return;
+      callback(response);
+      setPending((count) => Math.max(0, count - 1));
+    };
     getFromOpenElisServer(
-      `/rest/patient-search-results?labNumber=${accessionNumber}`,
-      fetchPatientData,
+      `/rest/patient-search-results?labNumber=${encodeURIComponent(accessionNumber.trim())}`,
+      complete(fetchPatientData),
     );
     getFromOpenElisServer(
-      `/rest/SampleEdit?accessionNumber=${accessionNumber}`,
-      fetchOrderData,
+      `/rest/SampleEdit?accessionNumber=${encodeURIComponent(accessionNumber.trim())}`,
+      complete(fetchOrderData),
     );
   };
 
+  useEffect(() => {
+    if (initialLabNumber) handleSearch();
+  }, [initialLabNumber]);
+
   const printLabelSets = () => {
     setSource(
-      `/LabelMakerServlet?labNo=${accessionNumber}&type=default&quantity=`,
+      buildLabelMakerUrl({
+        labNo: accessionNumber,
+        type: "default",
+        quantity: "",
+      }),
     );
     setRenderBarcode(true);
   };
 
   const printOrderLabels = () => {
     setSource(
-      `/LabelMakerServlet?labNo=${accessionNumber}&type=order&quantity=${orderLabels}`,
+      buildLabelMakerUrl({
+        labNo: accessionNumber,
+        type: "order",
+        quantity: orderLabels,
+      }),
     );
     setRenderBarcode(true);
   };
 
   const printSpecimenLabels = (specimenAccessionNumber) => {
     setSource(
-      `/LabelMakerServlet?labNo=${specimenAccessionNumber}&type=specimen&quantity=1`,
+      buildLabelMakerUrl({
+        labNo: specimenAccessionNumber,
+        type: "specimen",
+        quantity: 1,
+      }),
     );
     setRenderBarcode(true);
   };
@@ -132,12 +174,18 @@ const ExistingOrder = () => {
             </Column>
             <Column lg={8} md={8} sm={4}>
               <CustomLabNumberInput
-                placeholder={"Enter Lab No"}
+                placeholder={intl.formatMessage({
+                  id: "barcode.scan.placeholder",
+                })}
                 id="labNumber"
                 name="labNumber"
                 value={accessionNumber}
                 onChange={(e, rawVal) => {
+                  requestSequence.current += 1;
+                  setPending(0);
+                  setPatientSearchResults(null);
                   setOrderResults(null);
+                  setRenderBarcode(false);
                   setAccessionNumber(rawVal ? rawVal : e?.target?.value);
                 }}
                 labelText={<FormattedMessage id="search.label.accession" />}
@@ -145,13 +193,30 @@ const ExistingOrder = () => {
             </Column>
             <div className="tabsLayout">
               <Column lg={16} md={8} sm={4}>
-                <Button data-cy="submitButton" type="submit" className="btn">
-                  <FormattedMessage id="label.button.submit" />
+                <Button
+                  data-cy="submitButton"
+                  type="submit"
+                  className="btn"
+                  disabled={pending > 0 || !accessionNumber.trim()}
+                >
+                  <FormattedMessage id="label.button.search" />
                 </Button>
               </Column>
             </div>
           </Grid>
         </Form>
+        {pending > 0 && (
+          <InlineLoading
+            description={intl.formatMessage({ id: "loading.label" })}
+          />
+        )}
+        {loadError && (
+          <InlineNotification
+            kind="error"
+            hideCloseButton
+            title={intl.formatMessage({ id: "order.load.error" })}
+          />
+        )}
         {patientSearchResults !== null && orderResults !== null && (
           <Grid>
             <Column lg={4}>
@@ -227,16 +292,38 @@ const ExistingOrder = () => {
         <div className="orderLegendBody">
           <DataTable
             headers={[
-              { key: "labelType", header: "Label Type" },
-              { key: "accessionNumber", header: "Accession Number" },
-              { key: "additionalInfo", header: "Additional Info" },
-              { key: "numberToPrint", header: "Number to Print" },
+              {
+                key: "labelType",
+                header: intl.formatMessage({
+                  id: "barcode.print.table.labelType",
+                }),
+              },
+              {
+                key: "accessionNumber",
+                header: intl.formatMessage({
+                  id: "barcode.print.table.labNumber",
+                }),
+              },
+              {
+                key: "additionalInfo",
+                header: intl.formatMessage({
+                  id: "barcode.print.table.additionalInfo",
+                }),
+              },
+              {
+                key: "numberToPrint",
+                header: intl.formatMessage({
+                  id: "barcode.print.table.quantity",
+                }),
+              },
               { key: "button", header: "" },
             ]}
             rows={[
               {
                 id: "row1",
-                labelType: "Order",
+                labelType: intl.formatMessage({
+                  id: "barcode.print.table.orderLabel",
+                }),
                 accessionNumber: accessionNumber,
                 additionalInfo: "",
                 numberToPrint: (
@@ -259,7 +346,9 @@ const ExistingOrder = () => {
                 .filter((result) => result.accessionNumber)
                 .map((result, index) => ({
                   id: `row${index + 2}`,
-                  labelType: "Specimen",
+                  labelType: intl.formatMessage({
+                    id: "barcode.print.table.specimenLabel",
+                  }),
                   accessionNumber: result.accessionNumber,
                   additionalInfo: result.sampleType,
                   numberToPrint: 1,

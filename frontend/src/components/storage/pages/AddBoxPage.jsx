@@ -21,11 +21,12 @@ const BOX_PRESETS = [
   { id: "4x6", label: "4x6", rows: 4, columns: 6 },
   { id: "6x8", label: "6x8", rows: 6, columns: 8 },
   { id: "16x24", label: "16x24 (384-well plate)", rows: 16, columns: 24 },
-  { id: "custom", label: "Custom", rows: null, columns: null },
+  { id: "custom", label: "自定义", rows: null, columns: null },
 ];
 
 export default function AddBoxPage() {
   const intl = useIntl();
+  const isChineseLocale = intl.locale?.toLowerCase().startsWith("zh");
   const history = useHistory();
   const createLocation = useCreateLocation();
   const [rackOptions, setRackOptions] = useState([]);
@@ -117,11 +118,16 @@ export default function AddBoxPage() {
       navigateBack();
     } catch (e) {
       setError(
-        e?.message ||
-          intl.formatMessage({
-            id: "storage.edit.error.saveFailed",
-            defaultMessage: "Save failed",
-          }),
+        isChineseLocale
+          ? intl.formatMessage({
+              id: "storage.edit.error.saveFailed",
+              defaultMessage: "Save failed",
+            })
+          : e?.message ||
+              intl.formatMessage({
+                id: "storage.edit.error.saveFailed",
+                defaultMessage: "Save failed",
+              }),
       );
     } finally {
       setSaving(false);

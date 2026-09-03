@@ -47,6 +47,7 @@ const StorageLocationModal = ({
   onSave,
 }) => {
   const intl = useIntl();
+  const isChineseLocale = intl.locale?.toLowerCase().startsWith("zh");
   const [formData, setFormData] = useState({
     name: "",
     code: "",
@@ -370,29 +371,39 @@ const StorageLocationModal = ({
             // postToOpenElisServerJsonResponse returns an error-shaped JSON with status/statusCode on failure
             const status = json?.status ?? json?.statusCode;
             if (status === 409) {
-              const errorMessage =
-                json?.error ||
-                json?.message ||
-                intl.formatMessage(
-                  {
-                    id: "storage.error.name.duplicate",
-                    defaultMessage:
-                      "A {entityType} with this name already exists in the selected parent location",
-                  },
-                  { entityType: locationType },
-                );
+              const localizedError = intl.formatMessage(
+                {
+                  id: "storage.error.name.duplicate",
+                  defaultMessage:
+                    "A {entityType} with this name already exists in the selected parent location",
+                },
+                {
+                  entityType: intl.formatMessage({
+                    id: `storage.type.${locationType}`,
+                    defaultMessage: locationType,
+                  }),
+                },
+              );
+              const errorMessage = isChineseLocale
+                ? localizedError
+                : json?.error || json?.message || localizedError;
               setSubmitError(errorMessage);
               return;
             }
 
             if (status && status >= 400) {
               setSubmitError(
-                json?.message ||
-                  json?.error ||
-                  intl.formatMessage({
-                    id: "storage.error.save",
-                    defaultMessage: "Failed to save location",
-                  }),
+                isChineseLocale
+                  ? intl.formatMessage({
+                      id: "storage.error.save",
+                      defaultMessage: "Failed to save location",
+                    })
+                  : json?.message ||
+                      json?.error ||
+                      intl.formatMessage({
+                        id: "storage.error.save",
+                        defaultMessage: "Failed to save location",
+                      }),
               );
               return;
             }
@@ -439,11 +450,16 @@ const StorageLocationModal = ({
           (error) => {
             setIsSubmitting(false);
             setSubmitError(
-              error?.message ||
-                intl.formatMessage({
-                  id: "storage.error.save",
-                  defaultMessage: "Failed to save location",
-                }),
+              isChineseLocale
+                ? intl.formatMessage({
+                    id: "storage.error.save",
+                    defaultMessage: "Failed to save location",
+                  })
+                : error?.message ||
+                    intl.formatMessage({
+                      id: "storage.error.save",
+                      defaultMessage: "Failed to save location",
+                    }),
             );
           },
         );
@@ -451,11 +467,16 @@ const StorageLocationModal = ({
     } catch (error) {
       setIsSubmitting(false);
       setSubmitError(
-        error.message ||
-          intl.formatMessage({
-            id: "storage.error.save",
-            defaultMessage: "Failed to save location",
-          }),
+        isChineseLocale
+          ? intl.formatMessage({
+              id: "storage.error.save",
+              defaultMessage: "Failed to save location",
+            })
+          : error.message ||
+              intl.formatMessage({
+                id: "storage.error.save",
+                defaultMessage: "Failed to save location",
+              }),
       );
     }
   };
@@ -469,10 +490,19 @@ const StorageLocationModal = ({
   };
 
   const deviceTypes = [
-    { id: "freezer", label: "Freezer" },
-    { id: "refrigerator", label: "Refrigerator" },
-    { id: "cabinet", label: "Cabinet" },
-    { id: "other", label: "Other" },
+    {
+      id: "freezer",
+      label: intl.formatMessage({ id: "storage.type.freezer" }),
+    },
+    {
+      id: "refrigerator",
+      label: intl.formatMessage({ id: "storage.type.refrigerator" }),
+    },
+    {
+      id: "cabinet",
+      label: intl.formatMessage({ id: "storage.type.cabinet" }),
+    },
+    { id: "other", label: intl.formatMessage({ id: "storage.type.other" }) },
   ];
 
   const getModalTitle = () => {
@@ -481,7 +511,7 @@ const StorageLocationModal = ({
     return intl.formatMessage(
       {
         id: typeKey,
-        defaultMessage: `${mode === "create" ? "Add" : "Edit"} ${locationType}`,
+        defaultMessage: `${mode === "create" ? "新增" : "编辑"}${locationType}`,
       },
       { type: locationType },
     );

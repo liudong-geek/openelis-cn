@@ -26,6 +26,7 @@ import {
 } from "@carbon/react";
 import { Copy } from "@carbon/icons-react";
 import { FormattedMessage, useIntl } from "react-intl";
+import { useHistory } from "react-router-dom";
 import * as analyzerService from "../../../services/analyzerService";
 import "./CopyMappingsModal.css";
 
@@ -38,6 +39,7 @@ const CopyMappingsModal = ({
   onSuccess,
 }) => {
   const intl = useIntl();
+  const history = useHistory();
   const [targetAnalyzerId, setTargetAnalyzerId] = useState("");
   const [availableAnalyzers, setAvailableAnalyzers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -152,7 +154,7 @@ const CopyMappingsModal = ({
   const handleViewTarget = () => {
     handleClose();
     if (targetAnalyzerId) {
-      window.location.href = `/analyzers/${targetAnalyzerId}/mappings`;
+      history.push(`/analyzers/${targetAnalyzerId}/mappings`);
     }
   };
 

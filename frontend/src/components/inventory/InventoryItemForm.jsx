@@ -62,7 +62,7 @@ const InventoryItemForm = ({ open, onClose, onSave, item = null }) => {
         notify({
           kind: NotificationKinds.error,
           title: intl.formatMessage({ id: "notification.error" }),
-          subtitle: "Failed to load item types",
+          subtitle: intl.formatMessage({ id: "catalog.item.types.load.error" }),
         });
       }
     };
@@ -70,14 +70,10 @@ const InventoryItemForm = ({ open, onClose, onSave, item = null }) => {
   }, [notify, intl]);
 
   const getItemTypeLabel = (type) => {
-    const labels = {
-      REAGENT: "Reagent",
-      RDT: "RDT (Rapid Diagnostic Test)",
-      CARTRIDGE: "Analyzer Cartridge",
-      HIV_KIT: "HIV Test Kit",
-      SYPHILIS_KIT: "Syphilis Test Kit",
-    };
-    return labels[type] || type;
+    return intl.formatMessage({
+      id: `inventory.itemType.${type}`,
+      defaultMessage: type,
+    });
   };
 
   // Load item data if editing, reset if adding new
@@ -143,18 +139,18 @@ const InventoryItemForm = ({ open, onClose, onSave, item = null }) => {
   // Validate form
   const validate = () => {
     if (!formData.name?.trim()) {
-      setError("Item name is required");
+      setError(intl.formatMessage({ id: "catalog.item.validation.name" }));
       return false;
     }
 
     if (!formData.itemType) {
-      setError("Item type is required");
+      setError(intl.formatMessage({ id: "catalog.item.validation.type" }));
       return false;
     }
 
     // Type-specific validation
     if (formData.itemType === "REAGENT" && !formData.stabilityAfterOpening) {
-      setError("Stability after opening is required for reagents");
+      setError(intl.formatMessage({ id: "catalog.item.validation.stability" }));
       return false;
     }
 
@@ -162,12 +158,14 @@ const InventoryItemForm = ({ open, onClose, onSave, item = null }) => {
       formData.itemType === "CARTRIDGE" &&
       !formData.compatibleAnalyzers?.trim()
     ) {
-      setError("Compatible analyzers are required for cartridges");
+      setError(intl.formatMessage({ id: "catalog.item.validation.analyzers" }));
       return false;
     }
 
     if (formData.itemType === "RDT" && !formData.testsPerKit) {
-      setError("Tests per kit is required for RDTs");
+      setError(
+        intl.formatMessage({ id: "catalog.item.validation.testsPerKit" }),
+      );
       return false;
     }
 
@@ -212,7 +210,9 @@ const InventoryItemForm = ({ open, onClose, onSave, item = null }) => {
       onSave();
     } catch (err) {
       console.error("Error saving item:", err);
-      const errorMessage = err.message || "Error saving catalog item";
+      const errorMessage = intl.formatMessage({
+        id: "catalog.item.save.error",
+      });
       setError(errorMessage);
       setSaving(false);
       notify({
@@ -254,7 +254,7 @@ const InventoryItemForm = ({ open, onClose, onSave, item = null }) => {
         <Dropdown
           id="itemType"
           titleText={<FormattedMessage id="catalog.item.type" />}
-          label="Select item type"
+          label={intl.formatMessage({ id: "catalog.item.type.select" })}
           items={itemTypes}
           itemToString={(item) => (item ? item.text : "")}
           selectedItem={itemTypes.find((t) => t.id === formData.itemType)}
@@ -283,7 +283,9 @@ const InventoryItemForm = ({ open, onClose, onSave, item = null }) => {
           labelText={<FormattedMessage id="catalog.item.units" />}
           value={formData.units}
           onChange={(e) => handleChange("units", e.target.value)}
-          placeholder="e.g., mL, tests, kits"
+          placeholder={intl.formatMessage({
+            id: "catalog.item.units.placeholder",
+          })}
         />
 
         <NumberInput
@@ -323,7 +325,9 @@ const InventoryItemForm = ({ open, onClose, onSave, item = null }) => {
               onChange={(e) =>
                 handleChange("storageRequirements", e.target.value)
               }
-              placeholder="e.g., Store at 2-8°C, protect from light"
+              placeholder={intl.formatMessage({
+                id: "catalog.item.storageRequirements.placeholder",
+              })}
             />
           </>
         )}
@@ -338,7 +342,9 @@ const InventoryItemForm = ({ open, onClose, onSave, item = null }) => {
             onChange={(e) =>
               handleChange("compatibleAnalyzers", e.target.value)
             }
-            placeholder="e.g., GeneXpert, Cobas"
+            placeholder={intl.formatMessage({
+              id: "catalog.item.compatibleAnalyzers.placeholder",
+            })}
             required
           />
         )}

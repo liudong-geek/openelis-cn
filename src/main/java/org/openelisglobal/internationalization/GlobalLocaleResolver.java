@@ -36,23 +36,7 @@ public class GlobalLocaleResolver extends AbstractLocaleContextResolver implemen
 
     @Override
     public Locale resolveLocale(HttpServletRequest request) {
-        // Check Accept-Language header for per-request locale (REST API clients)
-        String acceptLanguage = request.getHeader("Accept-Language");
-        if (acceptLanguage != null && !acceptLanguage.isEmpty()) {
-            // Parse the first locale from the header (e.g., "fr-FR,fr;q=0.9,en;q=0.8" ->
-            // "fr-FR")
-            String primaryLocale = acceptLanguage.split(",")[0].trim();
-            // Remove quality value if present (e.g., "fr;q=0.9" -> "fr")
-            if (primaryLocale.contains(";")) {
-                primaryLocale = primaryLocale.split(";")[0].trim();
-            }
-            return Locale.forLanguageTag(primaryLocale);
-        }
-        // Fall back to system-configured locale
-        if (currentLocale == null) {
-            return defaultLocale;
-        }
-        return currentLocale;
+        return resolveRequestLocale(request);
     }
 
     @Override
@@ -60,7 +44,6 @@ public class GlobalLocaleResolver extends AbstractLocaleContextResolver implemen
         if (!locale.equals(currentLocale)) {
             currentLocale = locale;
         }
-        currentLocale = locale;
     }
 
     @Override
@@ -78,20 +61,7 @@ public class GlobalLocaleResolver extends AbstractLocaleContextResolver implemen
         return new TimeZoneAwareLocaleContext() {
             @Override
             public Locale getLocale() {
-                // Check Accept-Language header for per-request locale (REST API clients)
-                String acceptLanguage = request.getHeader("Accept-Language");
-                if (acceptLanguage != null && !acceptLanguage.isEmpty()) {
-                    String primaryLocale = acceptLanguage.split(",")[0].trim();
-                    if (primaryLocale.contains(";")) {
-                        primaryLocale = primaryLocale.split(";")[0].trim();
-                    }
-                    return Locale.forLanguageTag(primaryLocale);
-                }
-                // Fall back to system-configured locale
-                if (currentLocale == null) {
-                    currentLocale = determineDefaultLocale();
-                }
-                return currentLocale;
+                return resolveRequestLocale(request);
             }
 
             @Override
@@ -103,6 +73,44 @@ public class GlobalLocaleResolver extends AbstractLocaleContextResolver implemen
                 return timeZone;
             }
         };
+    }
+
+    /**
+     * Resolve a request locale without changing the process-wide fallback. REST
+     * clients can therefore use different languages concurrently. Underscore
+     * aliases persisted by older clients (for example {@code zh_CN}) are accepted
+     * and normalized to their BCP 47 equivalent before parsing.
+     */
+    private Locale resolveRequestLocale(HttpServletRequest request) {
+        Locale headerLocale = parseAcceptLanguage(request.getHeader("Accept-Language"));
+        if (headerLocale != null) {
+            return headerLocale;
+        }
+        return currentLocale == null ? determineDefaultLocale() : currentLocale;
+    }
+
+    @Nullable
+    private Locale parseAcceptLanguage(String acceptLanguage) {
+        if (GenericValidator.isBlankOrNull(acceptLanguage)) {
+            return null;
+        }
+
+        try {
+            String normalizedHeader = acceptLanguage.replace('_', '-');
+            for (Locale.LanguageRange languageRange : Locale.LanguageRange.parse(normalizedHeader)) {
+                if ("*".equals(languageRange.getRange())) {
+                    continue;
+                }
+                Locale locale = Locale.forLanguageTag(languageRange.getRange());
+                if (!GenericValidator.isBlankOrNull(locale.getLanguage())) {
+                    return locale;
+                }
+            }
+        } catch (IllegalArgumentException ignored) {
+            // A malformed client header must not break the request. Use the configured
+            // fallback below instead.
+        }
+        return null;
     }
 
     @Override

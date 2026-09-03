@@ -8,6 +8,7 @@ import StatisticsReport from "./StatisticsReport";
 import ReferredOut from "./ReferredOut";
 import ReportByDate from "../common/ReportByDate";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import { useHistory, useLocation } from "react-router-dom";
 
 export const RoutineReports = (props) => {
   const { type, report } = props;
@@ -82,22 +83,22 @@ export const RoutineReports = (props) => {
           id={"header.label.study.ciexport"}
         />
       )}
-
     </>
   );
 };
 
 const RoutineIndex = () => {
   const intl = useIntl();
-  const { setNotificationVisible, addNotification, notificationVisible } =
-    useContext(NotificationContext);
+  const { notificationVisible } = useContext(NotificationContext);
+  const history = useHistory();
+  const location = useLocation();
 
   const [type, setType] = useState("");
   const [report, setReport] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(location.search);
     const paramType = params.get("type");
     const paramReport = params.get("report");
     setType(paramType);
@@ -106,9 +107,9 @@ const RoutineIndex = () => {
     if (paramType && paramReport) {
       setIsLoading(false);
     } else {
-      window.location.href = "/RoutineReports";
+      history.replace("/RoutineReports");
     }
-  }, []);
+  }, [history, location.search]);
 
   return (
     <>
@@ -121,7 +122,11 @@ const RoutineIndex = () => {
       />
       <div className="orderLegendBody">
         {notificationVisible === true && <AlertDialog />}
-        {isLoading && <Loading />}
+        {isLoading && (
+          <Loading
+            description={intl.formatMessage({ id: "loading.description" })}
+          />
+        )}
         {!isLoading && <RoutineReports type={type} report={report} />}
       </div>
     </>

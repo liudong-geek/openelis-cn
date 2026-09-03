@@ -42,30 +42,20 @@ import org.openelisglobal.common.services.DisplayListService;
 import org.openelisglobal.common.services.DisplayListService.ListType;
 import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.StatusService.AnalysisStatus;
-import org.openelisglobal.common.util.ConfigurationProperties;
-import org.openelisglobal.common.util.ConfigurationProperties.Property;
 import org.openelisglobal.common.util.DateUtil;
-import org.openelisglobal.common.util.validator.GenericValidator;
 import org.openelisglobal.dataexchange.fhir.FhirUtil;
 import org.openelisglobal.dataexchange.fhir.service.FhirTransformService;
-import org.openelisglobal.patient.action.IPatientUpdate.PatientUpdateStatus;
-import org.openelisglobal.patient.action.bean.PatientManagementInfo;
 import org.openelisglobal.patient.service.PatientService;
-import org.openelisglobal.patient.util.PatientUtil;
-import org.openelisglobal.patient.validator.ValidatePatientInfo;
 import org.openelisglobal.sample.action.util.SamplePatientUpdateData;
 import org.openelisglobal.sample.action.util.SampleUtil;
 import org.openelisglobal.sample.bean.SampleEditItem;
 import org.openelisglobal.sample.bean.SampleOrderItem;
 import org.openelisglobal.sample.form.SampleEditForm;
-import org.openelisglobal.sample.form.SamplePatientEntryForm;
-import org.openelisglobal.sample.service.PatientManagementUpdate;
 import org.openelisglobal.sample.service.SampleEditService;
 import org.openelisglobal.sample.service.SamplePatientEntryService;
 import org.openelisglobal.sample.validator.SampleEditFormValidator;
 import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.samplehuman.service.SampleHumanService;
-import org.openelisglobal.samplehuman.valueholder.SampleHuman;
 import org.openelisglobal.sampleitem.service.SampleItemService;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
 import org.openelisglobal.spring.util.SpringContext;
@@ -120,6 +110,9 @@ public class ServiceRequestProvider implements IResourceProvider {
     @Autowired
     private PatientService patientService;
 
+    @Autowired
+    private org.openelisglobal.fhir.service.FhirOrderIntakeService intakeService;
+
     @Override
     public Class<? extends IBaseResource> getResourceType() {
         return ServiceRequest.class;
@@ -133,9 +126,18 @@ public class ServiceRequestProvider implements IResourceProvider {
             FhirProviderUtils.validateIdParam(theId, "ServiceRequest", this.getClass().getSimpleName(), method);
 
             String analysisUuid = theId.getIdPart();
-            List<Analysis> analyses = analysisService.getAllMatching("fhirUuid", UUID.fromString(analysisUuid));
+            final UUID requestUuid;
+            try {
+                requestUuid = UUID.fromString(analysisUuid);
+            } catch (IllegalArgumentException e) {
+                throw new InvalidRequestException("ServiceRequest ID must be a valid UUID");
+            }
+            List<Analysis> analyses = analysisService.getAllMatching("fhirUuid", requestUuid);
 
             if (analyses == null || analyses.isEmpty()) {
+                ServiceRequest pending = intakeService.readPending(requestUuid);
+                if (pending != null)
+                    return pending;
                 throw new ResourceNotFoundException("Analysis with FHIR ID: " + analysisUuid + " does not exist");
             }
             if (analyses.size() > 1) {
@@ -150,12 +152,10 @@ public class ServiceRequestProvider implements IResourceProvider {
             if (serviceRequest == null) {
                 throw new InternalErrorException("Failed to transform Analysis to ServiceRequest");
             }
-            return serviceRequest;
+            return intakeService.readCollected(requestUuid, serviceRequest);
 
         } catch (ResourceNotFoundException | InvalidRequestException e) {
             throw e;
-        } catch (IllegalArgumentException e) {
-            throw new InvalidRequestException("ServiceRequest ID must be a valid UUID");
         } catch (Exception e) {
             LogEvent.logError(this.getClass().getSimpleName(), method,
                     "Unexpected error while Reading ServiceRequest: " + e.getMessage());
@@ -166,150 +166,13 @@ public class ServiceRequestProvider implements IResourceProvider {
     @Create
     public MethodOutcome createServiceRequest(@ResourceParam ServiceRequest serviceRequest,
             HttpServletRequest request) {
-
-        final String method = "createServiceRequest";
-
         try {
-            requireNonNull(request, "HttpServletRequest cannot be null");
-
-            final String sysuserId = requireNonBlank(FhirProviderUtils.getSysUserId(request),
-                    "Missing or invalid system user ID");
-
-            requireNonNull(serviceRequest, "ServiceRequest resource cannot be null");
-            requireTrue(serviceRequest.hasSubject(), "ServiceRequest.subject is required");
-            requireTrue(serviceRequest.hasCode(), "ServiceRequest.code is required");
-
-            final String patientRefId = requireNonBlank(serviceRequest.getSubject().getReferenceElement().getIdPart(),
-                    "ServiceRequest.subject reference is invalid");
-
-            final org.openelisglobal.patient.valueholder.Patient existingPatient = requireNonNull(
-                    fhirTransformService.getItemByFhirId(patientRefId, patientService),
-                    "Patient not found for given subject reference");
-
-            final String patientId = requireNonBlank(existingPatient.getId(), "Resolved patient has no ID");
-
-            final boolean trackPayments = ConfigurationProperties.getInstance()
-                    .isPropertyValueEqual(Property.TRACK_PATIENT_PAYMENT, "true");
-
-            final SampleOrderItem sampleOrder = requireNonNull(
-                    fhirTransformService.buildSampleOrderItemFromServiceRequest(serviceRequest, sysuserId),
-                    "Failed to build SampleOrderItem from ServiceRequest");
-
-            final String labNo = requireNonBlank(sampleOrder.getLabNo(), "Generated lab number is invalid");
-
-            String receivedDateForDisplay = requireNonBlank(sampleOrder.getReceivedDateForDisplay(),
-                    "Received date is required");
-
-            receivedDateForDisplay += GenericValidator.isBlankOrNull(sampleOrder.getReceivedTime()) ? " 00:00"
-                    : " " + sampleOrder.getReceivedTime();
-
-            final List<Test> tests = requireNonEmpty(
-                    fhirTransformService.resolveTestsFromServiceRequest(serviceRequest),
-                    "No tests resolved from ServiceRequest");
-
-            final List<SampleEditItem> editItems = requireNonEmpty(
-                    fhirTransformService.buildSampleEditItemsListFromServiceRequest(serviceRequest, sysuserId),
-                    "No sample edit items derived from ServiceRequest");
-
-            final SampleEditItem firstItem = editItems.stream().filter(i -> i != null && i.isAdd()).findFirst()
-                    .orElse(editItems.get(0));
-
-            final String sampleItemId = requireNonNull(firstItem.getSampleItemId(), "SampleItemId is missing");
-
-            final SampleItem sampleItem = requireNonNull(sampleItemService.get(sampleItemId),
-                    "SampleItem not found for ID: " + sampleItemId);
-
-            final String sampleXml = requireNonBlank(SampleUtil.buildSampleXml(tests, sampleItem, sampleItemId),
-                    "Failed to build sample XML");
-
-            final SamplePatientEntryForm form = new SamplePatientEntryForm();
-            form.setSampleOrderItems(sampleOrder);
-            form.setSampleXML(sampleXml);
-
-            final SamplePatientUpdateData updateData = new SamplePatientUpdateData(sysuserId);
-            updateData.setAccessionNumber(labNo);
-            updateData.setPatientId(patientId);
-            updateData.initSampleData(sampleXml, receivedDateForDisplay, trackPayments, sampleOrder);
-            updateData.setCollectionDateFromRecieveDateIfNeeded(receivedDateForDisplay);
-            updateData.initializeRequester(sampleOrder);
-            updateData.setPriority(sampleOrder.getPriority());
-            updateData.initProvider(sampleOrder);
-
-            final Errors result = new BindException(form, "form");
-
-            final Patient fhirPatient = requireNonNull(fhirTransformService.transformToFhirPatient(patientId),
-                    "Patient not found for ID: " + patientId);
-
-            final PatientManagementInfo patientInfo = requireNonNull(
-                    fhirTransformService.createOePatientManagementInfo(fhirPatient),
-                    "Failed to create PatientManagementInfo");
-
-            final Errors patientErrors = new BindException(patientInfo, "patientInfo");
-            ValidatePatientInfo.validatePatientInfo(patientErrors, patientInfo);
-
-            updateData.setPatientErrors(patientErrors);
-
-            // --- Prepare patient domain object ---
-            final org.openelisglobal.patient.valueholder.Patient patient = new org.openelisglobal.patient.valueholder.Patient();
-
-            PatientUtil.preparePatientData(patientErrors, request, patientInfo, patient);
-
-            final PatientManagementUpdate patientUpdate = requireNonNull(
-                    SpringContext.getBean(PatientManagementUpdate.class), "PatientManagementUpdate bean not found");
-
-            patientInfo.setPatientUpdateStatus(PatientUpdateStatus.NO_ACTION);
-            form.setPatientProperties(patientInfo);
-
-            patientUpdate.setSysUserIdFromRequest(request);
-            patientUpdate.setPatientUpdateStatus(patientInfo);
-
-            updateData.validateSample(result, !form.isOrderEntryOnly());
-
-            if (result.hasErrors()) {
-                throw new InvalidRequestException(formatErrors(result));
-            }
-
-            samplePatientService.persistData(updateData, patientUpdate, patientInfo, form, request);
-
-            requireNonNull(updateData.getSample(), "Persisted sample is invalid");
-            requireNonNull(updateData.getSample().getId(), "Persisted sample ID is invalid");
-
-            final SampleHuman lookup = new SampleHuman();
-            lookup.setSampleId(updateData.getSample().getId());
-
-            final SampleHuman existing = sampleHumanService.getDataBySample(lookup);
-
-            if (existing != null && (existing.getPatientId() == null || !patientId.equals(existing.getPatientId()))) {
-                existing.setPatientId(patientId);
-                existing.setSysUserId(sysuserId);
-                sampleHumanService.update(existing);
-            }
-            try {
-                fhirTransformService.transformPersistOrderEntryFhirObjects(updateData, patientInfo, false, null);
-            } catch (Exception fhirEx) {
-                LogEvent.logWarn(this.getClass().getSimpleName(), method,
-                        "FHIR sync failed during delete (non-blocking): " + safeMessage(fhirEx));
-            }
-            final ServiceRequest created = requireNonNull(extractCreatedServiceRequest(updateData),
-                    "Failed to transform created Analysis to ServiceRequest");
-
-            MethodOutcome outcome = new MethodOutcome();
-            outcome.setCreated(true);
-            outcome.setResource(created);
-            return outcome;
-
-        } catch (InvalidRequestException | ResourceNotFoundException e) {
-            LogEvent.logError(this.getClass().getSimpleName(), method, safeMessage(e));
+            return intakeService.create(serviceRequest, request);
+        } catch (ca.uhn.fhir.rest.server.exceptions.BaseServerResponseException e) {
             throw e;
-
-        } catch (InternalErrorException e) {
-            LogEvent.logError(this.getClass().getSimpleName(), method, safeMessage(e));
-            throw e;
-
         } catch (Exception e) {
-            LogEvent.logError(this.getClass().getSimpleName(), method, safeMessage(e));
-            throw new InternalErrorException("Unexpected server error while creating ServiceRequest: " + safeMessage(e),
-                    e);
+            LogEvent.logError(getClass().getSimpleName(), "createServiceRequest", "Clinical order intake failed");
+            throw new InternalErrorException("检验申请接收失败，未完成的事务已回滚", e);
         }
     }
 

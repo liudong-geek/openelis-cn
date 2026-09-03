@@ -1,4 +1,5 @@
 import React, { useContext, useState, useEffect, useRef } from "react";
+import { navigateToInternalPath } from "../utils/NavigationUtils";
 import {
   Heading,
   Button,
@@ -166,23 +167,29 @@ function NoteBookDashBoard() {
   };
 
   const openNoteBookView = (id) => {
-    window.location.href = "/NoteBookEntryForm/" + id;
+    navigateToInternalPath(`/NoteBookEntryForm/${encodeURIComponent(id)}`);
   };
 
   const openNoteBookEntryForm = () => {
-    window.location.href = "/NoteBookEntryForm";
+    navigateToInternalPath("/NoteBookEntryForm");
   };
 
   const openNoteBookInstanceEntryForm = () => {
-    window.location.href = "/NoteBookInstanceEntryForm/" + selectedNoteBook.id;
+    navigateToInternalPath(
+      `/NoteBookInstanceEntryForm/${encodeURIComponent(selectedNoteBook.id)}`,
+    );
   };
 
   const openNoteBookInstanceView = (id) => {
-    window.location.href = "/NoteBookInstanceEditForm/" + id + "?mode=view";
+    navigateToInternalPath(
+      `/NoteBookInstanceEditForm/${encodeURIComponent(id)}?mode=view`,
+    );
   };
 
   const openNoteBookInstanceEdit = (id) => {
-    window.location.href = "/NoteBookInstanceEditForm/" + id + "?mode=edit";
+    navigateToInternalPath(
+      `/NoteBookInstanceEditForm/${encodeURIComponent(id)}?mode=edit`,
+    );
   };
 
   useEffect(() => {

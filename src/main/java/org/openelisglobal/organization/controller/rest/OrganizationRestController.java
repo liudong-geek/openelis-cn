@@ -751,14 +751,12 @@ public class OrganizationRestController extends BaseController {
 
         for (Organization org : organizations) {
             List<String> typeIds = organizationService.getTypeIdsForOrganizationId(org.getId());
-            for (String typeId : typeIds) {
-                if (validTypeIds.contains(typeId)) {
-                    filtered.add(org);
-                    break;
-                }
+            if (ReferringSiteEligibility.isSelectable(org, typeIds, validTypeIds)) {
+                filtered.add(org);
             }
         }
 
         return filtered;
     }
+
 }

@@ -5,18 +5,13 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.openelisglobal</groupId>
     <artifactId>openelisglobal</artifactId>
-    <!-- for deployment cycles -->
-    <!-- <version>${major.version}.${minor.version}.${fix.version}</version> -->
-    <!-- for development cycles -->
-    <version>${major.version}.${minor.version}.${state.version}.${fix.version}</version>
+    <version>${revision}</version>
     <packaging>war</packaging>
     <properties>
         <maven.java.release>21</maven.java.release>
-        <major.version>3</major.version>
-        <minor.version>2</minor.version>
-        <state.version>1</state.version>
-        <!-- 0 = alpha, 1 = beta, 2 = rc, 3 = deployable -->
-        <fix.version>11</fix.version>
+        <!-- Maven CI-friendly version property. Override with -Drevision=... when
+            releasing. -->
+        <revision>3.2.1.11</revision>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <liquibase.propertyFile>${project.basedir}/liquibase/liquibase.properties</liquibase.propertyFile>
         <castor.version>1.4.1</castor.version>
@@ -549,12 +544,6 @@
             <version>${springsecurity.version}</version>
         </dependency>
         <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-test</artifactId>
-            <version>${springsecurity.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-test</artifactId>
             <version>${springframework.version}</version>
@@ -695,7 +684,6 @@
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <version>${postgresql.version}</version>
-            <scope>scope</scope>
         </dependency>
         <dependency>
             <groupId>org.quartz-scheduler</groupId>
@@ -746,11 +734,6 @@
             <groupId>com.google.zxing</groupId>
             <artifactId>javase</artifactId>
             <version>3.5.2</version>
-        </dependency>
-        <dependency>
-            <groupId>org.openjdk.nashorn</groupId>
-            <artifactId>nashorn-core</artifactId>
-            <version>15.4</version>
         </dependency>
         <dependency>
             <groupId>org.apache.commons</groupId>

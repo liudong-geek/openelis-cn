@@ -15,6 +15,7 @@ import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 import org.openelisglobal.BaseWebContextSensitiveTest;
+import org.openelisglobal.dataexchange.fhir.FhirConfig;
 import org.openelisglobal.fhir.providers.OrganizationProvider;
 import org.openelisglobal.organization.service.OrganizationContactService;
 import org.openelisglobal.organization.service.OrganizationService;
@@ -32,6 +33,8 @@ public class OrganizationFacadeTest extends BaseWebContextSensitiveTest {
 
     @Autowired
     private OrganizationService organizationService;
+    @Autowired
+    private FhirConfig fhirConfig;
 
     @Autowired
     private OrganizationTypeService organizationTypeService;
@@ -71,11 +74,6 @@ public class OrganizationFacadeTest extends BaseWebContextSensitiveTest {
         List<OrganizationContact> contacts = organizationContactService.getAll();
         if (contacts != null && !contacts.isEmpty()) {
             organizationContactService.deleteAll(contacts);
-        }
-
-        List<OrganizationType> types = organizationTypeService.getAll();
-        if (types != null && !types.isEmpty()) {
-            organizationTypeService.deleteAll(types);
         }
 
         List<Organization> orgs = organizationService.getAll();
@@ -129,12 +127,16 @@ public class OrganizationFacadeTest extends BaseWebContextSensitiveTest {
                 {
                   "resourceType": "Organization",
                   "active": true,
+                  "identifier": [{
+                    "system": "%s/org_code",
+                    "value": "GREEN-LAB"
+                  }],
                   "type": [
                     {
                       "coding": [
                         {
-                          "system": "http://openelis-global.org/orgType",
-                          "code": "CLINIC"
+                          "system": "%s/orgType",
+                          "code": "Healthcare"
                         }
                       ],
                       "text": "Regional Laboratory"
@@ -149,13 +151,13 @@ public class OrganizationFacadeTest extends BaseWebContextSensitiveTest {
                     }
                   ]
                 }
-                """;
+                """.formatted(fhirConfig.getOeFhirSystem(), fhirConfig.getOeFhirSystem());
 
         request.setContent(organizationJson.getBytes());
         MockHttpServletResponse response = new MockHttpServletResponse();
         fhirServlet.service(request, response);
 
-        assertEquals(201, response.getStatus());
+        assertEquals(response.getContentAsString(), 201, response.getStatus());
         assertEquals("application/fhir+json;charset=UTF-8", response.getContentType());
 
         JsonNode jsonResponse = objectMapper.readTree(response.getContentAsString());
@@ -163,10 +165,8 @@ public class OrganizationFacadeTest extends BaseWebContextSensitiveTest {
         assertEquals("Organization", jsonResponse.get("resourceType").asText());
         assertNotNull(jsonResponse.get("id"));
 
-        List<Organization> savedOrgs = organizationService.getAll();
-        assertFalse(savedOrgs.isEmpty());
-
-        Organization savedOrg = savedOrgs.get(0);
+        Organization savedOrg = organizationService.getOrganizationByFhirId(jsonResponse.get("id").asText());
+        assertNotNull(savedOrg);
         assertEquals("Green Laboratory", savedOrg.getOrganizationName());
         assertNotNull(savedOrg.getFhirUuid());
     }
@@ -183,12 +183,16 @@ public class OrganizationFacadeTest extends BaseWebContextSensitiveTest {
                   "resourceType": "Organization",
                   "id": "%s",
                   "active": true,
+                  "identifier": [{
+                    "system": "%s/org_code",
+                    "value": "GHG001"
+                  }],
                   "type": [
                     {
                       "coding": [
                         {
-                          "system": "http://openelis-global.org/orgType",
-                          "code": "LABORATORY"
+                          "system": "%s/orgType",
+                          "code": "Healthcare"
                         }
                       ],
                       "text": "Updated Laboratory"
@@ -203,14 +207,14 @@ public class OrganizationFacadeTest extends BaseWebContextSensitiveTest {
                     }
                   ]
                 }
-                """.formatted(orgUuid);
+                """.formatted(orgUuid, fhirConfig.getOeFhirSystem(), fhirConfig.getOeFhirSystem());
 
         request.setContent(updateJson.getBytes());
 
         MockHttpServletResponse response = new MockHttpServletResponse();
         fhirServlet.service(request, response);
 
-        assertEquals(200, response.getStatus());
+        assertEquals(response.getContentAsString(), 200, response.getStatus());
 
         JsonNode jsonResponse = objectMapper.readTree(response.getContentAsString());
 

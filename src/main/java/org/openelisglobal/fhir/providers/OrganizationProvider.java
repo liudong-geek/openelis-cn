@@ -17,7 +17,6 @@ import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.exceptions.InternalErrorException;
 import ca.uhn.fhir.rest.server.exceptions.InvalidRequestException;
 import ca.uhn.fhir.rest.server.exceptions.ResourceNotFoundException;
-import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.UUID;
 import org.hl7.fhir.instance.model.api.IBaseResource;
@@ -25,7 +24,6 @@ import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.IdType;
 import org.hl7.fhir.r4.model.Organization;
 import org.hl7.fhir.r4.model.Practitioner;
-import org.openelisglobal.common.action.IActionConstants;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.dataexchange.fhir.FhirUtil;
 import org.openelisglobal.dataexchange.fhir.exception.FhirLocalPersistingException;
@@ -54,6 +52,12 @@ public class OrganizationProvider implements IResourceProvider {
 
     @Autowired
     private OrganizationService organizationService;
+
+    @Autowired
+    private org.openelisglobal.fhir.service.FhirOrganizationImportService importService;
+
+    @Autowired
+    private org.openelisglobal.dataexchange.fhir.service.FhirPersistanceService fhirPersistenceService;
 
     @Override
     public Class<? extends IBaseResource> getResourceType() {
@@ -103,25 +107,20 @@ public class OrganizationProvider implements IResourceProvider {
                 fhirOrganization.setId(UUID.randomUUID().toString());
             }
 
-            org.openelisglobal.organization.valueholder.Organization organization = fhirTransformService
-                    .transformToOrganization(fhirOrganization);
-
-            org.openelisglobal.organization.valueholder.Organization savedOrganization = organizationService
-                    .save(organization);
-            if (savedOrganization == null) {
-                throw new InternalErrorException("Failed to save organization");
-            }
-
-            fhirTransformService.transformPersistOrganization(savedOrganization);
+            var imported = importService.save(fhirOrganization.getIdElement().getIdPart(), fhirOrganization,
+                    FhirProviderUtils.getSysUserId(request));
+            var savedOrganization = imported.organization();
 
             Organization response = fhirTransformService.transformToFhirOrganization(savedOrganization);
+            FhirProviderUtils.syncToFhirStore(fhirPersistenceService, response, getClass().getSimpleName(), method);
 
             LogEvent.logInfo(this.getClass().getSimpleName(), method,
                     "Successfully created Organization: " + savedOrganization.getFhirUuidAsString());
 
-            return FhirProviderUtils.buildCreateOutcome(response);
+            return imported.created() ? FhirProviderUtils.buildCreateOutcome(response)
+                    : FhirProviderUtils.buildUpdateOutcome(response);
 
-        } catch (UnprocessableEntityException | InvalidRequestException e) {
+        } catch (ca.uhn.fhir.rest.server.exceptions.BaseServerResponseException e) {
             throw e;
 
         } catch (Exception e) {
@@ -145,34 +144,20 @@ public class OrganizationProvider implements IResourceProvider {
 
             FhirProviderUtils.validateIdParam(theId, "Organization", this.getClass().getSimpleName(), method);
 
-            fhirOrganization.setId(theId);
-
-            org.openelisglobal.organization.valueholder.Organization existingOrg = organizationService
-                    .getOrganizationByFhirId(theId.getIdPart());
-            if (existingOrg == null) {
-                throw new ResourceNotFoundException("Organization/" + theId.getIdPart());
-            }
-
-            org.openelisglobal.organization.valueholder.Organization incomingOrg = fhirTransformService
-                    .transformToOrganization(fhirOrganization);
-            existingOrg.setOrganizationName(incomingOrg.getOrganizationName());
-            existingOrg.setIsActive(incomingOrg.getIsActive());
-            existingOrg.setSysUserId(FhirProviderUtils.getSysUserId(request));
-            org.openelisglobal.organization.valueholder.Organization updatedOrg = organizationService.save(existingOrg);
-            if (updatedOrg == null) {
-                throw new InternalErrorException("Failed to save updated organization is null");
-            }
-
-            fhirTransformService.transformPersistOrganization(updatedOrg);
+            var imported = importService.save(theId.getIdPart(), fhirOrganization,
+                    FhirProviderUtils.getSysUserId(request));
+            var updatedOrg = imported.organization();
 
             Organization FhirOrg = fhirTransformService.transformToFhirOrganization(updatedOrg);
+            FhirProviderUtils.syncToFhirStore(fhirPersistenceService, FhirOrg, getClass().getSimpleName(), method);
 
             LogEvent.logInfo(this.getClass().getSimpleName(), method,
                     "Successfully updated Organization with ID: " + theId.getIdPart());
 
-            return FhirProviderUtils.buildUpdateOutcome(FhirOrg);
+            return imported.created() ? FhirProviderUtils.buildCreateOutcome(FhirOrg)
+                    : FhirProviderUtils.buildUpdateOutcome(FhirOrg);
 
-        } catch (ResourceNotFoundException | UnprocessableEntityException | InvalidRequestException e) {
+        } catch (ca.uhn.fhir.rest.server.exceptions.BaseServerResponseException e) {
             throw e;
 
         } catch (Exception e) {
@@ -202,22 +187,18 @@ public class OrganizationProvider implements IResourceProvider {
                 throw new ResourceNotFoundException("Organization/" + theId.getIdPart());
             }
 
-            organization.setIsActive(IActionConstants.NO);
-            organization.setSysUserId(FhirProviderUtils.getSysUserId(request));
-            org.openelisglobal.organization.valueholder.Organization deletedOrg = organizationService
-                    .save(organization);
-
-            fhirTransformService.transformPersistOrganization(deletedOrg);
-
-            Organization fhirOrgToSync = fhirTransformService.transformToFhirOrganization(deletedOrg);
-            fhirOrgToSync.setActive(false);
+            Organization disabled = fhirTransformService.transformToFhirOrganization(organization);
+            disabled.setActive(false);
+            var deletedOrg = importService.save(theId.getIdPart(), disabled, FhirProviderUtils.getSysUserId(request))
+                    .organization();
+            FhirProviderUtils.syncToFhirStore(fhirPersistenceService, disabled, getClass().getSimpleName(), method);
 
             LogEvent.logInfo(this.getClass().getSimpleName(), method,
                     "Successfully deleted Organization with ID: " + theId.getIdPart());
 
             return FhirProviderUtils.buildDeleteOutcome(theId, "Organization");
 
-        } catch (ResourceNotFoundException | InvalidRequestException e) {
+        } catch (ca.uhn.fhir.rest.server.exceptions.BaseServerResponseException e) {
             throw e;
 
         } catch (Exception e) {

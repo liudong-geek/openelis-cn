@@ -1,4 +1,4 @@
-import React, { useContext, useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import "../../Style.css";
 import { encodeDate, getFromOpenElisServer, Roles } from "../../utils/Utils";
@@ -12,7 +12,8 @@ import {
   Section,
   Button,
   Loading,
-  Tag,
+  InlineNotification,
+  DismissibleTag,
   DataTable,
   TableContainer,
   Table,
@@ -29,7 +30,6 @@ import CustomLabNumberInput from "../../common/CustomLabNumberInput";
 import config from "../../../config.json";
 import CustomDatePicker from "../../common/CustomDatePicker";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
-import { ConfigurationContext } from "../../layout/Layout";
 import { Formik, Field } from "formik";
 import ReferredOutTestsFormValues from "../../formModel/innitialValues/ReferredOutTestsFormValues";
 import SearchPatientForm from "../../patient/SearchPatientForm";
@@ -39,107 +39,145 @@ let breadcrumbs = [
   { label: "referral.label.referredOutTests", link: "/ReferredOutTests" },
 ];
 
-function ReferredOutTests(props) {
+const referralStatusMessageIds = {
+  CREATED: "label.referOut.status.draft",
+  SENT: "shipment.state.sent",
+  RECEIVED: "label.referOut.status.received",
+  FINISHED: "label.referOut.status.completed",
+  CANCELED: "label.referOut.status.cancelled",
+};
+
+function ReferredOutTests() {
   const [referredOutTestsFormValues, setReferredOutTestsFormValues] = useState(
     ReferredOutTestsFormValues,
   );
-  const { configurationProperties } = useContext(ConfigurationContext);
-
   const intl = useIntl();
   const dateTypeList = [
     {
       id: "option-0",
-      text: "Sent Date",
+      text: intl.formatMessage({ id: "referral.dateType.sent" }),
       value: "SENT",
     },
     {
       id: "option-1",
-      text: "Result Date",
+      text: intl.formatMessage({ id: "referral.dateType.result" }),
       value: "RESULT",
     },
   ];
 
   const componentMounted = useRef(false);
+  const latestSearchRequestId = useRef(0);
   const [page, setPage] = useState(1);
-  const [searchByPatient, setSearchByPatient] = useState(true);
-  const [searchByUnit, setSearchByUnit] = useState(true);
-  const [searchByLabNumber, setSearchByLabNumber] = useState(true);
   const [pageSize, setPageSize] = useState(10);
   const [testUnits, setTestUnits] = useState([]);
   const [testUnitsIdList, setTestUnitsIdList] = useState([]);
-  const [testUnitsValuesList, setTestUnitsValuesList] = useState([]);
-  const [testUnitsPair, setTestUnitsPair] = useState([]);
   const [testNames, setTestNames] = useState([]);
   const [testNamesIdList, setTestNamesIdList] = useState([]);
-  const [testNamesValuesList, setTestNamesValuesList] = useState([]);
-  const [testNamesPair, setTestNamesPair] = useState([]);
   const [dateType, setDateType] = useState(dateTypeList[0].value);
   const [loading, setLoading] = useState(false);
+  const [searchStatus, setSearchStatus] = useState("idle");
   const [searchType, setSearchType] = useState("");
   const [tests, setTests] = useState([]);
   const [testSections, setTestSections] = useState([]);
-  const [responseData, setResponseData] = useState({});
   const [responseDataShow, setResponseDataShow] = useState([]);
   const [selectedRowIds, setSelectedRowIds] = useState([]);
-  const [selectedRowIdsPost, setSelectedRowIdsPost] = useState([]);
+  const [reportStatus, setReportStatus] = useState("idle");
 
-  const handleReferredOutPatient = () => {
+  const selectedAnalysisIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          selectedRowIds
+            .map(
+              (selectedId) =>
+                responseDataShow.find((row) => row.id === selectedId)
+                  ?.analysisId,
+            )
+            .filter(Boolean),
+        ),
+      ),
+    [selectedRowIds, responseDataShow],
+  );
+
+  const runReferralSearch = ({
+    searchTypeOverride,
+    formValuesOverride,
+  } = {}) => {
+    const activeSearchType = searchTypeOverride || searchType;
+    const activeFormValues = formValuesOverride || referredOutTestsFormValues;
+    const params = new URLSearchParams({
+      searchType: activeSearchType,
+      dateType,
+      startDate: activeFormValues.startDate || "",
+      endDate: activeFormValues.endDate || "",
+      testUnitIds: testUnitsIdList.join(","),
+      _testUnitIds: "1",
+      testIds: testNamesIdList.join(","),
+      _testIds: "1",
+      labNumber: activeFormValues.labNumberInput || "",
+      dateOfBirthSearchValue: "",
+      selPatient: activeFormValues.selectedPatientId || "",
+      _analysisIds: "on",
+    });
+
     setLoading(true);
+    setSearchStatus("loading");
+    setResponseDataShow([]);
+    setSelectedRowIds([]);
+    setReportStatus("idle");
+    setPage(1);
+    const requestId = ++latestSearchRequestId.current;
     getFromOpenElisServer(
-      `/rest/ReferredOutTests?searchType=${searchType}&dateType=${dateType}&startDate=${referredOutTestsFormValues.startDate}&endDate=${referredOutTestsFormValues.endDate}&testUnitIds=${testUnitsIdList}&_testUnitIds=1&testIds=${testNamesIdList}&_testIds=1&labNumber=${referredOutTestsFormValues.labNumberInput}&dateOfBirthSearchValue=&selPatient=${referredOutTestsFormValues.selectedPatientId}&_analysisIds=on`,
-      handleResponseData,
+      `/rest/ReferredOutTests?${params.toString()}`,
+      (response) => handleResponseData(response, requestId),
     );
+  };
+
+  const handleResponseData = (res, requestId) => {
+    if (
+      !componentMounted.current ||
+      requestId !== latestSearchRequestId.current
+    )
+      return;
     setLoading(false);
-  };
-
-  const handleResponseData = (res) => {
-    if (!res) {
-      setLoading(true);
-    } else {
-      setResponseData(res);
+    if (!res || !Array.isArray(res.referralDisplayItems)) {
+      setResponseDataShow([]);
+      setSearchStatus("error");
+      return;
     }
+    const rows = res.referralDisplayItems.map((obj, index) => {
+      const statusMessageId = referralStatusMessageIds[obj?.referralStatus];
+      return {
+        ...obj,
+        id: String(index),
+        disabled: Boolean(obj?.disabled || !obj?.analysisId),
+        referralStatusDisplay: statusMessageId
+          ? intl.formatMessage({ id: statusMessageId })
+          : obj?.referralStatusDisplay || obj?.referralStatus || "—",
+      };
+    });
+    setResponseDataShow(rows);
+    setSearchStatus(rows.length > 0 ? "success" : "empty");
   };
 
-  useEffect(() => {
-    if (responseData) {
-      var objectsWithId = responseData.referralDisplayItems?.map(
-        (obj, index) => ({ ...obj, id: index }),
-      );
-      setResponseDataShow(objectsWithId);
-    }
-  }, [responseData]);
+  const handleSubmit = () => runReferralSearch();
 
-  const handleSubmit = () => {
-    setLoading(true);
-    handleReferredOutPatient();
-    setLoading(false);
-  };
-
-  function handleLabNumberSearch(e) {
+  function handleLabNumberSearch(e, rawValue) {
+    const nextValue = rawValue ?? e.target.value;
     setReferredOutTestsFormValues({
       ...referredOutTestsFormValues,
-      labNumberInput: e.target.value,
+      labNumberInput: nextValue,
     });
     setSearchType(referredOutTestsFormValues.searchTypeValues[1]);
-    setSearchByLabNumber(false);
   }
 
   const getSelectedPatient = (patient) => {
+    if (!patient?.patientPK) return;
     setSearchType(referredOutTestsFormValues.searchTypeValues[2]);
     setReferredOutTestsFormValues({
       ...referredOutTestsFormValues,
       selectedPatientId: patient.patientPK,
     });
-    setSearchByPatient(false);
-  };
-
-  const getDataOfBirth = (patient) => {
-    searchType(referredOutTestsFormValues.searchTypeValues[2]);
-    setReferredOutTestsFormValues({
-      ...referredOutTestsFormValues,
-      dateOfBirth: patient.birthDateForDisplay,
-    });
-    setSearchByPatient(false);
   };
 
   const handleDatePickerChangeDate = (datePicker, date) => {
@@ -160,13 +198,14 @@ function ReferredOutTests(props) {
         break;
       default:
         obj = {
-          // startDate: configurationProperties.currentDateAsText,
-          // endDate: configurationProperties.currentDateAsText,
           startDate: "",
           endDate: "",
         };
     }
-    setReferredOutTestsFormValues(obj);
+    setReferredOutTestsFormValues({
+      ...referredOutTestsFormValues,
+      ...obj,
+    });
     setSearchType(referredOutTestsFormValues.searchTypeValues[0]);
   };
 
@@ -183,42 +222,40 @@ function ReferredOutTests(props) {
   const handlePageChange = ({ page, pageSize }) => {
     setPage(page);
     setPageSize(pageSize);
-    setSelectedRowIds([]);
   };
 
   const handleReferredOutPatientPrint = () => {
-    let patientReport =
-      config.serverBaseUrl +
-      `/ReportPrint?report=patientCILNSP_vreduit&type=patient&analysisIds=${selectedRowIdsPost.join(
-        ",",
-      )}`;
-    window.open(patientReport);
+    if (selectedAnalysisIds.length === 0) return;
+
+    const params = new URLSearchParams({
+      report: "patientCILNSP_vreduit",
+      type: "patient",
+      analysisIds: selectedAnalysisIds.join(","),
+    });
+    const patientReport = `${config.serverBaseUrl}/ReportPrint?${params.toString()}`;
+
+    try {
+      const reportWindow = window.open(patientReport, "_blank");
+      if (!reportWindow) {
+        setReportStatus("error");
+        return;
+      }
+      reportWindow.opener = null;
+      reportWindow.focus?.();
+      setReportStatus("idle");
+    } catch (_error) {
+      setReportStatus("error");
+    }
   };
 
   useEffect(() => {
     if (testNames.testNames) {
       var testNamesIdList = testNames.testNames.map((test) => test.id);
       setTestNamesIdList(testNamesIdList);
-      var testNamesValueList = testNames.testNames.map((test) => test.value);
-      setTestNamesValuesList(testNamesValueList);
-      var testNamesPair = testNames.testNames.map((test) => ({
-        id: test.id,
-        value: test.value,
-      }));
-      setTestNamesPair(testNamesPair);
-      setSearchByUnit(false);
     }
     if (testUnits.testUnits) {
       var testUnitsIdList = testUnits.testUnits.map((test) => test.id);
       setTestUnitsIdList(testUnitsIdList);
-      var testUnitsValueList = testUnits.testUnits.map((test) => test.value);
-      setTestUnitsValuesList(testUnitsValueList);
-      var testUnitsPair = testUnits.testUnits.map((test) => ({
-        id: test.id,
-        value: test.value,
-      }));
-      setTestUnitsPair(testUnitsPair);
-      setSearchByUnit(false);
     }
   }, [testNames, testUnits]);
 
@@ -229,10 +266,12 @@ function ReferredOutTests(props) {
     );
     testId = testId ? testId : "";
     getFromOpenElisServer("/rest/test-list", (fetchedTests) => {
-      let test = fetchedTests.find((test) => test.id === testId);
-      let testLabel = test ? test.value : "";
-      setTestUnits(testLabel);
-      getTests(fetchedTests);
+      const availableTests = Array.isArray(fetchedTests) ? fetchedTests : [];
+      let test = availableTests.find((test) => test.id === testId);
+      if (test) {
+        setTestNames({ testNames: [test] });
+      }
+      getTests(availableTests);
     });
 
     let testSectionId = new URLSearchParams(window.location.search).get(
@@ -242,14 +281,22 @@ function ReferredOutTests(props) {
     getFromOpenElisServer(
       "/rest/user-test-sections/" + Roles.RESULTS,
       (fetchedTestSections) => {
-        let testSection = fetchedTestSections.find(
+        const availableTestSections = Array.isArray(fetchedTestSections)
+          ? fetchedTestSections
+          : [];
+        let testSection = availableTestSections.find(
           (testSection) => testSection.id === testSectionId,
         );
-        let testSectionLabel = testSection ? testSection.value : "";
-        setTestNames(testSectionLabel);
-        fetchTestSections(fetchedTestSections);
+        if (testSection) {
+          setTestUnits({ testUnits: [testSection] });
+        }
+        fetchTestSections(availableTestSections);
       },
     );
+    return () => {
+      componentMounted.current = false;
+      latestSearchRequestId.current += 1;
+    };
   }, []);
 
   useEffect(() => {
@@ -259,47 +306,53 @@ function ReferredOutTests(props) {
     if (patientId) {
       let searchValues = {
         ...referredOutTestsFormValues,
-        patientId: patientId,
+        selectedPatientId: patientId,
       };
       setReferredOutTestsFormValues(searchValues);
-      handleSubmit(searchValues);
-      setSearchByPatient(false);
+      setSearchType(referredOutTestsFormValues.searchTypeValues[2]);
+      runReferralSearch({
+        searchTypeOverride: referredOutTestsFormValues.searchTypeValues[2],
+        formValuesOverride: searchValues,
+      });
     }
   }, []);
 
-  useEffect(() => {
-    if (selectedRowIds.length > 0) {
-      const selectedAnalysisIds = selectedRowIds.map((index) => {
-        return responseDataShow[index]?.analysisId;
-      });
-      setSelectedRowIdsPost(selectedAnalysisIds);
-    } else {
-      setSelectedRowIdsPost([]);
-    }
-  }, [selectedRowIds, responseDataShow]);
+  const isRowSelectable = (rowId) => {
+    const row = responseDataShow.find((candidate) => candidate.id === rowId);
+    return Boolean(row && !row.disabled && row.analysisId);
+  };
 
-  const renderCell = (cell, row, rowIndex) => {
+  const toggleRowSelection = (rowId) => {
+    if (!isRowSelectable(rowId)) return;
+    setSelectedRowIds((currentIds) =>
+      currentIds.includes(rowId)
+        ? currentIds.filter((selectedId) => selectedId !== rowId)
+        : [...currentIds, rowId],
+    );
+  };
+
+  const renderCell = (cell, row) => {
     if (cell.info.header === "select") {
       return (
         <TableSelectRow
           key={cell.id}
           id={cell.id}
-          checked={selectedRowIds.includes(rowIndex)}
+          checked={selectedRowIds.includes(row.id)}
+          disabled={!isRowSelectable(row.id)}
           name="selectRowCheckbox"
-          ariaLabel="selectRows"
-          onSelect={() => {
-            if (selectedRowIds.includes(rowIndex)) {
-              setSelectedRowIds(
-                selectedRowIds.filter((selectedId) => selectedId !== rowIndex),
-              );
-            } else {
-              setSelectedRowIds([...selectedRowIds, rowIndex]);
-            }
+          aria-label={intl.formatMessage({
+            id: selectedRowIds.includes(row.id)
+              ? "referral.unselect.row"
+              : "referral.select.row",
+          })}
+          onSelect={(event) => {
+            event?.stopPropagation();
+            toggleRowSelection(row.id);
           }}
         />
       );
     } else if (cell.info.header === "active") {
-      return <TableCell key={cell.id}>{cell.value.toString()}</TableCell>;
+      return <TableCell key={cell.id}>{String(cell.value ?? "—")}</TableCell>;
     } else if (cell.info.header === "notes") {
       return (
         <TableCell key={cell.id}>
@@ -309,9 +362,26 @@ function ReferredOutTests(props) {
         </TableCell>
       );
     } else {
-      return <TableCell key={cell.id}>{cell.value}</TableCell>;
+      return <TableCell key={cell.id}>{cell.value ?? "—"}</TableCell>;
     }
   };
+
+  const canSearchByUnit = Boolean(
+    referredOutTestsFormValues.startDate ||
+    referredOutTestsFormValues.endDate ||
+    testUnitsIdList.length ||
+    testNamesIdList.length,
+  );
+  const canSearchByPatient = Boolean(
+    referredOutTestsFormValues.selectedPatientId,
+  );
+  const canSearchByLabNumber = Boolean(
+    referredOutTestsFormValues.labNumberInput?.trim(),
+  );
+
+  const translateMenu = (messageId) =>
+    intl.formatMessage({ id: `carbon.${messageId}` });
+  const translateTable = (messageId) => intl.formatMessage({ id: messageId });
 
   return (
     <>
@@ -327,7 +397,12 @@ function ReferredOutTests(props) {
           </Section>
         </Column>
       </Grid>
-      {loading && <Loading />}
+      {loading && (
+        <Loading
+          withOverlay={false}
+          description={intl.formatMessage({ id: "referral.search.loading" })}
+        />
+      )}
       <div className="orderLegendBody">
         <Grid fullWidth={true}>
           <Column lg={16} md={8} sm={4}>
@@ -341,10 +416,6 @@ function ReferredOutTests(props) {
           <Column lg={16} md={8} sm={4}>
             <SearchPatientForm
               getSelectedPatient={getSelectedPatient}
-              // getDataOfBirth={getDataOfBirth}
-              onChange={() => {
-                setSearchByPatient(false);
-              }}
             ></SearchPatientForm>
           </Column>
           <br></br>
@@ -352,8 +423,13 @@ function ReferredOutTests(props) {
             <Button
               data-cy="referralsByPatient"
               type="button"
-              disabled={searchByPatient}
-              onClick={handleReferredOutPatient}
+              disabled={!canSearchByPatient || loading}
+              onClick={() =>
+                runReferralSearch({
+                  searchTypeOverride:
+                    referredOutTestsFormValues.searchTypeValues[2],
+                })
+              }
             >
               <FormattedMessage
                 id="referral.main.button"
@@ -369,9 +445,6 @@ function ReferredOutTests(props) {
           enableReinitialize={true}
           // validationSchema={}
           onSubmit={handleSubmit}
-          onChange={() => {
-            setSearchByUnit(false);
-          }}
         >
           {({
             values,
@@ -419,8 +492,8 @@ function ReferredOutTests(props) {
                         referredOutTestsFormValues.searchTypeValues[0],
                       );
                       setDateType(item.selectedItem.value);
-                      setSearchByUnit(false);
                     }}
+                    translateWithId={translateMenu}
                   />
                 </Column>
                 <Column lg={12} md={8} sm={4}>
@@ -481,26 +554,37 @@ function ReferredOutTests(props) {
                       setSearchType(
                         referredOutTestsFormValues.searchTypeValues[0],
                       );
-                      setSearchByUnit(false);
                     }}
                     selectionFeedback="top-after-reopen"
+                    locale={intl.locale}
+                    clearSelectionDescription={intl.formatMessage({
+                      id: "carbon.multiselect.totalSelected",
+                    })}
+                    clearSelectionText={intl.formatMessage({
+                      id: "carbon.multiselect.clearSelection",
+                    })}
+                    translateWithId={translateMenu}
                   />
                 </Column>
 
                 <Column lg={12} md={8} sm={4}>
                   {testUnits.testUnits &&
                     testUnits.testUnits.map((test, index) => (
-                      <Tag
+                      <DismissibleTag
                         key={index}
-                        filter
                         onClose={() => {
                           var info = { ...testUnits };
                           info["testUnits"].splice(index, 1);
                           setTestUnits(info);
                         }}
-                      >
-                        {test.value}
-                      </Tag>
+                        text={test.value}
+                        title={intl.formatMessage({
+                          id: "label.button.remove",
+                        })}
+                        dismissTooltipLabel={intl.formatMessage({
+                          id: "label.button.remove",
+                        })}
+                      />
                     ))}
                 </Column>
                 <Column lg={16} md={8} sm={4}>
@@ -523,26 +607,37 @@ function ReferredOutTests(props) {
                       setSearchType(
                         referredOutTestsFormValues.searchTypeValues[0],
                       );
-                      setSearchByUnit(false);
                     }}
                     selectionFeedback="top-after-reopen"
+                    locale={intl.locale}
+                    clearSelectionDescription={intl.formatMessage({
+                      id: "carbon.multiselect.totalSelected",
+                    })}
+                    clearSelectionText={intl.formatMessage({
+                      id: "carbon.multiselect.clearSelection",
+                    })}
+                    translateWithId={translateMenu}
                   />
                 </Column>
 
                 <Column lg={12} md={8} sm={4}>
                   {testNames.testNames &&
                     testNames.testNames.map((test, index) => (
-                      <Tag
+                      <DismissibleTag
                         key={index}
-                        filter
                         onClose={() => {
                           var info = { ...testNames };
                           info["testNames"].splice(index, 1);
                           setTestNames(info);
                         }}
-                      >
-                        {test.value}
-                      </Tag>
+                        text={test.value}
+                        title={intl.formatMessage({
+                          id: "label.button.remove",
+                        })}
+                        dismissTooltipLabel={intl.formatMessage({
+                          id: "label.button.remove",
+                        })}
+                      />
                     ))}
                 </Column>
                 <Column lg={16} md={8} sm={4}>
@@ -553,8 +648,13 @@ function ReferredOutTests(props) {
                   <Button
                     data-cy="byUnitsAndTests"
                     type="button"
-                    disabled={searchByUnit}
-                    onClick={handleReferredOutPatient}
+                    disabled={!canSearchByUnit || loading}
+                    onClick={() =>
+                      runReferralSearch({
+                        searchTypeOverride:
+                          referredOutTestsFormValues.searchTypeValues[0],
+                      })
+                    }
                   >
                     <FormattedMessage
                       id="referral.button.unitTestSearch"
@@ -590,7 +690,7 @@ function ReferredOutTests(props) {
                           setSearchType(
                             referredOutTestsFormValues.searchTypeValues[1],
                           );
-                          handleLabNumberSearch(e);
+                          handleLabNumberSearch(e, rawValue);
                         }}
                       />
                     )}
@@ -604,8 +704,13 @@ function ReferredOutTests(props) {
                   <Button
                     data-cy="byLabNumber"
                     type="button"
-                    disabled={searchByLabNumber}
-                    onClick={handleReferredOutPatient}
+                    disabled={!canSearchByLabNumber || loading}
+                    onClick={() =>
+                      runReferralSearch({
+                        searchTypeOverride:
+                          referredOutTestsFormValues.searchTypeValues[1],
+                      })
+                    }
                   >
                     <FormattedMessage
                       id="referral.button.labSearch"
@@ -619,290 +724,341 @@ function ReferredOutTests(props) {
           )}
         </Formik>
         <br />
-        <Grid fullWidth={true}>
-          <Column lg={4} md={8} sm={4}>
-            <span>
-              <FormattedMessage id="referral.matching.search" /> :
-            </span>{" "}
-          </Column>
-          <Column lg={4} md={8} sm={4}>
-            <Button
-              disabled={selectedRowIds.length === 0}
-              kind="tertiary"
-              type="button"
-              data-cy="print-report"
-              onClick={handleReferredOutPatientPrint}
-            >
-              <FormattedMessage
-                id="referral.print.selected.patient.reports"
-                defaultMessage="Print Selected Patient Reports"
-              />
-            </Button>{" "}
-          </Column>
-          <Column lg={4} md={8} sm={4}>
-            {responseDataShow && (
-              <Button
-                disabled={selectedRowIds.length === responseDataShow.length}
-                kind="tertiary"
-                type="button"
-                data-cy="select-all-button"
-                onClick={() => {
-                  const currentPageIndexes = responseDataShow
-                    .slice((page - 1) * pageSize, page * pageSize)
+        {searchStatus === "idle" && (
+          <InlineNotification
+            kind="info"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({ id: "referral.search.idle.title" })}
+            subtitle={intl.formatMessage({
+              id: "referral.search.idle.detail",
+            })}
+          />
+        )}
+        {searchStatus === "empty" && (
+          <InlineNotification
+            kind="info"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({ id: "referral.search.empty.title" })}
+            subtitle={intl.formatMessage({
+              id: "referral.search.empty.detail",
+            })}
+          />
+        )}
+        {searchStatus === "error" && (
+          <InlineNotification
+            kind="error"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({ id: "referral.search.error.title" })}
+            subtitle={intl.formatMessage({
+              id: "referral.search.error.detail",
+            })}
+          />
+        )}
+        {responseDataShow.length > 0 && (
+          <>
+            <Grid fullWidth={true}>
+              <Column lg={4} md={8} sm={4}>
+                <span>
+                  <FormattedMessage id="referral.matching.search" /> :
+                </span>{" "}
+              </Column>
+              <Column lg={4} md={8} sm={4}>
+                <Button
+                  disabled={selectedAnalysisIds.length === 0}
+                  kind="tertiary"
+                  type="button"
+                  data-cy="print-report"
+                  onClick={handleReferredOutPatientPrint}
+                >
+                  <FormattedMessage
+                    id="referral.print.selected.patient.reports"
+                    defaultMessage="Print Selected Patient Reports"
+                  />
+                </Button>{" "}
+              </Column>
+              <Column lg={4} md={8} sm={4}>
+                <Button
+                  disabled={responseDataShow
                     .filter((row) => !row.disabled)
-                    .map((_, index) => index);
+                    .every((row) => selectedRowIds.includes(row.id))}
+                  kind="tertiary"
+                  type="button"
+                  data-cy="select-all-button"
+                  onClick={() => {
+                    const allSelectableIds = responseDataShow
+                      .filter((row) => !row.disabled)
+                      .map((row) => row.id);
 
-                  setSelectedRowIds(currentPageIndexes);
-                }}
-              >
-                <FormattedMessage
-                  id="referral.print.selected.patient.reports.selectall.button"
-                  defaultMessage="Select All"
-                />
-              </Button>
-            )}{" "}
-          </Column>
-          <Column lg={4} md={8} sm={4}>
-            <Button
-              disabled={selectedRowIds.length === 0}
-              kind="tertiary"
-              type="button"
-              data-cy="select-none-button"
-              onClick={() => setSelectedRowIds([])}
-            >
-              <FormattedMessage
-                id="referral.print.selected.patient.reports.selectnone.button"
-                defaultMessage="Select None"
+                    setSelectedRowIds(allSelectableIds);
+                  }}
+                >
+                  <FormattedMessage
+                    id="referral.print.selected.patient.reports.selectall.button"
+                    defaultMessage="Select All"
+                  />
+                </Button>{" "}
+              </Column>
+              <Column lg={4} md={8} sm={4}>
+                <Button
+                  disabled={selectedRowIds.length === 0}
+                  kind="tertiary"
+                  type="button"
+                  data-cy="select-none-button"
+                  onClick={() => setSelectedRowIds([])}
+                >
+                  <FormattedMessage
+                    id="referral.print.selected.patient.reports.selectnone.button"
+                    defaultMessage="Select None"
+                  />
+                </Button>
+              </Column>
+            </Grid>
+            {reportStatus === "error" && (
+              <InlineNotification
+                kind="error"
+                lowContrast
+                hideCloseButton
+                title={intl.formatMessage({
+                  id: "reports.error.generationFailed",
+                })}
               />
-            </Button>
-          </Column>
-        </Grid>
-        <br />
-        <Grid fullWidth={true} className="gridBoundary">
-          <Column lg={16} md={8} sm={4}>
+            )}
             <br />
-            {responseDataShow && (
-              <DataTable
-                rows={responseDataShow.slice(
-                  (page - 1) * pageSize,
-                  page * pageSize,
-                )}
-                headers={[
-                  {
-                    key: "select",
-                    header: intl.formatMessage({
-                      id: "organization.type.CI.select",
-                    }),
-                  },
-                  {
-                    key: "resultDate",
-                    header: intl.formatMessage({
-                      id: "referral.search.column.resultDate",
-                    }),
-                  },
-                  {
-                    key: "accessionNumber",
-                    header: intl.formatMessage({
-                      id: "sample.label.labnumber",
-                    }),
-                  },
-                  {
-                    key: "referredSendDate",
-                    header: intl.formatMessage({
-                      id: "referral.search.column.sentDate",
-                    }),
-                  },
-                  {
-                    key: "referralStatusDisplay",
-                    header: intl.formatMessage({
-                      id: "label.filters.status",
-                    }),
-                  },
-                  {
-                    key: "patientLastName",
-                    header: intl.formatMessage({
-                      id: "eorder.name.last",
-                    }),
-                  },
-                  {
-                    key: "patientFirstName",
-                    header: intl.formatMessage({
-                      id: "eorder.name.first",
-                    }),
-                  },
-                  {
-                    key: "referringTestName",
-                    header: intl.formatMessage({
-                      id: "eorder.test.name",
-                    }),
-                  },
-                  {
-                    key: "referralResultsDisplay",
-                    header: intl.formatMessage({
-                      id: "column.name.result",
-                    }),
-                  },
-                  {
-                    key: "referenceLabDisplay",
-                    header: intl.formatMessage({
-                      id: "referral.search.column.referenceLab",
-                    }),
-                  },
-                  {
-                    key: "notes",
-                    header: intl.formatMessage({
-                      id: "column.name.notes",
-                    }),
-                  },
-                ]}
-              >
-                {({
-                  rows,
-                  headers,
-                  getHeaderProps,
-                  getTableProps,
-                  getSelectionProps,
-                }) => (
-                  <TableContainer>
-                    <Table {...getTableProps()}>
-                      <TableHead>
-                        <TableRow>
-                          <TableSelectAll
-                            id="table-select-all"
-                            {...getSelectionProps()}
-                            checked={
-                              selectedRowIds.length === pageSize &&
-                              responseDataShow
-                                .slice((page - 1) * pageSize, page * pageSize)
-                                .filter(
-                                  (row, index) =>
-                                    !row.disabled &&
-                                    selectedRowIds.includes(index),
-                                ).length === pageSize
-                            }
-                            indeterminate={
-                              selectedRowIds.length > 0 &&
-                              selectedRowIds.length <
+            <Grid fullWidth={true} className="gridBoundary">
+              <Column lg={16} md={8} sm={4}>
+                <br />
+                <DataTable
+                  rows={responseDataShow.slice(
+                    (page - 1) * pageSize,
+                    page * pageSize,
+                  )}
+                  headers={[
+                    {
+                      key: "select",
+                      header: intl.formatMessage({
+                        id: "referral.select.column",
+                      }),
+                    },
+                    {
+                      key: "resultDate",
+                      header: intl.formatMessage({
+                        id: "referral.search.column.resultDate",
+                      }),
+                    },
+                    {
+                      key: "accessionNumber",
+                      header: intl.formatMessage({
+                        id: "sample.label.labnumber",
+                      }),
+                    },
+                    {
+                      key: "referredSendDate",
+                      header: intl.formatMessage({
+                        id: "referral.search.column.sentDate",
+                      }),
+                    },
+                    {
+                      key: "referralStatusDisplay",
+                      header: intl.formatMessage({
+                        id: "label.filters.status",
+                      }),
+                    },
+                    {
+                      key: "patientLastName",
+                      header: intl.formatMessage({
+                        id: "eorder.name.last",
+                      }),
+                    },
+                    {
+                      key: "patientFirstName",
+                      header: intl.formatMessage({
+                        id: "eorder.name.first",
+                      }),
+                    },
+                    {
+                      key: "referringTestName",
+                      header: intl.formatMessage({
+                        id: "eorder.test.name",
+                      }),
+                    },
+                    {
+                      key: "referralResultsDisplay",
+                      header: intl.formatMessage({
+                        id: "column.name.result",
+                      }),
+                    },
+                    {
+                      key: "referenceLabDisplay",
+                      header: intl.formatMessage({
+                        id: "referral.search.column.referenceLab",
+                      }),
+                    },
+                    {
+                      key: "notes",
+                      header: intl.formatMessage({
+                        id: "column.name.notes",
+                      }),
+                    },
+                  ]}
+                  translateWithId={translateTable}
+                >
+                  {({
+                    rows,
+                    headers,
+                    getHeaderProps,
+                    getTableProps,
+                    getSelectionProps,
+                  }) => (
+                    <TableContainer>
+                      <Table {...getTableProps()}>
+                        <TableHead>
+                          <TableRow>
+                            <TableSelectAll
+                              id="table-select-all"
+                              {...getSelectionProps()}
+                              checked={
                                 responseDataShow
                                   .slice((page - 1) * pageSize, page * pageSize)
-                                  .filter((row) => !row.disabled).length
-                            }
-                            onSelect={() => {
-                              const currentPageIds = responseDataShow
-                                .slice((page - 1) * pageSize, page * pageSize)
-                                .filter((row) => !row.disabled)
-                                .map((row, index) => index);
-                              if (
-                                selectedRowIds.length === pageSize &&
-                                currentPageIds.every((index) =>
-                                  selectedRowIds.includes(index),
-                                )
-                              ) {
-                                setSelectedRowIds([]);
-                              } else {
-                                setSelectedRowIds(
-                                  currentPageIds.filter(
-                                    (index) => !selectedRowIds.includes(index),
-                                  ),
-                                );
+                                  .filter((row) => !row.disabled).length > 0 &&
+                                responseDataShow
+                                  .slice((page - 1) * pageSize, page * pageSize)
+                                  .filter((row) => !row.disabled)
+                                  .every((row) =>
+                                    selectedRowIds.includes(row.id),
+                                  )
                               }
-                            }}
-                          />
-                          {headers.map(
-                            (header) =>
-                              header.key !== "select" && (
-                                <TableHeader
-                                  key={header.key}
-                                  {...getHeaderProps({ header })}
-                                >
-                                  {header.header}
-                                </TableHeader>
-                              ),
-                          )}
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        <>
-                          {rows.map((row, rowIndex) => (
-                            <TableRow
-                              key={row.id}
-                              onClick={() => {
-                                const index = responseDataShow.findIndex(
-                                  (item) => item.id === row.id,
-                                );
-                                const isSelected =
-                                  selectedRowIds.includes(index);
-                                if (isSelected) {
-                                  setSelectedRowIds(
-                                    selectedRowIds.filter(
-                                      (selectedId) => selectedId !== index,
+                              indeterminate={
+                                responseDataShow
+                                  .slice((page - 1) * pageSize, page * pageSize)
+                                  .filter(
+                                    (row) =>
+                                      !row.disabled &&
+                                      selectedRowIds.includes(row.id),
+                                  ).length > 0 &&
+                                !responseDataShow
+                                  .slice((page - 1) * pageSize, page * pageSize)
+                                  .filter((row) => !row.disabled)
+                                  .every((row) =>
+                                    selectedRowIds.includes(row.id),
+                                  )
+                              }
+                              onSelect={() => {
+                                const currentPageIds = responseDataShow
+                                  .slice((page - 1) * pageSize, page * pageSize)
+                                  .filter((row) => !row.disabled)
+                                  .map((row) => row.id);
+                                if (
+                                  currentPageIds.every((index) =>
+                                    selectedRowIds.includes(index),
+                                  )
+                                ) {
+                                  setSelectedRowIds((currentIds) =>
+                                    currentIds.filter(
+                                      (selectedId) =>
+                                        !currentPageIds.includes(selectedId),
                                     ),
                                   );
                                 } else {
-                                  setSelectedRowIds([...selectedRowIds, index]);
+                                  setSelectedRowIds((currentIds) =>
+                                    Array.from(
+                                      new Set([
+                                        ...currentIds,
+                                        ...currentPageIds,
+                                      ]),
+                                    ),
+                                  );
                                 }
                               }}
-                            >
-                              {row.cells.map((cell) =>
-                                renderCell(cell, row, rowIndex),
-                              )}
-                            </TableRow>
-                          ))}
-                        </>
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                )}
-              </DataTable>
-            )}
-            {responseDataShow && (
-              <Pagination
-                onChange={handlePageChange}
-                page={page}
-                pageSize={pageSize}
-                pageSizes={[5, 10, 20]}
-                totalItems={responseDataShow.length}
-                forwardText={intl.formatMessage({
-                  id: "pagination.forward",
-                })}
-                backwardText={intl.formatMessage({
-                  id: "pagination.backward",
-                })}
-                itemRangeText={(min, max, total) =>
-                  intl.formatMessage(
-                    { id: "pagination.item-range" },
-                    { min: min, max: max, total: total },
-                  )
-                }
-                itemsPerPageText={intl.formatMessage({
-                  id: "pagination.items-per-page",
-                })}
-                itemText={(min, max) =>
-                  intl.formatMessage(
-                    { id: "pagination.item" },
-                    { min: min, max: max },
-                  )
-                }
-                pageNumberText={intl.formatMessage({
-                  id: "pagination.page-number",
-                })}
-                pageRangeText={(_current, total) =>
-                  intl.formatMessage(
-                    { id: "pagination.page-range" },
-                    { total: total },
-                  )
-                }
-                pageText={(page, pagesUnknown) =>
-                  intl.formatMessage(
-                    { id: "pagination.page" },
-                    { page: pagesUnknown ? "" : page },
-                  )
-                }
-              />
-            )}
-            <br />
-          </Column>
-        </Grid>
+                            />
+                            {headers.map(
+                              (header) =>
+                                header.key !== "select" && (
+                                  <TableHeader
+                                    key={header.key}
+                                    {...getHeaderProps({ header })}
+                                  >
+                                    {header.header}
+                                  </TableHeader>
+                                ),
+                            )}
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          <>
+                            {rows.map((row) => (
+                              <TableRow
+                                key={row.id}
+                                aria-disabled={!isRowSelectable(row.id)}
+                                onClick={() => {
+                                  toggleRowSelection(row.id);
+                                }}
+                              >
+                                {row.cells.map((cell) => renderCell(cell, row))}
+                              </TableRow>
+                            ))}
+                          </>
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </DataTable>
+                <Pagination
+                  onChange={handlePageChange}
+                  page={page}
+                  pageSize={pageSize}
+                  pageSizes={[5, 10, 20]}
+                  totalItems={responseDataShow.length}
+                  forwardText={intl.formatMessage({
+                    id: "pagination.forward",
+                  })}
+                  backwardText={intl.formatMessage({
+                    id: "pagination.backward",
+                  })}
+                  itemRangeText={(min, max, total) =>
+                    intl.formatMessage(
+                      { id: "pagination.item-range" },
+                      { min: min, max: max, total: total },
+                    )
+                  }
+                  itemsPerPageText={intl.formatMessage({
+                    id: "pagination.items-per-page",
+                  })}
+                  itemText={(min, max) =>
+                    intl.formatMessage(
+                      { id: "pagination.item" },
+                      { min: min, max: max },
+                    )
+                  }
+                  pageNumberText={intl.formatMessage({
+                    id: "pagination.page-number",
+                  })}
+                  pageSelectLabelText={(total) =>
+                    intl.formatMessage(
+                      { id: "pagination.page-select" },
+                      { total },
+                    )
+                  }
+                  pageRangeText={(_current, total) =>
+                    intl.formatMessage(
+                      { id: "pagination.page-range" },
+                      { total: total },
+                    )
+                  }
+                  pageText={(page, pagesUnknown) =>
+                    intl.formatMessage(
+                      { id: "pagination.page" },
+                      { page: pagesUnknown ? "" : page },
+                    )
+                  }
+                />
+                <br />
+              </Column>
+            </Grid>
+          </>
+        )}
       </div>
     </>
   );

@@ -87,7 +87,7 @@ public class SampleServiceTest extends BaseWebContextSensitiveTest {
 
     @Test
     public void getSamplesReceivedOn_shouldReturnSamplesOnDate() throws Exception {
-        int receivedSamples = sampleService.getSamplesReceivedOn("04/06/2024").size();
+        int receivedSamples = sampleService.getSamplesReceivedOn("2024/06/04").size();
         Assert.assertEquals(1, receivedSamples);
     }
 
@@ -99,7 +99,7 @@ public class SampleServiceTest extends BaseWebContextSensitiveTest {
     @Test
     public void getReceivedDateForDisplay_shouldReturnReceivedDateForDisplay() throws Exception {
         Sample savedSample = sampleService.get("2");
-        Assert.assertEquals("04/06/2024", sampleService.getReceivedDateForDisplay(savedSample));
+        Assert.assertEquals("2024/06/04", sampleService.getReceivedDateForDisplay(savedSample));
     }
 
     @Test
@@ -125,7 +125,7 @@ public class SampleServiceTest extends BaseWebContextSensitiveTest {
     @Test
     public void getReceivedDateWithTwoYearDisplay_shouldReturnReceivedDateWithTwoYearDisplay() throws Exception {
         Sample savedSample = sampleService.get("2");
-        Assert.assertEquals("04/06/24", sampleService.getReceivedDateWithTwoYearDisplay(savedSample));
+        Assert.assertEquals("24/06/04", sampleService.getReceivedDateWithTwoYearDisplay(savedSample));
     }
 
     @Test
@@ -150,7 +150,7 @@ public class SampleServiceTest extends BaseWebContextSensitiveTest {
 
     @Test
     public void getSamplesCollectedOn_shouldReturnSamplesCollected() {
-        Assert.assertEquals(2, sampleService.getSamplesCollectedOn("03/06/2024").size());
+        Assert.assertEquals(2, sampleService.getSamplesCollectedOn("2024/06/03").size());
     }
 
     @Test
@@ -160,7 +160,7 @@ public class SampleServiceTest extends BaseWebContextSensitiveTest {
 
     @Test
     public void getSamplesReceivedInDateRange_shouldReturnSamplesReceivedInDateRange() {
-        Assert.assertEquals(2, sampleService.getSamplesReceivedInDateRange("03/06/2024", "04/06/2024").size());
+        Assert.assertEquals(2, sampleService.getSamplesReceivedInDateRange("2024/06/03", "2024/06/04").size());
     }
 
     @Test

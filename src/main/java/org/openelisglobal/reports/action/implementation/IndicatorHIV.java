@@ -41,7 +41,8 @@ import org.openelisglobal.samplehuman.service.SampleHumanService;
 import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.test.service.TestServiceImpl;
 
-public class IndicatorHIV extends IndicatorReport implements IReportCreator, IReportParameterSetter {
+public class IndicatorHIV extends IndicatorReport
+        implements IReportCreator, IReportParameterSetter, SafeNonPatientReportCreator {
 
     private static final long INFANT_TIME = 1000L * 60L * 60L * 24L * 28L;
     protected static final String HIV = "VCT";

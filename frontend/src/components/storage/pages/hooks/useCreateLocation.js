@@ -19,11 +19,7 @@ export default function useCreateLocation() {
           }
 
           reject(
-            new Error(
-              response?.message ||
-                response?.error ||
-                "Failed to create storage location",
-            ),
+            new Error(response?.message || response?.error || "新建库位失败"),
           );
         },
       );

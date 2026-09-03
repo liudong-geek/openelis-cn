@@ -28,7 +28,8 @@ import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.samplehuman.service.SampleHumanService;
 import org.openelisglobal.spring.util.SpringContext;
 
-public class RetroCIPatientAssociatedReport extends CollectionReport implements IReportParameterSetter {
+public class RetroCIPatientAssociatedReport extends CollectionReport
+        implements IReportParameterSetter, ResultsScopedReportCreator.UnsupportedPatientAssociatedSelection {
 
     private ObservationHistoryService ohService = SpringContext.getBean(ObservationHistoryService.class);
     private SampleHumanService sampleHumanService = SpringContext.getBean(SampleHumanService.class);

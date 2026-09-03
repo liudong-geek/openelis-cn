@@ -246,7 +246,10 @@ const EOrderSearch = ({
             setStatusId(e.target.value);
           }}
         >
-          <SelectItem value="" text="All Statuses" />
+          <SelectItem
+            value=""
+            text={intl.formatMessage({ id: "order.status.all" })}
+          />
           {statusOptions.map((statusOption, index) => {
             return (
               <SelectItem
@@ -291,7 +294,12 @@ const EOrderSearch = ({
         </Column>
       )}
       <Column lg={16} md={8} sm={4}>
-        {loading && <Loading description="Loading Orders..." small={true} />}
+        {loading && (
+          <Loading
+            description={intl.formatMessage({ id: "loading.description" })}
+            small={true}
+          />
+        )}
       </Column>
 
       <>
@@ -318,7 +326,9 @@ const EOrderSearch = ({
                   onClick={loadPreviousResultsPage}
                   disabled={previousPage != null ? false : true}
                   renderIcon={ArrowLeft}
-                  iconDescription="previous"
+                  iconDescription={intl.formatMessage({
+                    id: "pagination.previous",
+                  })}
                 ></Button>
                 <Button
                   hasIconOnly
@@ -326,7 +336,9 @@ const EOrderSearch = ({
                   onClick={loadNextResultsPage}
                   disabled={nextPage != null ? false : true}
                   renderIcon={ArrowRight}
-                  iconDescription="next"
+                  iconDescription={intl.formatMessage({
+                    id: "pagination.next",
+                  })}
                 ></Button>
               </div>
             </>

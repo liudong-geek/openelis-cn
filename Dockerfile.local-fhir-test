@@ -1,0 +1,8 @@
+# Local incremental API regression build. This never changes the running DB.
+FROM openelis-cn-p1-test:latest AS fhir-test
+WORKDIR /build
+COPY src /build/src
+RUN --mount=type=cache,target=/root/.m2,sharing=locked \
+    [ -d /root/.m2/repository/org/itech ] || { mkdir -p /root/.m2/repository/org && cp -r /build/dataexport-m2/org/itech /root/.m2/repository/org/; } \
+    && mvn package -DskipITs=true -Dspotless.check.skip=true \
+      -Dtest=FhirOrganizationImportServiceTest,FhirOrderIntakeValidatorTest,FhirOrderIntakeServiceTest,FhirObservationIntakeGuardTest,FhirClinicalTestReadinessTest,RequesterMasterDataValidatorTest,ServiceRequestProviderTest,ObservationProviderSafetyTest,SamplePatientEntryFormLabelBindingTest,FhirTestCodeMappingTest

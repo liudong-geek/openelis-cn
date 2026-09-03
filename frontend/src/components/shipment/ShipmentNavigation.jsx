@@ -74,7 +74,10 @@ const ShipmentNavigation = () => {
         onChange={handleTabChange}
         autoWidth
       >
-        <TabList aria-label="Shipment navigation tabs" contained>
+        <TabList
+          aria-label={intl.formatMessage({ id: "shipment.navigation.aria" })}
+          contained
+        >
           {navigationOptions.map((option) => {
             const IconComponent = option.icon;
             return (

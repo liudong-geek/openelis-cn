@@ -12,6 +12,24 @@ code {
     source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 
+/* Carbon date inputs use fixed logical widths (18rem for a single date and
+ * 8.96875rem in a range). The application lays them inside responsive grids,
+ * so make the shared date component fluid at every nesting layer, including
+ * Flatpickr's runtime span wrapper. */
+.oe-custom-date-picker,
+.oe-custom-date-picker .cds--date-picker,
+.oe-custom-date-picker .cds--date-picker-container,
+.oe-custom-date-picker .cds--date-picker-input__wrapper,
+.oe-custom-date-picker .cds--date-picker-input__wrapper > span {
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.oe-custom-date-picker .cds--date-picker__input {
+  inline-size: 100% !important;
+  min-inline-size: 0;
+}
+
 /*
  * Site Branding - Header Color
  *
@@ -45,6 +63,7 @@ a.cds--header__name.cds--header__name > span {
   left: 0;
   width: 100%;
   height: 100%;
+  overflow: hidden;
   display: flex;
   justify-content: flex-end;
   /* Align the SlideOver to the right */
@@ -59,7 +78,15 @@ a.cds--header__name.cds--header__name > span {
   pointer-events: none;
 }
 
+/* A translated off-canvas panel still participates in the document overflow
+ * calculation in Chromium. Remove the closed notification panel from layout
+ * entirely so every application page keeps the same viewport width. */
+.slide-over-root:not(.show) {
+  display: none;
+}
+
 .slide-over-root.show {
+  display: flex;
   visibility: visible;
   opacity: 1;
   pointer-events: auto;
@@ -80,7 +107,7 @@ a.cds--header__name.cds--header__name > span {
 }
 
 .slide-over-panel {
-  position: fixed;
+  position: absolute;
   top: 53px;
   /* Adjust this value based on the height of your header */
   transition:

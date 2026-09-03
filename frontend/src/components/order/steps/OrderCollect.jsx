@@ -1,8 +1,11 @@
+import { pushWithListContext } from "../../common/listWorkspace";
 import React, { useContext, useState, useEffect, useRef } from "react";
 import { useHistory } from "react-router-dom";
 import { useIntl } from "react-intl";
-import { Stack, InlineNotification } from "@carbon/react";
+import { Stack, Button } from "@carbon/react";
+import { ArrowLeft, WarningAlt } from "@carbon/icons-react";
 import OrderWorkflowLayout from "../OrderWorkflowLayout";
+import OrderTaskStartState from "../OrderTaskStartState";
 import { useOrderContext } from "../OrderContext";
 import { NotificationContext } from "../../layout/Layout";
 import {
@@ -28,6 +31,14 @@ import "../order-workflow.scss";
  * 1. Requested Tests - Shows ordered tests with sample type assignment
  * 2. Samples - Collection details for each sample
  */
+
+export const isFutureCollectionTimestamp = (sample, now = new Date()) => {
+  if (!sample.collectionDate || !sample.collectionTime) return false;
+  const collectionTime = new Date(
+    `${sample.collectionDate}T${sample.collectionTime}:00`,
+  );
+  return !Number.isNaN(collectionTime.getTime()) && collectionTime > now;
+};
 
 const OrderCollect = () => {
   const intl = useIntl();
@@ -195,16 +206,65 @@ const OrderCollect = () => {
     }
   }, [orderData?.sampleOrderItems?.labNo, samples, loadOrder]);
 
-  // Validate that at least one sample with a sample type is present.
-  // Informed consent is advisory only (FRS FR-5-001/FR-5-002) — does not gate submission.
-  const canProceed = samples?.length > 0 && samples.some((s) => s.sampleTypeId);
-
   // Check if we have any tests ordered
   const hasOrderedTests = samples.some(
     (s) => (s.tests && s.tests.length > 0) || (s.panels && s.panels.length > 0),
   );
 
+  const hasFutureCollectionTime = samples.some((sample) =>
+    isFutureCollectionTimestamp(sample),
+  );
+
+  // A collection cannot move forward without both an ordered test and a typed
+  // specimen. Informed consent remains advisory (FRS FR-5-001/FR-5-002).
+  const canProceed =
+    hasOrderedTests &&
+    samples?.length > 0 &&
+    samples.some((s) => s.sampleTypeId) &&
+    !hasFutureCollectionTime;
+
+  const hasLoadedOrder = Boolean(orderId || orderData?.sampleOrderItems?.labNo);
+
+  if (!hasLoadedOrder) {
+    return (
+      <OrderWorkflowLayout
+        currentStep={1}
+        title="order.step.collect"
+        showSaveButtons={false}
+        showWorkflowProgress={false}
+      >
+        <OrderTaskStartState taskLabel="order.step.collect" />
+      </OrderWorkflowLayout>
+    );
+  }
+
+  const showFutureCollectionError = () => {
+    addNotification({
+      kind: NotificationKinds.error,
+      title: intl.formatMessage({ id: "notification.title" }),
+      message: intl.formatMessage({ id: "collect.sample.futureTime" }),
+    });
+    setNotificationVisible(true);
+  };
+
+  const getSaveErrorMessage = (error) => {
+    const backendMessage = error?.message || "";
+    if (/future/i.test(backendMessage)) {
+      return intl.formatMessage({ id: "collect.sample.futureTime" });
+    }
+    if (/date.*valid|valid date/i.test(backendMessage)) {
+      return intl.formatMessage({ id: "collect.sample.invalidDate" });
+    }
+    return backendMessage && backendMessage !== "Failed to save order"
+      ? backendMessage
+      : intl.formatMessage({ id: "server.error.msg" });
+  };
+
   const handleSave = async () => {
+    if (hasFutureCollectionTime) {
+      showFutureCollectionError();
+      return;
+    }
     try {
       await saveOrder();
       addNotification({
@@ -217,22 +277,26 @@ const OrderCollect = () => {
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "server.error.msg" }),
+        message: getSaveErrorMessage(error),
       });
       setNotificationVisible(true);
     }
   };
 
   const handleSaveAndNext = async () => {
+    if (hasFutureCollectionTime) {
+      showFutureCollectionError();
+      return;
+    }
     try {
       await saveOrder();
       markStepComplete("collect");
-      history.push("/order/label");
+      pushWithListContext(history, "/order/label");
     } catch (error) {
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "server.error.msg" }),
+        message: getSaveErrorMessage(error),
       });
       setNotificationVisible(true);
     }
@@ -261,56 +325,62 @@ const OrderCollect = () => {
       canProceed={canProceed}
       onSave={handleSave}
       onSaveAndNext={handleSaveAndNext}
+      blockingReasons={[
+        ...(!hasOrderedTests ? ["collect.noTestsWarning.title"] : []),
+        ...(hasFutureCollectionTime ? ["collect.sample.futureTime"] : []),
+      ]}
     >
       {notificationVisible && <AlertDialog />}
 
-      <Stack gap={7}>
-        {/* Warning if no tests ordered */}
-        {!hasOrderedTests && (
-          <InlineNotification
-            kind="warning"
-            title={intl.formatMessage({
-              id: "collect.noTestsWarning.title",
-              defaultMessage: "No tests ordered",
-            })}
-            subtitle={intl.formatMessage({
-              id: "collect.noTestsWarning.subtitle",
-              defaultMessage:
-                "Go back to Step 1 (Enter Order) to add tests and panels before collecting samples.",
-            })}
-            hideCloseButton
-            lowContrast
+      {!hasOrderedTests ? (
+        <section className="order-blocked-state" role="status">
+          <span className="order-blocked-state__icon" aria-hidden="true">
+            <WarningAlt size={28} />
+          </span>
+          <div className="order-blocked-state__copy">
+            <h3>
+              {intl.formatMessage({ id: "collect.noTestsWarning.title" })}
+            </h3>
+            <p>
+              {intl.formatMessage({ id: "collect.noTestsWarning.subtitle" })}
+            </p>
+          </div>
+          <Button
+            kind="primary"
+            renderIcon={ArrowLeft}
+            onClick={() => pushWithListContext(history, "/order/enter")}
+          >
+            {intl.formatMessage({ id: "order.step.enter" })}
+          </Button>
+        </section>
+      ) : (
+        <Stack gap={6} className="order-collect-sections">
+          <RequestedTestsSection
+            samples={samples}
+            setSamples={setSamples}
+            testSampleAssignments={testSampleAssignments}
+            assignTestToSample={assignTestToSample}
+            removeTestFromSample={removeTestFromSample}
+            sampleTypes={sampleTypes}
+            isReadOnly={isReadOnly && !isEditMode}
           />
-        )}
 
-        {/* Section 1: Requested Tests */}
-        <RequestedTestsSection
-          samples={samples}
-          setSamples={setSamples}
-          testSampleAssignments={testSampleAssignments}
-          assignTestToSample={assignTestToSample}
-          removeTestFromSample={removeTestFromSample}
-          sampleTypes={sampleTypes}
-          isReadOnly={isReadOnly && !isEditMode}
-        />
+          <ConsentAccordionSection
+            consentData={consentData}
+            onConsentChange={handleConsentChange}
+            isReadOnly={isReadOnly && !isEditMode}
+          />
 
-        {/* Section 2: Informed Consent */}
-        <ConsentAccordionSection
-          consentData={consentData}
-          onConsentChange={handleConsentChange}
-          isReadOnly={isReadOnly && !isEditMode}
-        />
-
-        {/* Section 3: Samples Collection */}
-        <SamplesCollectionSection
-          samples={samples}
-          setSamples={setSamples}
-          sampleTypes={sampleTypes}
-          unitOfMeasures={unitOfMeasures}
-          updateSampleCollectionDetails={updateSampleCollectionDetails}
-          isReadOnly={isReadOnly && !isEditMode}
-        />
-      </Stack>
+          <SamplesCollectionSection
+            samples={samples}
+            setSamples={setSamples}
+            sampleTypes={sampleTypes}
+            unitOfMeasures={unitOfMeasures}
+            updateSampleCollectionDetails={updateSampleCollectionDetails}
+            isReadOnly={isReadOnly && !isEditMode}
+          />
+        </Stack>
+      )}
     </OrderWorkflowLayout>
   );
 };

@@ -87,7 +87,7 @@ export default function QueryStatusModal({
     <ComposedModal
       open={open}
       onClose={handleClose}
-      aria-label="Query Status"
+      aria-label="分析仪查询状态"
       data-testid="query-status-modal"
       preventCloseOnClickOutside={false}
     >

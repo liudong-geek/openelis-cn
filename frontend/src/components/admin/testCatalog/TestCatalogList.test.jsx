@@ -36,12 +36,13 @@ import { BrowserRouter } from "react-router-dom";
 import TestCatalogList from "./TestCatalogList";
 import { getFromOpenElisServer } from "../../utils/Utils";
 import messages from "../../../languages/en.json";
+import zhMessages from "../../../languages/zh_CN.json";
 
 // ========== HELPERS ==========
-const renderList = () =>
+const renderList = ({ locale = "en", catalogMessages = messages } = {}) =>
   render(
     <BrowserRouter>
-      <IntlProvider locale="en" messages={messages}>
+      <IntlProvider locale={locale} messages={catalogMessages}>
         <TestCatalogList />
       </IntlProvider>
     </BrowserRouter>,
@@ -84,10 +85,42 @@ describe("TestCatalogList", () => {
 
   it("shows an empty state when no tests match", async () => {
     getFromOpenElisServer.mockImplementation((url, cb) => cb(pageOf([])));
-    renderList();
+    const { container } = renderList();
     expect(
       await screen.findByText(messages["label.testCatalog.list.empty"]),
     ).toBeInTheDocument();
+    expect(container.querySelector(".cds--pagination")).not.toBeInTheDocument();
+  });
+
+  it("retries a failed catalog request without losing the page", async () => {
+    let testRequestCount = 0;
+    getFromOpenElisServer.mockImplementation((url, cb) => {
+      if (!url.includes("/tests?")) return cb([]);
+      testRequestCount += 1;
+      return cb(
+        testRequestCount === 1
+          ? undefined
+          : pageOf([
+              {
+                testId: "7",
+                name: "Glucose",
+                code: "GLU",
+                domain: "CLINICAL",
+                active: true,
+              },
+            ]),
+      );
+    });
+    renderList();
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: messages["button.testCatalog.retry"],
+      }),
+    );
+
+    expect(await screen.findByText("Glucose")).toBeInTheDocument();
+    expect(testRequestCount).toBe(2);
   });
 
   it("restores filter state from the URL and sends it to the server", async () => {
@@ -142,6 +175,33 @@ describe("TestCatalogList", () => {
     renderList();
     const cell = await screen.findByText("Glucose");
     fireEvent.click(cell.closest("tr"));
+    expect(mockHistory.push).toHaveBeenCalledWith(
+      "/MasterListsPage/TestCatalogEditor/7/basic-info",
+    );
+  });
+
+  it("provides an explicit edit action for users who do not discover row click", async () => {
+    getFromOpenElisServer.mockImplementation((url, cb) =>
+      cb(
+        url.includes("/tests")
+          ? pageOf([
+              {
+                testId: "7",
+                name: "Glucose",
+                domain: "CLINICAL",
+                active: true,
+              },
+            ])
+          : [],
+      ),
+    );
+    renderList();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Edit Glucose" }),
+    );
+
+    expect(mockHistory.push).toHaveBeenCalledTimes(1);
     expect(mockHistory.push).toHaveBeenCalledWith(
       "/MasterListsPage/TestCatalogEditor/7/basic-info",
     );
@@ -202,5 +262,48 @@ describe("TestCatalogList", () => {
     expect(mockHistory.push).toHaveBeenCalledWith(
       "/MasterListsPage/TestCatalogEditor/new/basic-info",
     );
+  });
+
+  it("renders the high-frequency list controls in Simplified Chinese", async () => {
+    getFromOpenElisServer.mockImplementation((url, cb) =>
+      cb(
+        url.includes("/tests")
+          ? pageOf([
+              {
+                testId: "7",
+                name: "葡萄糖",
+                code: "GLU",
+                domain: "CLINICAL",
+                active: true,
+              },
+            ])
+          : [],
+      ),
+    );
+    renderList({ locale: "zh-CN", catalogMessages: zhMessages });
+
+    expect(await screen.findByText("葡萄糖")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "检验项目目录" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("按项目名称或项目编码搜索"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "新建检验项目" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("项目编码")).toBeInTheDocument();
+    expect(screen.getByText("业务域")).toBeInTheDocument();
+    expect(screen.getByText("临床检验")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "编辑检验项目“葡萄糖”" }),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "选择检验项目“葡萄糖”" }),
+    );
+    expect(screen.getByText("已选择 1 个检验项目")).toBeInTheDocument();
+    expect(screen.getByText("取消")).toBeInTheDocument();
+    expect(screen.getByText("每页项数")).toBeInTheDocument();
+    expect(screen.getByText("第 1–1 项，共 1 项")).toBeInTheDocument();
   });
 });

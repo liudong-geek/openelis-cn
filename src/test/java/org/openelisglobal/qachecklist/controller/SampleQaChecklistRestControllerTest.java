@@ -166,6 +166,7 @@ public class SampleQaChecklistRestControllerTest {
 
     @Test
     public void saveQaChecklist_withNumericSampleId_saves() {
+        when(sampleQaChecklistService.getActiveChecklistItems()).thenReturn(buildActiveChecklistItems());
         SampleQaChecklist saved = buildChecklist(42, true);
         saved.setId(1);
         when(sampleQaChecklistService.saveOrUpdateChecklist(eq(42), any(), any())).thenReturn(saved);
@@ -186,6 +187,7 @@ public class SampleQaChecklistRestControllerTest {
 
     @Test
     public void saveQaChecklist_withStringSampleId_saves() {
+        when(sampleQaChecklistService.getActiveChecklistItems()).thenReturn(buildActiveChecklistItems());
         SampleQaChecklist saved = buildChecklist(7, false);
         saved.setId(2);
         when(sampleQaChecklistService.saveOrUpdateChecklist(eq(7), any(), any())).thenReturn(saved);
@@ -201,6 +203,7 @@ public class SampleQaChecklistRestControllerTest {
 
     @Test
     public void saveQaChecklist_withLabNumber_resolvesAndSaves() {
+        when(sampleQaChecklistService.getActiveChecklistItems()).thenReturn(buildActiveChecklistItems());
         Sample sample = new Sample();
         sample.setId("10");
         when(sampleService.getSampleByAccessionNumber("LAB002")).thenReturn(sample);
@@ -220,6 +223,7 @@ public class SampleQaChecklistRestControllerTest {
 
     @Test
     public void saveQaChecklist_withInvalidStringSampleId_returns400() {
+        when(sampleQaChecklistService.getActiveChecklistItems()).thenReturn(buildActiveChecklistItems());
         Map<String, Object> body = new HashMap<>();
         body.put("sampleId", "not-a-number");
         body.put("verifiedItems", new HashMap<>());
@@ -231,6 +235,7 @@ public class SampleQaChecklistRestControllerTest {
 
     @Test
     public void saveQaChecklist_withNoIdentifier_returns400() {
+        when(sampleQaChecklistService.getActiveChecklistItems()).thenReturn(buildActiveChecklistItems());
         Map<String, Object> body = new HashMap<>();
         body.put("verifiedItems", new HashMap<>());
 
@@ -241,6 +246,7 @@ public class SampleQaChecklistRestControllerTest {
 
     @Test
     public void saveQaChecklist_withUnknownLabNumber_returns404() {
+        when(sampleQaChecklistService.getActiveChecklistItems()).thenReturn(buildActiveChecklistItems());
         when(sampleService.getSampleByAccessionNumber("MISSING")).thenReturn(null);
 
         Map<String, Object> body = new HashMap<>();
@@ -254,6 +260,7 @@ public class SampleQaChecklistRestControllerTest {
 
     @Test
     public void saveQaChecklist_whenServiceThrows_returns500() {
+        when(sampleQaChecklistService.getActiveChecklistItems()).thenReturn(buildActiveChecklistItems());
         when(sampleQaChecklistService.saveOrUpdateChecklist(anyInt(), any(), any()))
                 .thenThrow(new RuntimeException("DB error"));
 
@@ -264,6 +271,22 @@ public class SampleQaChecklistRestControllerTest {
         ResponseEntity<?> response = controller.saveQaChecklist(body);
 
         assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+    }
+
+    @Test
+    public void saveQaChecklist_withoutConfiguredItems_returns409() {
+        when(sampleQaChecklistService.getActiveChecklistItems()).thenReturn(new ArrayList<>());
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("sampleId", 1);
+        body.put("verifiedItems", new HashMap<>());
+
+        ResponseEntity<?> response = controller.saveQaChecklist(body);
+
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) response.getBody();
+        assertEquals("QA_CHECKLIST_NOT_CONFIGURED", result.get("code"));
     }
 
     // ---- Helpers ----

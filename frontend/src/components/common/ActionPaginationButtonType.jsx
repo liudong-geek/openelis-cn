@@ -3,6 +3,7 @@ import { Button, Column, Grid, Section } from "@carbon/react";
 import PropTypes from "prop-types";
 import React, { useEffect, useState } from "react";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
+import { navigateToInternalPath } from "../utils/NavigationUtils";
 
 const ActionPaginationButtonType = ({
   selectedRowIds,
@@ -86,7 +87,7 @@ const ActionPaginationButtonType = ({
                   onClick={() => {
                     if (selectedRowIds.length === 1) {
                       const url = `${modifyButtonRedirectLink}${id}${otherParmsInLink}`;
-                      window.location.href = url;
+                      navigateToInternalPath(url);
                     }
                   }}
                   disabled={modifyButton}
@@ -105,7 +106,7 @@ const ActionPaginationButtonType = ({
                   style={{ width: isMobile ? "100%" : "auto" }}
                   data-cy="add-button"
                   onClick={() => {
-                    window.location.href = `${addButtonRedirectLink}`;
+                    navigateToInternalPath(`${addButtonRedirectLink}`);
                   }}
                 >
                   <FormattedMessage id="admin.page.configuration.formEntryConfigMenu.button.add" />

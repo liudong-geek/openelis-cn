@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+  <changeSet author="local-chinese-edition" id="3.5.0-075-cn-chinese-product-banner">
+    <preConditions onFail="HALT" onError="HALT">
+      <and>
+        <tableExists tableName="site_information" schemaName="clinlims"/>
+        <tableExists tableName="localization" schemaName="clinlims"/>
+        <tableExists tableName="localization_value" schemaName="clinlims"/>
+        <sequenceExists sequenceName="localization_value_seq" schemaName="clinlims"/>
+        <sqlCheck expectedResult="1">
+          SELECT COUNT(*)
+          FROM clinlims.site_information si
+          JOIN clinlims.localization l
+            ON l.id = CASE
+              WHEN BTRIM(COALESCE(si.value, '')) ~ '^[0-9]+$'
+              THEN BTRIM(si.value)::numeric
+            END
+          WHERE si.name = 'bannerHeading'
+        </sqlCheck>
+      </and>
+    </preConditions>
+    <comment>Apply the China product name to the localization record referenced by bannerHeading; never assume a seed ID.</comment>
+    <sql>
+      INSERT INTO clinlims.localization_value
+        (id, localization_id, locale, value, last_updated)
+      SELECT nextval('clinlims.localization_value_seq'), l.id, 'zh',
+        '临床检验信息系统', now()
+      FROM clinlims.site_information si
+      JOIN clinlims.localization l
+        ON l.id = CASE
+          WHEN BTRIM(COALESCE(si.value, '')) ~ '^[0-9]+$'
+          THEN BTRIM(si.value)::numeric
+        END
+      WHERE si.name = 'bannerHeading'
+      ON CONFLICT (localization_id, locale) DO UPDATE
+      SET value = EXCLUDED.value, last_updated = now()
+    </sql>
+    <rollback>
+      <sql>
+        DELETE FROM clinlims.localization_value lv
+        USING clinlims.site_information si
+        WHERE si.name = 'bannerHeading'
+          AND lv.localization_id = CASE
+            WHEN BTRIM(COALESCE(si.value, '')) ~ '^[0-9]+$'
+            THEN BTRIM(si.value)::numeric
+          END
+          AND lv.locale = 'zh'
+          AND lv.value = '临床检验信息系统'
+      </sql>
+    </rollback>
+  </changeSet>
+
+  <changeSet author="local-chinese-edition" id="3.5.0-075-cn-default-admin-name">
+    <preConditions onFail="HALT" onError="HALT">
+      <and>
+        <tableExists tableName="system_user" schemaName="clinlims"/>
+        <columnExists tableName="system_user" schemaName="clinlims" columnName="login_name"/>
+        <columnExists tableName="system_user" schemaName="clinlims" columnName="first_name"/>
+        <columnExists tableName="system_user" schemaName="clinlims" columnName="last_name"/>
+      </and>
+    </preConditions>
+    <comment>Localize only the untouched seed administrator; preserve every site-customized account name.</comment>
+    <update schemaName="clinlims" tableName="system_user">
+      <column name="first_name" value="系统"/>
+      <column name="last_name" value="管理员"/>
+      <column name="lastupdated" valueComputed="now()"/>
+      <where>login_name = 'admin' AND first_name = 'Open' AND last_name = 'ELIS'</where>
+    </update>
+    <rollback>
+      <update schemaName="clinlims" tableName="system_user">
+        <column name="first_name" value="Open"/>
+        <column name="last_name" value="ELIS"/>
+        <column name="lastupdated" valueComputed="now()"/>
+        <where>login_name = 'admin' AND first_name = '系统' AND last_name = '管理员'</where>
+      </update>
+    </rollback>
+  </changeSet>
+
+</databaseChangeLog>

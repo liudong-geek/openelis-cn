@@ -20,6 +20,7 @@ import {
 } from "../../common/CustomNotification";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 import {
   SortableTestList,
   SortableSampleTypeList,
@@ -630,7 +631,7 @@ function TestActivation() {
       });
       setNotificationVisible(true);
       setTimeout(() => {
-        window.location.reload();
+        refreshCurrentRoute();
       }, 200);
     } else {
       addNotification({
@@ -640,7 +641,7 @@ function TestActivation() {
       });
       setNotificationVisible(true);
       setTimeout(() => {
-        window.location.reload();
+        refreshCurrentRoute();
       }, 200);
     }
   }
@@ -712,7 +713,7 @@ function TestActivation() {
     );
 
     if (!sampleType) {
-      window.location.reload();
+      refreshCurrentRoute();
       return;
     }
 
@@ -1022,7 +1023,7 @@ function TestActivation() {
                 <FormattedMessage id="label.button.submit" />
               </Button>{" "}
               <Button
-                onClick={() => window.location.reload()}
+                onClick={refreshCurrentRoute}
                 kind="tertiary"
                 type="button"
               >
@@ -1193,7 +1194,7 @@ function TestActivation() {
                 <FormattedMessage id="label.button.submit" />
               </Button>{" "}
               <Button
-                onClick={() => window.location.reload()}
+                onClick={refreshCurrentRoute}
                 kind="tertiary"
                 type="button"
               >
@@ -1216,7 +1217,7 @@ function TestActivation() {
         }}
         onRequestClose={() => {
           setIsConfirmModalOpen(false);
-          window.location.reload();
+          refreshCurrentRoute();
         }}
         preventCloseOnClickOutside={true}
         shouldSubmitOnEnter={true}

@@ -1,33 +1,19 @@
-import React, { useContext } from "react";
-import { FormattedMessage } from "react-intl";
+import React from "react";
+import { Redirect, useLocation } from "react-router-dom";
 
-import { Column, Grid, Heading, Section } from "@carbon/react";
-import SearchOrder from "./SearchOrder";
-import { AlertDialog } from "../common/CustomNotification";
-import { NotificationContext } from "../layout/Layout";
-import PageBreadCrumb from "../common/PageBreadCrumb";
-let breadcrumbs = [{ label: "home.label", link: "/" }];
-
-const Index = () => {
-  const { notificationVisible } = useContext(NotificationContext);
+// Old record bookmarks still open the editor; the redundant search gate is
+// replaced by the application list. Record query parameters remain intact.
+export default function FindOrder() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const hasRecord = params.get("accessionNumber") || params.get("patientId");
   return (
-    <div className="pageContent">
-      {notificationVisible === true ? <AlertDialog /> : ""}
-      <PageBreadCrumb breadcrumbs={breadcrumbs} />
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          <Section>
-            <Section>
-              <Heading>
-                <FormattedMessage id="order.label.modify" />
-              </Heading>
-            </Section>
-          </Section>
-        </Column>
-      </Grid>
-      <SearchOrder />
-    </div>
+    <Redirect
+      to={{
+        pathname: hasRecord ? "/ModifyOrder" : "/order",
+        search: hasRecord ? location.search : "",
+        state: location.state,
+      }}
+    />
   );
-};
-
-export default Index;
+}

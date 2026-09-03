@@ -71,6 +71,10 @@ export interface ReducerAction {
 export interface ObservationData {
   obsDatetime: string;
   value: string;
+  rawValue?: string;
+  units?: string;
+  lowNormal?: number | string;
+  hiNormal?: number | string;
   interpretation: OBSERVATION_INTERPRETATION;
 }
 

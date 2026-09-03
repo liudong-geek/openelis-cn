@@ -112,10 +112,17 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
         "org.openelisglobal.labelpreset", "org.openelisglobal.alert", "org.openelisglobal.notification",
         "org.openelisglobal.shipment", "org.openelisglobal.reportdefinition", "org.openelisglobal.scheduler",
         "org.openelisglobal.sitebranding", "org.openelisglobal.resultvalidation", "org.openelisglobal.plugin",
-        "org.openelisglobal.fhir.providers", "org.openelisglobal.common.dao", "org.openelisglobal.report",
+        "org.openelisglobal.fhir.providers", "org.openelisglobal.fhir.service", "org.openelisglobal.fhir.dao",
+        "org.openelisglobal.common.dao", "org.openelisglobal.report",
         "org.openelisglobal.eqa", "org.openelisglobal.qc", "org.openelisglobal.externalconnections",
         "org.openelisglobal.notifications", "org.openelisglobal.calendar", "org.openelisglobal.esig",
         "org.openelisglobal.resultreporting.service", "org.openelisglobal.security" }, excludeFilters = {
+                // Nested security-slice TestConfig classes live under packages scanned by
+                // this broad integration-test context. Without this exclusion Spring imports
+                // their mocked beans (for example userModuleService/referralService) beside
+                // the real implementations and makes unrelated full-context tests fail with
+                // NoUniqueBeanDefinitionException.
+                @ComponentScan.Filter(type = FilterType.REGEX, pattern = "org.openelisglobal.*\\$TestConfig"),
                 @ComponentScan.Filter(type = FilterType.REGEX, pattern = "org.openelisglobal.patient.controller.*"),
                 @ComponentScan.Filter(type = FilterType.REGEX, pattern = "org.openelisglobal.organization.controller.*"),
                 @ComponentScan.Filter(type = FilterType.REGEX, pattern = "org.openelisglobal.sample.controller.*"),

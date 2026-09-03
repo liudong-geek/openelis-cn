@@ -95,7 +95,10 @@ function ColorPickerSection({
                 border: "1px solid #ccc",
                 borderRadius: "4px",
               }}
-              aria-label={`Color preview: ${colorValue}`}
+              aria-label={intl.formatMessage(
+                { id: "site.branding.color.preview" },
+                { color: colorValue },
+              )}
             />
 
             {/* HTML5 Color Picker */}
@@ -123,7 +126,6 @@ function ColorPickerSection({
               onChange={handleColorInputChange}
               placeholder={intl.formatMessage({
                 id: "site.branding.colorPicker.placeholder",
-                defaultMessage: "#0f62fe or blue",
               })}
               invalid={!!error}
               invalidText={error}
@@ -131,8 +133,6 @@ function ColorPickerSection({
                 helperText ||
                 intl.formatMessage({
                   id: "site.branding.colorPicker.helperText",
-                  defaultMessage:
-                    "Enter any CSS color (e.g., #0f62fe, blue, rgb(15, 98, 254))",
                 })
               }
               style={{ flex: 1, maxWidth: "200px" }}

@@ -9,43 +9,46 @@ const noop = () => {};
 // Stable mocks so each useHistory()/useContext() call returns the same fns
 // across renders — needed for tests that assert against history.push or
 // addNotification.
-const { historyMock, notificationMock, orderContextValue } = vi.hoisted(() => {
-  const history = { push: () => {}, replace: () => {} };
-  const notification = {
-    notificationVisible: false,
-    setNotificationVisible: () => {},
-    addNotification: () => {},
-  };
-  return {
-    historyMock: history,
-    notificationMock: notification,
-    orderContextValue: {
-      orderData: {
-        sampleOrderItems: { labNo: "LAB-100" },
-        patientProperties: {},
+const { historyMock, locationMock, notificationMock, orderContextValue } =
+  vi.hoisted(() => {
+    const history = { push: vi.fn(), replace: vi.fn() };
+    const location = { search: "" };
+    const notification = {
+      notificationVisible: false,
+      setNotificationVisible: () => {},
+      addNotification: () => {},
+    };
+    return {
+      historyMock: history,
+      locationMock: location,
+      notificationMock: notification,
+      orderContextValue: {
+        orderData: {
+          sampleOrderItems: { labNo: "LAB-100" },
+          patientProperties: {},
+        },
+        samples: [
+          { sampleTypeName: "Blood", sortOrder: 1, sampleItemId: "1" },
+          { sampleTypeName: "Urine", sortOrder: 2, sampleItemId: "2" },
+        ],
+        setSamples: () => {},
+        saveOrder: () => Promise.resolve({ samples: [] }),
+        setCurrentStep: () => {},
+        labNumber: "LAB-100",
+        stepProgress: { label: false },
+        markStepComplete: () => {},
+        orderId: 1,
+        storageSkipped: false,
+        setStorageSkipped: () => {},
+        loadOrder: vi.fn(),
+        isLoading: false,
       },
-      samples: [
-        { sampleTypeName: "Blood", sortOrder: 1, sampleItemId: "1" },
-        { sampleTypeName: "Urine", sortOrder: 2, sampleItemId: "2" },
-      ],
-      setSamples: () => {},
-      saveOrder: () => Promise.resolve({ samples: [] }),
-      setCurrentStep: () => {},
-      labNumber: "LAB-100",
-      stepProgress: { label: false },
-      markStepComplete: () => {},
-      orderId: 1,
-      storageSkipped: false,
-      setStorageSkipped: () => {},
-      loadOrder: () => {},
-      isLoading: false,
-    },
-  };
-});
+    };
+  });
 
 vi.mock("react-router-dom", () => ({
   useHistory: () => historyMock,
-  useLocation: () => ({ search: "" }),
+  useLocation: () => locationMock,
 }));
 
 vi.mock("../OrderContext", () => ({
@@ -96,6 +99,23 @@ describe("OrderLabel print URLs", () => {
   let openSpy;
   let addNotificationSpy;
   beforeEach(() => {
+    historyMock.push.mockClear();
+    historyMock.replace.mockClear();
+    locationMock.search = "";
+    Object.assign(orderContextValue, {
+      orderData: {
+        sampleOrderItems: { labNo: "LAB-100" },
+        patientProperties: {},
+      },
+      samples: [
+        { sampleTypeName: "Blood", sortOrder: 1, sampleItemId: "1" },
+        { sampleTypeName: "Urine", sortOrder: 2, sampleItemId: "2" },
+      ],
+      labNumber: "LAB-100",
+      orderId: 1,
+      isLoading: false,
+      loadOrder: vi.fn(),
+    });
     openSpy = vi.spyOn(window, "open").mockImplementation(noop);
     addNotificationSpy = vi.fn();
     notificationMock.addNotification = addNotificationSpy;
@@ -103,6 +123,48 @@ describe("OrderLabel print URLs", () => {
   });
   afterEach(() => {
     openSpy.mockRestore();
+  });
+
+  test("direct menu entry stays on the label task and offers order selection", () => {
+    Object.assign(orderContextValue, {
+      orderData: { sampleOrderItems: {}, patientProperties: {} },
+      samples: [],
+      labNumber: null,
+      orderId: null,
+    });
+
+    renderWithIntl(<OrderLabel />);
+
+    expect(
+      screen.getByText("Select a test request to continue"),
+    ).toBeInTheDocument();
+    expect(historyMock.replace).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "Start New Order" }),
+    ).toBeInTheDocument();
+  });
+
+  test("invalid deep link remains recoverable instead of redirecting to entry", async () => {
+    locationMock.search = "?labNumber=UNKNOWN";
+    orderContextValue.loadOrder = vi
+      .fn()
+      .mockRejectedValue(new Error("missing"));
+    Object.assign(orderContextValue, {
+      orderData: { sampleOrderItems: {}, patientProperties: {} },
+      samples: [],
+      labNumber: null,
+      orderId: null,
+    });
+
+    renderWithIntl(<OrderLabel />);
+
+    await vi.waitFor(() => {
+      expect(orderContextValue.loadOrder).toHaveBeenCalledWith("UNKNOWN");
+    });
+    expect(historyMock.replace).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("Select a test request to continue"),
+    ).toBeInTheDocument();
   });
 
   test("per-row order print carries quantity and does not force override", () => {

@@ -103,9 +103,18 @@ const EQAOrderForm = ({ orderFormValues, setOrderFormValues }) => {
                 value={sampleOrder.eqaPriority || "STANDARD"}
                 onChange={(e) => updateField("eqaPriority", e.target.value)}
               >
-                <SelectItem value="STANDARD" text="Standard" />
-                <SelectItem value="URGENT" text="Urgent" />
-                <SelectItem value="CRITICAL" text="Critical" />
+                <SelectItem
+                  value="STANDARD"
+                  text={intl.formatMessage({ id: "eqa.priority.standard" })}
+                />
+                <SelectItem
+                  value="URGENT"
+                  text={intl.formatMessage({ id: "eqa.priority.urgent" })}
+                />
+                <SelectItem
+                  value="CRITICAL"
+                  text={intl.formatMessage({ id: "eqa.priority.critical" })}
+                />
               </Select>
             </Column>
           </Grid>

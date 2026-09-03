@@ -9,6 +9,7 @@ import {
 } from "@carbon/react";
 import { useContext, useEffect, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
+import { useHistory } from "react-router-dom";
 import { NotificationContext } from "../layout/Layout";
 import {
   getFromOpenElisServer,
@@ -17,6 +18,7 @@ import {
 
 const AddToBoxModal = ({ open, onClose, sample, onSuccess }) => {
   const intl = useIntl();
+  const history = useHistory();
   const { addNotification } = useContext(NotificationContext);
 
   const [mode, setMode] = useState("existing"); // "existing" or "new"
@@ -139,7 +141,9 @@ const AddToBoxModal = ({ open, onClose, sample, onSuccess }) => {
         ? `facilityId=${sample.destinationFacilityId}&`
         : "";
       const sampleParam = sample.sampleItemId || sample.id || "";
-      window.location.href = `/SampleShipment/create-box?${facilityParam}sampleItemId=${sampleParam}`;
+      history.push(
+        `/SampleShipment/create-box?${facilityParam}sampleItemId=${sampleParam}`,
+      );
       setSubmitting(false);
     }
   };

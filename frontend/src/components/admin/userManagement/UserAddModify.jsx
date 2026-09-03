@@ -31,6 +31,7 @@ import {
 } from "../../utils/Utils";
 import CustomDatePicker from "../../common/CustomDatePicker";
 import AutoComplete from "../../common/AutoComplete";
+import { navigateToInternalPath } from "../../utils/NavigationUtils";
 
 const breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -102,7 +103,9 @@ function UserAddModify() {
       );
     } else {
       setTimeout(() => {
-        window.location.assign("/MasterListsPage/userManagement");
+        navigateToInternalPath("/MasterListsPage/userManagement", {
+          replace: true,
+        });
       }, 200);
     }
     return () => {
@@ -358,7 +361,9 @@ function UserAddModify() {
       });
       setNotificationVisible(true);
       setTimeout(() => {
-        window.location.reload();
+        navigateToInternalPath("/MasterListsPage/userManagement", {
+          replace: true,
+        });
       }, 200);
     } else {
       addNotification({
@@ -367,9 +372,6 @@ function UserAddModify() {
         message: intl.formatMessage({ id: "server.error.msg" }),
       });
       setNotificationVisible(true);
-      setTimeout(() => {
-        window.location.reload();
-      }, 200);
     }
   }
 
@@ -1438,8 +1440,9 @@ function UserAddModify() {
                     </Button>{" "}
                     <Button
                       onClick={() =>
-                        window.location.assign(
+                        navigateToInternalPath(
                           "/MasterListsPage/userManagement",
+                          { replace: true },
                         )
                       }
                       data-cy="exitButton"

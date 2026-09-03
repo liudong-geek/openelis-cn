@@ -7,9 +7,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import javax.script.ScriptEngine;
-import javax.script.ScriptEngineManager;
-import javax.script.ScriptException;
 import org.apache.commons.lang3.StringUtils;
 import org.jfree.util.Log;
 import org.openelisglobal.analysis.service.AnalysisService;
@@ -198,15 +195,13 @@ public class TestCalculatedUtil {
                                 break;
                             }
                         });
-                        ScriptEngineManager scriptEngineManager = new ScriptEngineManager();
-                        ScriptEngine scriptEngine = scriptEngineManager.getEngineByName("JavaScript");
                         String value = null;
                         try {
                             Log.debug("Caliculation Rule: " + calculation.getName() + " Function : "
                                     + function.toString());
-                            value = scriptEngine.eval(function.toString()).toString();
+                            value = SafeCalculationExpressionEvaluator.evaluate(function.toString());
                             Log.debug("Caliculation Rule: " + calculation.getName() + " Value  : " + value);
-                        } catch (ScriptException e) {
+                        } catch (IllegalArgumentException e) {
                             Log.error("Invalid Caliculation Rule: " + calculation.getName(), e);
                         }
                         Analysis analysis = createCalculatedResult(resultCalculation, resultSet, calculation, value,

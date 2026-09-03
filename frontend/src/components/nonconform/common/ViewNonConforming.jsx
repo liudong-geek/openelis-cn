@@ -39,10 +39,10 @@ export const initialReportFormValues = {
 export const selectOptions = [
   {
     value: "nceNumber",
-    text: "NCE Number",
+    textId: "nce.search.byNceNumber",
   },
   {
-    text: "Lab Number",
+    textId: "nce.search.byLabNumber",
     value: "labNumber",
   },
 ];
@@ -50,15 +50,15 @@ export const selectOptions = [
 export const headers = [
   {
     key: "date",
-    value: "Date",
+    valueId: "nce.search.header.date",
   },
   {
     key: "nceNumber",
-    value: "NCE Number",
+    valueId: "nce.search.header.nceNumber",
   },
   {
     key: "specimen",
-    value: "Lab Section/Unit",
+    valueId: "nce.search.header.labSection",
   },
 ];
 
@@ -170,7 +170,6 @@ export const ViewNonConformingEvent = () => {
         ...reportFormValues,
         error: intl.formatMessage({
           id: "error.nonconform.report.data.found",
-          defaultMessage: "No data found",
         }),
       });
       setData(null);
@@ -276,7 +275,6 @@ export const ViewNonConformingEvent = () => {
           ...reportFormValues,
           error: intl.formatMessage({
             id: "error.nonconform.report.data.found",
-            defaultMessage: "No data found",
           }),
         });
       }
@@ -314,7 +312,7 @@ export const ViewNonConformingEvent = () => {
                     <SelectItem
                       key={statusOption.value}
                       value={statusOption.value}
-                      text={statusOption.text}
+                      text={intl.formatMessage({ id: statusOption.textId })}
                     />
                   ))}
                 </Select>
@@ -374,7 +372,7 @@ export const ViewNonConformingEvent = () => {
                     <TableHeader key="checkbox" />
                     {headers.map((header) => (
                       <TableHeader id={header.key} key={header.key}>
-                        {header.value}
+                        {intl.formatMessage({ id: header.valueId })}
                       </TableHeader>
                     ))}
                   </TableRow>
@@ -540,10 +538,7 @@ export const ViewNonConformingEvent = () => {
             <Column lg={3} md={3} sm={3} style={{ marginBottom: "20px" }}>
               <div style={{ marginBottom: "10px" }}>
                 <span style={{ color: "#3366B3", fontWeight: "bold" }}>
-                  <FormattedMessage
-                    id="nce.field.severity"
-                    defaultMessage="Severity"
-                  />
+                  <FormattedMessage id="nce.field.severity" />
                 </span>
               </div>
               <div style={{ marginBottom: "10px" }}>
@@ -558,10 +553,15 @@ export const ViewNonConformingEvent = () => {
                           : "green"
                   }
                 >
-                  <FormattedMessage
-                    id={`nce.severity.${data.severity?.toLowerCase() || "low"}`}
-                    defaultMessage={data.severity || "Low"}
-                  />
+                  {(() => {
+                    const severityMessageId = `nce.severity.${data.severity?.toLowerCase() || "low"}`;
+                    return intl.formatMessage({
+                      id:
+                        severityMessageId in intl.messages
+                          ? severityMessageId
+                          : "status.unknown",
+                    });
+                  })()}
                 </Tag>
               </div>
             </Column>
@@ -572,10 +572,7 @@ export const ViewNonConformingEvent = () => {
             <Column lg={3} md={3} sm={3} style={{ marginBottom: "20px" }}>
               <div style={{ marginBottom: "10px" }}>
                 <span style={{ color: "#3366B3", fontWeight: "bold" }}>
-                  <FormattedMessage
-                    id="nce.field.category"
-                    defaultMessage="Category"
-                  />
+                  <FormattedMessage id="nce.field.category" />
                 </span>
               </div>
               <div style={{ marginBottom: "10px" }}>{data.nceCategory}</div>
@@ -587,7 +584,7 @@ export const ViewNonConformingEvent = () => {
             <Column lg={3} md={3} sm={3} style={{ marginBottom: "20px" }}>
               <div style={{ marginBottom: "10px" }}>
                 <span style={{ color: "#3366B3", fontWeight: "bold" }}>
-                  <FormattedMessage id="nce.field.type" defaultMessage="Type" />
+                  <FormattedMessage id="nce.field.type" />
                 </span>
               </div>
               <div style={{ marginBottom: "10px" }}>{data.nceType}</div>
@@ -599,10 +596,7 @@ export const ViewNonConformingEvent = () => {
             <Column lg={16} md={8} sm={4} style={{ marginBottom: "20px" }}>
               <div style={{ marginBottom: "10px" }}>
                 <span style={{ color: "#3366B3", fontWeight: "bold" }}>
-                  <FormattedMessage
-                    id="nce.field.attachments"
-                    defaultMessage="Attachments"
-                  />
+                  <FormattedMessage id="nce.field.attachments" />
                 </span>
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
@@ -834,10 +828,7 @@ export const ViewNonConformingEvent = () => {
           <Column lg={16} md={8} sm={4}>
             {!canSubmitNceForm && (
               <div style={{ color: "#c62828", margin: 4 }}>
-                <FormattedMessage
-                  id="nonconform.view.requiredFields"
-                  defaultMessage="Lab component, NCE category, NCE type, severity consequence and recurrence are all required."
-                />
+                <FormattedMessage id="nonconform.view.requiredFields" />
               </div>
             )}
             <Button

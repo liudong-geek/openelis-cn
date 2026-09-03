@@ -96,8 +96,7 @@ public class Operation implements Comparable<Operation> {
     }
 
     public enum OperationType {
-        TEST_RESULT("Test Result"), MATH_FUNCTION("Math Function"), INTEGER("Integer"),
-        PATIENT_ATTRIBUTE("Patient Attribute");
+        TEST_RESULT("检验结果"), MATH_FUNCTION("运算符"), INTEGER("数值常量"), PATIENT_ATTRIBUTE("患者属性");
 
         private String displayName;
 
@@ -115,7 +114,7 @@ public class Operation implements Comparable<Operation> {
     }
 
     public enum PatientAttribute {
-        AGE("Patient Age(Years)"), WEIGHT("Patient Weight(Kg)");
+        AGE("患者年龄（岁）"), WEIGHT("患者体重（千克）");
 
         private String displayName;
 
@@ -134,20 +133,20 @@ public class Operation implements Comparable<Operation> {
 
     public static List<IdValuePair> mathFunctions() {
         List<IdValuePair> mathFunctions = new ArrayList<>();
-        mathFunctions.add(new IdValuePair(ADD, "Plus"));
-        mathFunctions.add(new IdValuePair(SUBTRACT, "Minus"));
-        mathFunctions.add(new IdValuePair(DIVIDE, "Divided By"));
-        mathFunctions.add(new IdValuePair(MULTIPLY, "Multiplied By"));
-        mathFunctions.add(new IdValuePair(OPEN_BRACKET, "Open Bracket"));
-        mathFunctions.add(new IdValuePair(CLOSE_BRACKET, "Close Bracket"));
-        mathFunctions.add(new IdValuePair(EQUALS, "Equals"));
-        mathFunctions.add(new IdValuePair(NOT_EQUALS, "Does Not Equal"));
-        mathFunctions.add(new IdValuePair(GREATER_OR_EQUALS, "Is Greater Than Or Equal"));
-        mathFunctions.add(new IdValuePair(LESS_OR_EQUALS, "Is Less Than Or Equal"));
-        mathFunctions.add(new IdValuePair(IN_NORMAL_RANGE, "Is With In Normal Range"));
-        mathFunctions.add(new IdValuePair(OUTSIDE_NORMAL_RANGE, "Is Out Side Normal Range"));
-        mathFunctions.add(new IdValuePair(LOGICAL_AND, "And"));
-        mathFunctions.add(new IdValuePair(LOGICAL_OR, "Or"));
+        mathFunctions.add(new IdValuePair(ADD, "加"));
+        mathFunctions.add(new IdValuePair(SUBTRACT, "减"));
+        mathFunctions.add(new IdValuePair(DIVIDE, "除以"));
+        mathFunctions.add(new IdValuePair(MULTIPLY, "乘以"));
+        mathFunctions.add(new IdValuePair(OPEN_BRACKET, "左括号"));
+        mathFunctions.add(new IdValuePair(CLOSE_BRACKET, "右括号"));
+        mathFunctions.add(new IdValuePair(EQUALS, "等于"));
+        mathFunctions.add(new IdValuePair(NOT_EQUALS, "不等于"));
+        mathFunctions.add(new IdValuePair(GREATER_OR_EQUALS, "大于或等于"));
+        mathFunctions.add(new IdValuePair(LESS_OR_EQUALS, "小于或等于"));
+        mathFunctions.add(new IdValuePair(IN_NORMAL_RANGE, "在参考范围内"));
+        mathFunctions.add(new IdValuePair(OUTSIDE_NORMAL_RANGE, "在参考范围外"));
+        mathFunctions.add(new IdValuePair(LOGICAL_AND, "并且"));
+        mathFunctions.add(new IdValuePair(LOGICAL_OR, "或者"));
         return mathFunctions;
     }
 

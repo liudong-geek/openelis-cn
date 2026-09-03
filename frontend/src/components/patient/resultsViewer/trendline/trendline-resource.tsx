@@ -1,4 +1,4 @@
-import { assessValue } from "../loadPatientTestData/helpers";
+import { assessValue, exist } from "../loadPatientTestData/helpers";
 import { showNotification } from "../commons";
 import { TreeNode } from "../filter/filter-types";
 import { getFromOpenElisServer } from "../../../utils/Utils";
@@ -9,19 +9,22 @@ function computeTrendlineData(treeNode: TreeNode): Array<TreeNode> {
   if (!treeNode) {
     return tests;
   }
-  treeNode?.subSets.forEach((subNode) => {
+  treeNode?.subSets?.forEach((subNode) => {
     if ((subNode as TreeNode)?.obs) {
       const TreeNode = subNode as TreeNode;
-      const assess = assessValue(TreeNode.obs);
+      const observations = TreeNode.obs || [];
       tests.push({
         ...TreeNode,
-        range:
-          TreeNode.hiNormal && TreeNode.lowNormal
-            ? `${TreeNode.lowNormal} - ${TreeNode.hiNormal}`
-            : "",
-        obs: TreeNode.obs.map((ob) => ({
+        range: exist(TreeNode.hiNormal, TreeNode.lowNormal)
+          ? `${TreeNode.lowNormal} - ${TreeNode.hiNormal}`
+          : "",
+        obs: observations.map((ob) => ({
           ...ob,
-          interpretation: assess(ob.value),
+          interpretation:
+            (typeof ob.interpretation === "string" && ob.interpretation.trim()
+              ? ob.interpretation
+              : null) ||
+            assessValue({ ...TreeNode, ...ob })(ob.rawValue ?? ob.value),
         })),
       });
     } else if (subNode?.subSets) {
@@ -39,24 +42,44 @@ export function useObstreeData(
   isLoading: boolean;
   trendlineData: TreeNode;
   isValidating: boolean;
+  error: Error | null;
 } {
-  const [data, setData] = useState(null);
+  const [data, setData] = useState<TreeNode | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<Error | null>(null);
   const [isValidating, setIsValidating] = useState(false);
 
-  const fetchResults = (results) => {
+  const fetchResults = (results: TreeNode | undefined) => {
+    if (results === undefined) {
+      setData(null);
+      setError(new Error("Patient result trend request failed"));
+      setIsLoading(false);
+      return;
+    }
+
     setData(results);
+    setError(null);
     setIsLoading(false);
   };
 
   useEffect(() => {
-    if (patientUuid && conceptUuid) {
-      getFromOpenElisServer(
-        `/rest/test-result-tree?patientId=${patientUuid}&testId=${conceptUuid}`,
-        fetchResults,
-      );
+    setData(null);
+    setError(null);
+
+    if (!patientUuid || !conceptUuid) {
+      setIsLoading(false);
+      return;
     }
+
+    setIsLoading(true);
+    const controller = new AbortController();
+    getFromOpenElisServer(
+      `/rest/test-result-tree?patientId=${patientUuid}&testId=${conceptUuid}`,
+      fetchResults,
+      controller.signal,
+    );
+
+    return () => controller.abort();
   }, [patientUuid, conceptUuid]);
 
   if (error) {
@@ -71,7 +94,7 @@ export function useObstreeData(
     () => ({
       isLoading,
       trendlineData:
-        computeTrendlineData(data)?.[0] ??
+        (data ? computeTrendlineData(data)?.[0] : undefined) ??
         ({
           obs: [],
           display: "",
@@ -81,8 +104,9 @@ export function useObstreeData(
           range: "",
         } as TreeNode),
       isValidating,
+      error,
     }),
-    [data, isLoading, isValidating],
+    [data, error, isLoading, isValidating],
   );
 
   return returnValue;

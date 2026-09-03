@@ -357,7 +357,12 @@ const TerminologySection = ({ testId }) => {
           })}
         />
       ) : (
-        <Table size="lg" aria-label="terminology">
+        <Table
+          size="lg"
+          aria-label={intl.formatMessage({
+            id: "label.testCatalog.section.terminology",
+          })}
+        >
           <TableHead>
             <TableRow>
               <TableHeader>

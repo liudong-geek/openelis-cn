@@ -191,7 +191,9 @@ export default function SampleItemsPage() {
               sampleItemExternalId: externalId,
               sampleAccessionNumber: it.sampleAccessionNumber || "",
               type: it.type || it.sampleType || "",
-              status: it.status || "Active",
+              status:
+                it.status ||
+                intl.formatMessage({ id: "inventory.status.ACTIVE" }),
               location: locationPath,
               positionCoordinate: it.positionCoordinate || "",
               notes: it.notes || "",

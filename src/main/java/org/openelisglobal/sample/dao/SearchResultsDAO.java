@@ -16,6 +16,7 @@ public interface SearchResultsDAO {
     String GUID = "guid";
     String DATE_OF_BIRTH = "dateOfBirth";
     String DATE_OF_BIRTH_FORMATED = "dateOfBirthFormatted";
+    String DATE_OF_BIRTH_ISO = "dateOfBirthIso";
     String GENDER = "gender";
 
     String ID_TYPE_FOR_ST = "stNumberId";
@@ -33,4 +34,12 @@ public interface SearchResultsDAO {
     List<PatientSearchResults> getSearchResultsExact(String lastName, String firstName, String STNumber,
             String subjectNumber, String nationalID, String externalID, String patientID, String guid,
             String dateOfBirth, String gender) throws LIMSRuntimeException;
+
+    /**
+     * Searches the local patient master with one user-facing term. The term may
+     * be a patient name, patient identifier, phone number or previous laboratory
+     * number. This is the compact selector used inside order entry; the full
+     * multi-field search remains available in patient management.
+     */
+    List<PatientSearchResults> getQuickSearchResults(String query) throws LIMSRuntimeException;
 }

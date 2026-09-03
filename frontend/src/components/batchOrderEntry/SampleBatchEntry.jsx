@@ -310,7 +310,11 @@ const SampleBatchEntry = (props) => {
   return (
     <>
       {notificationVisible && <AlertDialog />}
-      {loading && <Loading description="Loading Dasboard..." />}
+      {loading && (
+        <Loading
+          description={intl.formatMessage({ id: "loading.description" })}
+        />
+      )}
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
       {!showSampleComponent && (
         <>
@@ -650,9 +654,7 @@ const SampleBatchEntry = (props) => {
               <Grid>
                 <Button
                   data-cy="finishButton"
-                  onClick={() =>
-                    (window.location.href = "/SampleBatchEntrySetup")
-                  }
+                  onClick={() => history.push("/SampleBatchEntrySetup")}
                 >
                   <FormattedMessage id="label.button.finish" />
                 </Button>

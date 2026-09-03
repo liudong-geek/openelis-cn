@@ -135,25 +135,39 @@ public class BarcodeInfoServiceImpl implements BarcodeInfoService {
         if (sample == null) {
             return;
         }
+        int orderLabelCount = 0;
+        Map<SampleItem, Integer> specimenLabelCounts = new LinkedHashMap<>();
+        int blockLabelCount = 0;
+        int slideLabelCount = 0;
+        int freezerLabelCount = 0;
+
         for (org.openelisglobal.barcode.labeltype.Label label : labels) {
             int count = label.getNumLabels();
             if (count <= 0) {
                 continue;
             }
             if (label instanceof OrderLabel) {
-                incrementPrintedOrderCount(sample, count);
+                orderLabelCount += count;
             } else if (label instanceof SpecimenLabel) {
                 SampleItem item = ((SpecimenLabel) label).getSampleItem();
                 if (item != null) {
-                    incrementPrintedSpecimenCount(item, count);
+                    specimenLabelCounts.merge(item, count, Integer::sum);
                 }
             } else if (label instanceof BlockLabel) {
-                incrementPrintedPathologyCount(sample, count, PathologyLabelType.BLOCK);
+                blockLabelCount += count;
             } else if (label instanceof SlideLabel) {
-                incrementPrintedPathologyCount(sample, count, PathologyLabelType.SLIDE);
+                slideLabelCount += count;
             } else if (label instanceof FreezerLabel) {
-                incrementPrintedPathologyCount(sample, count, PathologyLabelType.FREEZER);
+                freezerLabelCount += count;
             }
+        }
+
+        if (orderLabelCount > 0) {
+            incrementPrintedOrderCount(sample, orderLabelCount);
+        }
+        specimenLabelCounts.forEach(this::incrementPrintedSpecimenCount);
+        if (blockLabelCount > 0 || slideLabelCount > 0 || freezerLabelCount > 0) {
+            incrementPrintedPathologyCounts(sample, blockLabelCount, slideLabelCount, freezerLabelCount);
         }
     }
 
@@ -165,8 +179,9 @@ public class BarcodeInfoServiceImpl implements BarcodeInfoService {
         } else {
             info = new SampleBarcodeInfo();
             info.setSample(sample);
-            info.setPrintedOrderCount(0);
+            info.setPrintedOrderCount(count);
             sampleBarcodeInfoService.insert(info);
+            return;
         }
         int current = info.getPrintedOrderCount() != null ? info.getPrintedOrderCount() : 0;
         info.setPrintedOrderCount(current + count);
@@ -181,49 +196,55 @@ public class BarcodeInfoServiceImpl implements BarcodeInfoService {
         } else {
             info = new SampleItemBarcodeInfo();
             info.setSampleItem(sampleItem);
-            info.setPrintedSpecimenCount(0);
+            info.setPrintedSpecimenCount(count);
             sampleItemBarcodeInfoService.insert(info);
+            return;
         }
         int current = info.getPrintedSpecimenCount() != null ? info.getPrintedSpecimenCount() : 0;
         info.setPrintedSpecimenCount(current + count);
         sampleItemBarcodeInfoService.update(info);
     }
 
-    private void incrementPrintedPathologyCount(Sample sample, int count, PathologyLabelType labelType) {
+    private void incrementPrintedPathologyCounts(Sample sample, int blockCount, int slideCount, int freezerCount) {
         List<SampleItem> sampleItems = sampleItemService.getSampleItemsBySampleId(sample.getId());
         if (sampleItems == null || sampleItems.isEmpty()) {
             return;
         }
         for (SampleItem sampleItem : sampleItems) {
-            incrementPrintedPathologyCount(sampleItem, count, labelType);
+            incrementPrintedPathologyCounts(sampleItem, blockCount, slideCount, freezerCount);
         }
     }
 
-    private void incrementPrintedPathologyCount(SampleItem sampleItem, int count, PathologyLabelType labelType) {
+    private void incrementPrintedPathologyCounts(SampleItem sampleItem, int blockCount, int slideCount,
+            int freezerCount) {
         List<SampleItemBarcodeInfo> existing = sampleItemBarcodeInfoService.getAllMatching("sampleItem", sampleItem);
         SampleItemBarcodeInfo info;
+        boolean persisted;
         if (!existing.isEmpty()) {
             info = existing.get(0);
+            persisted = true;
         } else {
             info = new SampleItemBarcodeInfo();
             info.setSampleItem(sampleItem);
+            persisted = false;
+        }
+        if (blockCount > 0) {
+            int current = info.getPrintedBlockCount() != null ? info.getPrintedBlockCount() : 0;
+            info.setPrintedBlockCount(current + blockCount);
+        }
+        if (slideCount > 0) {
+            int current = info.getPrintedSlideCount() != null ? info.getPrintedSlideCount() : 0;
+            info.setPrintedSlideCount(current + slideCount);
+        }
+        if (freezerCount > 0) {
+            int current = info.getPrintedFreezerCount() != null ? info.getPrintedFreezerCount() : 0;
+            info.setPrintedFreezerCount(current + freezerCount);
+        }
+        if (persisted) {
+            sampleItemBarcodeInfoService.update(info);
+        } else {
             sampleItemBarcodeInfoService.insert(info);
         }
-        if (labelType == PathologyLabelType.BLOCK) {
-            int current = info.getPrintedBlockCount() != null ? info.getPrintedBlockCount() : 0;
-            info.setPrintedBlockCount(current + count);
-        } else if (labelType == PathologyLabelType.SLIDE) {
-            int current = info.getPrintedSlideCount() != null ? info.getPrintedSlideCount() : 0;
-            info.setPrintedSlideCount(current + count);
-        } else if (labelType == PathologyLabelType.FREEZER) {
-            int current = info.getPrintedFreezerCount() != null ? info.getPrintedFreezerCount() : 0;
-            info.setPrintedFreezerCount(current + count);
-        }
-        sampleItemBarcodeInfoService.update(info);
-    }
-
-    private enum PathologyLabelType {
-        BLOCK, SLIDE, FREEZER
     }
 
     private int normalizeConfiguredLabelCount(Integer count) {

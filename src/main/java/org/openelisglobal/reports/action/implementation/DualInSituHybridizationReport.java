@@ -6,7 +6,8 @@ import org.openelisglobal.program.valueholder.immunohistochemistry.Immunohistoch
 import org.openelisglobal.reports.form.ReportForm;
 import org.openelisglobal.spring.util.SpringContext;
 
-public class DualInSituHybridizationReport extends PatientProgramReport {
+public class DualInSituHybridizationReport extends PatientProgramReport
+        implements ResultsScopedReportCreator.ImmunohistochemistryProgramSampleSelection {
 
     private ImmunohistochemistrySampleService immunohistochemistrySampleService = SpringContext
             .getBean(ImmunohistochemistrySampleService.class);

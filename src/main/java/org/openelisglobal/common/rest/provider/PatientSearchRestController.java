@@ -6,7 +6,6 @@ import ca.uhn.fhir.rest.param.StringOrListParam;
 import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.InvocationTargetException;
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
@@ -23,6 +22,7 @@ import org.openelisglobal.common.rest.BaseRestController;
 import org.openelisglobal.common.rest.util.PatientSearchResultsPaging;
 import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.ConfigurationProperties.Property;
+import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.dataexchange.fhir.FhirConfig;
 import org.openelisglobal.dataexchange.fhir.FhirUtil;
 import org.openelisglobal.dataexchange.fhir.service.FhirTransformService;
@@ -76,6 +76,7 @@ public class PatientSearchRestController extends BaseRestController {
             @RequestParam(required = false) String nationalID, @RequestParam(required = false) String guid,
             @RequestParam(required = false) String labNumber, @RequestParam(required = false) String dateOfBirth,
             @RequestParam(required = false) String gender,
+            @RequestParam(required = false) String quickQuery,
             @RequestParam(required = false) String suppressExternalSearch)
             throws InvocationTargetException, IllegalAccessException, NoSuchMethodException {
         PatientSearchResultsPaging paging = new PatientSearchResultsPaging();
@@ -84,7 +85,10 @@ public class PatientSearchRestController extends BaseRestController {
         String requestedPage = request.getParameter("page");
         if (GenericValidator.isBlankOrNull(requestedPage)) {
             List<PatientSearchResults> results = new ArrayList<>();
-            if (!GenericValidator.isBlankOrNull(labNumber)) {
+            if (!GenericValidator.isBlankOrNull(quickQuery)) {
+                results = searchResultsService.getQuickSearchResults(quickQuery);
+                results.forEach(result -> result.setDataSourceName(MessageUtil.getMessage("patient.local.source")));
+            } else if (!GenericValidator.isBlankOrNull(labNumber)) {
                 Patient patient = getPatientForLabNumber(labNumber);
                 if (patient == null || GenericValidator.isBlankOrNull(patient.getId())) {
                     form.setPatientSearchResults(results);
@@ -240,18 +244,10 @@ public class PatientSearchRestController extends BaseRestController {
         if (transformedPatientSearchResult.getBirthdate() != null
                 && !transformedPatientSearchResult.getBirthdate().isEmpty()) {
             try {
-                // Try to parse with "dd/MM/yyyy" format first
-                DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-                LocalDate birthdate = LocalDate.parse(transformedPatientSearchResult.getBirthdate(), dateFormatter);
-                formattedDob = birthdate.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-            } catch (DateTimeParseException e1) {
-                try {
-                    LocalDate birthdate = LocalDate.parse(transformedPatientSearchResult.getBirthdate(),
-                            DateTimeFormatter.ISO_DATE);
-                    formattedDob = birthdate.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-                } catch (DateTimeParseException e2) {
-                    LogEvent.logError(e2);
-                }
+                formattedDob = DateUtil.parseLocalDate(transformedPatientSearchResult.getBirthdate())
+                        .format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+            } catch (DateTimeParseException e) {
+                LogEvent.logError(e);
             }
         }
 

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useContext } from "react";
-import { format } from "date-fns";
 import {
   Button,
   Column,
@@ -18,14 +17,14 @@ import {
   Table,
   Checkbox,
   Tile,
-  Tag,
 } from "@carbon/react";
+import Tag from "../../common/LocalizedTag";
 import { FormattedMessage, useIntl } from "react-intl";
 import {
   NotificationKinds,
   AlertDialog,
 } from "../../common/CustomNotification";
-import { NotificationContext } from "../../layout/Layout";
+import { ConfigurationContext, NotificationContext } from "../../layout/Layout";
 import {
   getFromOpenElisServer,
   postToOpenElisServerJsonResponse,
@@ -33,6 +32,11 @@ import {
 } from "../../utils/Utils";
 import NceFileAttachment from "./NceFileAttachment";
 import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
+import {
+  formatDateForLocale,
+  getCarbonDateFormat,
+  getDatePickerPlaceholderMessage,
+} from "../../common/dateLocaleUtils";
 import "./ReportNonConformingEvent.css";
 
 const initialReportFormValues = {
@@ -56,11 +60,18 @@ export const ReportNonConformingEvent = () => {
   const { userSessionDetails } = useContext(UserSessionDetailsContext);
 
   const intl = useIntl();
+  const { configurationProperties = {} } =
+    useContext(ConfigurationContext) || {};
+  const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "zh-CN";
+  const currentDate = () => formatDateForLocale(new Date(), dateLocale);
+  const datePickerPlaceholder = intl.formatMessage(
+    getDatePickerPlaceholderMessage(dateLocale),
+  );
 
   const [nceForm, setnceForm] = useState({
     nceNumber: "",
     reporterName: "",
-    dateOfEvent: format(new Date(), "MM/dd/yyyy"),
+    dateOfEvent: currentDate(),
     reportingUnit: "",
     title: "",
     description: "",
@@ -175,15 +186,15 @@ export const ReportNonConformingEvent = () => {
   }, [nceForm.categoryId, categories]);
 
   const selectOptions = [
-    { text: "Last Name", value: "lastName" },
-    { text: "First Name", value: "firstName" },
-    { value: "STNumber", text: "Patient Identification Code" },
-    { text: "Lab Number", value: "labNumber" },
+    { textId: "nce.search.byLastName", value: "lastName" },
+    { textId: "nce.search.byFirstName", value: "firstName" },
+    { value: "STNumber", textId: "nce.search.byPatientId" },
+    { textId: "nce.search.byLabNumber", value: "labNumber" },
   ];
 
   const headers = [
-    { key: "labOrderNumber", value: "Lab Number" },
-    { key: "type", value: "Specimen type" },
+    { key: "labOrderNumber", valueId: "nce.search.header.labNumber" },
+    { key: "type", valueId: "nce.search.header.specimenType" },
   ];
 
   const handleSearch = () => {
@@ -210,7 +221,6 @@ export const ReportNonConformingEvent = () => {
             ...reportFormValues,
             error: intl.formatMessage({
               id: "error.nonconform.report.data.found",
-              defaultMessage: "No data found",
             }),
           });
         }
@@ -240,7 +250,6 @@ export const ReportNonConformingEvent = () => {
             title: intl.formatMessage({ id: "notification.title" }),
             message: intl.formatMessage({
               id: "nce.link.duplicate.warning",
-              defaultMessage: "These specimens are already linked to this NCE",
             }),
           });
           setNotificationVisible(true);
@@ -280,31 +289,26 @@ export const ReportNonConformingEvent = () => {
     if (!nceForm.dateOfEvent) {
       newErrors.dateOfEvent = intl.formatMessage({
         id: "nce.error.dateOfEvent.required",
-        defaultMessage: "Date of event is required",
       });
     }
     if (!nceForm.reportingUnit) {
       newErrors.reportingUnit = intl.formatMessage({
         id: "nce.error.reportingUnit.required",
-        defaultMessage: "Reporting unit is required",
       });
     }
     if (!nceForm.description) {
       newErrors.description = intl.formatMessage({
         id: "nce.error.description.required",
-        defaultMessage: "Description is required",
       });
     }
     if (!nceForm.severity) {
       newErrors.severity = intl.formatMessage({
         id: "nce.error.severity.required",
-        defaultMessage: "Severity is required",
       });
     }
     if (!nceForm.categoryId) {
       newErrors.categoryId = intl.formatMessage({
         id: "nce.error.category.required",
-        defaultMessage: "Category is required",
       });
     }
 
@@ -352,7 +356,7 @@ export const ReportNonConformingEvent = () => {
       setnceForm({
         nceNumber: "",
         reporterName: "",
-        dateOfEvent: format(new Date(), "MM/dd/yyyy"),
+        dateOfEvent: currentDate(),
         reportingUnit: "",
         title: "",
         description: "",
@@ -446,7 +450,7 @@ export const ReportNonConformingEvent = () => {
     setnceForm({
       nceNumber: "",
       reporterName: "",
-      dateOfEvent: format(new Date(), "MM/dd/yyyy"),
+      dateOfEvent: currentDate(),
       reportingUnit: "",
       title: "",
       description: "",
@@ -503,16 +507,10 @@ export const ReportNonConformingEvent = () => {
         {/* Header */}
         <div className="nce-form-header">
           <h2>
-            <FormattedMessage
-              id="nce.form.title"
-              defaultMessage="Report Non-Conformity Event"
-            />
+            <FormattedMessage id="nce.form.title" />
           </h2>
           <p className="nce-form-subtitle">
-            <FormattedMessage
-              id="nce.form.subtitle"
-              defaultMessage="Document a quality event and link to affected samples and results"
-            />
+            <FormattedMessage id="nce.form.subtitle" />
           </p>
         </div>
 
@@ -521,10 +519,7 @@ export const ReportNonConformingEvent = () => {
           <div className="nce-section-header">
             <span className="nce-section-number">01</span>
             <h3>
-              <FormattedMessage
-                id="nce.section.reporterContext"
-                defaultMessage="Reporter & Event Context"
-              />
+              <FormattedMessage id="nce.section.reporterContext" />
             </h3>
           </div>
 
@@ -534,7 +529,6 @@ export const ReportNonConformingEvent = () => {
                 id="nce-number"
                 labelText={intl.formatMessage({
                   id: "nce.field.nceNumber",
-                  defaultMessage: "NCE Number",
                 })}
                 value={nceForm.nceNumber}
                 readOnly
@@ -546,7 +540,6 @@ export const ReportNonConformingEvent = () => {
                 id="reporter-name"
                 labelText={intl.formatMessage({
                   id: "nce.field.reporterName",
-                  defaultMessage: "Reporter Name",
                 })}
                 value={nceForm.reporterName}
                 onChange={(e) =>
@@ -561,12 +554,15 @@ export const ReportNonConformingEvent = () => {
               <DatePicker
                 id="date-of-event-picker"
                 datePickerType="single"
-                dateFormat="m/d/Y"
+                dateFormat={getCarbonDateFormat(dateLocale)}
                 value={nceForm.dateOfEvent}
-                maxDate={format(new Date(), "MM/dd/yyyy")}
+                maxDate={currentDate()}
                 onChange={(dates) => {
                   if (dates && dates[0]) {
-                    const formatted = format(new Date(dates[0]), "MM/dd/yyyy");
+                    const formatted = formatDateForLocale(
+                      new Date(dates[0]),
+                      dateLocale,
+                    );
                     setnceForm((prev) => ({
                       ...prev,
                       dateOfEvent: formatted,
@@ -577,11 +573,10 @@ export const ReportNonConformingEvent = () => {
               >
                 <DatePickerInput
                   id="date-of-event"
-                  placeholder="mm/dd/yyyy"
+                  placeholder={datePickerPlaceholder}
                   labelText={
                     intl.formatMessage({
                       id: "nce.field.dateOfEvent",
-                      defaultMessage: "Date of Event",
                     }) + " *"
                   }
                   invalid={!!errors.dateOfEvent}
@@ -595,7 +590,6 @@ export const ReportNonConformingEvent = () => {
                 labelText={
                   intl.formatMessage({
                     id: "nce.field.reportingUnit",
-                    defaultMessage: "Reporting Unit",
                   }) + " *"
                 }
                 value={nceForm.reportingUnit}
@@ -627,10 +621,7 @@ export const ReportNonConformingEvent = () => {
           <div className="nce-section-header">
             <span className="nce-section-number">02</span>
             <h3>
-              <FormattedMessage
-                id="nce.section.classification"
-                defaultMessage="Classification"
-              />
+              <FormattedMessage id="nce.section.classification" />
             </h3>
           </div>
 
@@ -641,7 +632,6 @@ export const ReportNonConformingEvent = () => {
                 labelText={
                   intl.formatMessage({
                     id: "nce.field.category",
-                    defaultMessage: "Category",
                   }) + " *"
                 }
                 value={nceForm.categoryId}
@@ -660,7 +650,6 @@ export const ReportNonConformingEvent = () => {
                   value=""
                   text={intl.formatMessage({
                     id: "nce.select.category",
-                    defaultMessage: "Select category...",
                   })}
                 />
                 {categories.map((cat) => (
@@ -673,7 +662,6 @@ export const ReportNonConformingEvent = () => {
                 id="nce-type"
                 labelText={intl.formatMessage({
                   id: "nce.field.subcategory",
-                  defaultMessage: "Subcategory",
                 })}
                 value={nceForm.typeId}
                 onChange={(e) =>
@@ -688,7 +676,6 @@ export const ReportNonConformingEvent = () => {
                   value=""
                   text={intl.formatMessage({
                     id: "nce.select.subcategory",
-                    defaultMessage: "Select subcategory...",
                   })}
                 />
                 {types.map((type) => (
@@ -700,11 +687,7 @@ export const ReportNonConformingEvent = () => {
 
           <div className="nce-severity-section">
             <label className="nce-field-label">
-              <FormattedMessage
-                id="nce.field.severity"
-                defaultMessage="Severity"
-              />{" "}
-              *
+              <FormattedMessage id="nce.field.severity" /> *
             </label>
             <div className="nce-severity-options">
               <div
@@ -717,16 +700,10 @@ export const ReportNonConformingEvent = () => {
                 <div className="nce-severity-indicator critical"></div>
                 <div className="nce-severity-content">
                   <span className="nce-severity-label">
-                    <FormattedMessage
-                      id="nce.severity.critical"
-                      defaultMessage="Critical"
-                    />
+                    <FormattedMessage id="nce.severity.critical" />
                   </span>
                   <span className="nce-severity-description">
-                    <FormattedMessage
-                      id="nce.severity.critical.desc"
-                      defaultMessage="Patient safety risk, regulatory violation"
-                    />
+                    <FormattedMessage id="nce.severity.critical.desc" />
                   </span>
                 </div>
               </div>
@@ -741,16 +718,10 @@ export const ReportNonConformingEvent = () => {
                 <div className="nce-severity-indicator major"></div>
                 <div className="nce-severity-content">
                   <span className="nce-severity-label">
-                    <FormattedMessage
-                      id="nce.severity.major"
-                      defaultMessage="Major"
-                    />
+                    <FormattedMessage id="nce.severity.major" />
                   </span>
                   <span className="nce-severity-description">
-                    <FormattedMessage
-                      id="nce.severity.major.desc"
-                      defaultMessage="Significant quality or operational impact"
-                    />
+                    <FormattedMessage id="nce.severity.major.desc" />
                   </span>
                 </div>
               </div>
@@ -765,16 +736,10 @@ export const ReportNonConformingEvent = () => {
                 <div className="nce-severity-indicator minor"></div>
                 <div className="nce-severity-content">
                   <span className="nce-severity-label">
-                    <FormattedMessage
-                      id="nce.severity.minor"
-                      defaultMessage="Minor"
-                    />
+                    <FormattedMessage id="nce.severity.minor" />
                   </span>
                   <span className="nce-severity-description">
-                    <FormattedMessage
-                      id="nce.severity.minor.desc"
-                      defaultMessage="Limited impact, easily corrected"
-                    />
+                    <FormattedMessage id="nce.severity.minor.desc" />
                   </span>
                 </div>
               </div>
@@ -790,10 +755,7 @@ export const ReportNonConformingEvent = () => {
           <div className="nce-section-header">
             <span className="nce-section-number">03</span>
             <h3>
-              <FormattedMessage
-                id="nce.section.details"
-                defaultMessage="Details"
-              />
+              <FormattedMessage id="nce.section.details" />
             </h3>
           </div>
 
@@ -803,11 +765,9 @@ export const ReportNonConformingEvent = () => {
                 id="nce-title"
                 labelText={intl.formatMessage({
                   id: "nce.field.title",
-                  defaultMessage: "Title",
                 })}
                 placeholder={intl.formatMessage({
                   id: "nce.field.title.placeholder",
-                  defaultMessage: "Brief description of the event...",
                 })}
                 value={nceForm.title}
                 onChange={(e) =>
@@ -825,13 +785,10 @@ export const ReportNonConformingEvent = () => {
                 labelText={
                   intl.formatMessage({
                     id: "nce.field.description",
-                    defaultMessage: "Description",
                   }) + " *"
                 }
                 placeholder={intl.formatMessage({
                   id: "nce.field.description.placeholder",
-                  defaultMessage:
-                    "Describe what happened, when it was detected, and any relevant context...",
                 })}
                 value={nceForm.description}
                 onChange={(e) => {
@@ -852,12 +809,9 @@ export const ReportNonConformingEvent = () => {
                 id="nce-immediate-action"
                 labelText={intl.formatMessage({
                   id: "nce.field.immediateAction",
-                  defaultMessage: "Immediate Action Taken",
                 })}
                 placeholder={intl.formatMessage({
                   id: "nce.field.immediateAction.placeholder",
-                  defaultMessage:
-                    "What corrective steps were taken immediately...",
                 })}
                 value={nceForm.immediateAction}
                 onChange={(e) =>
@@ -875,11 +829,9 @@ export const ReportNonConformingEvent = () => {
                 id="nce-suspected-causes"
                 labelText={intl.formatMessage({
                   id: "nce.field.suspectedCauses",
-                  defaultMessage: "Suspected Causes",
                 })}
                 placeholder={intl.formatMessage({
                   id: "nce.field.suspectedCauses.placeholder",
-                  defaultMessage: "Reporter's initial hypotheses on cause...",
                 })}
                 value={nceForm.suspectedCauses}
                 onChange={(e) =>
@@ -891,8 +843,6 @@ export const ReportNonConformingEvent = () => {
                 rows={3}
                 helperText={intl.formatMessage({
                   id: "nce.field.suspectedCauses.helper",
-                  defaultMessage:
-                    "Initial assessment only - formal root cause determined during investigation",
                 })}
               />
             </Column>
@@ -902,11 +852,9 @@ export const ReportNonConformingEvent = () => {
                 id="nce-proposed-action"
                 labelText={intl.formatMessage({
                   id: "nce.field.proposedAction",
-                  defaultMessage: "Proposed Action",
                 })}
                 placeholder={intl.formatMessage({
                   id: "nce.field.proposedAction.placeholder",
-                  defaultMessage: "Recommended next steps...",
                 })}
                 value={nceForm.proposedAction}
                 onChange={(e) =>
@@ -918,8 +866,6 @@ export const ReportNonConformingEvent = () => {
                 rows={3}
                 helperText={intl.formatMessage({
                   id: "nce.field.proposedAction.helper",
-                  defaultMessage:
-                    "Separate from CAPA actions assigned during corrective action workflow",
                 })}
               />
             </Column>
@@ -931,10 +877,7 @@ export const ReportNonConformingEvent = () => {
           <div className="nce-section-header">
             <span className="nce-section-number">04</span>
             <h3>
-              <FormattedMessage
-                id="nce.section.attachments"
-                defaultMessage="Attachments"
-              />
+              <FormattedMessage id="nce.section.attachments" />
             </h3>
           </div>
 
@@ -954,10 +897,7 @@ export const ReportNonConformingEvent = () => {
           <div className="nce-section-header">
             <span className="nce-section-number">05</span>
             <h3>
-              <FormattedMessage
-                id="nce.section.linkSamples"
-                defaultMessage="Link to Samples / Results (Optional)"
-              />
+              <FormattedMessage id="nce.section.linkSamples" />
             </h3>
           </div>
 
@@ -988,7 +928,6 @@ export const ReportNonConformingEvent = () => {
                   id="search-type"
                   labelText={intl.formatMessage({
                     id: "label.form.searchby",
-                    defaultMessage: "Search by",
                   })}
                   value={reportFormValues.type || ""}
                   onChange={(e) =>
@@ -1003,7 +942,7 @@ export const ReportNonConformingEvent = () => {
                     <SelectItem
                       key={option.value}
                       value={option.value}
-                      text={option.text}
+                      text={intl.formatMessage({ id: option.textId })}
                     />
                   ))}
                 </Select>
@@ -1013,7 +952,6 @@ export const ReportNonConformingEvent = () => {
                   id="search-value"
                   labelText={intl.formatMessage({
                     id: "testcalculation.label.textValue",
-                    defaultMessage: "Value",
                   })}
                   value={reportFormValues.value}
                   onChange={(e) =>
@@ -1026,10 +964,7 @@ export const ReportNonConformingEvent = () => {
               </Column>
               <Column lg={4} md={4} sm={2} className="nce-search-button-col">
                 <Button kind="tertiary" size="md" onClick={handleSearch}>
-                  <FormattedMessage
-                    id="label.button.search"
-                    defaultMessage="Search"
-                  />
+                  <FormattedMessage id="label.button.search" />
                 </Button>
               </Column>
             </Grid>
@@ -1049,7 +984,9 @@ export const ReportNonConformingEvent = () => {
                   <TableRow>
                     <TableHeader />
                     {headers.map((header) => (
-                      <TableHeader key={header.key}>{header.value}</TableHeader>
+                      <TableHeader key={header.key}>
+                        {intl.formatMessage({ id: header.valueId })}
+                      </TableHeader>
                     ))}
                   </TableRow>
                 </TableHead>
@@ -1105,20 +1042,14 @@ export const ReportNonConformingEvent = () => {
                 onClick={handleLinkSamples}
                 style={{ marginTop: "1rem" }}
               >
-                <FormattedMessage
-                  id="nce.button.linkSelected"
-                  defaultMessage="Link Selected Samples"
-                />
+                <FormattedMessage id="nce.button.linkSelected" />
               </Button>
             </div>
           )}
 
           {linkedSamples.length === 0 && !searchResults && (
             <p className="nce-helper-text">
-              <FormattedMessage
-                id="nce.linkSamples.helper"
-                defaultMessage="Search for orders above to link samples to this NCE. This step is optional."
-              />
+              <FormattedMessage id="nce.linkSamples.helper" />
             </p>
           )}
         </Tile>
@@ -1126,16 +1057,10 @@ export const ReportNonConformingEvent = () => {
         {/* Footer Actions */}
         <div className="nce-form-actions">
           <Button kind="secondary" onClick={handleCancel}>
-            <FormattedMessage
-              id="label.button.cancel"
-              defaultMessage="Cancel"
-            />
+            <FormattedMessage id="label.button.cancel" />
           </Button>
           <Button kind="primary" onClick={handleNCEFormSubmit}>
-            <FormattedMessage
-              id="nce.button.submit"
-              defaultMessage="Submit NCE"
-            />
+            <FormattedMessage id="nce.button.submit" />
           </Button>
         </div>
       </div>

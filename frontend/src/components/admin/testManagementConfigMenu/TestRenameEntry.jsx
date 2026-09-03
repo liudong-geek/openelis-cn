@@ -26,6 +26,7 @@ import {
 } from "../../common/CustomNotification";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 import SearchTestNames from "./SearchTestNames";
 
 let breadcrumbs = [
@@ -138,7 +139,7 @@ function TestRenameEntry() {
       setNotificationVisible(true);
       setIsAddModalOpen(false);
       setTimeout(() => {
-        window.location.reload();
+        refreshCurrentRoute();
       }, 10);
     } else {
       addNotification({
@@ -148,7 +149,7 @@ function TestRenameEntry() {
       });
       setNotificationVisible(true);
       setTimeout(() => {
-        window.location.reload();
+        refreshCurrentRoute();
       }, 10);
     }
   }

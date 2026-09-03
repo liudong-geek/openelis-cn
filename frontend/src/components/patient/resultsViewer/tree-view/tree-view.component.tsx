@@ -1,4 +1,4 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { AccordionSkeleton, DataTableSkeleton, Button } from "@carbon/react";
 import { TreeViewAlt } from "@carbon/react/icons";
 import { useLayoutType } from "../commons";
@@ -7,7 +7,7 @@ import GroupedTimeline from "../grouped-timeline";
 import Trendline from "../trendline/trendline.component";
 //import styles from '../results-viewer.styles.scss';
 import "../results-viewer.styles.scss";
-import { useTranslation } from "react-i18next";
+import { useIntl } from "react-intl";
 import TabletOverlay from "../tablet-overlay";
 
 interface TreeViewProps {
@@ -29,25 +29,64 @@ const TreeView: React.FC<TreeViewProps> = ({
 }) => {
   const tablet = useLayoutType() === "tablet";
   const [showTreeOverlay, setShowTreeOverlay] = useState(false);
-  const { t } = useTranslation();
+  const intl = useIntl();
+  const [hash, setHash] = useState(() => window.location.hash);
+
+  useEffect(() => {
+    const updateHash = () => setHash(window.location.hash);
+    window.addEventListener("hashchange", updateHash);
+    window.addEventListener("popstate", updateHash);
+    return () => {
+      window.removeEventListener("hashchange", updateHash);
+      window.removeEventListener("popstate", updateHash);
+    };
+  }, []);
+  const encodedTrendConcept = hash.startsWith("#trendline/")
+    ? hash.slice("#trendline/".length)
+    : "";
+  let trendConceptUuid = "";
+  try {
+    trendConceptUuid = decodeURIComponent(encodedTrendConcept);
+  } catch {
+    trendConceptUuid = "";
+  }
 
   const { timelineData, resetTree } = useContext(FilterContext);
 
   if (tablet) {
     return (
       <>
-        <div>{!loading ? <GroupedTimeline /> : <DataTableSkeleton />}</div>
+        <div>
+          {!loading ? (
+            trendConceptUuid ? (
+              <Trendline
+                patientUuid={patientUuid}
+                conceptUuid={trendConceptUuid}
+                basePath={basePath}
+                showBackToTimelineButton
+              />
+            ) : (
+              <GroupedTimeline />
+            )
+          ) : (
+            <DataTableSkeleton />
+          )}
+        </div>
         <div className="floatingTreeButton">
           <Button
             renderIcon={TreeViewAlt}
             hasIconOnly
             onClick={() => setShowTreeOverlay(true)}
-            iconDescription={t("showTree", "Show tree")}
+            iconDescription={intl.formatMessage({
+              id: "patient.resultsViewer.tree.show",
+            })}
           />
         </div>
         {showTreeOverlay && (
           <TabletOverlay
-            headerText={t("Tree", "Tree")}
+            headerText={intl.formatMessage({
+              id: "patient.resultsViewer.tree.title",
+            })}
             close={() => setShowTreeOverlay(false)}
             buttonsGroup={
               <>
@@ -57,7 +96,9 @@ const TreeView: React.FC<TreeViewProps> = ({
                   onClick={resetTree}
                   disabled={loading}
                 >
-                  {t("resetTreeText", "Reset tree")}
+                  {intl.formatMessage({
+                    id: "patient.resultsViewer.tree.reset",
+                  })}
                 </Button>
                 <Button
                   kind="primary"
@@ -65,11 +106,15 @@ const TreeView: React.FC<TreeViewProps> = ({
                   onClick={() => setShowTreeOverlay(false)}
                   disabled={loading}
                 >
-                  {`${t("view", "View")} ${
-                    !loading && timelineData?.loaded
-                      ? timelineData?.data?.rowData?.length
-                      : ""
-                  } ${t("resultsText", "results")}`}
+                  {intl.formatMessage(
+                    { id: "patient.resultsViewer.tree.viewResults" },
+                    {
+                      count:
+                        !loading && timelineData?.loaded
+                          ? timelineData?.data?.rowData?.length
+                          : 0,
+                    },
+                  )}
                 </Button>
               </>
             }
@@ -97,14 +142,14 @@ const TreeView: React.FC<TreeViewProps> = ({
         </div>
       )}
       <div className="rightSection">
-        {!tablet && window.location.href.includes("#trendline") ? (
+        {!tablet && trendConceptUuid ? (
           <Trendline
             patientUuid={patientUuid}
-            conceptUuid={window.location.href.split("#trendline/")[1]}
+            conceptUuid={trendConceptUuid}
             basePath={basePath}
             showBackToTimelineButton
           />
-        ) : !loading || window.location.href.endsWith("#groupedtimeline") ? (
+        ) : !loading || hash === "#groupedtimeline" ? (
           <GroupedTimeline />
         ) : (
           <DataTableSkeleton />

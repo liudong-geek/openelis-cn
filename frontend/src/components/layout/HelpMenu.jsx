@@ -92,7 +92,7 @@ const HelpMenu = ({ helpOpen, handlePanelToggle }) => {
       </HeaderGlobalAction>
       <HeaderPanel
         ref={panelRef}
-        aria-label="Help Panel"
+        aria-label={intl.formatMessage({ id: "header.panel.help" })}
         expanded={helpOpen}
         style={{ background: "#295785", color: "white" }}
       >

@@ -9,7 +9,7 @@ import Admin from "../admin/Admin";
 import Layout, { ConfigurationContext, NotificationContext } from "./Layout";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import enMessages from "../../languages/en.json";
-import { getFromOpenElisServer } from "../utils/Utils";
+import { getFromOpenElisServer, getFromOpenElisServerV2 } from "../utils/Utils";
 
 /**
  * Integration tests for Layout.js
@@ -126,6 +126,56 @@ describe("Layout", () => {
   });
 
   describe("TwoModeLayout integration", () => {
+    test("keeps navigation available and shows a recovery action when any route crashes", () => {
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      const BrokenRoute = () => {
+        throw new Error("route render failed");
+      };
+
+      renderWithProviders(
+        <Layout>
+          <BrokenRoute />
+        </Layout>,
+      );
+
+      const errorHeading = screen.getByRole("heading", {
+        name: "Page could not be loaded",
+      });
+      expect(errorHeading).toBeInTheDocument();
+      expect(
+        errorHeading
+          .closest(".oe-route-error__surface")
+          ?.querySelector("button"),
+      ).toHaveTextContent("Reload");
+      expect(document.querySelector(".cds--side-nav")).toBeTruthy();
+      consoleError.mockRestore();
+    });
+
+    test("notification configuration failure degrades silently without retrying", async () => {
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      getFromOpenElisServerV2.mockRejectedValueOnce(
+        new Error("push configuration is unavailable"),
+      );
+
+      renderWithProviders(
+        <Layout>
+          <div>Content</div>
+        </Layout>,
+      );
+
+      await waitFor(() =>
+        expect(getFromOpenElisServerV2).toHaveBeenCalledTimes(1),
+      );
+      expect(consoleError.mock.calls.flat().join(" ")).not.toContain(
+        "Error checking subscription status",
+      );
+      consoleError.mockRestore();
+    });
+
     /**
      * Test: Layout renders TwoModeLayout component
      * @see spec.md FR-013: Apply refactored layout globally
@@ -437,10 +487,13 @@ describe("Layout", () => {
         "content-nav-locked",
       );
 
-      fireEvent.click(container.querySelector("#sidenav-menu-button"));
+      const scrim = container.querySelector(".oe-nav-scrim");
+      expect(scrim).toBeInTheDocument();
+      fireEvent.click(scrim);
       expect(container.querySelector(".cds--side-nav")).not.toHaveClass(
         "cds--side-nav--expanded",
       );
+      expect(container.querySelector(".oe-nav-scrim")).toBeNull();
     });
 
     test("testLayout_Desktop_NavAlwaysRenderedWithoutHamburger", () => {
@@ -567,6 +620,37 @@ describe("Layout", () => {
   });
 
   describe("onChangeLanguage wiring", () => {
+    test("single active locale switches the application to that locale", async () => {
+      const mockOnChangeLanguage = vi.fn();
+      getFromOpenElisServer.mockImplementation((url, callback) => {
+        if (url === "/rest/configuration-properties") {
+          callback({ releaseNumber: "3.0.0", BANNER_TEXT: "Test Lab" });
+        } else if (url === "/rest/supportedlocales/active") {
+          callback([
+            {
+              localeCode: "zh",
+              displayName: "简体中文",
+              fallback: true,
+            },
+          ]);
+        } else if (url === "/rest/menu") {
+          callback([]);
+        } else if (url === "/rest/database-cleaning/status") {
+          callback({ trainingInstallation: false });
+        }
+      });
+
+      renderWithProviders(
+        <Layout onChangeLanguage={mockOnChangeLanguage}>
+          <div>Content</div>
+        </Layout>,
+      );
+
+      await waitFor(() =>
+        expect(mockOnChangeLanguage).toHaveBeenCalledWith("zh"),
+      );
+    });
+
     /**
      * Test: onChangeLanguage prop is accepted by Layout
      * @see spec.md FR-011: language selector must work

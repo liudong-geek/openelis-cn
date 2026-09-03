@@ -14,11 +14,17 @@ const UpdateQCStatusModal = ({ open, onClose, onSave, lot }) => {
   const intl = useIntl();
 
   const qcStatusOptions = [
-    { id: "PENDING", text: "Pending QC" },
-    { id: "PASSED", text: "Passed" },
-    { id: "FAILED", text: "Failed" },
-    { id: "NOT_REQUIRED", text: "Not Required" },
+    { id: "PENDING", text: intl.formatMessage({ id: "qc.status.pending" }) },
+    { id: "PASSED", text: intl.formatMessage({ id: "qc.status.passed" }) },
+    { id: "FAILED", text: intl.formatMessage({ id: "qc.status.failed" }) },
+    {
+      id: "NOT_REQUIRED",
+      text: intl.formatMessage({ id: "qc.status.notRequired" }),
+    },
   ];
+  const getQCStatusLabel = (status) =>
+    qcStatusOptions.find((option) => option.id === status)?.text ||
+    intl.formatMessage({ id: "qc.status.pending" });
 
   const [formData, setFormData] = useState({
     qcStatus: lot?.qcStatus || "PENDING",
@@ -35,12 +41,12 @@ const UpdateQCStatusModal = ({ open, onClose, onSave, lot }) => {
 
   const validate = () => {
     if (!formData.qcStatus) {
-      setError("Please select a QC status");
+      setError(intl.formatMessage({ id: "qc.status.validation.required" }));
       return false;
     }
 
     if (formData.qcStatus === "FAILED" && !formData.notes?.trim()) {
-      setError("Please provide notes explaining QC failure");
+      setError(intl.formatMessage({ id: "qc.status.validation.notes" }));
       return false;
     }
 
@@ -68,7 +74,7 @@ const UpdateQCStatusModal = ({ open, onClose, onSave, lot }) => {
       onSave();
     } catch (err) {
       console.error("Error updating QC status:", err);
-      setError(err.message || "Error updating QC status");
+      setError(intl.formatMessage({ id: "qc.status.update.error" }));
     } finally {
       setSaving(false);
     }
@@ -113,7 +119,7 @@ const UpdateQCStatusModal = ({ open, onClose, onSave, lot }) => {
             <FormattedMessage id="qc.status.current" />
           </FormLabel>
           <p>
-            <strong>{lot.qcStatus || "PENDING"}</strong>
+            <strong>{getQCStatusLabel(lot.qcStatus || "PENDING")}</strong>
           </p>
         </div>
 

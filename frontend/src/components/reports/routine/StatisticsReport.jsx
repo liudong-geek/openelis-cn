@@ -8,22 +8,49 @@ import {
   Button,
   Dropdown,
   Heading,
+  InlineNotification,
 } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { getFromOpenElisServer, Roles } from "../../utils/Utils";
 import "../../Style.css";
 import config from "../../../config.json";
+import { openReportWindow } from "../common/reportLaunch";
+import { formatTatPriority } from "../tat/tatUtils";
 
 const timeFrames = [
   {
     id: "NORMAL_WORK_HOURS",
-    description: "Normal Work hours (reception time 9h-15h30)",
+    labelId: "reports.statistics.timeFrame.normal",
   },
   {
     id: "OUT_OF_NORMAL_WORK_HOURS",
-    description: "Out of Normal Work Hours (15h31-8h59)",
+    labelId: "reports.statistics.timeFrame.outside",
   },
 ];
+
+const MINIMUM_REPORT_YEAR = 2009;
+
+export const buildStatisticsReportUrl = ({
+  serverBaseUrl,
+  labUnits = [],
+  priorities = [],
+  receptionTimes = [],
+  year,
+}) => {
+  const query = new URLSearchParams({
+    report: "statisticsReport",
+    type: "indicator",
+    upperYear: String(year),
+  });
+  labUnits.forEach((unit) => query.append("labSections", String(unit)));
+  priorities.forEach((priority) => query.append("priority", String(priority)));
+  receptionTimes.forEach((timeFrame) =>
+    query.append("receptionTime", String(timeFrame)),
+  );
+
+  const baseUrl = String(serverBaseUrl || "").replace(/\/$/, "");
+  return `${baseUrl}/ReportPrint?${query.toString()}`;
+};
 
 const StatisticsReport = () => {
   const intl = useIntl();
@@ -31,61 +58,93 @@ const StatisticsReport = () => {
   const [priorities, setPriorities] = useState([]);
   const [selectedLabUnits, setSelectedLabUnits] = useState([]);
   const [selectedPriorities, setSelectedPriorities] = useState([]);
-  const [selectedTimeFrames, setSelectedTimeFrames] = useState([]);
+  const [selectedTimeFrames, setSelectedTimeFrames] = useState(() =>
+    timeFrames.map((frame) => frame.id),
+  );
   const [selectedYear, setSelectedYear] = useState({
     value: new Date().getFullYear(),
-    label: new Date().getFullYear(),
+    label: new Date().getFullYear().toString(),
   });
 
-  const [loading, setLoading] = useState(false);
-  const [notificationVisible, setNotificationVisible] = useState(false);
+  const [labUnitsState, setLabUnitsState] = useState("loading");
+  const [prioritiesState, setPrioritiesState] = useState("loading");
+  const [launchError, setLaunchError] = useState(false);
+  const [yearError, setYearError] = useState(false);
 
   useEffect(() => {
     getFromOpenElisServer(
       "/rest/user-test-sections/" + Roles.REPORTS,
       (fetchedTestSections) => {
-        setLabUnits(fetchedTestSections);
+        if (!Array.isArray(fetchedTestSections)) {
+          setLabUnits([]);
+          setLabUnitsState("error");
+          return;
+        }
+        const availableLabUnits = fetchedTestSections.filter(
+          (unit) => unit?.id !== undefined && unit?.id !== null,
+        );
+        setLabUnits(availableLabUnits);
+        setSelectedLabUnits(availableLabUnits.map((unit) => unit.id));
+        setLabUnitsState(availableLabUnits.length > 0 ? "ready" : "empty");
       },
     );
-    getFromOpenElisServer("/rest/displayList/ORDER_PRIORITY", (fetchedPriorities) => {
-      setPriorities(fetchedPriorities);
-    });
+    getFromOpenElisServer(
+      "/rest/displayList/ORDER_PRIORITY",
+      (fetchedPriorities) => {
+        if (!Array.isArray(fetchedPriorities)) {
+          setPriorities([]);
+          setPrioritiesState("error");
+          return;
+        }
+        const availablePriorities = fetchedPriorities.filter(
+          (priority) => priority?.id !== undefined && priority?.id !== null,
+        );
+        setPriorities(availablePriorities);
+        setSelectedPriorities(
+          availablePriorities.map((priority) => priority.id),
+        );
+        setPrioritiesState(availablePriorities.length > 0 ? "ready" : "empty");
+      },
+    );
   }, []);
 
-  const handleSubmit = () => {
-    setLoading(true);
+  const handleSubmit = (event) => {
+    event?.preventDefault();
+    const year = Number(selectedYear?.value);
+    if (
+      !Number.isInteger(year) ||
+      year < MINIMUM_REPORT_YEAR ||
+      year > currentYear
+    ) {
+      setYearError(true);
+      setLaunchError(false);
+      return;
+    }
 
-    // Constructing URL based on selected values
-    const baseParams = "report=statisticsReport&type=indicator";
-    const labUnitsParams = selectedLabUnits
-      .map((unit) => `labSections=${encodeURIComponent(unit)}`)
-      .join("&");
-    const prioritiesParams = selectedPriorities
-      .map((priority) => `priority=${encodeURIComponent(priority)}`)
-      .join("&");
-    const timeFramesParams = selectedTimeFrames
-      .map((frame) => `receptionTime=${encodeURIComponent(frame)}`)
-      .join("&");
-    const yearParam = `upperYear=${encodeURIComponent(selectedYear.value)}`;
-
-    // Constructing the base URL
-    const baseUrl = `${config.serverBaseUrl}/ReportPrint`;
-
-    // Constructing the query string
-    const queryParams = `${baseParams}&${labUnitsParams}&${prioritiesParams}&${timeFramesParams}&${yearParam}`;
-
-    // Constructing the final URL
-    const url = `${baseUrl}?${queryParams}`;
-
-    // Redirect to the constructed URL
-    window.open(url, "_blank");
-
-    setLoading(false);
-    setNotificationVisible(true);
+    const url = buildStatisticsReportUrl({
+      serverBaseUrl: config.serverBaseUrl,
+      labUnits:
+        selectedLabUnits.length > 0
+          ? selectedLabUnits
+          : labUnits.map((unit) => unit.id),
+      priorities:
+        selectedPriorities.length > 0
+          ? selectedPriorities
+          : priorities.map((priority) => priority.id),
+      receptionTimes:
+        selectedTimeFrames.length > 0
+          ? selectedTimeFrames
+          : timeFrames.map((frame) => frame.id),
+      year,
+    });
+    setYearError(false);
+    setLaunchError(!openReportWindow(url));
   };
 
   const handleYearChange = (year) => {
-    setSelectedYear({ value: year.value, label: year.label });
+    setSelectedYear(year ? { value: year.value, label: year.label } : null);
+    setYearError(false);
+    setLaunchError(false);
   };
 
   const handleSelectAllLabUnits = (isChecked) => {
@@ -103,19 +162,19 @@ const StatisticsReport = () => {
   };
 
   const currentYear = new Date().getFullYear();
-  const years = Array.from({ length: currentYear - 2008 }, (_, index) => ({
-    value: currentYear - index,
-    label: (currentYear - index).toString(),
-  }));
+  const years = Array.from(
+    { length: currentYear - MINIMUM_REPORT_YEAR + 1 },
+    (_, index) => ({
+      value: currentYear - index,
+      label: (currentYear - index).toString(),
+    }),
+  );
 
-  const breadcrumbs = [
-    { label: "home.label", link: "/" },
-    { label: "routine.reports", link: "/RoutineReports" },
-    {
-      label: "openreports.stat.aggregate",
-      link: "/RoutineReport?type=indicator&report=statisticsReport",
-    },
-  ];
+  const optionsLoading =
+    labUnitsState === "loading" || prioritiesState === "loading";
+  const optionsLoadError =
+    labUnitsState === "error" || prioritiesState === "error";
+  const optionsEmpty = labUnitsState === "empty" || prioritiesState === "empty";
 
   return (
     <>
@@ -132,7 +191,62 @@ const StatisticsReport = () => {
       </Grid>
       <Grid fullWidth={true}>
         <Column lg={16} md={8} sm={4}>
-          <Form>
+          <Form onSubmit={handleSubmit}>
+            {optionsLoading && (
+              <InlineNotification
+                kind="info"
+                lowContrast
+                hideCloseButton
+                title={intl.formatMessage({
+                  id: "reports.query.options.loading",
+                })}
+              />
+            )}
+            {optionsLoadError && (
+              <InlineNotification
+                kind="error"
+                lowContrast
+                hideCloseButton
+                title={intl.formatMessage({
+                  id: "reports.query.options.loadError.title",
+                })}
+                subtitle={intl.formatMessage({
+                  id: "reports.query.options.loadError.subtitle",
+                })}
+              />
+            )}
+            {optionsEmpty && (
+              <InlineNotification
+                kind="warning"
+                lowContrast
+                hideCloseButton
+                title={intl.formatMessage({
+                  id: "reports.query.options.empty",
+                })}
+              />
+            )}
+            {launchError && (
+              <InlineNotification
+                kind="error"
+                lowContrast
+                hideCloseButton
+                title={intl.formatMessage({ id: "reports.query.error.title" })}
+                subtitle={intl.formatMessage({
+                  id: "reports.query.popupBlocked",
+                })}
+              />
+            )}
+            <InlineNotification
+              kind="info"
+              lowContrast
+              hideCloseButton
+              title={intl.formatMessage({
+                id: "reports.statistics.scope.title",
+              })}
+              subtitle={intl.formatMessage({
+                id: "reports.statistics.scope.description",
+              })}
+            />
             <Grid fullWidth={true}>
               <Column lg={16} md={8} sm={4}>
                 <Section>
@@ -144,9 +258,12 @@ const StatisticsReport = () => {
                 </Section>
                 <div>
                   <Checkbox
-                    labelText="All"
+                    labelText={intl.formatMessage({ id: "all.label" })}
                     id="select-all-lab-units"
-                    checked={selectedLabUnits.length === labUnits.length}
+                    checked={
+                      labUnits.length > 0 &&
+                      selectedLabUnits.length === labUnits.length
+                    }
                     onChange={(event) =>
                       handleSelectAllLabUnits(event.target.checked)
                     }
@@ -154,11 +271,8 @@ const StatisticsReport = () => {
                   {labUnits.map((unit) => (
                     <Checkbox
                       key={unit.id}
-                      labelText={intl.formatMessage({
-                        id: unit.value,
-                        defaultMessage: unit.value,
-                      })}
-                      id={unit.id}
+                      labelText={unit.value}
+                      id={`statistics-lab-unit-${unit.id}`}
                       checked={selectedLabUnits.includes(unit.id)}
                       onChange={() => {
                         setSelectedLabUnits((prev) => {
@@ -184,9 +298,12 @@ const StatisticsReport = () => {
                 </Section>
                 <div className="inlineDiv">
                   <Checkbox
-                    labelText="All"
+                    labelText={intl.formatMessage({ id: "all.label" })}
                     id="select-all-priorities"
-                    checked={selectedPriorities.length === priorities.length}
+                    checked={
+                      priorities.length > 0 &&
+                      selectedPriorities.length === priorities.length
+                    }
                     onChange={(event) =>
                       handleSelectAllPriorities(event.target.checked)
                     }
@@ -194,11 +311,8 @@ const StatisticsReport = () => {
                   {priorities.map((priority) => (
                     <Checkbox
                       key={priority.id}
-                      labelText={intl.formatMessage({
-                        id: priority.value,
-                        defaultMessage: priority.value,
-                      })}
-                      id={priority.id}
+                      labelText={formatTatPriority(priority.id, intl)}
+                      id={`statistics-priority-${priority.id}`}
                       checked={selectedPriorities.includes(priority.id)}
                       onChange={() => {
                         setSelectedPriorities((prev) => {
@@ -222,13 +336,13 @@ const StatisticsReport = () => {
                     <FormattedMessage id="select.timeFrame" />
                   </h5>
                   <br />
-                  <h7>
+                  <p>
                     <FormattedMessage id="select.timeFrame.Note" />
-                  </h7>
+                  </p>
                 </Section>
                 <div>
                   <Checkbox
-                    labelText="All"
+                    labelText={intl.formatMessage({ id: "all.label" })}
                     id="select-all-time-frames"
                     checked={selectedTimeFrames.length === timeFrames.length}
                     onChange={(event) =>
@@ -240,8 +354,7 @@ const StatisticsReport = () => {
                       key={frame.id}
                       id={frame.id}
                       labelText={intl.formatMessage({
-                        id: frame.description,
-                        defaultMessage: frame.description,
+                        id: frame.labelId,
                       })}
                       checked={selectedTimeFrames.includes(frame.id)}
                       onChange={() => {
@@ -270,7 +383,12 @@ const StatisticsReport = () => {
               <Column lg={2} md={2} sm={2}>
                 <Dropdown
                   id="year-picker"
-                  label="Select Year"
+                  titleText={intl.formatMessage({
+                    id: "reports.statistics.year.label",
+                  })}
+                  label={intl.formatMessage({
+                    id: "reports.statistics.year.placeholder",
+                  })}
                   selectedItem={selectedYear}
                   onChange={({ selectedItem }) =>
                     handleYearChange(selectedItem)
@@ -279,6 +397,15 @@ const StatisticsReport = () => {
                     value: year.value,
                     label: year.label,
                   }))}
+                  itemToString={(item) => item?.label || ""}
+                  invalid={yearError}
+                  invalidText={intl.formatMessage(
+                    { id: "reports.statistics.year.invalid" },
+                    {
+                      minimumYear: MINIMUM_REPORT_YEAR,
+                      maximumYear: currentYear,
+                    },
+                  )}
                 />
               </Column>{" "}
             </Grid>
@@ -287,13 +414,10 @@ const StatisticsReport = () => {
               <br />
               <Button
                 data-cy="printableVersion"
-                type="button"
-                onClick={handleSubmit}
+                type="submit"
+                disabled={optionsLoading || optionsLoadError || optionsEmpty}
               >
-                <FormattedMessage
-                  id="label.button.generatePrintableVersion"
-                  defaultMessage="Generate printable version"
-                />
+                <FormattedMessage id="label.button.generatePrintableVersion" />
               </Button>
             </Section>
           </Form>

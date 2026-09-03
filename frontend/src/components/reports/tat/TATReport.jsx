@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useCallback, useContext, useState } from "react";
 import { Tabs, TabList, Tab, TabPanels, TabPanel, Tag } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { getFromOpenElisServer } from "../../utils/Utils";
@@ -8,9 +8,16 @@ import TATDetailListTab from "./TATDetailListTab";
 import TATTrendsTab from "./TATTrendsTab";
 import TATExport from "./TATExport";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import { ConfigurationContext } from "../../layout/Layout";
+import { formatReportApiDateForLocale } from "../reportDateUtils";
 
 function TATReport() {
   const intl = useIntl();
+  const configuration = useContext(ConfigurationContext);
+  const dateLocale =
+    configuration?.configurationProperties?.DEFAULT_DATE_LOCALE ||
+    intl.locale ||
+    "zh-CN";
   const [filters, setFilters] = useState(null);
   const [summaryData, setSummaryData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -75,7 +82,9 @@ function TATReport() {
               <FormattedMessage id="reports.tat.description" />
             </p>
           </div>
-          {filters && <TATExport filters={filters} buildQueryString={buildQueryString} />}
+          {filters && (
+            <TATExport filters={filters} buildQueryString={buildQueryString} />
+          )}
         </div>
 
         <TATFilterBar onGenerate={handleGenerateReport} />
@@ -92,16 +101,23 @@ function TATReport() {
           >
             <Tag type="blue">
               {intl.formatMessage({
-                id: SEGMENTS.find((s) => s.id === filters.segment)?.labelKey || "reports.tat.segment.receiptToValidation",
+                id:
+                  SEGMENTS.find((s) => s.id === filters.segment)?.labelKey ||
+                  "reports.tat.segment.receiptToValidation",
               })}
             </Tag>
-            <Tag type={filters.calculationMode === "WORKING_TIME" ? "purple" : "gray"}>
+            <Tag
+              type={
+                filters.calculationMode === "WORKING_TIME" ? "purple" : "gray"
+              }
+            >
               {filters.calculationMode === "WORKING_TIME"
                 ? intl.formatMessage({ id: "reports.tat.workingTime" })
                 : intl.formatMessage({ id: "reports.tat.calendarTime" })}
             </Tag>
             <Tag type="gray">
-              {filters.fromDate} — {filters.toDate}
+              {formatReportApiDateForLocale(filters.fromDate, dateLocale)} —{" "}
+              {formatReportApiDateForLocale(filters.toDate, dateLocale)}
             </Tag>
           </div>
         )}
@@ -119,7 +135,9 @@ function TATReport() {
         )}
 
         <Tabs>
-          <TabList aria-label="TAT Report tabs">
+          <TabList
+            aria-label={intl.formatMessage({ id: "reports.tat.tabs.label" })}
+          >
             <Tab data-testid="tab-summary">
               <FormattedMessage id="reports.tat.summary" />
             </Tab>
@@ -132,13 +150,23 @@ function TATReport() {
           </TabList>
           <TabPanels>
             <TabPanel>
-              <TATSummaryTab data={summaryData} loading={loading} filters={filters} />
+              <TATSummaryTab
+                data={summaryData}
+                loading={loading}
+                filters={filters}
+              />
             </TabPanel>
             <TabPanel>
-              <TATDetailListTab filters={filters} buildQueryString={buildQueryString} />
+              <TATDetailListTab
+                filters={filters}
+                buildQueryString={buildQueryString}
+              />
             </TabPanel>
             <TabPanel>
-              <TATTrendsTab filters={filters} buildQueryString={buildQueryString} />
+              <TATTrendsTab
+                filters={filters}
+                buildQueryString={buildQueryString}
+              />
             </TabPanel>
           </TabPanels>
         </Tabs>

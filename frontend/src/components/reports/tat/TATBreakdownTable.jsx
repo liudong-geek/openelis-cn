@@ -10,27 +10,45 @@ import {
   TableContainer,
 } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
-import { formatTat } from "./tatUtils";
+import { formatTat, formatTatDimension } from "./tatUtils";
 
 function TATBreakdownTable({ breakdown, onDrillDown }) {
   const intl = useIntl();
 
   const headers = [
-    { key: "dimensionValue", header: intl.formatMessage({ id: "reports.tat.column.name" }) },
-    { key: "count", header: intl.formatMessage({ id: "reports.tat.column.count" }) },
-    { key: "mean", header: intl.formatMessage({ id: "reports.tat.column.mean" }) },
-    { key: "median", header: intl.formatMessage({ id: "reports.tat.column.median" }) },
-    { key: "percentile90", header: intl.formatMessage({ id: "reports.tat.column.p90" }) },
-    { key: "max", header: intl.formatMessage({ id: "reports.tat.column.max" }) },
+    {
+      key: "dimensionValue",
+      header: intl.formatMessage({ id: "reports.tat.column.name" }),
+    },
+    {
+      key: "count",
+      header: intl.formatMessage({ id: "reports.tat.column.count" }),
+    },
+    {
+      key: "mean",
+      header: intl.formatMessage({ id: "reports.tat.column.mean" }),
+    },
+    {
+      key: "median",
+      header: intl.formatMessage({ id: "reports.tat.column.median" }),
+    },
+    {
+      key: "percentile90",
+      header: intl.formatMessage({ id: "reports.tat.column.p90" }),
+    },
+    {
+      key: "max",
+      header: intl.formatMessage({ id: "reports.tat.column.max" }),
+    },
   ];
   const rows = breakdown.map((row, i) => ({
     id: String(i),
-    dimensionValue: row.dimensionValue,
+    dimensionValue: formatTatDimension(row.dimensionValue, intl),
     count: row.count,
-    mean: formatTat(row.mean),
-    median: formatTat(row.median),
-    percentile90: formatTat(row.percentile90),
-    max: formatTat(row.max),
+    mean: formatTat(row.mean, intl),
+    median: formatTat(row.median, intl),
+    percentile90: formatTat(row.percentile90, intl),
+    max: formatTat(row.max, intl),
     rawMax: row.max,
   }));
 
@@ -53,7 +71,9 @@ function TATBreakdownTable({ breakdown, onDrillDown }) {
                   return (
                     <TableRow
                       key={row.id}
-                      onClick={() => onDrillDown && onDrillDown(original.dimensionValue)}
+                      onClick={() =>
+                        onDrillDown && onDrillDown(original.dimensionValue)
+                      }
                       style={{ cursor: onDrillDown ? "pointer" : "default" }}
                     >
                       {row.cells.map((cell) => (
@@ -61,7 +81,10 @@ function TATBreakdownTable({ breakdown, onDrillDown }) {
                           key={cell.id}
                           style={
                             cell.info.header === "max" && original.max > 24
-                              ? { color: "var(--cds-support-error)", fontWeight: 600 }
+                              ? {
+                                  color: "var(--cds-support-error)",
+                                  fontWeight: 600,
+                                }
                               : undefined
                           }
                         >
@@ -76,7 +99,13 @@ function TATBreakdownTable({ breakdown, onDrillDown }) {
           </TableContainer>
         )}
       </DataTable>
-      <p style={{ fontSize: "12px", color: "var(--cds-text-helper)", marginTop: "0.5rem" }}>
+      <p
+        style={{
+          fontSize: "12px",
+          color: "var(--cds-text-helper)",
+          marginTop: "0.5rem",
+        }}
+      >
         <FormattedMessage id="reports.tat.clickRowHint" />
       </p>
     </div>

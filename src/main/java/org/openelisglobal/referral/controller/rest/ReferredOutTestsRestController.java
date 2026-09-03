@@ -1,13 +1,16 @@
 package org.openelisglobal.referral.controller.rest;
 
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import org.openelisglobal.common.services.DisplayListService;
+import org.openelisglobal.common.rest.BaseRestController;
 import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.referral.form.ReferredOutTestsForm;
 import org.openelisglobal.referral.service.ReferralService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.InitBinder;
@@ -16,7 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/rest/")
-public class ReferredOutTestsRestController {
+@PreAuthorize("hasRole('RESULTS')")
+public class ReferredOutTestsRestController extends BaseRestController {
 
     private static final String[] ALLOWED_FIELDS = new String[] { "labNumber", "testIds", "testUnitIds", "endDate",
             "startDate", "dateType", "searchType", "selPatient" };
@@ -30,16 +34,16 @@ public class ReferredOutTestsRestController {
     }
 
     @GetMapping(value = "ReferredOutTests")
-    public ReferredOutTestsForm showReferredOutTests(@Valid ReferredOutTestsForm form)
+    public ReferredOutTestsForm showReferredOutTests(@Valid ReferredOutTestsForm form, HttpServletRequest request)
             throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
-        setupPageForDisplay(form);
+        setupPageForDisplay(form, getSysUserId(request));
         return form;
     }
 
-    private void setupPageForDisplay(ReferredOutTestsForm form)
+    private void setupPageForDisplay(ReferredOutTestsForm form, String systemUserId)
             throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
         if (form.getSearchType() != null) {
-            form.setReferralDisplayItems(referralService.getReferralItems(form));
+            form.setReferralDisplayItems(referralService.getReferralItems(form, systemUserId));
             form.setSearchFinished(true);
         }
         form.setTestSelectionList(DisplayListService.getInstance().getList(DisplayListService.ListType.ALL_TESTS));

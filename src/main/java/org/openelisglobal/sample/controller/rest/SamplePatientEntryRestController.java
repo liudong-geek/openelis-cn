@@ -286,6 +286,9 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
             if (hasNonPatientErrors) {
                 saveErrors(result);
                 logger.warn("SamplePatientEntry 400 (formValidator): {}", result.getAllErrors());
+                if (hasDuplicatePatientError(result)) {
+                    return ResponseEntity.status(HttpStatus.CONFLICT).body(buildDuplicatePatientErrorBody(result));
+                }
                 return ResponseEntity.badRequest().body(buildErrorBody(result, "Validation failed"));
             }
         }
@@ -377,6 +380,9 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
         if (hasNonPatientErrors) {
             saveErrors(result);
             logger.warn("SamplePatientEntry 400 (validateSample): {}", result.getAllErrors());
+            if (hasDuplicatePatientError(result)) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(buildDuplicatePatientErrorBody(result));
+            }
             return ResponseEntity.badRequest().body(buildErrorBody(result, "Validation failed"));
         }
 
@@ -697,6 +703,21 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
                 result.getGlobalErrors().stream()
                         .map(oe -> oe.getDefaultMessage() != null ? oe.getDefaultMessage() : oe.getCode())
                         .collect(Collectors.toList()));
+        return body;
+    }
+
+    private static boolean hasDuplicatePatientError(BindingResult result) {
+        return result.getAllErrors().stream().anyMatch(error -> error.getCode() != null
+                && error.getCode().startsWith("error.duplicate."));
+    }
+
+    private static Map<String, Object> buildDuplicatePatientErrorBody(BindingResult result) {
+        Map<String, Object> body = buildErrorBody(result, "Patient identifier is already in use");
+        String errorKey = result.getAllErrors().stream().map(error -> error.getCode())
+                .filter(code -> code != null && code.startsWith("error.duplicate.")).findFirst()
+                .orElse("error.duplicate.patient");
+        body.put("code", "DUPLICATE_PATIENT");
+        body.put("errorKey", errorKey);
         return body;
     }
 }

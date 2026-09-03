@@ -9,19 +9,19 @@ ENV TRUSTSTORE_PW="tspass"
 ##
 # Prerequesites
 #
-RUN sed -i 's|http://archive.ubuntu.com|http://azure.archive.ubuntu.com|g; s|http://security.ubuntu.com|http://azure.archive.ubuntu.com|g' \
-        /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true \
-    && apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=60 \
-        --allow-releaseinfo-change -y update \
-    && apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=60 \
-        -y upgrade \
+RUN for attempt in 1 2 3 4 5; do \
+        apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=60 \
+            --allow-releaseinfo-change update && break; \
+        if [ "${attempt}" = "5" ]; then exit 1; fi; \
+        rm -rf /var/lib/apt/lists/*; \
+        sleep $((attempt * 2)); \
+    done \
     && DEBIAN_FRONTEND=noninteractive apt-get \
         -o Acquire::Retries=5 -o Acquire::http::Timeout=60 \
         -y --no-install-recommends install \
-        openssl net-tools default-jdk maven \
-        apache2-utils git apt-transport-https \
-        ca-certificates curl gnupg lsb-release software-properties-common \
-    && apt-get clean
+        ca-certificates openssl default-jre-headless \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 ##
 # Certificates

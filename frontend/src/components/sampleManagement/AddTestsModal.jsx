@@ -11,10 +11,10 @@ import {
   Search,
   InlineNotification,
   Loading,
-  Tag,
   Accordion,
   AccordionItem,
 } from "@carbon/react";
+import Tag from "../common/LocalizedTag";
 import { useIntl } from "react-intl";
 import {
   getFromOpenElisServer,

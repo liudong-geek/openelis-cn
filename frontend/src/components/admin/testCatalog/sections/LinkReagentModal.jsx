@@ -2,10 +2,10 @@ import React, { useEffect, useState } from "react";
 import {
   Modal,
   FilterableMultiSelect,
-  Tag,
   Stack,
   InlineNotification,
 } from "@carbon/react";
+import Tag from "../../../common/LocalizedTag";
 import { useIntl } from "react-intl";
 import {
   getFromOpenElisServer,

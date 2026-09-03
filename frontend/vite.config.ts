@@ -47,6 +47,10 @@ export default defineConfig({
     ],
     globals: true,
     environment: "jsdom",
+    // Carbon-heavy workflow forms can legitimately take more than Vitest's
+    // 5-second default on developer laptops and shared CI runners. Keep a
+    // bounded timeout while avoiding resource-contention false negatives.
+    testTimeout: 15_000,
     setupFiles: "./src/setupTests.js",
     server: {
       deps: {

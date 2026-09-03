@@ -69,7 +69,7 @@ public class SampleEditServiceIntegrationTest extends BaseWebContextSensitiveTes
         form.getSampleOrderItems().setPriority(OrderPriority.STAT);
         form.getSampleOrderItems().setConsentGiven(true);
         form.getSampleOrderItems().setConsentRecordedBy("TestRecorder");
-        form.getSampleOrderItems().setConsentRecordedAt("15/02/2024");
+        form.getSampleOrderItems().setConsentRecordedAt("2024/02/15");
         form.getSampleOrderItems().setConsentFormReference("REF-123");
 
         MockHttpServletRequest request = new MockHttpServletRequest();
@@ -159,7 +159,7 @@ public class SampleEditServiceIntegrationTest extends BaseWebContextSensitiveTes
         SampleEditItem editItem = new SampleEditItem();
         editItem.setSampleItemChanged(true);
         editItem.setSampleItemId(EXISTING_SAMPLE_ITEM_ID);
-        editItem.setCollectionDate("15/02/2024");
+        editItem.setCollectionDate("2024/02/15");
         editItem.setCollectionTime("10:30");
         form.getExistingTests().add(editItem);
 

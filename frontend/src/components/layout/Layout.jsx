@@ -6,15 +6,14 @@ import React, {
   useCallback,
 } from "react";
 import { useLocation } from "react-router-dom";
+import { useIntl } from "react-intl";
 import Header from "./Header";
 import Footer from "./Footer";
 import { Content, Theme } from "@carbon/react";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { getFromOpenElisServer } from "../utils/Utils";
-import {
-  languages as defaultLanguages,
-  buildLanguagesFromConfig,
-} from "../../languages";
+import { defaultLanguages, buildLanguagesFromConfig } from "../../languages";
+import RouteErrorBoundary from "../common/RouteErrorBoundary";
 
 export const ConfigurationContext = createContext(null);
 export const NotificationContext = createContext(null);
@@ -24,6 +23,28 @@ const isAdminNavRoute = (pathname) =>
   pathname.startsWith("/admin/") ||
   pathname === "/MasterListsPage" ||
   pathname.startsWith("/MasterListsPage/");
+
+const getPageFamily = (pathname) => {
+  const path = pathname.toLowerCase();
+
+  if (path === "/login" || path === "/changepasswordlogin") return "auth";
+  if (path === "/" || path === "/dashboard") return "dashboard";
+  if (path.startsWith("/order") || path.includes("order")) return "orders";
+  if (path.includes("patient")) return "patients";
+  if (path.includes("result")) return "results";
+  if (path.includes("validation")) return "validation";
+  if (path.includes("report")) return "reports";
+  if (path.startsWith("/admin") || path.startsWith("/masterlist")) {
+    return "administration";
+  }
+  if (path.startsWith("/storage") || path.includes("freezermonitoring")) {
+    return "storage";
+  }
+  if (path.startsWith("/analyzers") || path.includes("analyzer")) {
+    return "analyzers";
+  }
+  return "workspace";
+};
 
 // Must match the .content-nav-locked media query in Style.css
 const DESKTOP_MEDIA_QUERY = "(min-width: 1024px)";
@@ -63,6 +84,7 @@ function useIsDesktop() {
 export default function Layout(props) {
   const { children } = props;
   const location = useLocation();
+  const intl = useIntl();
   const { userSessionDetails } = useContext(UserSessionDetailsContext);
   const [resetConfig, setResetConfig] = useState(false);
   const [configurationProperties, setConfigurationProperties] = useState({});
@@ -81,6 +103,7 @@ export default function Layout(props) {
     location.pathname.startsWith("/AnalyzerManagement");
   const isAdminContext = isAdminNavRoute(location.pathname);
   const navContext = isAdminContext ? "admin" : "main";
+  const pageFamily = getPageFamily(location.pathname);
 
   // Used by Header to persist per-context menu expansion state
   const storageKeyPrefix = isAdminContext
@@ -191,6 +214,16 @@ export default function Layout(props) {
     });
   }, []);
 
+  useEffect(() => {
+    const activeLocaleCodes = Object.keys(enabledLanguages);
+    if (
+      activeLocaleCodes.length === 1 &&
+      activeLocaleCodes[0] !== intl.locale
+    ) {
+      props.onChangeLanguage?.(activeLocaleCodes[0]);
+    }
+  }, [enabledLanguages, intl.locale, props.onChangeLanguage]);
+
   return (
     <ConfigurationContext.Provider
       value={{
@@ -211,7 +244,17 @@ export default function Layout(props) {
           removeNotification,
         }}
       >
-        <div className="d-flex flex-column min-vh-100">
+        <div
+          className={`oe-app-shell d-flex flex-column min-vh-100 ${
+            userSessionDetails.authenticated
+              ? "oe-app-shell--authenticated"
+              : "oe-app-shell--public"
+          }`}
+          data-page-family={pageFamily}
+        >
+          <a className="oe-skip-link" href="#main-content">
+            {intl.formatMessage({ id: "accessibility.skip.to.content" })}
+          </a>
           <Header
             onChangeLanguage={props.onChangeLanguage}
             navOpen={navOpen}
@@ -225,16 +268,32 @@ export default function Layout(props) {
             navContext={navContext}
             showSideNav={!isFocusedAuthRoute}
           />
+          {userSessionDetails.authenticated &&
+            drawerOpen &&
+            !navPersistent &&
+            !isFocusedAuthRoute && (
+              <button
+                type="button"
+                className="oe-nav-scrim"
+                aria-label={intl.formatMessage({
+                  id: "header.icon.menu.close",
+                })}
+                onClick={closeSideNav}
+              />
+            )}
           {/* Theme wrapper creates white theme zone for content area */}
           {/* Global SCSS theme = blue header/nav, this = light content */}
           <Theme theme="white">
             <Content
+              id="main-content"
+              tabIndex={-1}
               data-testid="content-wrapper"
-              className={`${isLocked ? "content-nav-locked" : ""}${
+              data-page-family={pageFamily}
+              className={`oe-main-content ${isLocked ? "content-nav-locked" : ""}${
                 isAdminContext ? " content-admin-context" : ""
               }`.trim()}
             >
-              {children}
+              <RouteErrorBoundary>{children}</RouteErrorBoundary>
             </Content>
           </Theme>
           <Footer />

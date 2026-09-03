@@ -3,21 +3,15 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
-  Breadcrumb,
-  BreadcrumbItem,
   Button,
-  Column,
-  DatePicker,
-  DatePickerInput,
-  Grid,
-  Heading,
+  InlineLoading,
   InlineNotification,
   Pagination,
   Search,
-  Section,
   Select,
   SelectItem,
   Table,
@@ -28,6 +22,7 @@ import {
   TableHeader,
   TableRow,
   Tag,
+  Tile,
 } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
 import {
@@ -60,6 +55,9 @@ import {
   normalizeDomain,
 } from "./domainIntl";
 import { usePresence } from "./usePresence";
+import PageBreadCrumb from "../../common/PageBreadCrumb";
+import ProductPageHeader from "../../common/ProductPageHeader";
+import CustomDatePicker from "../../common/CustomDatePicker";
 
 /**
  * OGC-1020 (R1 of OGC-811) — unified /Results worklist.
@@ -104,6 +102,7 @@ interface SaveResponse {
   modifiedBy?: string;
   modifiedAt?: string;
   analysisLastupdated?: string;
+  analysisStatusId?: string;
   reflex?: string[];
   calculated?: string[];
 }
@@ -113,12 +112,25 @@ const UnifiedResults: React.FC = () => {
   const { addNotification, setNotificationVisible } =
     useContext(NotificationContext);
 
+  const initialUrlState = useMemo(
+    () => new URLSearchParams(window.location.search),
+    [],
+  );
+
   const [labUnits, setLabUnits] = useState<LabUnit[]>([]);
-  const [selectedLabUnit, setSelectedLabUnit] = useState<string>("");
+  const [selectedLabUnit, setSelectedLabUnit] = useState<string>(
+    initialUrlState.get("testSectionId") || "",
+  );
   const [statusOptions, setStatusOptions] = useState<StatusOption[]>([]);
-  const [searchText, setSearchText] = useState<string>("");
-  const [collectionDate, setCollectionDate] = useState<string>("");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [searchText, setSearchText] = useState<string>(
+    initialUrlState.get("accessionNumber") || "",
+  );
+  const [collectionDate, setCollectionDate] = useState<string>(
+    initialUrlState.get("collectionDate") || "",
+  );
+  const [statusFilter, setStatusFilter] = useState<string>(
+    initialUrlState.get("status") || "ALL",
+  );
   const [rows, setRows] = useState<WorklistRow[]>([]);
   const [rowStates, setRowStates] = useState<Record<string, RowEditState>>({});
   const [staleInfo, setStaleInfo] = useState<
@@ -130,6 +142,9 @@ const UnifiedResults: React.FC = () => {
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(25);
   const [loading, setLoading] = useState<boolean>(false);
+  const [hasLoaded, setHasLoaded] = useState<boolean>(false);
+  const initialLoadStarted = useRef(false);
+  const initialLabUnitEffect = useRef(true);
 
   const domain: ResultsDomain = useMemo(() => {
     const unit = labUnits.find((u) => u.id === selectedLabUnit);
@@ -168,6 +183,7 @@ const UnifiedResults: React.FC = () => {
       setEditingAnalysisId(null);
       setPage(1);
       setLoading(false);
+      setHasLoaded(true);
     },
     [],
   );
@@ -191,10 +207,13 @@ const UnifiedResults: React.FC = () => {
       }
       params.set("doRange", "false");
       params.set("finished", "false");
-      getFromOpenElisServer(
-        "/rest/LogbookResults?" + params.toString(),
-        applyLoadedRows,
+      const hasSpecificFilter = Boolean(
+        labNumber || selectedLabUnit || collectionDate,
       );
+      const endpoint = hasSpecificFilter
+        ? "/rest/LogbookResults?" + params.toString()
+        : "/rest/results-entry/pending";
+      getFromOpenElisServer(endpoint, applyLoadedRows);
       // FRS: the selected Lab Unit (and filters) are the page's primary
       // state — keep them in the URL so refresh and share links reproduce
       // the same worklist
@@ -204,6 +223,11 @@ const UnifiedResults: React.FC = () => {
       setOrDrop("accessionNumber", labNumber);
       setOrDrop("testSectionId", selectedLabUnit);
       setOrDrop("collectionDate", collectionDate);
+      if (hasSpecificFilter) {
+        urlState.delete("scope");
+      } else {
+        urlState.set("scope", "pending");
+      }
       const query = urlState.toString();
       window.history.replaceState(
         null,
@@ -215,33 +239,21 @@ const UnifiedResults: React.FC = () => {
   );
 
   useEffect(() => {
-    if (selectedLabUnit) {
-      loadWorklist();
+    if (initialLabUnitEffect.current) {
+      initialLabUnitEffect.current = false;
+      return;
     }
+    loadWorklist();
   }, [selectedLabUnit]);
 
-  // Restore the worklist from the URL: deep links from the in-progress
-  // dashboard (?accessionNumber=) and refreshes of a loaded page
-  // (?testSectionId=&collectionDate=&status=) reproduce the same view
+  // The result workbench opens as a real pending task list. Deep links with
+  // accession/unit/date filters still load the narrower legacy-compatible
+  // search, while an unfiltered dashboard entry loads every authorized
+  // NotStarted analysis through /rest/results-entry/pending.
   useEffect(() => {
-    const urlState = new URLSearchParams(window.location.search);
-    const accession = urlState.get("accessionNumber");
-    const unit = urlState.get("testSectionId");
-    const date = urlState.get("collectionDate");
-    const status = urlState.get("status");
-    if (date) {
-      setCollectionDate(date);
-    }
-    if (status) {
-      setStatusFilter(status);
-    }
-    if (accession) {
-      setSearchText(accession);
-    }
-    if (unit) {
-      setSelectedLabUnit(unit); // triggers the worklist load effect
-    } else if (accession) {
-      loadWorklist(accession);
+    if (!initialLoadStarted.current) {
+      initialLoadStarted.current = true;
+      loadWorklist(initialUrlState.get("accessionNumber") || undefined);
     }
   }, []);
 
@@ -368,13 +380,22 @@ const UnifiedResults: React.FC = () => {
           type: "SAVE_SUCCEEDED",
         }),
       }));
-      if (response.analysisLastupdated) {
+      if (response.analysisLastupdated || response.analysisStatusId) {
         // the version token is per ANALYSIS — refresh it on every component
-        // row of this analysis so a sibling save isn't falsely rejected
+        // row of this analysis so a sibling save isn't falsely rejected. The
+        // status changes to Technical Acceptance after a successful entry and
+        // must be reflected immediately instead of continuing to say
+        // "Not started" until the next page load.
         setRows((current) =>
           current.map((row) =>
             row.analysisId === target.analysisId
-              ? { ...row, analysisLastupdated: response.analysisLastupdated }
+              ? {
+                  ...row,
+                  analysisLastupdated:
+                    response.analysisLastupdated || row.analysisLastupdated,
+                  analysisStatusId:
+                    response.analysisStatusId || row.analysisStatusId,
+                }
               : row,
           ),
         );
@@ -437,269 +458,366 @@ const UnifiedResults: React.FC = () => {
     return row.sampleType ? `${accession} · ${row.sampleType}` : accession;
   };
 
-  const statusName = (statusId?: string): string =>
-    statusOptions.find((s) => s.id === statusId)?.value || statusId || "";
+  const statusName = (statusId?: string): string => {
+    const fallback =
+      statusOptions.find((status) => status.id === statusId)?.value ||
+      statusId ||
+      "";
+    return intl.formatMessage(
+      {
+        id: `results.analysisStatus.${statusId}`,
+        defaultMessage: fallback,
+      },
+      {},
+    );
+  };
 
   return (
     <>
       <AlertDialog />
-      <Grid fullWidth className="unifiedResultsPage">
-        <Column lg={16} md={8} sm={4}>
-          <Breadcrumb>
-            <BreadcrumbItem href="/">
-              <FormattedMessage id="home.label" />
-            </BreadcrumbItem>
-            <BreadcrumbItem href="/WorkplanByTest">
-              <FormattedMessage id="sidenav.label.workplan" />
-            </BreadcrumbItem>
-          </Breadcrumb>
-          <Section>
-            <Heading>
-              <FormattedMessage id="sidenav.label.results" />
-              {domain !== "CLINICAL" && (
-                <Tag type="cyan" className="unifiedResultsDomainTag">
-                  {formatDomainMessage(intl, "label.results.domain", domain)}
-                </Tag>
-              )}
-            </Heading>
-          </Section>
-        </Column>
+      <main className="results-workbench" aria-labelledby="results-title">
+        <PageBreadCrumb
+          breadcrumbs={[
+            { label: "home.label", link: "/" },
+            {
+              label: "results.workbench.title",
+              link: "/Results",
+              isCurrentPage: true,
+            },
+          ]}
+        />
+        <ProductPageHeader
+          titleId="results-title"
+          title={<FormattedMessage id="results.workbench.title" />}
+          subtitle={<FormattedMessage id="results.workbench.subtitle" />}
+          actions={
+            <Tag type={rows.length > 0 ? "blue" : "gray"}>
+              <FormattedMessage
+                id="results.workbench.pendingCount"
+                values={{ count: rows.length }}
+              />
+            </Tag>
+          }
+        />
 
-        {/* Toolbar: search + Lab Unit + date (FR worklist toolbar) */}
-        <Column lg={4} md={4} sm={4}>
-          {/* Carbon Search's labelText is visually hidden; render an explicit
-              label so the toolbar fields align on one horizontal level */}
-          <div className="cds--label">
-            <FormattedMessage id="label.button.search" />
+        <Tile className="results-workbench__filters">
+          <div className="results-workbench__section-heading">
+            <div>
+              <h2>
+                <FormattedMessage id="results.workbench.filters.title" />
+              </h2>
+              <p>
+                <FormattedMessage id="results.workbench.filters.subtitle" />
+              </p>
+            </div>
+            {domain !== "CLINICAL" && (
+              <Tag type="cyan">
+                {formatDomainMessage(intl, "label.results.domain", domain)}
+              </Tag>
+            )}
           </div>
-          <Search
-            id="unifiedResultsSearch"
-            labelText={intl.formatMessage({ id: "label.results.search" })}
-            placeholder={intl.formatMessage({ id: "label.results.search" })}
-            value={searchText}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setSearchText(e.target.value)
-            }
-            onKeyDown={(e: React.KeyboardEvent) => {
-              if (e.key === "Enter") {
-                loadWorklist();
+
+          <div className="results-workbench__filter-grid">
+            <div className="results-workbench__field">
+              <div className="cds--label">
+                <FormattedMessage id="results.workbench.accession" />
+              </div>
+              <Search
+                id="unifiedResultsSearch"
+                labelText={intl.formatMessage({
+                  id: "results.workbench.accession",
+                })}
+                placeholder={intl.formatMessage({
+                  id: "results.workbench.accession.placeholder",
+                })}
+                value={searchText}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setSearchText(e.target.value)
+                }
+                onKeyDown={(e: React.KeyboardEvent) => {
+                  if (e.key === "Enter") {
+                    loadWorklist();
+                  }
+                }}
+              />
+            </div>
+            <Select
+              id="unifiedResultsLabUnit"
+              labelText={intl.formatMessage({ id: "label.results.labUnit" })}
+              value={selectedLabUnit}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                setSelectedLabUnit(e.target.value)
               }
-            }}
-          />
-        </Column>
-        <Column lg={4} md={4} sm={4}>
-          <Select
-            id="unifiedResultsLabUnit"
-            labelText={intl.formatMessage({ id: "label.results.labUnit" })}
-            value={selectedLabUnit}
-            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-              setSelectedLabUnit(e.target.value)
-            }
-          >
-            <SelectItem text="" value="" />
-            {labUnits.map((unit) => (
-              <SelectItem text={unit.value} value={unit.id} key={unit.id} />
-            ))}
-          </Select>
-        </Column>
-        <Column lg={4} md={4} sm={4}>
-          <DatePicker
-            datePickerType="single"
-            dateFormat="d/m/Y"
-            onChange={(dates: Date[]) => {
-              if (dates && dates.length) {
-                const d = dates[0];
-                setCollectionDate(
-                  `${String(d.getDate()).padStart(2, "0")}/${String(
-                    d.getMonth() + 1,
-                  ).padStart(2, "0")}/${d.getFullYear()}`,
-                );
-              } else {
-                setCollectionDate("");
-              }
-            }}
-          >
-            <DatePickerInput
+            >
+              <SelectItem
+                text={intl.formatMessage({
+                  id: "results.workbench.labUnit.all",
+                })}
+                value=""
+              />
+              {labUnits.map((unit) => (
+                <SelectItem text={unit.value} value={unit.id} key={unit.id} />
+              ))}
+            </Select>
+            <CustomDatePicker
               id="unifiedResultsDate"
               labelText={intl.formatMessage({ id: "label.results.date" })}
-              placeholder="dd/mm/yyyy"
+              value={collectionDate}
+              updateStateValue
+              onChange={setCollectionDate}
             />
-          </DatePicker>
-        </Column>
-        <Column lg={4} md={4} sm={4} className="unifiedResultsLoadColumn">
-          {/* spacer keeps the button on the same level as the labeled fields */}
-          <div className="cds--label">&nbsp;</div>
-          <Button onClick={() => loadWorklist()} disabled={loading}>
-            <FormattedMessage id="label.results.load" />
-          </Button>
-        </Column>
+            <Button onClick={() => loadWorklist()} disabled={loading}>
+              <FormattedMessage id="results.workbench.applyFilters" />
+            </Button>
+          </div>
 
-        {/* Status filter chips with counts */}
-        <Column lg={16} md={8} sm={4} className="unifiedResultsChips">
-          <Tag
-            type={statusFilter === "ALL" ? "blue" : "gray"}
-            onClick={() => setStatusFilter("ALL")}
-            className="unifiedResultsChip"
+          <div
+            className="results-workbench__status-filters"
+            aria-label={intl.formatMessage({
+              id: "results.workbench.statusFilters",
+            })}
           >
-            <FormattedMessage id="label.results.status.all" /> ({rows.length})
-          </Tag>
-          {statusOptions
-            .filter((status) => statusCounts[status.id])
-            .map((status) => (
-              <Tag
-                key={status.id}
-                type={statusFilter === status.id ? "blue" : "gray"}
-                onClick={() => setStatusFilter(status.id)}
-                className="unifiedResultsChip"
-              >
-                {status.value} ({statusCounts[status.id]})
-              </Tag>
-            ))}
-        </Column>
+            <Button
+              kind={statusFilter === "ALL" ? "primary" : "tertiary"}
+              size="sm"
+              onClick={() => setStatusFilter("ALL")}
+            >
+              <FormattedMessage id="label.results.status.all" /> ({rows.length})
+            </Button>
+            {statusOptions
+              .filter((status) => statusCounts[status.id])
+              .map((status) => (
+                <Button
+                  key={status.id}
+                  kind={statusFilter === status.id ? "primary" : "tertiary"}
+                  size="sm"
+                  onClick={() => setStatusFilter(status.id)}
+                >
+                  {statusName(status.id)} ({statusCounts[status.id]})
+                </Button>
+              ))}
+          </div>
+        </Tile>
 
-        <Column lg={16} md={8} sm={4}>
-          <TableContainer>
-            <Table size="lg">
-              <TableHead>
-                <TableRow>
-                  <TableHeader>
-                    {formatDomainMessage(intl, "label.results.subject", domain)}
-                  </TableHeader>
-                  <TableHeader>
-                    <FormattedMessage id="label.results.test" />
-                  </TableHeader>
-                  <TableHeader>
-                    {formatDomainMessage(intl, "label.results.range", domain)}
-                  </TableHeader>
-                  <TableHeader>
-                    <FormattedMessage id="label.results.result" />
-                  </TableHeader>
-                  <TableHeader>
-                    <FormattedMessage id="label.results.status" />
-                  </TableHeader>
-                  <TableHeader>
-                    <FormattedMessage id="label.results.actions" />
-                  </TableHeader>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {pagedRows.map((row) => {
-                  const key = worklistRowKey(row);
-                  const state = rowStates[key] || "EMPTY";
-                  const stale = staleInfo[key];
-                  const reviewer = presence[row.analysisId];
-                  return (
-                    <React.Fragment key={key}>
-                      <TableRow>
-                        <TableCell>
-                          {subjectCell(row)}
-                          {reviewer && (
-                            <Tag type="purple" className="unifiedResultsChip">
-                              <FormattedMessage
-                                id="label.results.inReviewBy"
-                                values={{ 0: reviewer }}
-                              />
-                            </Tag>
-                          )}
-                        </TableCell>
-                        <TableCell>{row.testName}</TableCell>
-                        <TableCell>
-                          {row.normalRange}{" "}
-                          {row.unitsOfMeasure ? row.unitsOfMeasure : ""}
-                        </TableCell>
-                        <TableCell>
-                          <PolymorphicResultCell
-                            row={row}
-                            editable={isRowEditable(state)}
-                            onValueChange={(field, value) =>
-                              handleValueChange(row, field, value)
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>
-                          {statusName(row.analysisStatusId)}
-                        </TableCell>
-                        <TableCell>
-                          {showEdit(state) && (
-                            <Button
-                              kind="tertiary"
-                              size="sm"
-                              onClick={() => handleEdit(row)}
-                            >
-                              <FormattedMessage id="label.results.edit" />
-                            </Button>
-                          )}
-                          {showSave(state) && (
-                            <ESignatureButton
-                              meaning={SignatureMeaning.AUTHORED}
-                              context={`${intl.formatMessage({
-                                id: "label.results.save",
-                              })} ${row.accessionNumber} - ${row.testName}`}
-                              recordType="RESULT"
-                              recordId={row.analysisId}
-                              onSign={() => handleSave(row)}
-                              size="sm"
-                            >
-                              <FormattedMessage id="label.results.save" />
-                            </ESignatureButton>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                      {stale && (
-                        <TableRow>
-                          <TableCell colSpan={6}>
-                            <InlineNotification
-                              kind="error"
-                              hideCloseButton
-                              lowContrast
-                              title={intl.formatMessage(
-                                { id: "error.results.staleSave" },
-                                {
-                                  0:
-                                    stale.modifiedBy ||
-                                    intl.formatMessage({
-                                      id: "label.results.anotherUser",
-                                    }),
-                                  1: stale.modifiedAt || "",
-                                },
-                              )}
-                              actions={
-                                <Button
-                                  kind="ghost"
-                                  size="sm"
-                                  onClick={() => loadWorklist()}
-                                >
-                                  <FormattedMessage id="label.results.refresh" />
-                                </Button>
-                              }
-                            />
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </React.Fragment>
-                  );
+        <Tile className="results-workbench__list">
+          <div className="results-workbench__section-heading">
+            <div>
+              <h2>
+                <FormattedMessage id="results.workbench.list.title" />
+              </h2>
+              <p>
+                <FormattedMessage id="results.workbench.list.subtitle" />
+              </p>
+            </div>
+            {loading && (
+              <InlineLoading
+                description={intl.formatMessage({
+                  id: "results.workbench.loading",
                 })}
-              </TableBody>
-            </Table>
-          </TableContainer>
-          <Pagination
-            page={page}
-            pageSize={pageSize}
-            pageSizes={[25, 50, 100]}
-            totalItems={filteredRows.length}
-            onChange={({
-              page: newPage,
-              pageSize: newPageSize,
-            }: {
-              page: number;
-              pageSize: number;
-            }) => {
-              setPage(newPage);
-              setPageSize(newPageSize);
-            }}
-          />
-        </Column>
-      </Grid>
+              />
+            )}
+          </div>
+
+          {!loading && hasLoaded && filteredRows.length === 0 ? (
+            <InlineNotification
+              className="results-workbench__empty"
+              kind="info"
+              hideCloseButton
+              lowContrast
+              title={intl.formatMessage({
+                id: "results.workbench.empty.title",
+              })}
+              subtitle={intl.formatMessage({
+                id: "results.workbench.empty.subtitle",
+              })}
+            />
+          ) : (
+            <div className="results-workbench__table-scroll">
+              <TableContainer>
+                <Table size="lg">
+                  <TableHead>
+                    <TableRow>
+                      <TableHeader>
+                        {formatDomainMessage(
+                          intl,
+                          "label.results.subject",
+                          domain,
+                        )}
+                      </TableHeader>
+                      <TableHeader>
+                        <FormattedMessage id="label.results.test" />
+                      </TableHeader>
+                      <TableHeader>
+                        {formatDomainMessage(
+                          intl,
+                          "label.results.range",
+                          domain,
+                        )}
+                      </TableHeader>
+                      <TableHeader>
+                        <FormattedMessage id="label.results.result" />
+                      </TableHeader>
+                      <TableHeader>
+                        <FormattedMessage id="label.results.status" />
+                      </TableHeader>
+                      <TableHeader>
+                        <FormattedMessage id="label.results.actions" />
+                      </TableHeader>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {pagedRows.map((row) => {
+                      const key = worklistRowKey(row);
+                      const state = rowStates[key] || "EMPTY";
+                      const stale = staleInfo[key];
+                      const reviewer = presence[row.analysisId];
+                      return (
+                        <React.Fragment key={key}>
+                          <TableRow>
+                            <TableCell>
+                              {subjectCell(row)}
+                              {reviewer && (
+                                <Tag
+                                  type="purple"
+                                  className="unifiedResultsChip"
+                                >
+                                  <FormattedMessage
+                                    id="label.results.inReviewBy"
+                                    values={{ 0: reviewer }}
+                                  />
+                                </Tag>
+                              )}
+                            </TableCell>
+                            <TableCell>{row.testName}</TableCell>
+                            <TableCell>
+                              {row.normalRange}{" "}
+                              {row.unitsOfMeasure ? row.unitsOfMeasure : ""}
+                            </TableCell>
+                            <TableCell>
+                              <PolymorphicResultCell
+                                row={row}
+                                editable={isRowEditable(state)}
+                                onValueChange={(field, value) =>
+                                  handleValueChange(row, field, value)
+                                }
+                              />
+                            </TableCell>
+                            <TableCell>
+                              {statusName(row.analysisStatusId)}
+                            </TableCell>
+                            <TableCell>
+                              {showEdit(state) && (
+                                <Button
+                                  kind="tertiary"
+                                  size="sm"
+                                  onClick={() => handleEdit(row)}
+                                >
+                                  <FormattedMessage id="label.results.edit" />
+                                </Button>
+                              )}
+                              {showSave(state) && (
+                                <ESignatureButton
+                                  meaning={SignatureMeaning.AUTHORED}
+                                  context={`${intl.formatMessage({
+                                    id: "label.results.save",
+                                  })} ${row.accessionNumber} - ${row.testName}`}
+                                  recordType="RESULT"
+                                  recordId={row.analysisId}
+                                  onSign={() => handleSave(row)}
+                                  size="sm"
+                                >
+                                  <FormattedMessage id="label.results.save" />
+                                </ESignatureButton>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                          {stale && (
+                            <TableRow>
+                              <TableCell colSpan={6}>
+                                <InlineNotification
+                                  kind="error"
+                                  hideCloseButton
+                                  lowContrast
+                                  title={intl.formatMessage(
+                                    { id: "error.results.staleSave" },
+                                    {
+                                      0:
+                                        stale.modifiedBy ||
+                                        intl.formatMessage({
+                                          id: "label.results.anotherUser",
+                                        }),
+                                      1: stale.modifiedAt || "",
+                                    },
+                                  )}
+                                  actions={
+                                    <Button
+                                      kind="ghost"
+                                      size="sm"
+                                      onClick={() => loadWorklist()}
+                                    >
+                                      <FormattedMessage id="label.results.refresh" />
+                                    </Button>
+                                  }
+                                />
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </div>
+          )}
+          {filteredRows.length > 0 && (
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              pageSizes={[25, 50, 100]}
+              totalItems={filteredRows.length}
+              backwardText={intl.formatMessage({
+                id: "pagination.previousPage",
+              })}
+              forwardText={intl.formatMessage({ id: "pagination.nextPage" })}
+              itemsPerPageText={intl.formatMessage({
+                id: "pagination.itemsPerPage",
+              })}
+              itemRangeText={(min, max, total) =>
+                intl.formatMessage(
+                  { id: "pagination.item-range" },
+                  { min, max, total },
+                )
+              }
+              itemText={(min, max) =>
+                intl.formatMessage({ id: "pagination.item" }, { min, max })
+              }
+              pageRangeText={(_current, total) =>
+                intl.formatMessage({ id: "pagination.page-range" }, { total })
+              }
+              pageSelectLabelText={(total) =>
+                intl.formatMessage({ id: "pagination.page-select" }, { total })
+              }
+              pageText={(currentPage) =>
+                intl.formatMessage(
+                  { id: "pagination.page" },
+                  { page: currentPage },
+                )
+              }
+              onChange={({
+                page: newPage,
+                pageSize: newPageSize,
+              }: {
+                page: number;
+                pageSize: number;
+              }) => {
+                setPage(newPage);
+                setPageSize(newPageSize);
+              }}
+            />
+          )}
+        </Tile>
+      </main>
     </>
   );
 };

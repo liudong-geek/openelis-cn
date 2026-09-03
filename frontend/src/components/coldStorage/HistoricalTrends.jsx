@@ -2,31 +2,27 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Grid, Column, Dropdown, Button } from "@carbon/react";
 import { ZoomIn, ZoomOut, Renew, Download } from "@carbon/icons-react";
 import { LineChart } from "@carbon/charts-react";
+import { useIntl } from "react-intl";
 import "@carbon/charts/styles.css";
 
 import "./HistoricalTrends.scss";
 import { fetchHistoricalReadings } from "./api";
 import { toDate } from "./shared/timeUtils";
 
-const TIME_RANGE_OPTIONS = [
-  "Last 24 Hours",
-  "Last 7 Days",
-  "Last 30 Days",
-  "All Time",
-];
+const TIME_RANGE_OPTIONS = ["24h", "7d", "30d", "all"];
+const ALL_FREEZERS = "__ALL_FREEZERS__";
 
 const RANGE_TO_DURATION = {
-  "Last 24 Hours": 24 * 60 * 60 * 1000,
-  "Last 7 Days": 7 * 24 * 60 * 60 * 1000,
-  "Last 30 Days": 30 * 24 * 60 * 60 * 1000,
-  "All Time": 90 * 24 * 60 * 60 * 1000,
+  "24h": 24 * 60 * 60 * 1000,
+  "7d": 7 * 24 * 60 * 60 * 1000,
+  "30d": 30 * 24 * 60 * 60 * 1000,
+  all: 90 * 24 * 60 * 60 * 1000,
 };
 
 const MAX_SERIES = 5;
 
 const getRangeBoundaries = (timeRange) => {
-  const duration =
-    RANGE_TO_DURATION[timeRange] ?? RANGE_TO_DURATION["Last 24 Hours"];
+  const duration = RANGE_TO_DURATION[timeRange] ?? RANGE_TO_DURATION["24h"];
   const end = new Date();
   const start = new Date(end.getTime() - duration);
   return { start: start.toISOString(), end: end.toISOString() };
@@ -50,10 +46,11 @@ export default function HistoricalTrends({
   initialSelectedFreezerId = null,
   onFreezerSelected,
 }) {
+  const intl = useIntl();
   const [selectedFreezer, setSelectedFreezer] = useState(
-    initialSelectedFreezerId || "All Freezers",
+    initialSelectedFreezerId || ALL_FREEZERS,
   );
-  const [timeRange, setTimeRange] = useState("Last 24 Hours");
+  const [timeRange, setTimeRange] = useState("24h");
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -65,21 +62,31 @@ export default function HistoricalTrends({
         device.id && self.findIndex((d) => d.id === device.id) === index,
     );
     const names = uniqueDevices.map(
-      (device) => device.unitName || `Freezer ${device.id}`,
+      (device) =>
+        device.unitName ||
+        intl.formatMessage(
+          { id: "coldStorage.device.fallbackName" },
+          { id: device.id },
+        ),
     );
-    return ["All Freezers", ...names];
-  }, [devices]);
+    return [ALL_FREEZERS, ...names];
+  }, [devices, intl]);
 
   const freezerNameToIdMap = useMemo(() => {
     const map = {};
     devices.forEach((device) => {
       if (device.id) {
-        const name = device.unitName || `Freezer ${device.id}`;
+        const name =
+          device.unitName ||
+          intl.formatMessage(
+            { id: "coldStorage.device.fallbackName" },
+            { id: device.id },
+          );
         map[name] = device.id;
       }
     });
     return map;
-  }, [devices]);
+  }, [devices, intl]);
 
   const loadReadings = useCallback(async () => {
     if (!devices.length) {
@@ -87,7 +94,7 @@ export default function HistoricalTrends({
       return;
     }
     const ids =
-      selectedFreezer === "All Freezers"
+      selectedFreezer === ALL_FREEZERS
         ? devices
             .map((device) => device.id)
             .filter(Boolean)
@@ -117,7 +124,12 @@ export default function HistoricalTrends({
 
       const normalized = responses.flatMap(({ freezerId, readings }) => {
         const device = devices.find((d) => d.id === freezerId);
-        const freezerName = device?.unitName || `Freezer ${freezerId}`;
+        const freezerName =
+          device?.unitName ||
+          intl.formatMessage(
+            { id: "coldStorage.device.fallbackName" },
+            { id: freezerId },
+          );
         return readings
           .filter((reading) => reading.temperatureCelsius != null)
           .map((reading) => ({
@@ -129,12 +141,14 @@ export default function HistoricalTrends({
 
       setChartData(normalized);
     } catch (apiError) {
-      setError(apiError.message || "Unable to load historical data.");
+      setError(
+        intl.formatMessage({ id: "coldStorage.trends.error.loadFailed" }),
+      );
       setChartData([]);
     } finally {
       setLoading(false);
     }
-  }, [devices, selectedFreezer, timeRange, freezerNameToIdMap]);
+  }, [devices, selectedFreezer, timeRange, freezerNameToIdMap, intl]);
 
   useEffect(() => {
     loadReadings();
@@ -147,20 +161,24 @@ export default function HistoricalTrends({
     ) {
       const device = devices.find((d) => d.id === initialSelectedFreezerId);
       const freezerName =
-        device?.unitName || `Freezer ${initialSelectedFreezerId}`;
+        device?.unitName ||
+        intl.formatMessage(
+          { id: "coldStorage.device.fallbackName" },
+          { id: initialSelectedFreezerId },
+        );
       setSelectedFreezer(freezerName);
       if (onFreezerSelected) {
         onFreezerSelected(initialSelectedFreezerId);
       }
     }
-  }, [initialSelectedFreezerId, devices, onFreezerSelected]);
+  }, [initialSelectedFreezerId, devices, onFreezerSelected, intl]);
 
   useEffect(() => {
     if (
-      selectedFreezer !== "All Freezers" &&
+      selectedFreezer !== ALL_FREEZERS &&
       !freezerNameToIdMap[selectedFreezer]
     ) {
-      setSelectedFreezer("All Freezers");
+      setSelectedFreezer(ALL_FREEZERS);
     }
   }, [devices, selectedFreezer, freezerNameToIdMap]);
 
@@ -191,7 +209,7 @@ export default function HistoricalTrends({
           scaleType: "labels",
         },
         left: {
-          title: "Temperature (°C)",
+          title: intl.formatMessage({ id: "coldStorage.temperature.celsius" }),
           mapsTo: "value",
           scaleType: "linear",
         },
@@ -204,7 +222,7 @@ export default function HistoricalTrends({
         showTotal: false,
       },
     }),
-    [zoomLevel],
+    [intl, zoomLevel],
   );
 
   const handleZoomIn = useCallback(() => {
@@ -226,7 +244,11 @@ export default function HistoricalTrends({
     }
 
     // Create CSV content
-    const headers = ["Freezer", "Timestamp", "Temperature (°C)"];
+    const headers = [
+      intl.formatMessage({ id: "coldStorage.device.type.freezer" }),
+      intl.formatMessage({ id: "coldStorage.timestamp" }),
+      intl.formatMessage({ id: "coldStorage.temperature.celsius" }),
+    ];
     const rows = chartData.map((item) => [item.group, item.key, item.value]);
 
     const csvContent = [
@@ -240,7 +262,7 @@ export default function HistoricalTrends({
     const url = URL.createObjectURL(blob);
 
     const timestamp = new Date().toISOString().split("T")[0];
-    const filename = `freezer-temperature-data-${timestamp}.csv`;
+    const filename = `冰箱温度数据-${timestamp}.csv`;
 
     link.setAttribute("href", url);
     link.setAttribute("download", filename);
@@ -248,13 +270,15 @@ export default function HistoricalTrends({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  }, [chartData]);
+  }, [chartData, intl]);
 
   return (
     <div className="hist-trends-page">
       <Grid fullWidth>
         <Column lg={16} md={8} sm={4}>
-          <h3 className="hist-title">Historical Temperature Trends</h3>
+          <h3 className="hist-title">
+            {intl.formatMessage({ id: "coldStorage.trends.title" })}
+          </h3>
         </Column>
       </Grid>
 
@@ -262,9 +286,20 @@ export default function HistoricalTrends({
         <Column lg={6} md={4} sm={4}>
           <Dropdown
             id="freezer-filter"
-            titleText="Freezer"
-            label={selectedFreezer}
+            titleText={intl.formatMessage({
+              id: "coldStorage.device.type.freezer",
+            })}
+            label={
+              selectedFreezer === ALL_FREEZERS
+                ? intl.formatMessage({ id: "coldStorage.trends.allFreezers" })
+                : selectedFreezer
+            }
             items={freezerOptions}
+            itemToString={(item) =>
+              item === ALL_FREEZERS
+                ? intl.formatMessage({ id: "coldStorage.trends.allFreezers" })
+                : item || ""
+            }
             selectedItem={selectedFreezer}
             onChange={({ selectedItem }) => {
               setSelectedFreezer(selectedItem);
@@ -277,9 +312,20 @@ export default function HistoricalTrends({
         <Column lg={4} md={4} sm={4}>
           <Dropdown
             id="time-range-filter"
-            titleText="Time Range"
-            label={timeRange}
+            titleText={intl.formatMessage({
+              id: "coldStorage.trends.timeRange",
+            })}
+            label={intl.formatMessage({
+              id: `coldStorage.trends.range.${timeRange}`,
+            })}
             items={TIME_RANGE_OPTIONS}
+            itemToString={(item) =>
+              item
+                ? intl.formatMessage({
+                    id: `coldStorage.trends.range.${item}`,
+                  })
+                : ""
+            }
             selectedItem={timeRange}
             onChange={({ selectedItem }) => setTimeRange(selectedItem)}
           />
@@ -293,7 +339,7 @@ export default function HistoricalTrends({
             onClick={handleZoomIn}
             disabled={zoomLevel >= 3}
           >
-            Zoom In
+            {intl.formatMessage({ id: "coldStorage.trends.zoomIn" })}
           </Button>
           <Button
             kind="ghost"
@@ -302,7 +348,7 @@ export default function HistoricalTrends({
             onClick={handleZoomOut}
             disabled={zoomLevel <= 0.25}
           >
-            Zoom Out
+            {intl.formatMessage({ id: "coldStorage.trends.zoomOut" })}
           </Button>
           <Button
             kind="ghost"
@@ -310,7 +356,7 @@ export default function HistoricalTrends({
             renderIcon={Renew}
             onClick={handleReset}
           >
-            Reset
+            {intl.formatMessage({ id: "coldStorage.trends.reset" })}
           </Button>
           <Button
             kind="ghost"
@@ -319,7 +365,7 @@ export default function HistoricalTrends({
             onClick={handleExportCsv}
             disabled={!chartData.length}
           >
-            Export CSV
+            {intl.formatMessage({ id: "coldStorage.trends.export" })}
           </Button>
         </Column>
       </Grid>
@@ -329,10 +375,12 @@ export default function HistoricalTrends({
           <div className="hist-chart-card">
             {error && <p className="hist-error">{error}</p>}
             {loading ? (
-              <p className="hist-placeholder">Loading readings…</p>
+              <p className="hist-placeholder">
+                {intl.formatMessage({ id: "coldStorage.trends.loading" })}
+              </p>
             ) : chartData.length === 0 ? (
               <p className="hist-placeholder">
-                No readings available for the selected filters.
+                {intl.formatMessage({ id: "coldStorage.trends.empty" })}
               </p>
             ) : (
               <LineChart data={chartData} options={chartOptions} />
@@ -344,7 +392,9 @@ export default function HistoricalTrends({
       <Grid fullWidth className="hist-kpis">
         <Column lg={4} md={4} sm={4}>
           <div className="hist-kpi-card">
-            <p className="hist-kpi-label">Average Temperature</p>
+            <p className="hist-kpi-label">
+              {intl.formatMessage({ id: "coldStorage.trends.average" })}
+            </p>
             <p className="hist-kpi-value">
               {stats.avg === "-" ? "-" : `${stats.avg}°C`}
             </p>
@@ -352,7 +402,9 @@ export default function HistoricalTrends({
         </Column>
         <Column lg={4} md={4} sm={4}>
           <div className="hist-kpi-card">
-            <p className="hist-kpi-label">Min Temperature</p>
+            <p className="hist-kpi-label">
+              {intl.formatMessage({ id: "coldStorage.trends.minimum" })}
+            </p>
             <p className="hist-kpi-value hist-kpi-min">
               {stats.min === "-" ? "-" : `${stats.min}°C`}
             </p>
@@ -360,7 +412,9 @@ export default function HistoricalTrends({
         </Column>
         <Column lg={4} md={4} sm={4}>
           <div className="hist-kpi-card">
-            <p className="hist-kpi-label">Max Temperature</p>
+            <p className="hist-kpi-label">
+              {intl.formatMessage({ id: "coldStorage.trends.maximum" })}
+            </p>
             <p className="hist-kpi-value hist-kpi-max">
               {stats.max === "-" ? "-" : `${stats.max}°C`}
             </p>
@@ -368,7 +422,9 @@ export default function HistoricalTrends({
         </Column>
         <Column lg={4} md={4} sm={4}>
           <div className="hist-kpi-card">
-            <p className="hist-kpi-label">Data Points</p>
+            <p className="hist-kpi-label">
+              {intl.formatMessage({ id: "coldStorage.trends.dataPoints" })}
+            </p>
             <p className="hist-kpi-value">{stats.count.toLocaleString()}</p>
           </div>
         </Column>
@@ -377,8 +433,9 @@ export default function HistoricalTrends({
       <Grid fullWidth>
         <Column lg={16} md={8} sm={4}>
           <p className="hist-footer">
-            Cold Storage Monitoring v2.1.0 | Compliant with CAP, CLIA, FDA, and
-            WHO guidelines | HIPAA Compliant Data Handling
+            {intl.formatMessage({
+              id: "coldStorage.dashboard.complianceNotice",
+            })}
           </p>
         </Column>
       </Grid>

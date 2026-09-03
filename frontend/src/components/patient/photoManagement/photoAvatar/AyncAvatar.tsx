@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { SkeletonPlaceholder } from "@carbon/react";
 import Avatar from "react-avatar";
+import { useIntl } from "react-intl";
 import { getFromOpenElisServer } from "../../../utils/Utils";
 import "./AsyncAvatar.css";
 
@@ -17,7 +18,7 @@ import "./AsyncAvatar.css";
 const AsyncAvatar = ({
   patientId,
   hasPhoto,
-  patientName = "Patient",
+  patientName,
   size = 40,
 }: {
   patientId?: string | number;
@@ -25,6 +26,10 @@ const AsyncAvatar = ({
   patientName?: string;
   size?: number;
 }) => {
+  const intl = useIntl();
+  const displayName =
+    patientName || intl.formatMessage({ id: "patient.label" });
+  const avatarDescription = intl.formatMessage({ id: "patient.photo.label" });
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -58,9 +63,9 @@ const AsyncAvatar = ({
   if (!hasPhoto) {
     return (
       <Avatar
-        alt="Patient avatar"
+        alt={avatarDescription}
         color="rgba(0,0,0,0)"
-        name={patientName}
+        name={displayName}
         src=""
         size={String(size)}
         textSizeRatio={1}
@@ -88,9 +93,9 @@ const AsyncAvatar = ({
   if (error || !thumbnail) {
     return (
       <Avatar
-        alt="Patient avatar"
+        alt={avatarDescription}
         color="rgba(0,0,0,0)"
-        name={patientName}
+        name={displayName}
         src=""
         size={String(size)}
         textSizeRatio={1}
@@ -106,9 +111,9 @@ const AsyncAvatar = ({
   if (imageLoadError) {
     return (
       <Avatar
-        alt="Patient avatar"
+        alt={avatarDescription}
         color="rgba(0,0,0,0)"
-        name={patientName}
+        name={displayName}
         src=""
         size={String(size)}
         textSizeRatio={1}
@@ -137,7 +142,7 @@ const AsyncAvatar = ({
       >
         <img
           src={imageSrc}
-          alt={patientName}
+          alt={displayName}
           className="async-avatar-image"
           style={{
             width: size,
@@ -157,9 +162,9 @@ const AsyncAvatar = ({
   // Fallback to generated avatar with initials if image fails or is invalid
   return (
     <Avatar
-      alt="Patient avatar"
+      alt={avatarDescription}
       color="rgba(0,0,0,0)"
-      name={patientName}
+      name={displayName}
       src=""
       size={String(size)}
       textSizeRatio={1}

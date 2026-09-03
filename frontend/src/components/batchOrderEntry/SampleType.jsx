@@ -162,7 +162,7 @@ const SampleType = ({ updateFormValues }) => {
             <Select
               id="selectSampleType"
               className="selectSampleType"
-              labelText="Sample Type"
+              labelText={intl.formatMessage({ id: "sample.type" })}
               onChange={handleFetchSampleTypeTests}
             >
               {selectedSampleTypeId === null && (
@@ -194,8 +194,12 @@ const SampleType = ({ updateFormValues }) => {
                   ))}
                 </Section>
                 <Search
-                  labelText="Search Panels"
-                  placeholder="Search panels..."
+                  labelText={intl.formatMessage({
+                    id: "batchOrder.search.panels",
+                  })}
+                  placeholder={intl.formatMessage({
+                    id: "batchOrder.search.panels.placeholder",
+                  })}
                   onChange={handlePanelSearchChange}
                 />
                 {filteredPanels.map((panel) => (
@@ -222,8 +226,12 @@ const SampleType = ({ updateFormValues }) => {
                   ))}
                 </div>
                 <Search
-                  labelText="Search Tests"
-                  placeholder="Search tests..."
+                  labelText={intl.formatMessage({
+                    id: "batchOrder.search.tests",
+                  })}
+                  placeholder={intl.formatMessage({
+                    id: "batchOrder.search.tests.placeholder",
+                  })}
                   onChange={handleTestSearchChange}
                 />
                 {filteredTests.map((test) => (

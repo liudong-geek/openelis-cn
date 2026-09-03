@@ -1,7 +1,5 @@
 /** @module @category Navigation */
-import { navigateToUrl } from "single-spa";
 import { interpolateUrl } from "./interpolate-string";
-import type {} from "../globals/types";
 
 export type TemplateParams = { [key: string]: string };
 
@@ -11,7 +9,10 @@ export interface NavigateOptions {
 }
 
 /**
- * Calls `location.assign` for non-SPA paths and [navigateToUrl](https://single-spa.js.org/docs/api/#navigatetourl) for SPA paths
+ * Uses browser history for same-origin paths and a full navigation for
+ * external URLs. This viewer runs inside OpenELIS' React Router application,
+ * not a single-spa root; importing single-spa here caused a delayed
+ * "single-spa has not been started" warning on every patient history page.
  *
  * #### Example usage:
  * ```js
@@ -41,12 +42,16 @@ export interface NavigateOptions {
  */
 export function navigate({ to, templateParams }: NavigateOptions): void {
   const target = interpolateUrl(to, templateParams);
-  // const isSpaPath = target.startsWith(openmrsSpaBase);
-  const isSpaPath = true;
+  const resolvedTarget = new URL(target, window.location.href);
 
-  if (isSpaPath) {
-    navigateToUrl(target);
-  } else {
-    window.location.assign(target);
+  if (resolvedTarget.origin !== window.location.origin) {
+    window.location.assign(resolvedTarget.href);
+    return;
   }
+
+  const relativeTarget = `${resolvedTarget.pathname}${resolvedTarget.search}${resolvedTarget.hash}`;
+  window.history.pushState(window.history.state, "", relativeTarget);
+  window.dispatchEvent(
+    new PopStateEvent("popstate", { state: window.history.state }),
+  );
 }

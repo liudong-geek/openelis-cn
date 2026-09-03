@@ -68,6 +68,14 @@ public class DBSearchResultsServiceImpl implements SearchResultsService {
         return results;
     }
 
+    @Override
+    @Transactional
+    public List<PatientSearchResults> getQuickSearchResults(String query) {
+        List<PatientSearchResults> results = searchResultsDAO.getQuickSearchResults(query);
+        annotateMergeStatus(results);
+        return results;
+    }
+
     /**
      * Stamps the merged flag (and the primary patient's national-id, when
      * available) onto each result so the frontend can render the "Merged" badge

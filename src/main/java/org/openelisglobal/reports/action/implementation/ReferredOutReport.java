@@ -42,7 +42,9 @@ import org.openelisglobal.test.valueholder.Test;
  * @author Paul A. Hill (pahill@uw.edu)
  * @since Feb 18, 2011
  */
-public class ReferredOutReport extends PatientReport implements IReportParameterSetter, IReportCreator {
+public class ReferredOutReport extends PatientReport
+        implements IReportParameterSetter, IReportCreator,
+        ResultsScopedReportCreator.ReferredOutByLocationSelection {
 
     private String lowDateStr;
     private String highDateStr;

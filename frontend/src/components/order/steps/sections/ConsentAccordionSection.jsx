@@ -1,13 +1,6 @@
 import React from "react";
 import { useIntl } from "react-intl";
-import {
-  Accordion,
-  AccordionItem,
-  Checkbox,
-  TextInput,
-  Tag,
-  Stack,
-} from "@carbon/react";
+import { Checkbox, TextInput, Tag, Stack } from "@carbon/react";
 import CustomDatePicker from "../../../common/CustomDatePicker";
 
 /**
@@ -81,26 +74,16 @@ export const ConsentAccordionSection = ({
   });
 
   return (
-    <Accordion>
-      <AccordionItem
-        open
-        title={
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "0.5rem",
-            }}
-          >
-            {sectionTitle}
-            {consentGiven && (
-              <Tag kind="teal" size="sm">
-                {statusTagLabel}
-              </Tag>
-            )}
-          </span>
-        }
-      >
+    <section className="order-section consent-section">
+      <header className="order-section__header consent-section__header">
+        <h4 className="section-title">{sectionTitle}</h4>
+        {consentGiven && (
+          <Tag type="teal" size="sm">
+            {statusTagLabel}
+          </Tag>
+        )}
+      </header>
+      <div className="consent-section__body">
         <Stack gap={5}>
           <Checkbox
             id="consentGiven"
@@ -191,8 +174,8 @@ export const ConsentAccordionSection = ({
             </>
           )}
         </Stack>
-      </AccordionItem>
-    </Accordion>
+      </div>
+    </section>
   );
 };
 

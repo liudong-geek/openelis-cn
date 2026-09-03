@@ -7,7 +7,6 @@ import {
   Dropdown,
   Checkbox,
   InlineNotification,
-  FormGroup,
   Loading,
 } from "@carbon/react";
 import { useIntl } from "react-intl";
@@ -76,12 +75,12 @@ const AnalyzerForm = () => {
 
   // Analyzer type options (must match DB analyzer_type column values)
   const analyzerTypeOptions = [
-    { id: "HEMATOLOGY", text: "Hematology" },
-    { id: "CHEMISTRY", text: "Chemistry" },
-    { id: "IMMUNOLOGY", text: "Immunology" },
-    { id: "MICROBIOLOGY", text: "Microbiology" },
-    { id: "MOLECULAR", text: "Molecular" },
-    { id: "COAGULATION", text: "Coagulation" },
+    { id: "HEMATOLOGY", text: "血液学" },
+    { id: "CHEMISTRY", text: "生化" },
+    { id: "IMMUNOLOGY", text: "免疫学" },
+    { id: "MICROBIOLOGY", text: "微生物" },
+    { id: "MOLECULAR", text: "分子诊断" },
+    { id: "COAGULATION", text: "凝血" },
     {
       id: "OTHER",
       text: intl.formatMessage({ id: "analyzer.form.type.other" }),
@@ -266,7 +265,7 @@ const AnalyzerForm = () => {
   const fileFormatOptions = [
     { id: "CSV", text: "CSV" },
     { id: "TSV", text: "TSV" },
-    { id: "EXCEL", text: "Excel (.xls/.xlsx)" },
+    { id: "EXCEL", text: "Excel（.xls/.xlsx）" },
   ];
 
   const FILE_FORMAT_PATTERNS = {
@@ -508,6 +507,13 @@ const AnalyzerForm = () => {
     return <Loading withOverlay={false} />;
   }
 
+  const hasNetworkEndpoint =
+    !isFileProtocol &&
+    !validateIPAddress(formData.ipAddress) &&
+    Number.isInteger(Number(formData.port)) &&
+    Number(formData.port) >= 1 &&
+    Number(formData.port) <= 65535;
+
   return (
     <>
       <div
@@ -534,6 +540,30 @@ const AnalyzerForm = () => {
           />
         </div>
         <div className="analyzer-form-content">
+          <section
+            className="analyzer-onboarding"
+            aria-labelledby="analyzer-onboarding-title"
+          >
+            <div className="analyzer-onboarding__copy">
+              <h2 id="analyzer-onboarding-title">
+                {intl.formatMessage({ id: "analyzer.form.guide.title" })}
+              </h2>
+              <p>
+                {intl.formatMessage({ id: "analyzer.form.guide.description" })}
+              </p>
+            </div>
+            <ol className="analyzer-onboarding__steps">
+              {[1, 2, 3, 4].map((step) => (
+                <li key={step}>
+                  <span aria-hidden="true">{step}</span>
+                  {intl.formatMessage({
+                    id: `analyzer.form.guide.step${step}`,
+                  })}
+                </li>
+              ))}
+            </ol>
+          </section>
+
           {notification && (
             <InlineNotification
               kind={notification.kind}
@@ -544,375 +574,457 @@ const AnalyzerForm = () => {
             />
           )}
 
+          {!loadingPluginTypes && pluginTypes.length === 0 && (
+            <InlineNotification
+              kind="warning"
+              title={intl.formatMessage({
+                id: "analyzer.form.bridgeUnavailable.title",
+              })}
+              subtitle={intl.formatMessage({
+                id: "analyzer.form.bridgeUnavailable.description",
+              })}
+              hideCloseButton
+              lowContrast
+              data-testid="analyzer-bridge-unavailable"
+            />
+          )}
+
           {/* Section 1 — Instance Identity */}
-          <FormGroup legendText="">
-            <TextInput
-              id="analyzer-name"
-              data-testid="analyzer-form-name-input"
-              labelText={intl.formatMessage({ id: "analyzer.form.name" })}
-              placeholder={intl.formatMessage({
-                id: "analyzer.form.name.placeholder",
-              })}
-              value={formData.name}
-              onChange={(e) => handleFieldChange("name", e.target.value)}
-              invalid={!!errors.name}
-              invalidText={errors.name}
-              required
-            />
+          <section className="analyzer-form-section">
+            <div className="analyzer-form-section__header">
+              <span aria-hidden="true">1</span>
+              <div>
+                <h2>
+                  {intl.formatMessage({
+                    id: "analyzer.form.section.identity.title",
+                  })}
+                </h2>
+                <p>
+                  {intl.formatMessage({
+                    id: "analyzer.form.section.identity.description",
+                  })}
+                </p>
+              </div>
+            </div>
+            <div className="analyzer-form-grid">
+              <TextInput
+                id="analyzer-name"
+                data-testid="analyzer-form-name-input"
+                labelText={intl.formatMessage({ id: "analyzer.form.name" })}
+                placeholder={intl.formatMessage({
+                  id: "analyzer.form.name.placeholder",
+                })}
+                value={formData.name}
+                onChange={(e) => handleFieldChange("name", e.target.value)}
+                invalid={!!errors.name}
+                invalidText={errors.name}
+                required
+              />
 
-            <Dropdown
-              id="analyzer-status"
-              data-testid="analyzer-form-status-dropdown"
-              titleText={intl.formatMessage({
-                id: "analyzer.form.status",
-              })}
-              label={intl.formatMessage({
-                id: "analyzer.form.status",
-              })}
-              items={statusOptions}
-              itemToString={(item) => (item ? item.text : "")}
-              selectedItem={
-                statusOptions.find((opt) => opt.id === formData.status) ||
-                statusOptions[1] // Default to SETUP
-              }
-              onChange={({ selectedItem }) => {
-                if (selectedItem) {
-                  handleFieldChange("status", selectedItem.id);
-                }
-              }}
-              helperText={intl.formatMessage({
-                id: "analyzer.form.status.helperText",
-              })}
-            />
-          </FormGroup>
-
-          {/* Section 2 — Plugin Configuration */}
-          <FormGroup legendText="">
-            <Dropdown
-              id="analyzer-plugin-type"
-              data-testid="analyzer-form-plugin-type-dropdown"
-              titleText={intl.formatMessage({
-                id: "analyzer.form.pluginType",
-                defaultMessage: "Plugin Type",
-              })}
-              label={intl.formatMessage({
-                id: "analyzer.form.pluginType.placeholder",
-                defaultMessage: "Select plugin type...",
-              })}
-              items={sortedPluginTypes}
-              selectedItem={
-                sortedPluginTypes.find(
-                  (opt) => opt.id === formData.pluginTypeId,
-                ) || null
-              }
-              itemToString={(item) =>
-                item ? `${item.name} (${item.protocol})` : ""
-              }
-              onChange={({ selectedItem }) => {
-                handleFieldChange("pluginTypeId", selectedItem?.id || "");
-                // Reset profile selection when plugin type changes
-                setSelectedDefault(null);
-                // Auto-set protocol version based on plugin type
-                if (selectedItem?.protocol) {
-                  handleFieldChange(
-                    "protocolVersion",
-                    PLUGIN_PROTOCOL_DEFAULTS[selectedItem.protocol] ||
-                      formData.protocolVersion,
-                  );
-                }
-              }}
-              disabled={loadingPluginTypes}
-              helperText={intl.formatMessage({
-                id: "analyzer.form.pluginType.helperText",
-                defaultMessage:
-                  "The analyzer plugin that will handle incoming messages",
-              })}
-            />
-
-            {isGenericPlugin && (
               <Dropdown
-                id="analyzer-default-config"
-                data-testid="analyzer-form-default-config-dropdown"
+                id="analyzer-status"
+                data-testid="analyzer-form-status-dropdown"
                 titleText={intl.formatMessage({
-                  id: "analyzer.form.loadDefaultConfig",
+                  id: "analyzer.form.status",
                 })}
                 label={intl.formatMessage({
-                  id: "analyzer.form.loadDefaultConfig.placeholder",
+                  id: "analyzer.form.status",
                 })}
-                items={filteredDefaultConfigs}
-                selectedItem={selectedDefault}
-                itemToString={(item) =>
-                  item
-                    ? `${item.analyzerName || item.id?.split("/")[1] || item.id} (${item.protocol})`
-                    : ""
-                }
-                onChange={({ selectedItem }) =>
-                  handleDefaultConfigSelect(selectedItem)
-                }
-                disabled={loadingDefaults}
-                helperText={intl.formatMessage({
-                  id: "analyzer.form.loadDefaultConfig.helperText",
-                })}
-              />
-            )}
-
-            {isGenericPlugin && (
-              <TextInput
-                id="analyzer-identifier-pattern"
-                data-testid="analyzer-form-identifier-pattern-input"
-                labelText={intl.formatMessage({
-                  id: "analyzer.form.identifierPattern",
-                  defaultMessage: "Identifier Pattern",
-                })}
-                placeholder={intl.formatMessage({
-                  id: "analyzer.form.identifierPattern.placeholder",
-                  defaultMessage: "e.g., ^ABX\\^PENTRA.*",
-                })}
-                value={formData.identifierPattern}
-                onChange={(e) =>
-                  handleFieldChange("identifierPattern", e.target.value)
-                }
-                helperText={intl.formatMessage({
-                  id: "analyzer.form.identifierPattern.helperText",
-                  defaultMessage:
-                    "Regex pattern to match incoming message identifiers for routing",
-                })}
-              />
-            )}
-
-            <Dropdown
-              id="analyzer-type"
-              data-testid="analyzer-form-type-dropdown"
-              titleText={intl.formatMessage({ id: "analyzer.form.type" })}
-              label={intl.formatMessage({
-                id: "analyzer.form.type.placeholder",
-              })}
-              items={analyzerTypeOptions}
-              selectedItem={
-                analyzerTypeOptions.find(
-                  (opt) => opt.id === formData.analyzerType,
-                ) || null
-              }
-              itemToString={(item) => (item ? item.text : "")}
-              onChange={({ selectedItem }) =>
-                handleFieldChange("analyzerType", selectedItem?.id || "")
-              }
-              invalid={!!errors.analyzerType}
-              invalidText={errors.analyzerType}
-              required
-            />
-
-            {!isFileProtocol && (
-              <Dropdown
-                id="analyzer-protocol-version"
-                data-testid="analyzer-form-protocol-version-dropdown"
-                titleText={intl.formatMessage({
-                  id: "analyzer.form.protocolVersion",
-                  defaultMessage: "Message Protocol",
-                })}
-                items={PROTOCOL_VERSIONS}
+                items={statusOptions}
+                itemToString={(item) => (item ? item.text : "")}
                 selectedItem={
-                  PROTOCOL_VERSIONS.find(
-                    (opt) => opt.value === formData.protocolVersion,
-                  ) || PROTOCOL_VERSIONS[0]
+                  statusOptions.find((opt) => opt.id === formData.status) ||
+                  statusOptions[1] // Default to SETUP
                 }
-                itemToString={(item) => (item ? item.label : "")}
                 onChange={({ selectedItem }) => {
                   if (selectedItem) {
-                    handleFieldChange("protocolVersion", selectedItem.value);
+                    handleFieldChange("status", selectedItem.id);
                   }
                 }}
+                helperText={intl.formatMessage({
+                  id: "analyzer.form.status.helperText",
+                })}
               />
-            )}
-          </FormGroup>
+            </div>
+          </section>
+
+          {/* Section 2 — Plugin Configuration */}
+          <section className="analyzer-form-section">
+            <div className="analyzer-form-section__header">
+              <span aria-hidden="true">2</span>
+              <div>
+                <h2>
+                  {intl.formatMessage({
+                    id: "analyzer.form.section.interface.title",
+                  })}
+                </h2>
+                <p>
+                  {intl.formatMessage({
+                    id: "analyzer.form.section.interface.description",
+                  })}
+                </p>
+              </div>
+            </div>
+            <div className="analyzer-form-grid">
+              <Dropdown
+                id="analyzer-plugin-type"
+                data-testid="analyzer-form-plugin-type-dropdown"
+                titleText={intl.formatMessage({
+                  id: "analyzer.form.pluginType",
+                  defaultMessage: "Plugin Type",
+                })}
+                label={intl.formatMessage({
+                  id: "analyzer.form.pluginType.placeholder",
+                  defaultMessage: "Select plugin type...",
+                })}
+                items={sortedPluginTypes}
+                selectedItem={
+                  sortedPluginTypes.find(
+                    (opt) => opt.id === formData.pluginTypeId,
+                  ) || null
+                }
+                itemToString={(item) =>
+                  item ? `${item.name} (${item.protocol})` : ""
+                }
+                onChange={({ selectedItem }) => {
+                  handleFieldChange("pluginTypeId", selectedItem?.id || "");
+                  // Reset profile selection when plugin type changes
+                  setSelectedDefault(null);
+                  // Auto-set protocol version based on plugin type
+                  if (selectedItem?.protocol) {
+                    handleFieldChange(
+                      "protocolVersion",
+                      PLUGIN_PROTOCOL_DEFAULTS[selectedItem.protocol] ||
+                        formData.protocolVersion,
+                    );
+                  }
+                }}
+                disabled={loadingPluginTypes}
+                helperText={intl.formatMessage({
+                  id: "analyzer.form.pluginType.helperText",
+                  defaultMessage:
+                    "The analyzer plugin that will handle incoming messages",
+                })}
+              />
+
+              {isGenericPlugin && (
+                <Dropdown
+                  id="analyzer-default-config"
+                  data-testid="analyzer-form-default-config-dropdown"
+                  titleText={intl.formatMessage({
+                    id: "analyzer.form.loadDefaultConfig",
+                  })}
+                  label={intl.formatMessage({
+                    id: "analyzer.form.loadDefaultConfig.placeholder",
+                  })}
+                  items={filteredDefaultConfigs}
+                  selectedItem={selectedDefault}
+                  itemToString={(item) =>
+                    item
+                      ? `${item.analyzerName || item.id?.split("/")[1] || item.id} (${item.protocol})`
+                      : ""
+                  }
+                  onChange={({ selectedItem }) =>
+                    handleDefaultConfigSelect(selectedItem)
+                  }
+                  disabled={loadingDefaults}
+                  helperText={intl.formatMessage({
+                    id: "analyzer.form.loadDefaultConfig.helperText",
+                  })}
+                />
+              )}
+
+              {isGenericPlugin && (
+                <TextInput
+                  id="analyzer-identifier-pattern"
+                  data-testid="analyzer-form-identifier-pattern-input"
+                  labelText={intl.formatMessage({
+                    id: "analyzer.form.identifierPattern",
+                    defaultMessage: "Identifier Pattern",
+                  })}
+                  placeholder={intl.formatMessage({
+                    id: "analyzer.form.identifierPattern.placeholder",
+                    defaultMessage: "e.g., ^ABX\\^PENTRA.*",
+                  })}
+                  value={formData.identifierPattern}
+                  onChange={(e) =>
+                    handleFieldChange("identifierPattern", e.target.value)
+                  }
+                  helperText={intl.formatMessage({
+                    id: "analyzer.form.identifierPattern.helperText",
+                    defaultMessage:
+                      "Regex pattern to match incoming message identifiers for routing",
+                  })}
+                />
+              )}
+
+              <Dropdown
+                id="analyzer-type"
+                data-testid="analyzer-form-type-dropdown"
+                titleText={intl.formatMessage({ id: "analyzer.form.type" })}
+                label={intl.formatMessage({
+                  id: "analyzer.form.type.placeholder",
+                })}
+                items={analyzerTypeOptions}
+                selectedItem={
+                  analyzerTypeOptions.find(
+                    (opt) => opt.id === formData.analyzerType,
+                  ) || null
+                }
+                itemToString={(item) => (item ? item.text : "")}
+                onChange={({ selectedItem }) =>
+                  handleFieldChange("analyzerType", selectedItem?.id || "")
+                }
+                invalid={!!errors.analyzerType}
+                invalidText={errors.analyzerType}
+                required
+              />
+
+              {!isFileProtocol && (
+                <Dropdown
+                  id="analyzer-protocol-version"
+                  data-testid="analyzer-form-protocol-version-dropdown"
+                  titleText={intl.formatMessage({
+                    id: "analyzer.form.protocolVersion",
+                    defaultMessage: "Message Protocol",
+                  })}
+                  items={PROTOCOL_VERSIONS}
+                  selectedItem={
+                    PROTOCOL_VERSIONS.find(
+                      (opt) => opt.value === formData.protocolVersion,
+                    ) || PROTOCOL_VERSIONS[0]
+                  }
+                  itemToString={(item) => (item ? item.label : "")}
+                  onChange={({ selectedItem }) => {
+                    if (selectedItem) {
+                      handleFieldChange("protocolVersion", selectedItem.value);
+                    }
+                  }}
+                />
+              )}
+            </div>
+          </section>
 
           {/* Section 3 — Connection (hidden for FILE protocol) */}
           {!isFileProtocol && (
-            <FormGroup legendText="">
-              <Dropdown
-                id="analyzer-communication-mode"
-                data-testid="analyzer-form-communication-mode-dropdown"
-                titleText={intl.formatMessage({
-                  id: "analyzer.form.communicationMode",
-                })}
-                items={communicationModeItems}
-                selectedItem={
-                  communicationModeItems.find(
-                    (opt) => opt.value === formData.communicationMode,
-                  ) || null
-                }
-                itemToString={(item) => (item ? item.label : "")}
-                onChange={({ selectedItem }) => {
-                  if (selectedItem) {
-                    handleFieldChange("communicationMode", selectedItem.value);
-                  }
-                }}
-                helperText={intl.formatMessage({
-                  id: "analyzer.form.communicationMode.help",
-                })}
-              />
-              <div
-                className="connection-fields"
-                data-testid="analyzer-form-connection-fields"
-              >
-                <TextInput
-                  id="analyzer-ip"
-                  data-testid="analyzer-form-ip-input"
-                  labelText={intl.formatMessage({
-                    id: "analyzer.form.ipAddress",
-                  })}
-                  placeholder={intl.formatMessage({
-                    id: "analyzer.form.ipAddress.placeholder",
-                  })}
-                  value={formData.ipAddress}
-                  onChange={(e) =>
-                    handleFieldChange("ipAddress", e.target.value)
-                  }
-                  invalid={!!errors.ipAddress}
-                  invalidText={errors.ipAddress}
-                />
-
-                <TextInput
-                  id="analyzer-port"
-                  data-testid="analyzer-form-port-input"
-                  labelText={intl.formatMessage({ id: "analyzer.form.port" })}
-                  placeholder={intl.formatMessage({
-                    id: "analyzer.form.port.placeholder",
-                  })}
-                  value={formData.port}
-                  onChange={(e) => handleFieldChange("port", e.target.value)}
-                  invalid={!!errors.port}
-                  invalidText={errors.port}
-                />
-
-                <Button
-                  kind="tertiary"
-                  onClick={() => setTestConnectionModalOpen(true)}
-                  data-testid="analyzer-form-test-connection-button"
-                >
-                  {intl.formatMessage({ id: "analyzer.form.testConnection" })}
-                </Button>
+            <section className="analyzer-form-section">
+              <div className="analyzer-form-section__header">
+                <span aria-hidden="true">3</span>
+                <div>
+                  <h2>
+                    {intl.formatMessage({
+                      id: "analyzer.form.section.connection.title",
+                    })}
+                  </h2>
+                  <p>
+                    {intl.formatMessage({
+                      id: "analyzer.form.section.connection.description",
+                    })}
+                  </p>
+                </div>
               </div>
-            </FormGroup>
+              <div className="analyzer-form-grid">
+                <Dropdown
+                  id="analyzer-communication-mode"
+                  data-testid="analyzer-form-communication-mode-dropdown"
+                  titleText={intl.formatMessage({
+                    id: "analyzer.form.communicationMode",
+                  })}
+                  items={communicationModeItems}
+                  selectedItem={
+                    communicationModeItems.find(
+                      (opt) => opt.value === formData.communicationMode,
+                    ) || null
+                  }
+                  itemToString={(item) => (item ? item.label : "")}
+                  onChange={({ selectedItem }) => {
+                    if (selectedItem) {
+                      handleFieldChange(
+                        "communicationMode",
+                        selectedItem.value,
+                      );
+                    }
+                  }}
+                  helperText={intl.formatMessage({
+                    id: "analyzer.form.communicationMode.help",
+                  })}
+                />
+                <div
+                  className="connection-fields"
+                  data-testid="analyzer-form-connection-fields"
+                >
+                  <TextInput
+                    id="analyzer-ip"
+                    data-testid="analyzer-form-ip-input"
+                    labelText={intl.formatMessage({
+                      id: "analyzer.form.ipAddress",
+                    })}
+                    placeholder={intl.formatMessage({
+                      id: "analyzer.form.ipAddress.placeholder",
+                    })}
+                    value={formData.ipAddress}
+                    onChange={(e) =>
+                      handleFieldChange("ipAddress", e.target.value)
+                    }
+                    invalid={!!errors.ipAddress}
+                    invalidText={errors.ipAddress}
+                  />
+
+                  <TextInput
+                    id="analyzer-port"
+                    data-testid="analyzer-form-port-input"
+                    labelText={intl.formatMessage({ id: "analyzer.form.port" })}
+                    placeholder={intl.formatMessage({
+                      id: "analyzer.form.port.placeholder",
+                    })}
+                    value={formData.port}
+                    onChange={(e) => handleFieldChange("port", e.target.value)}
+                    invalid={!!errors.port}
+                    invalidText={errors.port}
+                  />
+
+                  <Button
+                    kind="tertiary"
+                    onClick={() => setTestConnectionModalOpen(true)}
+                    disabled={!hasNetworkEndpoint}
+                    data-testid="analyzer-form-test-connection-button"
+                  >
+                    {intl.formatMessage({ id: "analyzer.form.testConnection" })}
+                  </Button>
+                </div>
+              </div>
+            </section>
           )}
 
           {/* Section 3b — FILE protocol: import configuration */}
           {isFileProtocol && (
-            <FormGroup
-              legendText={intl.formatMessage({
-                id: "analyzer.form.fileImport.title",
-                defaultMessage: "File Import Settings",
-              })}
-            >
-              <Dropdown
-                id="analyzer-file-format"
-                data-testid="analyzer-form-file-format-dropdown"
-                titleText={intl.formatMessage({
-                  id: "analyzer.form.fileFormat",
-                  defaultMessage: "File Format",
-                })}
-                items={fileFormatOptions}
-                selectedItem={
-                  fileFormatOptions.find(
-                    (opt) => opt.id === formData.fileFormat,
-                  ) || fileFormatOptions[0]
-                }
-                itemToString={(item) => (item ? item.text : "")}
-                onChange={({ selectedItem }) =>
-                  handleFileFormatChange(selectedItem?.id || "CSV")
-                }
-              />
-
-              <TextInput
-                id="analyzer-import-directory"
-                data-testid="analyzer-form-import-directory-input"
-                labelText={intl.formatMessage({
-                  id: "analyzer.form.importDirectory",
-                  defaultMessage: "Import Directory",
-                })}
-                placeholder="/data/analyzer-imports/my-analyzer/incoming"
-                value={formData.importDirectory}
-                onChange={(e) =>
-                  handleFieldChange("importDirectory", e.target.value)
-                }
-                invalid={!!errors.importDirectory}
-                invalidText={errors.importDirectory}
-                helperText={intl.formatMessage({
-                  id: "analyzer.form.importDirectory.helperText",
-                  defaultMessage:
-                    "Directory the bridge watches for incoming result files",
-                })}
-              />
-
-              <TextInput
-                id="analyzer-file-pattern"
-                data-testid="analyzer-form-file-pattern-input"
-                labelText={intl.formatMessage({
-                  id: "analyzer.form.filePattern",
-                  defaultMessage: "File Pattern",
-                })}
-                placeholder="*.csv"
-                value={formData.filePattern}
-                onChange={(e) =>
-                  handleFieldChange("filePattern", e.target.value)
-                }
-                helperText={intl.formatMessage({
-                  id: "analyzer.form.filePattern.helperText",
-                  defaultMessage: "Glob pattern to match result files",
-                })}
-              />
-
-              <TextArea
-                id="analyzer-column-mappings"
-                data-testid="analyzer-form-column-mappings-input"
-                labelText={intl.formatMessage({
-                  id: "analyzer.form.columnMappings",
-                  defaultMessage: "Column Mappings (JSON)",
-                })}
-                placeholder='{"Sample Name": "sampleId", "Target Name": "testCode", "Quantity Mean": "result"}'
-                value={formData.columnMappings}
-                onChange={(e) =>
-                  handleFieldChange("columnMappings", e.target.value)
-                }
-                rows={4}
-                helperText={intl.formatMessage({
-                  id: "analyzer.form.columnMappings.helperText",
-                  defaultMessage:
-                    "Maps file column names to internal field names",
-                })}
-              />
-
-              {formData.fileFormat !== "EXCEL" && (
-                <>
-                  <TextInput
-                    id="analyzer-delimiter"
-                    data-testid="analyzer-form-delimiter-input"
-                    labelText={intl.formatMessage({
-                      id: "analyzer.form.delimiter",
-                      defaultMessage: "Delimiter",
+            <section className="analyzer-form-section">
+              <div className="analyzer-form-section__header">
+                <span aria-hidden="true">3</span>
+                <div>
+                  <h2>
+                    {intl.formatMessage({
+                      id: "analyzer.form.fileImport.title",
                     })}
-                    placeholder=","
-                    value={formData.delimiter}
-                    onChange={(e) =>
-                      handleFieldChange("delimiter", e.target.value)
-                    }
-                  />
-
-                  <Checkbox
-                    id="analyzer-has-header"
-                    data-testid="analyzer-form-has-header-checkbox"
-                    labelText={intl.formatMessage({
-                      id: "analyzer.form.hasHeader",
-                      defaultMessage: "File has header row",
+                  </h2>
+                  <p>
+                    {intl.formatMessage({
+                      id: "analyzer.form.section.file.description",
                     })}
-                    checked={formData.hasHeader}
-                    onChange={(_, { checked }) =>
-                      handleFieldChange("hasHeader", checked)
-                    }
-                  />
-                </>
-              )}
-            </FormGroup>
+                  </p>
+                </div>
+              </div>
+              <div className="analyzer-form-grid">
+                <Dropdown
+                  id="analyzer-file-format"
+                  data-testid="analyzer-form-file-format-dropdown"
+                  titleText={intl.formatMessage({
+                    id: "analyzer.form.fileFormat",
+                    defaultMessage: "File Format",
+                  })}
+                  items={fileFormatOptions}
+                  selectedItem={
+                    fileFormatOptions.find(
+                      (opt) => opt.id === formData.fileFormat,
+                    ) || fileFormatOptions[0]
+                  }
+                  itemToString={(item) => (item ? item.text : "")}
+                  onChange={({ selectedItem }) =>
+                    handleFileFormatChange(selectedItem?.id || "CSV")
+                  }
+                />
+
+                <TextInput
+                  id="analyzer-import-directory"
+                  data-testid="analyzer-form-import-directory-input"
+                  labelText={intl.formatMessage({
+                    id: "analyzer.form.importDirectory",
+                    defaultMessage: "Import Directory",
+                  })}
+                  placeholder="/data/analyzer-imports/my-analyzer/incoming"
+                  value={formData.importDirectory}
+                  onChange={(e) =>
+                    handleFieldChange("importDirectory", e.target.value)
+                  }
+                  invalid={!!errors.importDirectory}
+                  invalidText={errors.importDirectory}
+                  helperText={intl.formatMessage({
+                    id: "analyzer.form.importDirectory.helperText",
+                    defaultMessage:
+                      "Directory the bridge watches for incoming result files",
+                  })}
+                />
+
+                <TextInput
+                  id="analyzer-file-pattern"
+                  data-testid="analyzer-form-file-pattern-input"
+                  labelText={intl.formatMessage({
+                    id: "analyzer.form.filePattern",
+                    defaultMessage: "File Pattern",
+                  })}
+                  placeholder="*.csv"
+                  value={formData.filePattern}
+                  onChange={(e) =>
+                    handleFieldChange("filePattern", e.target.value)
+                  }
+                  helperText={intl.formatMessage({
+                    id: "analyzer.form.filePattern.helperText",
+                    defaultMessage: "Glob pattern to match result files",
+                  })}
+                />
+
+                <TextArea
+                  id="analyzer-column-mappings"
+                  data-testid="analyzer-form-column-mappings-input"
+                  labelText={intl.formatMessage({
+                    id: "analyzer.form.columnMappings",
+                    defaultMessage: "Column Mappings (JSON)",
+                  })}
+                  placeholder='{"标本名称": "sampleId", "检测项目": "testCode", "结果均值": "result"}'
+                  value={formData.columnMappings}
+                  onChange={(e) =>
+                    handleFieldChange("columnMappings", e.target.value)
+                  }
+                  rows={4}
+                  helperText={intl.formatMessage({
+                    id: "analyzer.form.columnMappings.helperText",
+                    defaultMessage:
+                      "Maps file column names to internal field names",
+                  })}
+                />
+
+                {formData.fileFormat !== "EXCEL" && (
+                  <>
+                    <TextInput
+                      id="analyzer-delimiter"
+                      data-testid="analyzer-form-delimiter-input"
+                      labelText={intl.formatMessage({
+                        id: "analyzer.form.delimiter",
+                        defaultMessage: "Delimiter",
+                      })}
+                      placeholder=","
+                      value={formData.delimiter}
+                      onChange={(e) =>
+                        handleFieldChange("delimiter", e.target.value)
+                      }
+                    />
+
+                    <Checkbox
+                      id="analyzer-has-header"
+                      data-testid="analyzer-form-has-header-checkbox"
+                      labelText={intl.formatMessage({
+                        id: "analyzer.form.hasHeader",
+                        defaultMessage: "File has header row",
+                      })}
+                      checked={formData.hasHeader}
+                      onChange={(_, { checked }) =>
+                        handleFieldChange("hasHeader", checked)
+                      }
+                    />
+                  </>
+                )}
+              </div>
+            </section>
           )}
         </div>
         <ButtonSet className="analyzer-form-actions">

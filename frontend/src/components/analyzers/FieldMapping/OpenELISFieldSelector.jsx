@@ -30,7 +30,7 @@ const OpenELISFieldSelector = ({
   const mockFields = [
     {
       id: "field-1",
-      name: "Glucose",
+      name: "葡萄糖",
       entityType: "TEST",
       fieldType: "NUMERIC",
       loincCode: "2345-7",
@@ -44,7 +44,7 @@ const OpenELISFieldSelector = ({
     },
     {
       id: "field-3",
-      name: "Hemoglobin",
+      name: "血红蛋白",
       entityType: "RESULT",
       fieldType: "NUMERIC",
       loincCode: "718-7",
@@ -74,7 +74,18 @@ const OpenELISFieldSelector = ({
   // Format items for ComboBox
   const items = filteredFields.map((field) => ({
     id: field.id,
-    text: `${field.name} (${field.entityType})`,
+    text: `${field.name}（${
+      {
+        TEST: "检验项目",
+        PANEL: "组合项目",
+        RESULT: "检验结果",
+        ORDER: "申请单",
+        SAMPLE: "标本",
+        QC: "质控",
+        METADATA: "元数据",
+        UNIT: "单位",
+      }[field.entityType] || field.entityType
+    }）`,
     field: field,
   }));
 
@@ -104,7 +115,7 @@ const OpenELISFieldSelector = ({
           id="openelis-field-selector"
           titleText={intl.formatMessage({
             id: "analyzer.fieldSelector.title",
-            defaultMessage: "Select OpenELIS Field",
+            defaultMessage: "选择LIS目标字段",
           })}
           placeholder={intl.formatMessage({
             id: "analyzer.fieldSelector.placeholder",
@@ -129,7 +140,7 @@ const OpenELISFieldSelector = ({
         >
           <FormattedMessage
             id="analyzer.fieldCreation.createNew"
-            defaultMessage="Create New Field"
+            defaultMessage="新建字段"
           />
         </Button>
       </div>

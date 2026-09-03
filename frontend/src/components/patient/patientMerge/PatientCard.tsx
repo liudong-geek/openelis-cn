@@ -103,7 +103,9 @@ function PatientCard({
             size="sm"
             hasIconOnly
             renderIcon={Close}
-            iconDescription="Clear selection"
+            iconDescription={intl.formatMessage({
+              id: "patient.merge.clearSelection",
+            })}
             onClick={onClear}
           />
         )}

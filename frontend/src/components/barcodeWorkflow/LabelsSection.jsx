@@ -211,6 +211,9 @@ const LabelQuantityCell = ({ idPrefix, cell, value, inputLabel, onChange }) => {
                   : _event?.target?.value;
               onChange(clampToMax(raw, cell.max));
             }}
+            translateWithId={(messageId) =>
+              intl.formatMessage({ id: `carbon.${messageId}` })
+            }
           />
         )}
         {sourceMeta || cell.source ? (
@@ -419,6 +422,7 @@ const LegacyLabelsSection = ({
   specimenLabelFormatter,
   runningTotalLabel,
 }) => {
+  const intl = useIntl();
   const [model, setModel] = useState(() =>
     buildLabelRowsModel(orderQuantity, specimenQuantities),
   );
@@ -494,6 +498,9 @@ const LegacyLabelsSection = ({
                   : normalizeQuantity(value);
             updateOrderQuantity(next);
           }}
+          translateWithId={(messageId) =>
+            intl.formatMessage({ id: `carbon.${messageId}` })
+          }
         />
         {model.sampleRows.map((sampleRow, index) => (
           <NumberInput
@@ -512,6 +519,9 @@ const LegacyLabelsSection = ({
                     : normalizeQuantity(value);
               updateSpecimenQuantity(index, next);
             }}
+            translateWithId={(messageId) =>
+              intl.formatMessage({ id: `carbon.${messageId}` })
+            }
           />
         ))}
         <p>{`${runningTotalLabel}: ${model.runningTotal}`}</p>
@@ -545,13 +555,28 @@ const LabelsSection = ({
   orderQuantity = 0,
   specimenQuantities = [],
   onChange = undefined,
-  orderLabelText = "Order labels",
-  specimenLabelFormatter = (sampleNumber) =>
-    `Specimen labels sample ${sampleNumber}`,
-  runningTotalLabel = "Running total",
+  orderLabelText = undefined,
+  specimenLabelFormatter = undefined,
+  runningTotalLabel = undefined,
   sampleLabelFormatter = undefined,
 }) => {
   const intl = useIntl();
+
+  // Resolve legacy-mode defaults through the active locale. Several older
+  // order-entry screens omit these optional props, so hardcoded English here
+  // leaked into an otherwise Chinese workflow.
+  const localizedOrderLabelText =
+    orderLabelText || intl.formatMessage({ id: "barcode.labels.order.row" });
+  const localizedSpecimenLabelFormatter =
+    specimenLabelFormatter ||
+    ((sampleNumber) =>
+      intl.formatMessage(
+        { id: "barcode.labels.sample.row" },
+        { sampleNumber },
+      ));
+  const localizedRunningTotalLabel =
+    runningTotalLabel ||
+    intl.formatMessage({ id: "barcode.labels.running.total" });
 
   if (labelRequest) {
     const sampleLabelFor = (row) =>
@@ -575,9 +600,9 @@ const LabelsSection = ({
       orderQuantity={orderQuantity}
       specimenQuantities={specimenQuantities}
       onChange={onChange}
-      orderLabelText={orderLabelText}
-      specimenLabelFormatter={specimenLabelFormatter}
-      runningTotalLabel={runningTotalLabel}
+      orderLabelText={localizedOrderLabelText}
+      specimenLabelFormatter={localizedSpecimenLabelFormatter}
+      runningTotalLabel={localizedRunningTotalLabel}
     />
   );
 };

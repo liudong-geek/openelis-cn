@@ -19,14 +19,13 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.apache.commons.validator.GenericValidator;
 import org.hibernate.Session;
 import org.openelisglobal.common.exception.LIMSRuntimeException;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.provider.query.PatientSearchResults;
-import org.openelisglobal.common.util.ConfigurationProperties;
-import org.openelisglobal.common.util.ConfigurationProperties.Property;
 import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.patientidentitytype.util.PatientIdentityTypeMap;
 import org.openelisglobal.sample.dao.SearchResultsDAO;
@@ -37,6 +36,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Component
 @Primary
 public class DBSearchResultsDAOImpl implements SearchResultsDAO {
+
+    private static final String QUICK_QUERY_PARAM = "quickQuery";
 
     @PersistenceContext
     EntityManager entityManager;
@@ -62,6 +63,10 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
             boolean queryGuid = !GenericValidator.isBlankOrNull(guid);
             boolean queryDateOfBirth = !GenericValidator.isBlankOrNull(dateOfBirth);
             boolean queryGender = !GenericValidator.isBlankOrNull(gender);
+            if (queryDateOfBirth
+                    && (getFormatedDOB(dateOfBirth) == null || getIsoDOB(dateOfBirth) == null)) {
+                return List.of();
+            }
 
             String sql = buildQueryString(queryLastName, queryFirstName, querySTNumber, querySubjectNumber,
                     queryNationalId, queryExternalId, queryAnyID, queryPatientID, queryGuid, queryDateOfBirth,
@@ -110,6 +115,15 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
             boolean queryGuid = !GenericValidator.isBlankOrNull(guid);
             boolean queryDateOfBirth = !GenericValidator.isBlankOrNull(dateOfBirth);
             boolean queryGender = !GenericValidator.isBlankOrNull(gender);
+            String dobFormatted = null;
+            String dobIso = null;
+            if (queryDateOfBirth) {
+                dobFormatted = getFormatedDOB(dateOfBirth);
+                dobIso = getIsoDOB(dateOfBirth);
+                if (dobFormatted == null || dobIso == null) {
+                    return List.of();
+                }
+            }
 
             String sql = buildQueryString(queryLastName, queryFirstName, querySTNumber, querySubjectNumber,
                     queryNationalId, queryExternalId, queryAnyID, queryPatientID, queryGuid, queryDateOfBirth,
@@ -132,8 +146,11 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
             externalID = '%' + externalID + '%';
             // patientID = '%' + patientID + '%';
             // guid = '%' + guid + '%';
-            String dobFormated = '%' + getFormatedDOB(dateOfBirth) + '%';
-            dateOfBirth = '%' + dateOfBirth + '%';
+            if (queryDateOfBirth) {
+                dobFormatted = '%' + dobFormatted + '%';
+                dobIso = '%' + dobIso + '%';
+                dateOfBirth = '%' + dateOfBirth + '%';
+            }
             // gender = '%' + gender + '%';
 
             if (queryFirstName) {
@@ -162,7 +179,8 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
             }
             if (queryDateOfBirth) {
                 query.setParameter(DATE_OF_BIRTH, dateOfBirth);
-                query.setParameter(DATE_OF_BIRTH_FORMATED, dobFormated);
+                query.setParameter(DATE_OF_BIRTH_FORMATED, dobFormatted);
+                query.setParameter(DATE_OF_BIRTH_ISO, dobIso);
             }
             if (queryGender) {
                 query.setParameter(GENDER, gender);
@@ -213,6 +231,15 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
             boolean queryGuid = !GenericValidator.isBlankOrNull(guid);
             boolean queryDateOfBirth = !GenericValidator.isBlankOrNull(dateOfBirth);
             boolean queryGender = !GenericValidator.isBlankOrNull(gender);
+            String dobFormatted = null;
+            String dobIso = null;
+            if (queryDateOfBirth) {
+                dobFormatted = getFormatedDOB(dateOfBirth);
+                dobIso = getIsoDOB(dateOfBirth);
+                if (dobFormatted == null || dobIso == null) {
+                    return List.of();
+                }
+            }
 
             String sql = buildQueryString(queryLastName, queryFirstName, querySTNumber, querySubjectNumber,
                     queryNationalId, queryExternalId, queryAnyID, queryPatientID, queryGuid, queryDateOfBirth,
@@ -253,7 +280,8 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
             }
             if (queryDateOfBirth) {
                 query.setParameter(DATE_OF_BIRTH, dateOfBirth);
-                query.setParameter(DATE_OF_BIRTH_FORMATED, getFormatedDOB(dateOfBirth));
+                query.setParameter(DATE_OF_BIRTH_FORMATED, dobFormatted);
+                query.setParameter(DATE_OF_BIRTH_ISO, dobIso);
             }
             if (queryGender) {
                 query.setParameter(GENDER, gender);
@@ -278,13 +306,81 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
         return results;
     }
 
-    private String getFormatedDOB(String dob) {
-        String format1 = "dd/MM/yyyy";
-        String format2 = "MM/dd/yyyy";
-        String dobFormated = ConfigurationProperties.getInstance().getPropertyValue(Property.DEFAULT_DATE_LOCALE)
-                .equals("fr-FR") ? DateUtil.formatStringDate(dob, format2) : DateUtil.formatStringDate(dob, format1);
+    @Override
+    @SuppressWarnings("rawtypes")
+    @Transactional
+    public List<PatientSearchResults> getQuickSearchResults(String queryText) throws LIMSRuntimeException {
+        if (GenericValidator.isBlankOrNull(queryText)) {
+            return Collections.emptyList();
+        }
 
-        return dobFormated;
+        String normalizedQuery = queryText.trim();
+        if (normalizedQuery.length() > 100) {
+            return Collections.emptyList();
+        }
+
+        try {
+            org.hibernate.query.Query query = entityManager.unwrap(Session.class)
+                    .createNativeQuery(buildQuickSearchQueryString());
+            query.setParameter(ID_TYPE_FOR_ST,
+                    Integer.valueOf(PatientIdentityTypeMap.getInstance().getIDForType("ST")));
+            query.setParameter(ID_TYPE_FOR_SUBJECT_NUMBER,
+                    Integer.valueOf(PatientIdentityTypeMap.getInstance().getIDForType("SUBJECT")));
+            query.setParameter(ID_TYPE_FOR_GUID,
+                    Integer.valueOf(PatientIdentityTypeMap.getInstance().getIDForType("GUID")));
+            query.setParameter(QUICK_QUERY_PARAM, "%" + escapeLikeValue(normalizedQuery) + "%");
+
+            List queryResults = query.list();
+            List<PatientSearchResults> results = new ArrayList<>();
+            for (Object resultLine : queryResults) {
+                Object[] line = (Object[]) resultLine;
+                results.add(new PatientSearchResults((BigDecimal) line[0], (String) line[1], (String) line[2],
+                        (String) line[3], (String) line[4], (String) line[5], (String) line[6], (String) line[7],
+                        (String) line[8], (String) line[9], null));
+            }
+            return results;
+        } catch (RuntimeException e) {
+            LogEvent.logError(e);
+            throw new LIMSRuntimeException("Error in SearchResultsDAOImpl getQuickSearchResults()", e);
+        }
+    }
+
+    private String buildQuickSearchQueryString() {
+        return "select distinct p.id, pr.first_name, pr.last_name, p.gender, p.entered_birth_date, p.national_id,"
+                + " p.external_id, pi.identity_data as st, piSN.identity_data as subject,"
+                + " piGUID.identity_data as guid"
+                + " from patient p join person pr on p.person_id = pr.id"
+                + " left join patient_identity pi on pi.patient_id = p.id and pi.identity_type_id = :"
+                + ID_TYPE_FOR_ST
+                + " left join patient_identity piSN on piSN.patient_id = p.id and piSN.identity_type_id = :"
+                + ID_TYPE_FOR_SUBJECT_NUMBER
+                + " left join patient_identity piGUID on piGUID.patient_id = p.id and piGUID.identity_type_id = :"
+                + ID_TYPE_FOR_GUID
+                + " where pr.last_name ilike :" + QUICK_QUERY_PARAM
+                + " or pr.first_name ilike :" + QUICK_QUERY_PARAM
+                + " or concat_ws('', pr.last_name, pr.first_name) ilike :" + QUICK_QUERY_PARAM
+                + " or concat_ws('', pr.first_name, pr.last_name) ilike :" + QUICK_QUERY_PARAM
+                + " or cast(p.id as text) ilike :" + QUICK_QUERY_PARAM
+                + " or p.national_id ilike :" + QUICK_QUERY_PARAM
+                + " or p.external_id ilike :" + QUICK_QUERY_PARAM
+                + " or pi.identity_data ilike :" + QUICK_QUERY_PARAM
+                + " or piSN.identity_data ilike :" + QUICK_QUERY_PARAM
+                + " or pr.primary_phone ilike :" + QUICK_QUERY_PARAM
+                + " or exists (select 1 from sample_human sh join sample s on s.id = sh.samp_id"
+                + " where sh.patient_id = p.id and s.accession_number ilike :" + QUICK_QUERY_PARAM + ")"
+                + " order by pr.last_name, pr.first_name, p.id limit 100";
+    }
+
+    private String escapeLikeValue(String value) {
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
+
+    private String getFormatedDOB(String dob) {
+        return DateUtil.formatStringDateForLegacySearch(dob);
+    }
+
+    private String getIsoDOB(String dob) {
+        return DateUtil.formatStringDateAsIsoForConfiguredLocale(dob);
     }
 
     /**
@@ -380,11 +476,13 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
         }
 
         if (dateOfBirth) {
-            queryBuilder.append(" p.entered_birth_date ilike :");
+            queryBuilder.append(" (p.entered_birth_date ilike :");
             queryBuilder.append(DATE_OF_BIRTH);
             queryBuilder.append(" or p.entered_birth_date ilike :");
             queryBuilder.append(DATE_OF_BIRTH_FORMATED);
-            queryBuilder.append(" and");
+            queryBuilder.append(" or to_char(p.birth_date, 'YYYY-MM-DD') ilike :");
+            queryBuilder.append(DATE_OF_BIRTH_ISO);
+            queryBuilder.append(") and");
         }
 
         if (gender) {

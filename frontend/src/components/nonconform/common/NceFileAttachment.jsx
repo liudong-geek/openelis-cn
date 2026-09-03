@@ -121,9 +121,9 @@ export const NceFileAttachment = ({
   };
 
   const formatFileSize = (bytes) => {
-    if (bytes === 0) return "0 Bytes";
+    if (bytes === 0) return "0 字节";
     const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const sizes = ["字节", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
@@ -141,16 +141,9 @@ export const NceFileAttachment = ({
   return (
     <div className="nce-file-attachment">
       <div className="nce-attachment-label">
-        <FormattedMessage
-          id="nce.field.attachments"
-          defaultMessage="Attachments"
-        />
+        <FormattedMessage id="nce.field.attachments" />
         <span className="nce-attachment-hint">
-          <FormattedMessage
-            id="nce.attachment.hint"
-            defaultMessage="(Optional - max {maxFiles} files, 10MB each)"
-            values={{ maxFiles }}
-          />
+          <FormattedMessage id="nce.attachment.hint" values={{ maxFiles }} />
         </span>
       </div>
 
@@ -161,7 +154,6 @@ export const NceFileAttachment = ({
           accept={ACCEPTED_FILE_TYPES}
           labelText={intl.formatMessage({
             id: "nce.attachment.dropzone",
-            defaultMessage: "Drag and drop files here or click to upload",
           })}
           onAddFiles={(event, { addedFiles }) => {
             handleFileChange({ target: { files: addedFiles } });
@@ -182,7 +174,6 @@ export const NceFileAttachment = ({
         <InlineLoading
           description={intl.formatMessage({
             id: "nce.attachment.uploading",
-            defaultMessage: "Uploading...",
           })}
         />
       )}
@@ -223,7 +214,7 @@ export const NceFileAttachment = ({
       <div className="nce-attachment-footer">
         <span className="nce-attachment-count">
           {attachments.length} / {maxFiles}{" "}
-          <FormattedMessage id="nce.attachment.files" defaultMessage="files" />
+          <FormattedMessage id="nce.attachment.files" />
         </span>
       </div>
     </div>

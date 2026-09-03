@@ -49,75 +49,176 @@ import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { useIntl } from "react-intl";
 import AddDeviceModal from "./shared/AddDeviceModal";
 
-const COLUMNS = [
-  { key: "id", header: "Action ID" },
-  { key: "status", header: "Status" },
-  { key: "device", header: "Device" },
-  { key: "summary", header: "Summary" },
-  { key: "performedBy", header: "Performed By" },
-  { key: "created", header: "Created" },
-  { key: "updated", header: "Last Updated By" },
+const getColumns = (intl) => [
+  {
+    key: "id",
+    header: intl.formatMessage({ id: "coldStorage.corrective.id" }),
+  },
+  {
+    key: "status",
+    header: intl.formatMessage({ id: "coldStorage.status" }),
+  },
+  {
+    key: "device",
+    header: intl.formatMessage({ id: "coldStorage.device" }),
+  },
+  {
+    key: "summary",
+    header: intl.formatMessage({ id: "coldStorage.corrective.summary" }),
+  },
+  {
+    key: "performedBy",
+    header: intl.formatMessage({ id: "coldStorage.corrective.performedBy" }),
+  },
+  {
+    key: "created",
+    header: intl.formatMessage({ id: "coldStorage.corrective.createdAt" }),
+  },
+  {
+    key: "updated",
+    header: intl.formatMessage({ id: "coldStorage.corrective.updatedAt" }),
+  },
 ];
 
-const ACTION_TYPES = [
+const getActionTypes = (intl) => [
   {
     id: "TEMPERATURE_ADJUSTMENT",
-    label: "Temperature Adjustment",
-    description: "Adjusting temperature settings",
+    label: intl.formatMessage({
+      id: "coldStorage.corrective.type.temperatureAdjustment",
+    }),
   },
   {
     id: "EQUIPMENT_REPAIR",
-    label: "Equipment Repair",
-    description: "Repairing or replacing equipment",
+    label: intl.formatMessage({
+      id: "coldStorage.corrective.type.equipmentRepair",
+    }),
   },
   {
     id: "SAMPLE_RELOCATION",
-    label: "Sample Relocation",
-    description: "Moving samples to another location",
+    label: intl.formatMessage({
+      id: "coldStorage.corrective.type.sampleRelocation",
+    }),
   },
   {
     id: "CALIBRATION",
-    label: "Calibration",
-    description: "Calibrating equipment or sensors",
+    label: intl.formatMessage({
+      id: "coldStorage.corrective.type.calibration",
+    }),
   },
   {
     id: "ITEM_REORDER",
-    label: "Item Reorder",
-    description: "Reordering inventory items",
+    label: intl.formatMessage({
+      id: "coldStorage.corrective.type.itemReorder",
+    }),
   },
   {
     id: "MAINTENANCE",
-    label: "Maintenance",
-    description: "Performing maintenance tasks",
+    label: intl.formatMessage({
+      id: "coldStorage.corrective.type.maintenance",
+    }),
   },
   {
     id: "OTHER",
-    label: "Other",
-    description: "Other or custom corrective actions",
+    label: intl.formatMessage({ id: "analyzer.form.type.other" }),
   },
 ];
 
-const TIME_FILTERS = [
-  { id: "last24", label: "Last 24 Hours", hours: 24 },
-  { id: "last7", label: "Last 7 Days", hours: 24 * 7 },
-  { id: "last14", label: "Last 14 Days", hours: 24 * 14 },
-  { id: "current_month", label: "Current Month", hours: null },
-  { id: "all", label: "All", hours: null },
+const getTimeFilters = (intl) => [
+  {
+    id: "last24",
+    label: intl.formatMessage({ id: "coldStorage.time.last24Hours" }),
+    hours: 24,
+  },
+  {
+    id: "last7",
+    label: intl.formatMessage({ id: "coldStorage.time.last7Days" }),
+    hours: 24 * 7,
+  },
+  {
+    id: "last14",
+    label: intl.formatMessage({ id: "coldStorage.time.last14Days" }),
+    hours: 24 * 14,
+  },
+  {
+    id: "current_month",
+    label: intl.formatMessage({ id: "coldStorage.time.currentMonth" }),
+    hours: null,
+  },
+  {
+    id: "all",
+    label: intl.formatMessage({ id: "coldStorage.filter.all" }),
+    hours: null,
+  },
 ];
 
-function statusTag(status, isEdited = false) {
+const getStatusOptions = (intl) => [
+  {
+    id: "PENDING",
+    label: intl.formatMessage({ id: "coldStorage.corrective.status.pending" }),
+  },
+  {
+    id: "IN_PROGRESS",
+    label: intl.formatMessage({
+      id: "coldStorage.corrective.status.inProgress",
+    }),
+  },
+  {
+    id: "COMPLETED",
+    label: intl.formatMessage({
+      id: "coldStorage.corrective.status.completed",
+    }),
+  },
+  {
+    id: "CANCELLED",
+    label: intl.formatMessage({
+      id: "coldStorage.corrective.status.cancelled",
+    }),
+  },
+];
+
+function statusTag(status, intl, isEdited = false) {
   const tag = (() => {
     switch (status) {
       case "PENDING":
-        return <Tag type="red">Pending</Tag>;
+        return (
+          <Tag type="red">
+            {intl.formatMessage({
+              id: "coldStorage.corrective.status.pending",
+            })}
+          </Tag>
+        );
       case "IN_PROGRESS":
-        return <Tag type="blue">In Progress</Tag>;
+        return (
+          <Tag type="blue">
+            {intl.formatMessage({
+              id: "coldStorage.corrective.status.inProgress",
+            })}
+          </Tag>
+        );
       case "COMPLETED":
-        return <Tag type="green">Completed</Tag>;
+        return (
+          <Tag type="green">
+            {intl.formatMessage({
+              id: "coldStorage.corrective.status.completed",
+            })}
+          </Tag>
+        );
       case "CANCELLED":
-        return <Tag type="gray">Cancelled</Tag>;
+        return (
+          <Tag type="gray">
+            {intl.formatMessage({
+              id: "coldStorage.corrective.status.cancelled",
+            })}
+          </Tag>
+        );
       case "RETRACTED":
-        return <Tag type="magenta">Retracted</Tag>;
+        return (
+          <Tag type="magenta">
+            {intl.formatMessage({
+              id: "coldStorage.corrective.status.retracted",
+            })}
+          </Tag>
+        );
       default:
         return <Tag>{status}</Tag>;
     }
@@ -128,7 +229,7 @@ function statusTag(status, isEdited = false) {
       {tag}
       {isEdited && (
         <Tag type="purple" size="sm">
-          Edited
+          {intl.formatMessage({ id: "coldStorage.corrective.edited" })}
         </Tag>
       )}
     </div>
@@ -137,6 +238,9 @@ function statusTag(status, isEdited = false) {
 
 export default function CorrectiveActions() {
   const intl = useIntl();
+  const actionTypes = useMemo(() => getActionTypes(intl), [intl]);
+  const timeFilters = useMemo(() => getTimeFilters(intl), [intl]);
+  const statusOptions = useMemo(() => getStatusOptions(intl), [intl]);
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
   const { userSessionDetails } = useContext(UserSessionDetailsContext);
@@ -177,7 +281,7 @@ export default function CorrectiveActions() {
   const [users, setUsers] = useState([]);
   const [locations, setLocations] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [timeFilter, setTimeFilter] = useState(TIME_FILTERS[4]);
+  const [timeFilter, setTimeFilter] = useState(() => getTimeFilters(intl)[4]);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -296,7 +400,7 @@ export default function CorrectiveActions() {
             item.name ||
             item.unitName ||
             device.displayName ||
-            "Unnamed Device";
+            intl.formatMessage({ id: "coldStorage.device.unnamed" });
 
           return {
             id: freezerId,
@@ -370,7 +474,10 @@ export default function CorrectiveActions() {
     };
 
     const updatedByText = action.updatedByName
-      ? `${action.updatedByName} at ${formatDate(updatedDate)}`
+      ? intl.formatMessage(
+          { id: "coldStorage.corrective.updatedBy" },
+          { name: action.updatedByName, time: formatDate(updatedDate) },
+        )
       : formatDate(updatedDate);
 
     return {
@@ -378,9 +485,17 @@ export default function CorrectiveActions() {
       rawId: action.id,
       status: action.status || "PENDING",
       isEdited: action.isEdited || false,
-      device: action.freezerName || `Device ${action.freezerId || "Unknown"}`,
+      device:
+        action.freezerName ||
+        intl.formatMessage(
+          { id: "coldStorage.device.fallbackName" },
+          {
+            id: action.freezerId || intl.formatMessage({ id: "not.specified" }),
+          },
+        ),
       summary: action.description || "",
-      performedBy: action.createdByName || "Unknown",
+      performedBy:
+        action.createdByName || intl.formatMessage({ id: "not.specified" }),
       created: formatDate(createdDate),
       updated: updatedByText,
       freezerId: action.freezerId,
@@ -399,7 +514,9 @@ export default function CorrectiveActions() {
 
   const deviceOptions = devices.map((device) => ({
     id: device.id,
-    label: device.displayName || "Unnamed Device",
+    label:
+      device.displayName ||
+      intl.formatMessage({ id: "coldStorage.device.unnamed" }),
   }));
 
   const filteredActions = useMemo(() => {
@@ -448,7 +565,12 @@ export default function CorrectiveActions() {
 
   const handleViewAction = (action) => {
     setSelectedAction(action);
-    setEditStatus({ id: action.status, label: action.status });
+    setEditStatus(
+      statusOptions.find((option) => option.id === action.status) || {
+        id: action.status,
+        label: action.status,
+      },
+    );
     setCompletionNotes(action.completionNotes || "");
     setIsViewModalOpen(true);
   };
@@ -714,7 +836,7 @@ export default function CorrectiveActions() {
 
   const rows = paginatedActions.map((action) => ({
     id: action.id,
-    status: statusTag(action.status, action.isEdited),
+    status: statusTag(action.status, intl, action.isEdited),
     device: action.device,
     summary: action.summary,
     performedBy: action.performedBy,
@@ -727,9 +849,11 @@ export default function CorrectiveActions() {
     <div style={{ padding: "1rem 0" }}>
       {notificationVisible === true ? <AlertDialog /> : ""}
       {loading ? (
-        <div>Loading corrective actions...</div>
+        <div>
+          {intl.formatMessage({ id: "coldStorage.corrective.loading" })}
+        </div>
       ) : (
-        <DataTable rows={rows} headers={COLUMNS}>
+        <DataTable rows={rows} headers={getColumns(intl)}>
           {({
             rows,
             headers,
@@ -739,14 +863,23 @@ export default function CorrectiveActions() {
             getTableContainerProps,
           }) => (
             <TableContainer
-              title="Corrective Actions"
-              description="Track maintenance and repair actions for cold storage devices"
+              title={intl.formatMessage({
+                id: "coldStorage.corrective.title",
+              })}
+              description={intl.formatMessage({
+                id: "coldStorage.corrective.subtitle",
+              })}
               {...getTableContainerProps()}
             >
               <TableToolbar>
                 <TableToolbarContent>
                   <TableToolbarSearch
-                    placeholder="Search by Action ID, Device, or Summary"
+                    closeButtonLabelText={intl.formatMessage({
+                      id: "carbon.search.clear",
+                    })}
+                    placeholder={intl.formatMessage({
+                      id: "coldStorage.corrective.search",
+                    })}
                     onChange={handleSearch}
                     value={searchTerm}
                   />
@@ -754,11 +887,11 @@ export default function CorrectiveActions() {
                     id="time-filter"
                     titleText=""
                     label={timeFilter.label}
-                    items={TIME_FILTERS}
+                    items={timeFilters}
                     itemToString={(item) => (item ? item.label : "")}
                     selectedItem={timeFilter}
                     onChange={({ selectedItem }) =>
-                      setTimeFilter(selectedItem || TIME_FILTERS[0])
+                      setTimeFilter(selectedItem || timeFilters[0])
                     }
                     size="md"
                   />
@@ -767,7 +900,9 @@ export default function CorrectiveActions() {
                     renderIcon={Add}
                     onClick={handleOpenAddModal}
                   >
-                    Add New Action
+                    {intl.formatMessage({
+                      id: "coldStorage.corrective.add",
+                    })}
                   </Button>
                 </TableToolbarContent>
               </TableToolbar>
@@ -782,21 +917,25 @@ export default function CorrectiveActions() {
                         {header.header}
                       </TableHeader>
                     ))}
-                    <TableHeader>Actions</TableHeader>
+                    <TableHeader>
+                      {intl.formatMessage({ id: "coldStorage.actions" })}
+                    </TableHeader>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {rows.length === 0 && (
                     <TableRow>
                       <TableCell
-                        colSpan={COLUMNS.length + 1}
+                        colSpan={getColumns(intl).length + 1}
                         style={{
                           textAlign: "center",
                           padding: "2rem 0",
                           color: "var(--cds-text-secondary)",
                         }}
                       >
-                        No corrective actions found.
+                        {intl.formatMessage({
+                          id: "coldStorage.corrective.empty",
+                        })}
                       </TableCell>
                     </TableRow>
                   )}
@@ -817,7 +956,7 @@ export default function CorrectiveActions() {
                               size="sm"
                               onClick={() => handleViewAction(action)}
                             >
-                              View
+                              {intl.formatMessage({ id: "label.view" })}
                             </Button>
                             {action &&
                               action.status !== "COMPLETED" &&
@@ -829,7 +968,9 @@ export default function CorrectiveActions() {
                                   renderIcon={WarningAlt}
                                   onClick={() => handleOpenRetractModal(action)}
                                 >
-                                  Retract
+                                  {intl.formatMessage({
+                                    id: "coldStorage.corrective.retract",
+                                  })}
                                 </Button>
                               )}
                           </div>
@@ -840,9 +981,13 @@ export default function CorrectiveActions() {
                 </TableBody>
               </Table>
               <Pagination
-                backwardText="Previous page"
-                forwardText="Next page"
-                itemsPerPageText="Items per page:"
+                backwardText={intl.formatMessage({
+                  id: "pagination.previous",
+                })}
+                forwardText={intl.formatMessage({ id: "pagination.next" })}
+                itemsPerPageText={intl.formatMessage({
+                  id: "pagination.itemsPerPage",
+                })}
                 page={currentPage}
                 pageSize={pageSize}
                 pageSizes={[5, 10, 20, 30, 40, 50]}
@@ -859,11 +1004,16 @@ export default function CorrectiveActions() {
 
       <Modal
         open={isAddModalOpen}
+        closeButtonLabel={intl.formatMessage({ id: "button.close" })}
         onRequestClose={handleCloseAddModal}
         onRequestSubmit={handleSubmit}
-        modalHeading="Add Corrective Action"
-        primaryButtonText="Add Action"
-        secondaryButtonText="Cancel"
+        modalHeading={intl.formatMessage({
+          id: "coldStorage.corrective.addTitle",
+        })}
+        primaryButtonText={intl.formatMessage({
+          id: "coldStorage.corrective.addSubmit",
+        })}
+        secondaryButtonText={intl.formatMessage({ id: "button.cancel" })}
         primaryButtonDisabled={!isValid || submitting}
         size="sm"
       >
@@ -871,9 +1021,17 @@ export default function CorrectiveActions() {
           <Stack gap={5}>
             {devices.length === 0 && (
               <InlineNotification
+                aria-label={intl.formatMessage({ id: "button.close" })}
+                statusIconDescription={intl.formatMessage({
+                  id: "carbon.notification.info",
+                })}
                 kind="info"
-                title="No Devices Available"
-                subtitle="You need to create a device first before adding a corrective action."
+                title={intl.formatMessage({
+                  id: "coldStorage.corrective.noDevices",
+                })}
+                subtitle={intl.formatMessage({
+                  id: "coldStorage.corrective.noDevicesHelp",
+                })}
                 lowContrast
                 hideCloseButton
               />
@@ -882,9 +1040,13 @@ export default function CorrectiveActions() {
             <div>
               <Dropdown
                 id="device-dropdown"
-                titleText="Device *"
+                titleText={intl.formatMessage({
+                  id: "coldStorage.corrective.deviceRequired",
+                })}
                 label={
-                  form.device ? itemToString(form.device) : "Select device"
+                  form.device
+                    ? itemToString(form.device)
+                    : intl.formatMessage({ id: "coldStorage.device.select" })
                 }
                 items={deviceOptions}
                 itemToString={itemToString}
@@ -903,15 +1065,21 @@ export default function CorrectiveActions() {
                   style={{ cursor: "pointer", fontSize: "0.875rem" }}
                 >
                   {devices.length === 0
-                    ? "Create a new device"
-                    : "Don't see your device? Create a new one"}
+                    ? intl.formatMessage({
+                        id: "coldStorage.device.createNew",
+                      })
+                    : intl.formatMessage({
+                        id: "coldStorage.device.createMissing",
+                      })}
                 </Link>
               </div>
             </div>
 
             <Dropdown
               id="performed-by-dropdown"
-              titleText="Performed By *"
+              titleText={intl.formatMessage({
+                id: "coldStorage.corrective.performedByRequired",
+              })}
               label={form.performedBy}
               items={performerOptions}
               selectedItem={form.performedBy}
@@ -922,11 +1090,17 @@ export default function CorrectiveActions() {
 
             <Dropdown
               id="action-type-dropdown"
-              titleText="Action Type *"
+              titleText={intl.formatMessage({
+                id: "coldStorage.corrective.actionTypeRequired",
+              })}
               label={
-                form.actionType ? itemToString(form.actionType) : "Select type"
+                form.actionType
+                  ? itemToString(form.actionType)
+                  : intl.formatMessage({
+                      id: "coldStorage.corrective.actionTypeSelect",
+                    })
               }
-              items={ACTION_TYPES}
+              items={actionTypes}
               itemToString={itemToString}
               selectedItem={form.actionType}
               onChange={({ selectedItem }) =>
@@ -936,8 +1110,12 @@ export default function CorrectiveActions() {
 
             <TextArea
               id="action-summary"
-              labelText="Description *"
-              placeholder="Describe the corrective action taken, findings, and results..."
+              labelText={intl.formatMessage({
+                id: "coldStorage.corrective.descriptionRequired",
+              })}
+              placeholder={intl.formatMessage({
+                id: "coldStorage.corrective.descriptionPlaceholder",
+              })}
               rows={4}
               value={form.summary}
               onChange={(e) =>
@@ -951,22 +1129,29 @@ export default function CorrectiveActions() {
 
       <Modal
         open={isAddRoomModalOpen}
+        closeButtonLabel={intl.formatMessage({ id: "button.close" })}
         onRequestClose={() => {
           setIsAddRoomModalOpen(false);
           setIsDeviceModalOpen(true);
         }}
         onRequestSubmit={handleRoomSubmit}
-        modalHeading="Add New Room"
-        primaryButtonText="Create Room"
-        secondaryButtonText="Cancel"
+        modalHeading={intl.formatMessage({ id: "coldStorage.room.addNew" })}
+        primaryButtonText={intl.formatMessage({
+          id: "coldStorage.room.create",
+        })}
+        secondaryButtonText={intl.formatMessage({ id: "button.cancel" })}
         size="sm"
         preventCloseOnClickOutside
       >
         <Stack gap={5}>
           <TextInput
             id="roomName"
-            labelText="Room Name *"
-            placeholder="Enter room name (e.g., Lab Storage Room A)"
+            labelText={intl.formatMessage({
+              id: "coldStorage.room.nameRequired",
+            })}
+            placeholder={intl.formatMessage({
+              id: "coldStorage.room.nameExample",
+            })}
             value={roomFormData.name}
             onChange={(e) => handleRoomFormChange("name", e.target.value)}
             required
@@ -974,8 +1159,10 @@ export default function CorrectiveActions() {
 
           <TextInput
             id="roomDescription"
-            labelText="Description"
-            placeholder="Enter room description (optional)"
+            labelText={intl.formatMessage({ id: "coldStorage.description" })}
+            placeholder={intl.formatMessage({
+              id: "coldStorage.room.descriptionPlaceholder",
+            })}
             value={roomFormData.description}
             onChange={(e) =>
               handleRoomFormChange("description", e.target.value)
@@ -984,7 +1171,9 @@ export default function CorrectiveActions() {
 
           <Toggle
             id="roomActive"
-            labelText="Active"
+            labelText={intl.formatMessage({
+              id: "coldStorage.status.active",
+            })}
             toggled={roomFormData.active}
             onToggle={(checked) => handleRoomFormChange("active", checked)}
           />
@@ -1005,39 +1194,75 @@ export default function CorrectiveActions() {
 
       <Modal
         open={isViewModalOpen}
+        closeButtonLabel={intl.formatMessage({ id: "button.close" })}
         onRequestClose={handleCloseViewModal}
         onRequestSubmit={handleUpdateStatus}
-        modalHeading={`Corrective Action ${selectedAction?.id || ""}`}
-        primaryButtonText="Update Status"
-        secondaryButtonText="Close"
+        modalHeading={intl.formatMessage(
+          { id: "coldStorage.corrective.detailTitle" },
+          { id: selectedAction?.id || "" },
+        )}
+        primaryButtonText={intl.formatMessage({
+          id: "coldStorage.corrective.updateStatus",
+        })}
+        secondaryButtonText={intl.formatMessage({ id: "button.close" })}
         primaryButtonDisabled={!editStatus || submitting}
         size="md"
       >
         {selectedAction && (
           <Stack gap={5}>
             <div>
-              <strong>Device:</strong> {selectedAction.device}
+              <strong>
+                {intl.formatMessage({ id: "coldStorage.device" })}:
+              </strong>{" "}
+              {selectedAction.device}
             </div>
             <div>
-              <strong>Action Type:</strong>{" "}
-              {ACTION_TYPES.find((t) => t.id === selectedAction.actionType)
+              <strong>
+                {intl.formatMessage({
+                  id: "coldStorage.corrective.actionType",
+                })}
+                :
+              </strong>{" "}
+              {actionTypes.find((t) => t.id === selectedAction.actionType)
                 ?.label || selectedAction.actionType}
             </div>
             <div>
-              <strong>Summary:</strong> {selectedAction.summary}
+              <strong>
+                {intl.formatMessage({ id: "coldStorage.corrective.summary" })}:
+              </strong>{" "}
+              {selectedAction.summary}
             </div>
             <div>
-              <strong>Performed By:</strong> {selectedAction.performedBy}
+              <strong>
+                {intl.formatMessage({
+                  id: "coldStorage.corrective.performedBy",
+                })}
+                :
+              </strong>{" "}
+              {selectedAction.performedBy}
             </div>
             <div>
-              <strong>Created:</strong> {selectedAction.created}
+              <strong>
+                {intl.formatMessage({ id: "coldStorage.corrective.createdAt" })}
+                :
+              </strong>{" "}
+              {selectedAction.created}
             </div>
             <div>
-              <strong>Last Updated:</strong> {selectedAction.updated}
+              <strong>
+                {intl.formatMessage({ id: "coldStorage.corrective.updatedAt" })}
+                :
+              </strong>{" "}
+              {selectedAction.updated}
             </div>
             <div>
-              <strong>Current Status:</strong>{" "}
-              {statusTag(selectedAction.status, selectedAction.isEdited)}
+              <strong>
+                {intl.formatMessage({
+                  id: "coldStorage.corrective.currentStatus",
+                })}
+                :
+              </strong>{" "}
+              {statusTag(selectedAction.status, intl, selectedAction.isEdited)}
             </div>
 
             {selectedAction.status !== "COMPLETED" &&
@@ -1046,14 +1271,17 @@ export default function CorrectiveActions() {
                 <>
                   <Dropdown
                     id="status-dropdown"
-                    titleText="Update Status"
-                    label={editStatus ? editStatus.label : "Select status"}
-                    items={[
-                      { id: "PENDING", label: "Pending" },
-                      { id: "IN_PROGRESS", label: "In Progress" },
-                      { id: "COMPLETED", label: "Completed" },
-                      { id: "CANCELLED", label: "Cancelled" },
-                    ]}
+                    titleText={intl.formatMessage({
+                      id: "coldStorage.corrective.updateStatus",
+                    })}
+                    label={
+                      editStatus
+                        ? editStatus.label
+                        : intl.formatMessage({
+                            id: "coldStorage.corrective.selectStatus",
+                          })
+                    }
+                    items={statusOptions}
                     itemToString={(item) => (item ? item.label : "")}
                     selectedItem={editStatus}
                     onChange={({ selectedItem }) => setEditStatus(selectedItem)}
@@ -1062,8 +1290,12 @@ export default function CorrectiveActions() {
                   {editStatus?.id === "COMPLETED" && (
                     <TextArea
                       id="completion-notes"
-                      labelText="Completion Notes *"
-                      placeholder="Describe what was done to complete this action..."
+                      labelText={intl.formatMessage({
+                        id: "coldStorage.corrective.completionNotesRequired",
+                      })}
+                      placeholder={intl.formatMessage({
+                        id: "coldStorage.corrective.completionNotesPlaceholder",
+                      })}
                       rows={4}
                       value={completionNotes}
                       onChange={(e) => setCompletionNotes(e.target.value)}
@@ -1075,7 +1307,12 @@ export default function CorrectiveActions() {
 
             {selectedAction.completionNotes && (
               <div>
-                <strong>Completion Notes:</strong>
+                <strong>
+                  {intl.formatMessage({
+                    id: "coldStorage.corrective.completionNotes",
+                  })}
+                  :
+                </strong>
                 <div style={{ whiteSpace: "pre-wrap", marginTop: "0.5rem" }}>
                   {selectedAction.completionNotes}
                 </div>
@@ -1084,7 +1321,12 @@ export default function CorrectiveActions() {
 
             {selectedAction.retractionReason && (
               <div>
-                <strong>Retraction Reason:</strong>
+                <strong>
+                  {intl.formatMessage({
+                    id: "coldStorage.corrective.retractionReason",
+                  })}
+                  :
+                </strong>
                 <div style={{ whiteSpace: "pre-wrap", marginTop: "0.5rem" }}>
                   {selectedAction.retractionReason}
                 </div>
@@ -1096,28 +1338,43 @@ export default function CorrectiveActions() {
 
       <Modal
         open={isRetractModalOpen}
+        closeButtonLabel={intl.formatMessage({ id: "button.close" })}
         onRequestClose={handleCloseRetractModal}
         onRequestSubmit={handleRetractAction}
-        modalHeading={`Retract Corrective Action ${selectedAction?.id || ""}`}
-        primaryButtonText="Retract Action"
-        secondaryButtonText="Cancel"
+        modalHeading={intl.formatMessage(
+          { id: "coldStorage.corrective.retractTitle" },
+          { id: selectedAction?.id || "" },
+        )}
+        primaryButtonText={intl.formatMessage({
+          id: "coldStorage.corrective.retract",
+        })}
+        secondaryButtonText={intl.formatMessage({ id: "button.cancel" })}
         danger
         primaryButtonDisabled={!retractionReason.trim() || submitting}
         size="sm"
       >
         <Stack gap={5}>
           <InlineNotification
+            statusIconDescription={intl.formatMessage({
+              id: "carbon.notification.warning",
+            })}
             kind="warning"
-            title="Warning"
-            subtitle="Retracting an action marks it as invalid. This action cannot be undone."
+            title={intl.formatMessage({ id: "label.warning" })}
+            subtitle={intl.formatMessage({
+              id: "coldStorage.corrective.retractWarning",
+            })}
             lowContrast
             hideCloseButton
           />
 
           <TextArea
             id="retraction-reason"
-            labelText="Retraction Reason *"
-            placeholder="Provide a reason for retracting this action..."
+            labelText={intl.formatMessage({
+              id: "coldStorage.corrective.retractionReasonRequired",
+            })}
+            placeholder={intl.formatMessage({
+              id: "coldStorage.corrective.retractionReasonPlaceholder",
+            })}
             rows={4}
             value={retractionReason}
             onChange={(e) => setRetractionReason(e.target.value)}

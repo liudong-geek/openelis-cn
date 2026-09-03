@@ -38,7 +38,8 @@ import org.openelisglobal.sample.util.AccessionNumberUtil;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
 import org.openelisglobal.spring.util.SpringContext;
 
-public class TBPatientReport extends PatientReport implements IReportCreator, IReportParameterSetter {
+public class TBPatientReport extends PatientReport
+        implements IReportCreator, IReportParameterSetter, ResultsScopedReportCreator.ClinicalPatientSelection {
 
     private static Set<String> analysisStatusIds;
     protected List<ClinicalPatientData> clinicalReportItems;

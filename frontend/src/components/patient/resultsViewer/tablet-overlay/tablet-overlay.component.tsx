@@ -1,6 +1,7 @@
 import React from "react";
 import { Button, Header } from "@carbon/react";
-import { ArrowLeft, Close } from "@carbon/react/icons";
+import { ArrowLeft } from "@carbon/react/icons";
+import { useIntl } from "react-intl";
 //import styles from './tablet-overlay.scss';
 import "./tablet-overlay.scss";
 
@@ -16,17 +17,27 @@ const Overlay: React.FC<OverlayProps> = ({
   children,
   headerText,
   buttonsGroup,
-}) => (
-  <div className="tabletOverlay">
-    <Header className="tabletOverlayHeader">
-      <Button onClick={close} hasIconOnly>
-        <ArrowLeft size={16} onClick={close} />
-      </Button>
-      <div className="headerContent">{headerText}</div>
-    </Header>
-    <div className="overlayContent">{children}</div>
-    <div className="buttonsGroup">{buttonsGroup}</div>
-  </div>
-);
+}) => {
+  const intl = useIntl();
+
+  return (
+    <div className="tabletOverlay">
+      <Header className="tabletOverlayHeader">
+        <Button
+          onClick={close}
+          hasIconOnly
+          iconDescription={intl.formatMessage({
+            id: "patient.resultsViewer.tree.back",
+          })}
+        >
+          <ArrowLeft size={16} onClick={close} />
+        </Button>
+        <div className="headerContent">{headerText}</div>
+      </Header>
+      <div className="overlayContent">{children}</div>
+      <div className="buttonsGroup">{buttonsGroup}</div>
+    </div>
+  );
+};
 
 export default Overlay;

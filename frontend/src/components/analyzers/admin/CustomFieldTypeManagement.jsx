@@ -197,7 +197,7 @@ const CustomFieldTypeManagement = () => {
             id: "customFieldType.error.saveFailed",
             defaultMessage: "Failed to save custom field type",
           }),
-          subtitle: extraParams?.error || "Unknown error",
+          subtitle: extraParams?.error || "未知错误",
         });
       }
     };
@@ -264,7 +264,7 @@ const CustomFieldTypeManagement = () => {
               id: "customFieldType.error.deleteFailed",
               defaultMessage: "Failed to delete custom field type",
             }),
-            subtitle: error?.error || "Unknown error",
+            subtitle: error?.error || "未知错误",
           });
         }
         setDeleteModal({ open: false, type: null });
@@ -326,7 +326,7 @@ const CustomFieldTypeManagement = () => {
       displayName: type.displayName || "-",
       validationPattern: type.validationPattern || "-",
       valueRange: valueRange,
-      status: type.isActive ? "Active" : "Inactive",
+      status: type.isActive ? "已启用" : "已停用",
       _type: type, // Store full type object for actions
     };
   });
@@ -470,7 +470,7 @@ const CustomFieldTypeManagement = () => {
                             <TableCell key={cell.id}>
                               <Tag
                                 type={
-                                  cell.value === "Active" ? "green" : "gray"
+                                  cell.value === "已启用" ? "green" : "gray"
                                 }
                                 size="sm"
                               >

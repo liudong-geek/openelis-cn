@@ -1,8 +1,12 @@
 import React from "react";
 import { Grid, Column, Section, Tag } from "@carbon/react";
-import { FormattedMessage } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import Avatar from "react-avatar";
-import { openPatientResults, type PatientSearchResult } from "./searchService";
+import {
+  getPatientResultsRoute,
+  type PatientSearchResult,
+} from "./searchService";
+import { navigateToInternalPath } from "../../utils/NavigationUtils";
 
 interface SearchOutputProps {
   patientData: PatientSearchResult[];
@@ -14,6 +18,15 @@ const SearchOutput: React.FC<SearchOutputProps> = ({
   patientData,
   className = "patientHead",
 }) => {
+  const intl = useIntl();
+
+  const openPatientResults = (patientId?: string | number) => {
+    const route = getPatientResultsRoute(patientId);
+    if (route) {
+      navigateToInternalPath(route);
+    }
+  };
+
   return (
     <div>
       {patientData.map((patient) => {
@@ -24,11 +37,19 @@ const SearchOutput: React.FC<SearchOutputProps> = ({
                 <Grid
                   className={className}
                   onClick={() => openPatientResults(patient.patientID)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openPatientResults(patient.patientID);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
                 >
                   <Column lg={2} md={1}>
                     <div role="img">
                       <Avatar
-                        alt="Patient avatar"
+                        alt={intl.formatMessage({ id: "patient.photo.label" })}
                         color="rgba(0,0,0,0)"
                         name={`${patient.lastName ?? ""} ${
                           patient.firstName ?? ""

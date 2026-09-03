@@ -1,7 +1,8 @@
 import React from "react";
 import { Tile, Tag, ProgressBar } from "@carbon/react";
-import { FormattedMessage } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import { useOrderContext } from "./OrderContext";
+import { localizeSampleType } from "./sampleTypeIntl";
 
 /**
  * OrderContextCard - Persistent context card displayed on all workflow steps.
@@ -17,6 +18,7 @@ import { useOrderContext } from "./OrderContext";
  */
 
 const OrderContextCard = ({ className = "" }) => {
+  const intl = useIntl();
   const {
     labNumber,
     orderData,
@@ -41,7 +43,8 @@ const OrderContextCard = ({ className = "" }) => {
   // Sample types
   const sampleTypes = samples
     ?.map((s) => s.name || s.sampleTypeName)
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((sampleType) => localizeSampleType(intl, sampleType));
 
   // Total test count
   const testCount = samples?.reduce(
@@ -68,9 +71,11 @@ const OrderContextCard = ({ className = "" }) => {
 
   // Determine order status
   const getOrderStatus = () => {
-    if (completedSteps === 4) return { label: "Completed", type: "green" };
-    if (completedSteps === 0) return { label: "New", type: "gray" };
-    return { label: "In Progress", type: "blue" };
+    if (completedSteps === 4)
+      return { messageId: "order.status.completed", type: "green" };
+    if (completedSteps === 0)
+      return { messageId: "order.status.new", type: "gray" };
+    return { messageId: "order.status.in.progress", type: "blue" };
   };
 
   const status = getOrderStatus();
@@ -82,7 +87,7 @@ const OrderContextCard = ({ className = "" }) => {
         <div className="context-primary">
           <span className="context-lab-number">{displayLabNumber}</span>
           <Tag type={status.type} size="sm">
-            {status.label}
+            <FormattedMessage id={status.messageId} />
           </Tag>
           {isReadOnly && (
             <Tag type="purple" size="sm">

@@ -1,7 +1,11 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useCallback, useContext, useEffect, useState } from "react";
 import { Dropdown, Checkbox, SkeletonText } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { getFromOpenElisServer } from "../../utils/Utils";
+import { ConfigurationContext } from "../../layout/Layout";
+import { usesYearFirstDate } from "../../common/dateLocaleUtils";
+import { formatReportApiDateForLocale } from "../reportDateUtils";
+import { formatTatDimension } from "./tatUtils";
 
 const INTERVALS = [
   { id: "DAILY", labelKey: "reports.tat.daily" },
@@ -19,6 +23,11 @@ const COMPARE_OPTIONS = [
 
 function TATTrendsTab({ filters, buildQueryString }) {
   const intl = useIntl();
+  const configuration = useContext(ConfigurationContext);
+  const dateLocale =
+    configuration?.configurationProperties?.DEFAULT_DATE_LOCALE ||
+    intl.locale ||
+    "zh-CN";
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [interval, setInterval] = useState("DAILY");
@@ -46,7 +55,13 @@ function TATTrendsTab({ filters, buildQueryString }) {
 
   if (!filters) {
     return (
-      <div style={{ padding: "2rem", textAlign: "center", color: "var(--cds-text-helper)" }}>
+      <div
+        style={{
+          padding: "2rem",
+          textAlign: "center",
+          color: "var(--cds-text-helper)",
+        }}
+      >
         <FormattedMessage id="reports.tat.noResults" />
       </div>
     );
@@ -58,10 +73,18 @@ function TATTrendsTab({ filters, buildQueryString }) {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem", flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: "1rem",
+          marginBottom: "1rem",
+          flexWrap: "wrap",
+        }}
+      >
         <Dropdown
           id="trend-interval"
           titleText={intl.formatMessage({ id: "reports.tat.aggregation" })}
+          label={intl.formatMessage({ id: "reports.tat.aggregation" })}
           items={INTERVALS.map((i) => ({
             id: i.id,
             text: intl.formatMessage({ id: i.labelKey }),
@@ -78,6 +101,7 @@ function TATTrendsTab({ filters, buildQueryString }) {
         <Dropdown
           id="trend-compare"
           titleText={intl.formatMessage({ id: "reports.tat.compareBy" })}
+          label={intl.formatMessage({ id: "reports.tat.compareBy" })}
           items={COMPARE_OPTIONS.map((o) => ({
             id: o.id,
             text: intl.formatMessage({ id: o.labelKey }),
@@ -85,14 +109,20 @@ function TATTrendsTab({ filters, buildQueryString }) {
           selectedItem={{
             id: compareBy,
             text: intl.formatMessage({
-              id: COMPARE_OPTIONS.find((o) => o.id === compareBy)?.labelKey || "reports.tat.compareNone",
+              id:
+                COMPARE_OPTIONS.find((o) => o.id === compareBy)?.labelKey ||
+                "reports.tat.compareNone",
             }),
           }}
           onChange={({ selectedItem }) => setCompareBy(selectedItem.id)}
           size="sm"
         />
         <div>
-          <label style={{ fontSize: "12px", fontWeight: 600, display: "block" }}>{intl.formatMessage({ id: "reports.tat.metrics" })}</label>
+          <label
+            style={{ fontSize: "12px", fontWeight: 600, display: "block" }}
+          >
+            {intl.formatMessage({ id: "reports.tat.metrics" })}
+          </label>
           <div style={{ display: "flex", gap: "1rem" }}>
             <Checkbox
               id="show-median"
@@ -136,49 +166,100 @@ function TATTrendsTab({ filters, buildQueryString }) {
           </h4>
           {data.series.map((series, si) => (
             <div key={si} style={{ marginBottom: "1rem" }}>
-              <strong>{series.label}</strong>
-              <div style={{ display: "flex", gap: "2px", alignItems: "flex-end", height: "150px" }}>
+              <strong>{formatTatDimension(series.label, intl)}</strong>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "2px",
+                  alignItems: "flex-end",
+                  height: "150px",
+                }}
+              >
                 {(() => {
                   const getMetricValue = (dp) =>
-                    showMedian ? (dp.median || 0) : showMean ? (dp.mean || 0) : showP90 ? (dp.percentile90 || 0) : 0;
+                    showMedian
+                      ? dp.median || 0
+                      : showMean
+                        ? dp.mean || 0
+                        : showP90
+                          ? dp.percentile90 || 0
+                          : 0;
                   const maxVal = Math.max(
                     ...series.dataPoints.map((d) => getMetricValue(d)),
                   );
                   return series.dataPoints.map((dp, di) => {
-                  const height = maxVal > 0 ? (getMetricValue(dp) / maxVal) * 130 : 0;
-                  return (
-                    <div
-                      key={di}
-                      style={{ flex: 1, textAlign: "center" }}
-                      title={`${dp.period}: ${showMedian ? "median" : showMean ? "mean" : "p90"} ${getMetricValue(dp)}h, count ${dp.count}`}
-                    >
+                    const localizedPeriod =
+                      formatReportApiDateForLocale(dp.period, dateLocale) ||
+                      String(dp.period || "").replaceAll("-", "/");
+                    const periodParts = localizedPeriod.split("/");
+                    const compactPeriod =
+                      periodParts.length === 3
+                        ? usesYearFirstDate(dateLocale)
+                          ? periodParts.slice(1).join("/")
+                          : periodParts.slice(0, 2).join("/")
+                        : localizedPeriod;
+                    const height =
+                      maxVal > 0 ? (getMetricValue(dp) / maxVal) * 130 : 0;
+                    const metric = showMedian
+                      ? intl.formatMessage({ id: "reports.tat.median" })
+                      : showMean
+                        ? intl.formatMessage({ id: "reports.tat.mean" })
+                        : intl.formatMessage({
+                            id: "reports.tat.percentile90",
+                          });
+                    return (
                       <div
-                        style={{
-                          height: `${height}px`,
-                          backgroundColor: "var(--cds-support-success)",
-                          borderRadius: "2px 2px 0 0",
-                        }}
-                      />
-                      {showVolume && (
+                        key={di}
+                        style={{ flex: 1, textAlign: "center" }}
+                        title={intl.formatMessage(
+                          { id: "reports.tat.trendTooltip" },
+                          {
+                            period: localizedPeriod,
+                            metric,
+                            value: getMetricValue(dp),
+                            count: dp.count,
+                          },
+                        )}
+                      >
                         <div
                           style={{
-                            height: "2px",
-                            backgroundColor: "var(--cds-border-subtle)",
+                            height: `${height}px`,
+                            backgroundColor: "var(--cds-support-success)",
+                            borderRadius: "2px 2px 0 0",
                           }}
                         />
-                      )}
-                      <div style={{ fontSize: "9px", color: "var(--cds-text-secondary)" }}>
-                        {dp.period.length > 7 ? dp.period.slice(5) : dp.period}
+                        {showVolume && (
+                          <div
+                            style={{
+                              height: "2px",
+                              backgroundColor: "var(--cds-border-subtle)",
+                            }}
+                          />
+                        )}
+                        <div
+                          style={{
+                            fontSize: "9px",
+                            color: "var(--cds-text-secondary)",
+                          }}
+                        >
+                          {compactPeriod}
+                        </div>
                       </div>
-                    </div>
-                  );
-                }); })()}
+                    );
+                  });
+                })()}
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div style={{ padding: "2rem", textAlign: "center", color: "var(--cds-text-helper)" }}>
+        <div
+          style={{
+            padding: "2rem",
+            textAlign: "center",
+            color: "var(--cds-text-helper)",
+          }}
+        >
           <FormattedMessage id="reports.tat.noResults" />
         </div>
       )}

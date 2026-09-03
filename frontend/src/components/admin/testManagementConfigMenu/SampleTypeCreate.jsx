@@ -19,6 +19,7 @@ import {
 } from "../../common/CustomNotification";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 import { Formik, Form } from "formik";
 import * as Yup from "yup";
 
@@ -88,7 +89,7 @@ function SampleTypeCreate() {
           kind: NotificationKinds.success,
         });
         setTimeout(() => {
-          window.location.reload();
+          refreshCurrentRoute();
         }, 200);
         setNotificationVisible(true);
       }
@@ -313,7 +314,7 @@ function SampleTypeCreate() {
                       type="button"
                       kind="tertiary"
                       onClick={() => {
-                        window.location.reload();
+                        refreshCurrentRoute();
                       }}
                     >
                       {bothFilled ? (

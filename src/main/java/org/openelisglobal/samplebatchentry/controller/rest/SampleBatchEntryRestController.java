@@ -166,6 +166,7 @@ public class SampleBatchEntryRestController extends BaseController {
         entryFormValidator.validate(form, result);
         if (result.hasErrors()) {
             saveErrors(result);
+            return form;
         }
         SamplePatientUpdateData updateData = new SamplePatientUpdateData(getSysUserId(request));
 
@@ -200,6 +201,7 @@ public class SampleBatchEntryRestController extends BaseController {
 
         if (result.hasErrors()) {
             saveErrors(result);
+            return form;
         }
 
         try {

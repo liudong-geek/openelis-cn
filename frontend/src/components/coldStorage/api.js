@@ -270,7 +270,7 @@ export const generateReport = async ({
   end,
   freezerId,
 }) => {
-  return { success: false, message: "Report generation is under development" };
+  return { success: false, message: "报表生成功能尚未启用" };
 };
 
 export const downloadReportDirect = ({
@@ -294,7 +294,7 @@ export const downloadReportDirect = ({
       if (success) {
         resolve(blob);
       } else {
-        reject(new Error("Failed to generate report"));
+        reject(new Error("报表生成失败"));
       }
     });
   });
