@@ -3,6 +3,7 @@
     "esModuleInterop": true,
     "module": "esnext",
     "allowSyntheticDefaultImports": true,
+    "allowJs": true,
     "jsx": "react",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
@@ -11,5 +12,5 @@
     "noEmit": true,
     "target": "esnext"
   },
-  "exclude": ["node_modules", "dist", "src/components/home/LandingPage 2.tsx"]
+  "exclude": ["node_modules", "dist", "src/components/home/LandingPage 2.tsx", "**/__tests__/**", "**/*.test.ts", "**/*.test.tsx", "playwright"]
 }

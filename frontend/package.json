@@ -88,6 +88,8 @@
     "@playwright/test": "^1.58.2",
     "@testing-library/dom": "^8.20.1",
     "@testing-library/react-hooks": "^8.0.1",
+    "@types/lodash": "^4.17.25",
+    "@types/react-router-dom": "^5.3.3",
     "@typescript-eslint/eslint-plugin": "^8.65.0",
     "@typescript-eslint/parser": "^8.65.0",
     "@vitejs/plugin-react": "^6.0.1",

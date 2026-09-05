@@ -21,7 +21,7 @@ import config from "../config.json";
 type ExtraParams = unknown;
 type JsonObject = Record<string, unknown>;
 type ApiCallback<T = AnalyzerApiResponse> = (
-  response: T,
+  response: T | undefined,
   extraParams?: ExtraParams,
 ) => void;
 type DataCallback<T> = (data: T) => void;
