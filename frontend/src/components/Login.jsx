@@ -251,7 +251,7 @@ function Login(props) {
             ) : (
               <Formik
                 initialValues={{
-                  username: "",
+                  loginName: "",
                   password: "",
                 }}
                 onSubmit={(values) => doLogin(values)}
@@ -268,6 +268,7 @@ function Login(props) {
                         <>
                           <TextInput
                             id="loginName"
+                            name="loginName"
                             invalidText={props.intl.formatMessage({
                               id: "login.msg.username.missing",
                             })}
@@ -284,6 +285,7 @@ function Login(props) {
                           />
                           <PasswordInput
                             id="password"
+                            name="password"
                             invalidText={props.intl.formatMessage({
                               id: "login.msg.password.missing",
                             })}
