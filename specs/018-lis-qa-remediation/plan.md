@@ -16,8 +16,9 @@
 
 **执行记录（1.1）**：
 - 根因一（后端）：`DisplayListService.createElectronicOrderStatusList()` 用 `getDefaultLocalizedName()` 返回数据库英文名，绕过 i18n → 改为 `getLocalizedName()`；新建 `message_zh.properties`（13 个 status.* 中文 key）。
-- 根因二（前端显示）：实测中发现后端 REST 接口**不按 Accept-Language 应用 locale**（系统性问题：GlobalLocaleResolver 已注册但 /rest 接口的 LocaleContextHolder 未生效，?lang=zh / Accept-Language: fr 均返回 message_en 值），故前端 `EOrderSearch.jsx` 加状态中文映射（覆盖数据库名与 message_en 两种值，trim 后匹配），确保立即中文化。
-- 后端 message_zh + getLocalizedName 改动**保留**（架构正确方向）；待后续修复 REST locale 后所有接口自动受益。
+- 根因二（后端缓存）：`typeToListMap` 是进程级静态缓存、不区分 locale，应用首启后用默认英文生成状态列表并缓存，后续 zh 请求读到缓存的英文 → `getList()` 对 `ELECTRONIC_ORDER_STATUSES` 改为每次按当前请求 locale 重新生成（数据量仅 5 条）。
+- 根因三（资源权限）：`message_zh.properties` 经 docker cp 后权限为 600（owner 501），Tomcat 进程用户 tomcat_admin 无读权限，ResourceBundle 加载失败回退英文 → 容器内修正为 644。
+- 验证：GET /api/OpenELIS-Global/rest/displayList/ELECTRONIC_ORDER_STATUSES（Accept-Language: zh-CN）返回「待确定标本/已取消/已录入/不符合订单/已实现」；浏览器实测待接收电子申请页状态下拉全中文。GlobalLocaleResolver 探针确认 header 解析正确（zh-CN→zh_CN）。
 
 ## 1. 背景与依据
 

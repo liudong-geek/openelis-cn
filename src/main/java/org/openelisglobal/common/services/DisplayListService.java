@@ -340,6 +340,13 @@ public class DisplayListService implements LocaleChangeListener {
     }
 
     public List<IdValuePair> getList(ListType listType) {
+        if (listType == ListType.ELECTRONIC_ORDER_STATUSES) {
+            // 该列表依赖当前请求 locale 的本地化值（getLocalizedName），
+            // 而 typeToListMap 是进程级静态缓存、不区分 locale，会导致首启后
+            // 中文请求读到缓存的英文状态名。改为每次按当前请求 locale 重新生成
+            // （数据量极小，仅 5 个 EXTERNAL_ORDER 状态）。
+            return createElectronicOrderStatusList();
+        }
         return typeToListMap.get(listType);
     }
 
