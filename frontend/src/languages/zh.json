@@ -8642,5 +8642,7 @@
   "storage.sampleitem.accession": "实验室编号",
   "storage.sampleitem.location": "库位",
   "storage.sampleitem.status": "状态",
-  "storage.sampleitem.type": "标本类型"
+  "storage.sampleitem.type": "标本类型",
+  "error.save.sample": "保存标本失败",
+  "error.dateRange.start": "请选择开始和结束日期"
 }

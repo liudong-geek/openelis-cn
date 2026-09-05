@@ -21,6 +21,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.apache.commons.validator.GenericValidator;
 import org.openelisglobal.address.service.AddressHierarchyConfigurationHandler;
@@ -112,6 +113,18 @@ public class DisplayListService implements LocaleChangeListener {
     private static Map<ListType, List<IdValuePair>> typeToListMap;
     private static Map<String, List<IdValuePair>> dictionaryToListMap = new HashMap<>();
 
+    /**
+     * Short-lived cache for {@link #getFreshList(ListType)}: repeated REST calls
+     * for the same list type within this TTL reuse the in-memory list instead of
+     * rebuilding it from the database on every request (each rebuild re-queries
+     * the reference tables and previously happened on every single call).
+     * Explicit {@link #refreshList(ListType)} / {@link #refreshLists()} calls
+     * (dictionary admin edits, startup) and locale changes clear the timestamps,
+     * which is the invalidation exit for updated data.
+     */
+    private static final long FRESH_LIST_CACHE_TTL_MS = 60_000L;
+    private static final Map<ListType, Long> freshListCacheTimes = new ConcurrentHashMap<>();
+
     @Autowired
     private TypeOfSampleService typeOfSampleService;
     @Autowired
@@ -184,6 +197,11 @@ public class DisplayListService implements LocaleChangeListener {
 
     @Override
     public void localeChanged(String locale) {
+        // Locale changes rewrite localized lists directly: drop the short-TTL
+        // cache timestamps so the next getFreshList re-queries in the new
+        // locale instead of serving the pre-change entry for up to 60s.
+        freshListCacheTimes.clear();
+
         // refreshes those lists which are dependent on local
         typeToListMap.put(ListType.SAMPLE_TYPE, createTypeOfSampleList());
         typeToListMap.put(ListType.SAMPLE_TYPE_ACTIVE, createSampleTypeList(false));
@@ -380,7 +398,7 @@ public class DisplayListService implements LocaleChangeListener {
 
         for (StatusOfSample status : statusList) {
             if (status.getStatusType().equals("EXTERNAL_ORDER")) {
-                list.add(new IdValuePair(status.getId(), status.getDefaultLocalizedName()));
+                list.add(new IdValuePair(status.getId(), status.getLocalizedName()));
             }
         }
         return list;
@@ -459,11 +477,16 @@ public class DisplayListService implements LocaleChangeListener {
     }
 
     public List<IdValuePair> getFreshList(ListType listType) {
-        refreshList(listType);
+        Long cachedAt = freshListCacheTimes.get(listType);
+        if (cachedAt == null || System.currentTimeMillis() - cachedAt >= FRESH_LIST_CACHE_TTL_MS) {
+            refreshList(listType);
+            freshListCacheTimes.put(listType, System.currentTimeMillis());
+        }
         return typeToListMap.get(listType);
     }
 
     public synchronized void refreshLists() {
+        freshListCacheTimes.clear();
         typeToListMap = new HashMap<>();
         typeToListMap.put(ListType.NOTEBOOK_STATUS, createNoteBookStatusList());
         typeToListMap.put(ListType.CYTOLOGY_STATUS, createCytologyStatusList());
@@ -570,6 +593,9 @@ public class DisplayListService implements LocaleChangeListener {
     }
 
     public void refreshList(ListType listType) {
+
+        // Any explicit refresh invalidates the short-TTL cache for this list.
+        freshListCacheTimes.remove(listType);
 
         switch (listType) {
         case ORDER_PRIORITY: {

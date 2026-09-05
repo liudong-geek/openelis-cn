@@ -16,6 +16,23 @@ import { getFromOpenElisServer } from "../utils/Utils";
 import { NotificationContext } from "../layout/Layout";
 import { NotificationKinds, AlertDialog } from "../common/CustomNotification";
 
+// 电子申请处理状态的中文映射（中国医院版本地化）
+// 兼容两种来源值：数据库名（getDefaultLocalizedName）与 message_en 翻译（getLocalizedName）
+const ORDER_STATUS_LABELS = {
+  Entered: "已录入",
+  Cancelled: "已取消",
+  Realized: "已实现",
+  NonConforming: "不符合",
+  AwaitingSpecimen: "待确定标本",
+  "Awaiting specimen": "待确定标本",
+  "Non-conforming order": "不符合",
+};
+
+function mapOrderStatusLabel(value) {
+  const trimmed = (value || "").trim();
+  return ORDER_STATUS_LABELS[trimmed] || value;
+}
+
 const EOrderSearch = ({
   setEOrders = (eOrders) => {
     console.debug("set EOrders default");
@@ -255,7 +272,7 @@ const EOrderSearch = ({
               <SelectItem
                 key={index}
                 value={statusOption.id}
-                text={statusOption.value}
+                text={mapOrderStatusLabel(statusOption.value)}
               />
             );
           })}
