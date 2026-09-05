@@ -103,7 +103,7 @@ public class TestSectionRenameEntryRestController extends BaseController {
         }
 
         // Refresh Test Section names
-        DisplayListService.getInstance().getFreshList(DisplayListService.ListType.TEST_SECTION_ACTIVE);
+        DisplayListService.getInstance().refreshList(DisplayListService.ListType.TEST_SECTION_ACTIVE);
     }
 
     @Override

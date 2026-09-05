@@ -7,12 +7,26 @@ services:
   db.openelis.org:
     container_name: openelis-cn-database
     image: openelis-cn-database:local
+    # Mid-size host assumption (~8-16GB RAM for the whole stack). Raise or
+    # lower together with the webapp/-Xmx sizing in the Dockerfile.
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
     ports: !override
       - "25432:5432"
 
   oe.openelis.org:
     container_name: openelis-cn-webapp
     image: openelis-cn-webapp:local
+    # Keep above -Xmx plus Tomcat thread stacks and metaspace; see the
+    # CATALINA_OPTS -Xmx setting in the Dockerfile.
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 3g
     healthcheck:
       test: ["CMD", "/healthcheck.sh"]
       timeout: 10s
@@ -31,6 +45,19 @@ services:
   fhir.openelis.org:
     container_name: openelis-cn-fhir
     image: openelis-cn-fhir:local
+    # The fhir image is built FROM openelis-cn-webapp:local and therefore
+    # inherits the webapp CATALINA_OPTS (-Xmx1536m); a heap that large inside
+    # the 1g limit below gets the container OOMKilled. Override with a heap
+    # that fits the 1g cap (heap + metaspace + thread stacks). Drop this
+    # override only if the fhir image stops deriving from the webapp image.
+    environment:
+      CATALINA_OPTS: "-Xms256m -Xmx512m"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
     ports: !override
       # HAPI FHIR in this source image listens on TLS 8443 (mTLS enabled).
       # Local integrators use https://127.0.0.1:28081/fhir/ with a client cert.
@@ -40,6 +67,11 @@ services:
     container_name: openelis-cn-frontend
     image: openelis-cn-frontend:local
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
     networks:
       default:
         ipv4_address: 172.26.1.122
@@ -47,6 +79,11 @@ services:
   proxy:
     container_name: openelis-cn-proxy
     image: openelis-cn-proxy:local
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128m
     ports: !override
       - "18080:80"
     volumes: !override

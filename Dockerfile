@@ -164,6 +164,14 @@ RUN chown tomcat_admin:tomcat /docker-entrypoint.sh; \
     chmod 770 /docker-entrypoint.sh;
 
 COPY ./tomcat/oe_server.xml /usr/local/tomcat/conf/server.xml    
+
+# JVM memory sizing for a mid-size deployment (host with roughly 8-16GB RAM
+# dedicated to the stack). Heap cap leaves headroom for Tomcat threads and
+# metaspace inside the 3g container limit set in docker-compose.cn.yml.
+# Adjust to host resources: e.g. -Xmx512m on small hosts, -Xmx3g on larger
+# ones, and raise the compose memory limit accordingly.
+ENV CATALINA_OPTS="-Xms512m -Xmx1536m"
+
 USER root
 
 ENTRYPOINT [ "/docker-entrypoint.sh" ]

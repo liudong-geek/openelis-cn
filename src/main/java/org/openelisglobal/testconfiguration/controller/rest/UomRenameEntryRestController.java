@@ -100,7 +100,7 @@ public class UomRenameEntryRestController extends BaseController {
         }
 
         // Refresh Uom names
-        DisplayListService.getInstance().getFreshList(DisplayListService.ListType.UNIT_OF_MEASURE);
+        DisplayListService.getInstance().refreshList(DisplayListService.ListType.UNIT_OF_MEASURE);
     }
 
     @Override

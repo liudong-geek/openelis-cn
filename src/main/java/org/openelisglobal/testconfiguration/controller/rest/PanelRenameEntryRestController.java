@@ -98,7 +98,7 @@ public class PanelRenameEntryRestController extends BaseController {
                 LogEvent.logDebug(e);
             }
         }
-        DisplayListService.getInstance().getFreshList(DisplayListService.ListType.PANELS);
+        DisplayListService.getInstance().refreshList(DisplayListService.ListType.PANELS);
     }
 
     @Override

@@ -1,0 +1,6 @@
+# 本地部署覆盖：让 webapp 的 JVM 堆参数（补丁改动四）生效
+# compose 层 environment 会覆盖 Dockerfile ENV CATALINA_OPTS，需在此补回堆参数。
+services:
+  oe.openelis.org:
+    environment:
+      CATALINA_OPTS: "-Xms512m -Xmx1536m -Ddatasource.url=jdbc:postgresql://db.openelis.org:5432/clinlims -Ddatasource.username=clinlims -Ddatasource.password=clinlims -Doe.ssl.truststorepath=/etc/openelis-global/truststore -Doe.ssl.truststorepassword=tspass -Doe.ssl.keystorepath=/etc/openelis-global/keystore -Doe.ssl.keystorepassword=kspass"

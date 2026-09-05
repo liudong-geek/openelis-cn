@@ -100,7 +100,7 @@ public class MethodRenameEntryRestController extends BaseController {
         }
 
         // Refresh method names
-        DisplayListService.getInstance().getFreshList(DisplayListService.ListType.METHODS);
+        DisplayListService.getInstance().refreshList(DisplayListService.ListType.METHODS);
     }
 
     @Override

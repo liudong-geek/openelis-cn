@@ -106,7 +106,7 @@ public class SampleTypeRenameEntryRestController extends BaseController {
         }
 
         // Refresh SampleType names
-        DisplayListService.getInstance().getFreshList(DisplayListService.ListType.SAMPLE_TYPE_ACTIVE);
+        DisplayListService.getInstance().refreshList(DisplayListService.ListType.SAMPLE_TYPE_ACTIVE);
     }
 
     @Override
