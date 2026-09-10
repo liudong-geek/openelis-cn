@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- DRAFT ONLY: deliberately not registered. Real isolated migration tests required. -->
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+    <!-- Model-only prerequisite. Do not include in base.xml until current-source
+         PostgreSQL migration/rollback and legacy compatibility gates pass.
+         No current_release link, release snapshot, legacy update, or new writer. -->
+    <changeSet id="lis-cn-081-report-document-foundation" author="codex" runInTransaction="true">
+        <preConditions onFail="HALT" onError="HALT">
+            <dbms type="postgresql"/>
+            <not><tableExists schemaName="clinlims" tableName="report_document"/></not>
+            <not><tableExists schemaName="clinlims" tableName="report_document_member"/></not>
+            <not><sequenceExists schemaName="clinlims" sequenceName="report_document_seq"/></not>
+            <not><sequenceExists schemaName="clinlims" sequenceName="report_document_member_seq"/></not>
+        </preConditions>
+        <!-- The existing numeric-string user type reads Integer values. -->
+        <createSequence schemaName="clinlims" sequenceName="report_document_seq"
+            startValue="1" incrementBy="1" maxValue="2147483647"/>
+        <createSequence schemaName="clinlims" sequenceName="report_document_member_seq"
+            startValue="1" incrementBy="1" maxValue="2147483647"/>
+        <createTable schemaName="clinlims" tableName="report_document">
+            <column name="id" type="NUMERIC(10)"><constraints nullable="false" primaryKey="true" primaryKeyName="pk_report_document"/></column>
+            <column name="patient_id" type="NUMERIC(10)"><constraints nullable="false"/></column>
+            <column name="sample_id" type="NUMERIC(10)"><constraints nullable="false"/></column>
+            <column name="report_group_key" type="VARCHAR(128)"><constraints nullable="false"/></column>
+            <column name="group_rule_version" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="report_number" type="VARCHAR(50)"><constraints nullable="false"/></column>
+            <column name="fhir_uuid" type="UUID"><constraints nullable="false"/></column>
+            <column name="created_by" type="NUMERIC(10)"><constraints nullable="false"/></column>
+            <column name="created_at" type="TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="last_updated" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable schemaName="clinlims" tableName="report_document_member">
+            <column name="id" type="NUMERIC(10)"><constraints nullable="false" primaryKey="true" primaryKeyName="pk_report_document_member"/></column>
+            <column name="report_document_id" type="NUMERIC(10)"><constraints nullable="false"/></column>
+            <column name="analysis_id" type="NUMERIC(10)"><constraints nullable="false"/></column>
+            <column name="member_position" type="INTEGER"><constraints nullable="false"/></column>
+            <column name="last_updated" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint schemaName="clinlims" tableName="report_document"
+            columnNames="sample_id,report_group_key" constraintName="uq_report_document_scope"/>
+        <addUniqueConstraint schemaName="clinlims" tableName="report_document"
+            columnNames="report_number" constraintName="uq_report_document_number"/>
+        <addUniqueConstraint schemaName="clinlims" tableName="report_document"
+            columnNames="fhir_uuid" constraintName="uq_report_document_uuid"/>
+        <addUniqueConstraint schemaName="clinlims" tableName="report_document_member"
+            columnNames="report_document_id,analysis_id" constraintName="uq_report_document_member_analysis"/>
+        <addUniqueConstraint schemaName="clinlims" tableName="report_document_member"
+            columnNames="report_document_id,member_position" constraintName="uq_report_document_member_position"/>
+        <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="report_document"
+            baseColumnNames="patient_id" constraintName="fk_report_document_patient"
+            referencedTableSchemaName="clinlims" referencedTableName="patient" referencedColumnNames="id" onDelete="RESTRICT"/>
+        <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="report_document"
+            baseColumnNames="sample_id" constraintName="fk_report_document_sample"
+            referencedTableSchemaName="clinlims" referencedTableName="sample" referencedColumnNames="id" onDelete="RESTRICT"/>
+        <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="report_document"
+            baseColumnNames="created_by" constraintName="fk_report_document_creator"
+            referencedTableSchemaName="clinlims" referencedTableName="system_user" referencedColumnNames="id" onDelete="RESTRICT"/>
+        <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="report_document_member"
+            baseColumnNames="report_document_id" constraintName="fk_report_document_member_document"
+            referencedTableSchemaName="clinlims" referencedTableName="report_document" referencedColumnNames="id" onDelete="RESTRICT"/>
+        <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="report_document_member"
+            baseColumnNames="analysis_id" constraintName="fk_report_document_member_analysis"
+            referencedTableSchemaName="clinlims" referencedTableName="analysis" referencedColumnNames="id" onDelete="RESTRICT"/>
+        <!-- PostgreSQL check is necessary; portable Liquibase 4.8 XML does not
+             expose this constraint in the project's selected schema version. -->
+        <sql>ALTER TABLE clinlims.report_document_member ADD CONSTRAINT ck_report_document_member_position CHECK (member_position &gt;= 0)</sql>
+        <rollback>
+            <!-- Never discard group definitions/members. Locks cover the empty
+                 check and removal in one transaction; real execution still unverified. -->
+            <sql splitStatements="false"><![CDATA[
+DO $report_foundation_rollback$
+BEGIN
+    LOCK TABLE clinlims.report_document, clinlims.report_document_member IN ACCESS EXCLUSIVE MODE;
+    IF EXISTS (SELECT 1 FROM clinlims.report_document)
+        OR EXISTS (SELECT 1 FROM clinlims.report_document_member) THEN
+        RAISE EXCEPTION 'Report document foundation is not empty; retain data and use a reviewed forward migration';
+    END IF;
+    DROP TABLE clinlims.report_document_member;
+    DROP TABLE clinlims.report_document;
+    DROP SEQUENCE clinlims.report_document_member_seq;
+    DROP SEQUENCE clinlims.report_document_seq;
+END;
+$report_foundation_rollback$;
+            ]]></sql>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>
