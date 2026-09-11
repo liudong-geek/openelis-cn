@@ -3,11 +3,13 @@ package org.openelisglobal.reports.service;
 import java.sql.Date;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.commons.validator.GenericValidator;
@@ -16,6 +18,8 @@ import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.common.util.IdValuePair;
+import org.openelisglobal.login.service.LoginUserService;
+import org.openelisglobal.login.valueholder.LoginUser;
 import org.openelisglobal.patient.service.PatientService;
 import org.openelisglobal.patient.service.PatientServiceImpl;
 import org.openelisglobal.patient.valueholder.Patient;
@@ -38,14 +42,23 @@ import org.openelisglobal.role.valueholder.Role;
 import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.samplehuman.service.SampleHumanService;
+import org.openelisglobal.sampleitem.valueholder.SampleItem;
 import org.openelisglobal.sampleproject.service.SampleProjectService;
 import org.openelisglobal.sampleproject.valueholder.SampleProject;
+import org.openelisglobal.security.DaemonAuthenticationToken;
+import org.openelisglobal.systemuser.service.SystemUserService;
 import org.openelisglobal.systemuser.service.UserService;
+import org.openelisglobal.systemuser.valueholder.SystemUser;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.authentication.RememberMeAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticatedPrincipal;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -82,6 +95,12 @@ public class ReportAnalysisAuthorizationService {
     private UserService userService;
 
     @Autowired
+    private SystemUserService systemUserService;
+
+    @Autowired
+    private LoginUserService loginUserService;
+
+    @Autowired
     private RoleService roleService;
 
     @Autowired
@@ -113,6 +132,161 @@ public class ReportAnalysisAuthorizationService {
 
     @Autowired
     private ImmunohistochemistrySampleService immunohistochemistrySampleService;
+
+    /**
+     * Validates a complete server-defined group without issuing or preparing a
+     * report. The supplied user ID must match the current principal's unique,
+     * active database identity; it cannot select another user's permissions.
+     * This is not a durable permission grant: every later operation must authorize
+     * again within its own transaction, using persisted complete group membership.
+     * This internal foundation must not be exposed directly as a request handler.
+     */
+    @Transactional(readOnly = true)
+    public void authorizeExplicitScope(ReportScopeDefinition scope, String systemUserId) {
+        if (scope == null || !ReportScopeDefinition.isCanonicalId(systemUserId)) {
+            throw accessDenied();
+        }
+        ReportPrincipal principal = requireBoundReportPrincipal(systemUserId);
+
+        Sample sample = sampleService.get(scope.sampleId());
+        if (sample == null || !scope.sampleId().equals(sample.getId())) {
+            throw accessDenied();
+        }
+        Patient patient = sampleHumanService.getPatientForSample(sample);
+        if (patient == null || !scope.patientId().equals(patient.getId())) {
+            throw accessDenied();
+        }
+
+        Set<String> expectedIds = new LinkedHashSet<>(scope.analysisIds());
+        List<Analysis> analyses = analysisService.get(new ArrayList<>(scope.analysisIds()));
+        if (analyses == null || analyses.size() != expectedIds.size()) {
+            throw accessDenied();
+        }
+        Set<String> resolvedIds = new LinkedHashSet<>();
+        for (Analysis analysis : analyses) {
+            if (analysis == null || !expectedIds.contains(analysis.getId()) || !resolvedIds.add(analysis.getId())) {
+                throw accessDenied();
+            }
+            SampleItem specimen = analysis.getSampleItem();
+            if (specimen == null || !ReportScopeDefinition.isCanonicalId(specimen.getId())
+                    || specimen.getSample() == null || !scope.sampleId().equals(specimen.getSample().getId())) {
+                throw accessDenied();
+            }
+        }
+        if (!resolvedIds.equals(expectedIds)) {
+            throw accessDenied();
+        }
+
+        // Reuse Reports role + actual analysis section checks. Never filter the
+        // definition to a caller-visible subset or broaden it to all patient results.
+        authorizeAnalyses(analyses, systemUserId);
+        requireUnchangedReportPrincipal(principal);
+    }
+
+    /** Identity captured for this invocation only, never cached as an authorization grant. */
+    private record ReportPrincipal(Authentication authentication, Object principal, String loginName) {
+    }
+
+    private ReportPrincipal requireBoundReportPrincipal(String systemUserId) {
+        try {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (authentication instanceof AnonymousAuthenticationToken
+                    || authentication instanceof RememberMeAuthenticationToken
+                    || authentication instanceof DaemonAuthenticationToken || !hasExplicitReportsAuthority(authentication)) {
+                throw accessDenied();
+            }
+            Object principal = authentication.getPrincipal();
+            String login = reportLoginName(principal);
+            if (!login.equals(authentication.getName())) {
+                throw accessDenied();
+            }
+            ReportPrincipal captured = new ReportPrincipal(authentication, principal, login);
+            // getMatch rejects both absent and non-unique identities, unlike the
+            // legacy first-row lookup. Never derive the login from a supplied ID.
+            Optional<SystemUser> uniqueUser = systemUserService.getMatch("loginName", login);
+            if (uniqueUser == null || uniqueUser.isEmpty()) {
+                throw accessDenied();
+            }
+            SystemUser user = uniqueUser.get();
+            if (!systemUserId.equals(user.getId()) || !login.equals(user.getLoginName())
+                    || !"Y".equals(user.getIsActive())) {
+                throw accessDenied();
+            }
+            requireUnchangedReportPrincipal(captured);
+
+            if (principal instanceof UserDetails) {
+                // Form/Basic authorities originate from LoginUser.systemUserId.
+                // getMatch also refreshes its derived system ID and expiry days.
+                Optional<LoginUser> uniqueLogin = loginUserService.getMatch("loginName", login);
+                if (uniqueLogin == null || uniqueLogin.isEmpty()) {
+                    throw accessDenied();
+                }
+                LoginUser localLogin = uniqueLogin.get();
+                if (!login.equals(localLogin.getLoginName()) || localLogin.getSystemUserId() <= 0
+                        || !systemUserId.equals(String.valueOf(localLogin.getSystemUserId()))
+                        || !"N".equalsIgnoreCase(localLogin.getAccountDisabled())
+                        || !"N".equalsIgnoreCase(localLogin.getAccountLocked())
+                        || localLogin.getPasswordExpiredDayNo() <= 0) {
+                    throw accessDenied();
+                }
+            }
+            // SSO identities need not have a local password account. Their
+            // authenticated principal still must map to the same active user.
+            requireUnchangedReportPrincipal(captured);
+            return captured;
+        } catch (RuntimeException error) {
+            // Fail closed without continuing the transaction or exposing account,
+            // principal or database exception details to the request consumer.
+            throw accessDenied();
+        }
+    }
+
+    private void requireUnchangedReportPrincipal(ReportPrincipal captured) {
+        try {
+            Authentication authentication = captured.authentication();
+            if (SecurityContextHolder.getContext().getAuthentication() != authentication
+                    || authentication.getPrincipal() != captured.principal() || !hasExplicitReportsAuthority(authentication)
+                    || !captured.loginName().equals(reportLoginName(captured.principal()))
+                    || !captured.loginName().equals(authentication.getName())) {
+                throw accessDenied();
+            }
+        } catch (RuntimeException error) {
+            throw accessDenied();
+        }
+    }
+
+    private boolean hasExplicitReportsAuthority(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return false;
+        }
+        Collection<? extends GrantedAuthority> authorities = authentication.getAuthorities();
+        // Do not let an earlier ROLE_REPORTS short-circuit past a corrupt entry.
+        if (authorities == null || authorities.stream().anyMatch(Objects::isNull)) {
+            return false;
+        }
+        return authorities.stream().map(GrantedAuthority::getAuthority).anyMatch(REPORTS_AUTHORITY::equals);
+    }
+
+    private String reportLoginName(Object principal) {
+        String login;
+        if (principal instanceof UserDetails user) {
+            if (!user.isEnabled() || !user.isAccountNonExpired() || !user.isCredentialsNonExpired()
+                    || !user.isAccountNonLocked()) {
+                throw accessDenied();
+            }
+            login = user.getUsername();
+        } else if (principal instanceof Saml2AuthenticatedPrincipal saml) {
+            login = saml.getName();
+        } else if (principal instanceof OAuth2User oauth) {
+            login = oauth.getName();
+        } else {
+            throw accessDenied();
+        }
+        if (login == null || login.isBlank() || !login.equals(login.strip())) {
+            throw accessDenied();
+        }
+        return login;
+    }
 
     /**
      * Backward-compatible entry point for callers that only submit analysis ids.
