@@ -1,4 +1,10 @@
-import React, { useCallback, useContext, useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   Grid,
   Column,
@@ -96,8 +102,29 @@ const SystemAuditEvents = () => {
   const [endDate, setEndDate] = useState("");
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [showPatientSearch, setShowPatientSearch] = useState(false);
+  const requestGeneration = useRef(0);
+  const patientPickerGeneration = useRef(0);
+  const renderedPickerGeneration = patientPickerGeneration.current;
 
   const isPatientEntity = selectedEntityType === PATIENT_ENTITY_NAME;
+  const canQuery = !isPatientEntity || Boolean(selectedPatient?.patientPK);
+
+  const clearScopedResults = useCallback(() => {
+    requestGeneration.current += 1;
+    patientPickerGeneration.current += 1;
+    setEvents([]);
+    setTotalItems(0);
+    setPage(1);
+    setIsLoading(false);
+  }, []);
+
+  useEffect(
+    () => () => {
+      requestGeneration.current += 1;
+      patientPickerGeneration.current += 1;
+    },
+    [],
+  );
 
   const allLabel = intl.formatMessage({ id: "systemAudit.filter.all" });
   const localizeEntityType = useCallback(
@@ -149,11 +176,20 @@ const SystemAuditEvents = () => {
       if (ps !== undefined) params.set("pageSize", ps);
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
-      if (selectedEntityType) params.set("entityType", selectedEntityType);
+      if (selectedEntityType) {
+        // The patient-file entry includes demographics held in PERSON; the
+        // API otherwise keeps entity filters exact, including patient queries.
+        params.set(
+          "entityType",
+          isPatientEntity && selectedPatient?.patientPK
+            ? "PATIENT,PERSON"
+            : selectedEntityType,
+        );
+      }
       if (selectedAction) params.set("action", selectedAction);
       if (selectedUser) params.set("userId", selectedUser);
       if (searchText) params.set("search", searchText);
-      if (selectedPatient?.patientPK) {
+      if (isPatientEntity && selectedPatient?.patientPK) {
         params.set("patientId", selectedPatient.patientPK);
       }
       return params;
@@ -162,6 +198,7 @@ const SystemAuditEvents = () => {
       startDate,
       endDate,
       selectedEntityType,
+      isPatientEntity,
       selectedAction,
       selectedUser,
       searchText,
@@ -171,12 +208,15 @@ const SystemAuditEvents = () => {
 
   const fetchEvents = useCallback(
     (p, ps) => {
+      if (!canQuery) return;
+      const generation = ++requestGeneration.current;
       setIsLoading(true);
       const params = buildParams(p, ps);
 
       getFromOpenElisServer(
         "/rest/systemAuditEvents?" + params.toString(),
         (data) => {
+          if (generation !== requestGeneration.current) return;
           if (data && data.events) {
             const formatted = data.events.map((e, idx) => {
               const changesObj = e.changes || {};
@@ -232,21 +272,24 @@ const SystemAuditEvents = () => {
         },
       );
     },
-    [buildParams, intl, localizeEntityType],
+    [buildParams, canQuery, intl, localizeEntityType],
   );
 
   const handleSearch = () => {
+    if (!canQuery) return;
     setPage(1);
     fetchEvents(1, pageSize);
   };
 
   const handlePageChange = (pageInfo) => {
+    if (!canQuery) return;
     setPage(pageInfo.page);
     setPageSize(pageInfo.pageSize);
     fetchEvents(pageInfo.page, pageInfo.pageSize);
   };
 
   const handleExportCsv = () => {
+    if (!canQuery) return;
     const params = buildParams();
     window.open(
       config.serverBaseUrl +
@@ -257,6 +300,7 @@ const SystemAuditEvents = () => {
   };
 
   const handleExportPdf = () => {
+    if (!canQuery) return;
     const params = buildParams();
     window.open(
       config.serverBaseUrl +
@@ -326,9 +370,10 @@ const SystemAuditEvents = () => {
             itemToString={(item) => (item ? item.text : "")}
             onChange={({ selectedItem }) => {
               const newType = selectedItem?.apiName || "";
+              clearScopedResults();
+              setShowPatientSearch(false);
               setSelectedEntityType(newType);
-              // Switching away from PATIENT clears the selected patient so the
-              // next query is unconstrained.
+              // Never carry a patient restriction into another entity type.
               if (newType !== PATIENT_ENTITY_NAME) {
                 setSelectedPatient(null);
               }
@@ -411,7 +456,10 @@ const SystemAuditEvents = () => {
                   <Button
                     kind="ghost"
                     size="sm"
-                    onClick={() => setShowPatientSearch((prev) => !prev)}
+                    onClick={() => {
+                      patientPickerGeneration.current += 1;
+                      setShowPatientSearch((prev) => !prev);
+                    }}
                   >
                     {selectedPatient?.patientPK ? (
                       <FormattedMessage id="systemAudit.filter.selectAnotherPatient" />
@@ -424,6 +472,7 @@ const SystemAuditEvents = () => {
                       kind="ghost"
                       size="sm"
                       onClick={() => {
+                        clearScopedResults();
                         setSelectedPatient(null);
                         setShowPatientSearch(false);
                       }}
@@ -436,6 +485,13 @@ const SystemAuditEvents = () => {
                   <div style={{ marginTop: "1rem" }}>
                     <SearchPatientForm
                       getSelectedPatient={(patient) => {
+                        if (
+                          renderedPickerGeneration !==
+                          patientPickerGeneration.current
+                        ) {
+                          return;
+                        }
+                        clearScopedResults();
                         setSelectedPatient(patient);
                         setShowPatientSearch(false);
                       }}
@@ -450,7 +506,11 @@ const SystemAuditEvents = () => {
       <br />
       <Grid fullWidth={true}>
         <Column lg={16}>
-          <Button onClick={handleSearch} style={{ marginRight: "1rem" }}>
+          <Button
+            onClick={handleSearch}
+            disabled={!canQuery}
+            style={{ marginRight: "1rem" }}
+          >
             <FormattedMessage id="systemAudit.filter.search" />
             <Loading
               small={true}
@@ -462,11 +522,16 @@ const SystemAuditEvents = () => {
           <Button
             kind="secondary"
             onClick={handleExportCsv}
+            disabled={!canQuery}
             style={{ marginRight: "1rem" }}
           >
             <FormattedMessage id="systemAudit.filter.export" />
           </Button>
-          <Button kind="tertiary" onClick={handleExportPdf}>
+          <Button
+            kind="tertiary"
+            onClick={handleExportPdf}
+            disabled={!canQuery}
+          >
             <FormattedMessage id="systemAudit.filter.exportPdf" />
           </Button>
         </Column>
