@@ -11,11 +11,10 @@ dist/
 build/
 public/
 coverage/
-reports/
+/reports/
 **/*.min.js
 *.log
 # Playwright test artifacts (generated)
 playwright-report/
 playwright/.auth/
 test-results/
-
