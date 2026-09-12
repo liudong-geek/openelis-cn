@@ -89,8 +89,12 @@ const OrderWorkflowLayout = ({
   onSaveAndNext,
   extraButtons,
   showSaveButtons = true,
+  isSaving = false,
+  saveDisabled = false,
+  showSaveStatus = true,
   blockingReasons = [],
   showWorkflowProgress = true,
+  showGuidance = true,
   showBarcodeScanner = true,
 }) => {
   const intl = useIntl();
@@ -157,7 +161,7 @@ const OrderWorkflowLayout = ({
                   </p>
                 )}
               </div>
-              <SaveStatusIndicator />
+              {showSaveStatus && <SaveStatusIndicator />}
             </div>
             <div className="workflow-actions-section">
               <ListReturnButton
@@ -212,7 +216,7 @@ const OrderWorkflowLayout = ({
             </div>
           )}
 
-          {showWorkflowProgress && (
+          {showWorkflowProgress && showGuidance && (
             <section
               className={`order-step-guidance ${isGuidanceReady ? "is-ready" : "is-blocked"}`}
               aria-label={intl.formatMessage({ id: "order.guidance.title" })}
@@ -296,6 +300,8 @@ const OrderWorkflowLayout = ({
               <SaveNavigationButtons
                 currentStep={activeStep}
                 canProceed={canProceed}
+                isSaving={isSaving}
+                saveDisabled={saveDisabled}
                 onSave={onSave}
                 onSaveAndNext={onSaveAndNext}
               />

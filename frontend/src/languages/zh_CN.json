@@ -8642,5 +8642,8 @@
   "storage.sampleitem.accession": "实验室编号",
   "storage.sampleitem.location": "库位",
   "storage.sampleitem.status": "状态",
-  "storage.sampleitem.type": "标本类型"
+  "storage.sampleitem.type": "标本类型",
+  "order.save.readbackUnconfirmed": "申请已提交，但最新状态未能读取。请保留当前输入，恢复连接或登录后先查询核实，不要重复提交。",
+  "order.saveStatus.unconfirmed": "已提交，状态待确认",
+  "order.progress.requestChanged": "当前申请已切换，请重新查询确认状态。"
 }

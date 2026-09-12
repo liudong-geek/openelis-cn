@@ -5607,7 +5607,7 @@
   "label.sampleType.section.display-order": "Display Order",
   "label.sampleType.section.disposal": "Disposal",
   "label.sampleType.displayOrder": "Position in the Sample Type menu",
-  "label.sampleType.displayOrder.intro": "Positions this sample type in the order-entry Sample Type menu. Type a position or use the arrows, then save \u2014 every sample type is renumbered.",
+  "label.sampleType.displayOrder.intro": "Positions this sample type in the order-entry Sample Type menu. Type a position or use the arrows, then save — every sample type is renumbered.",
   "label.sampleType.displayOrder.current": "This sample type",
   "label.sampleType.displayOrder.loading": "Loading sample types...",
   "label.sampleType.displayOrder.saved": "Display order updated.",
@@ -5638,7 +5638,7 @@
   "message.sampleType.edit.success": "Sample type updated successfully.",
   "label.sampleType.loading": "Loading sample type...",
   "warning.sampleType.deactivateInUse": "{count} active tests use this type; they won't be orderable while it's inactive.",
-  "note.sampleType.associatedTests.viewOnly": "View only \u2014 a test's specimen is part of its identity. To run a test on this sample type, create a specimen variant in the Test Catalog.",
+  "note.sampleType.associatedTests.viewOnly": "View only — a test's specimen is part of its identity. To run a test on this sample type, create a specimen variant in the Test Catalog.",
   "sidenav.label.admin.sampleType.backToList": "← All Sample Types",
   "sidenav.label.admin.sampleType.editing": "Editing: {name}",
   "sidenav.label.admin.sampleType.editingGeneric": "Editing sample type",
@@ -8441,5 +8441,8 @@
   "barcode.print.table.additionalInfo": "Specimen type",
   "barcode.print.table.quantity": "Print quantity",
   "barcode.print.table.orderLabel": "Order label",
-  "barcode.print.table.specimenLabel": "Specimen label"
+  "barcode.print.table.specimenLabel": "Specimen label",
+  "order.save.readbackUnconfirmed": "The order was submitted, but its latest state could not be read. Keep your input and verify the order after reconnecting or signing in. Do not submit it again.",
+  "order.saveStatus.unconfirmed": "Submitted, status unconfirmed",
+  "order.progress.requestChanged": "The current request changed. Reload it to confirm its state."
 }

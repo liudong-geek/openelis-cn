@@ -21,17 +21,22 @@ const SaveNavigationButtons = ({
   onSave,
   onSaveAndNext,
   canProceed = true,
+  isSaving = false,
+  saveDisabled = false,
   showBack = true,
   className = "",
 }) => {
   const intl = useIntl();
   const history = useHistory();
-  const { isSubmitting, isReadOnly, isEditMode, saveOrder } = useOrderContext();
+  const { isSubmitting, isReadOnly, isEditMode, isSaveUnconfirmed, saveOrder } =
+    useOrderContext();
 
   const isLastStep = currentStep >= ORDER_STEPS.length - 1;
   const isFirstStep = currentStep <= 0;
+  const isBusy = isSubmitting || isSaving;
 
   const handleSave = async () => {
+    if (isSaveUnconfirmed || saveDisabled) return;
     if (onSave) {
       await onSave();
     } else {
@@ -40,6 +45,7 @@ const SaveNavigationButtons = ({
   };
 
   const handleSaveAndNext = async () => {
+    if (isSaveUnconfirmed || saveDisabled) return;
     if (onSaveAndNext) {
       await onSaveAndNext();
     } else {
@@ -51,6 +57,7 @@ const SaveNavigationButtons = ({
   };
 
   const handleComplete = async () => {
+    if (isSaveUnconfirmed || saveDisabled) return;
     if (onSaveAndNext) {
       await onSaveAndNext();
       return;
@@ -91,13 +98,17 @@ const SaveNavigationButtons = ({
   return (
     <div className={`save-navigation-buttons ${className}`}>
       {showBack && !isFirstStep && (
-        <Button kind="tertiary" onClick={handleBack} disabled={isSubmitting}>
+        <Button kind="tertiary" onClick={handleBack} disabled={isBusy}>
           <FormattedMessage id="back.action.button" />
         </Button>
       )}
 
       <div className="save-buttons-group">
-        <Button kind="secondary" onClick={handleSave} disabled={isSubmitting}>
+        <Button
+          kind="secondary"
+          onClick={handleSave}
+          disabled={isBusy || isSaveUnconfirmed || saveDisabled}
+        >
           <FormattedMessage id="button.save.currentStep" />
         </Button>
 
@@ -106,7 +117,9 @@ const SaveNavigationButtons = ({
             kind="primary"
             className="forward-button"
             onClick={handleSaveAndNext}
-            disabled={isSubmitting || !canProceed}
+            disabled={
+              isBusy || isSaveUnconfirmed || saveDisabled || !canProceed
+            }
           >
             <FormattedMessage
               id="button.save.nextStep"
@@ -124,7 +137,9 @@ const SaveNavigationButtons = ({
             kind="primary"
             className="forward-button"
             onClick={handleComplete}
-            disabled={isSubmitting || !canProceed}
+            disabled={
+              isBusy || isSaveUnconfirmed || saveDisabled || !canProceed
+            }
           >
             <FormattedMessage
               id="button.completeStep"
