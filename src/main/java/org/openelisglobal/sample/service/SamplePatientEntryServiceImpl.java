@@ -15,17 +15,17 @@ import org.openelisglobal.address.valueholder.OrganizationAddress;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.barcode.service.BarcodeInfoService;
-import org.openelisglobal.common.formfields.FormFields;
 import org.openelisglobal.common.formfields.FormFields.Field;
+import org.openelisglobal.common.formfields.FormFields;
 import org.openelisglobal.common.log.LogEvent;
-import org.openelisglobal.common.services.DisplayListService;
 import org.openelisglobal.common.services.DisplayListService.ListType;
+import org.openelisglobal.common.services.DisplayListService;
 import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.SampleAddService.SampleTestCollection;
 import org.openelisglobal.common.services.StatusService.AnalysisStatus;
 import org.openelisglobal.common.services.TableIdService;
-import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.ConfigurationProperties.Property;
+import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.ControllerUtills;
 import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.common.util.IdValuePair;
@@ -43,10 +43,10 @@ import org.openelisglobal.note.valueholder.Note;
 import org.openelisglobal.notification.service.AnalysisNotificationConfigService;
 import org.openelisglobal.notification.service.TestNotificationConfigService;
 import org.openelisglobal.notification.valueholder.AnalysisNotificationConfig;
-import org.openelisglobal.notification.valueholder.NotificationConfigOption;
 import org.openelisglobal.notification.valueholder.NotificationConfigOption.NotificationMethod;
 import org.openelisglobal.notification.valueholder.NotificationConfigOption.NotificationNature;
 import org.openelisglobal.notification.valueholder.NotificationConfigOption.NotificationPersonType;
+import org.openelisglobal.notification.valueholder.NotificationConfigOption;
 import org.openelisglobal.notification.valueholder.TestNotificationConfig;
 import org.openelisglobal.observationhistory.service.ObservationHistoryService;
 import org.openelisglobal.observationhistory.valueholder.ObservationHistory;
@@ -70,13 +70,14 @@ import org.openelisglobal.requester.valueholder.SampleRequester;
 import org.openelisglobal.sample.action.util.SamplePatientUpdateData;
 import org.openelisglobal.sample.bean.SampleOrderItem;
 import org.openelisglobal.sample.form.SamplePatientEntryForm;
-import org.openelisglobal.sample.valueholder.SampleAdditionalField;
 import org.openelisglobal.sample.valueholder.SampleAdditionalField.AdditionalFieldName;
+import org.openelisglobal.sample.valueholder.SampleAdditionalField;
 import org.openelisglobal.samplehuman.service.SampleHumanService;
 import org.openelisglobal.samplehuman.valueholder.SampleHuman;
 import org.openelisglobal.sampleitem.dao.SampleItemDAO;
 import org.openelisglobal.sampleitem.service.SampleItemService;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
+import org.openelisglobal.sampletyperequest.dto.SampleTypeRequestDTO;
 import org.openelisglobal.sampletyperequest.service.SampleTypeRequestService;
 import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.test.service.TestSectionService;
@@ -156,6 +157,8 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
                 && "environmental".equals(order.getEnvironmentalFieldAsString("workflowType"));
         rejectEntryErrors(errors, environmental);
 
+        validateFirstEntrySpecimens(form, errors);
+
         String actor = ControllerUtills.getSysUserId(request);
         SamplePatientUpdateData data = createEntryUpdateData(actor);
         String received = order.getReceivedDateForDisplay() + " "
@@ -215,8 +218,46 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
         // A normal return on invalid data would let Hibernate flush initialized entities.
         rejectEntryErrors(errors, environmental);
         persistData(data, patientUpdate, patientInfo, form, request);
+        List<SampleTypeRequestDTO> savedSpecimens = form.getRequestedSpecimens() == null ? null
+                : sampleTypeRequestService.createRequestsForEntry(data.getSample(), form.getRequestedSpecimens(),
+                        actor, errors);
         if (form.getLabelPersistRequest() != null) {
             persistLabelRequests(data, form.getLabelPersistRequest(), actor);
+        }
+        if (savedSpecimens != null) {
+            form.setRequestedSpecimens(savedSpecimens);
+            order.setSampleId(data.getSample().getId());
+        }
+    }
+
+    private void validateFirstEntrySpecimens(SamplePatientEntryForm form, BindingResult errors) throws BindException {
+        if (form.getRequestedSpecimens() == null) {
+            return;
+        }
+        SampleOrderItem order = form.getSampleOrderItems();
+        if (order == null || !form.isOrderEntryOnly() || form.isCollectionOnly()
+                || form.getRequestedSpecimens().isEmpty() || !GenericValidator.isBlankOrNull(form.getSampleXML())
+                || !GenericValidator.isBlankOrNull(order.getSampleId()) || Boolean.TRUE.equals(order.getModified())) {
+            errors.rejectValue("requestedSpecimens", "order.entry.specimens.invalid",
+                    "整单标本提交仅用于首次新建申请；修改申请或采集标本请使用对应操作。");
+            throw new BindException(errors);
+        }
+        if (!GenericValidator.isBlankOrNull(order.getLabNo())
+                && sampleService.getSampleByAccessionNumber(order.getLabNo()) != null) {
+            errors.rejectValue("sampleOrderItems.labNo", "accession.invalid",
+                    "该申请编号已经存在，请查询保存结果，不要重复新建。");
+            throw new BindException(errors);
+        }
+        OrderLabelPersistRequest labels = form.getLabelPersistRequest();
+        if (labels != null && labels.getSampleRows() != null) {
+            for (var row : labels.getSampleRows()) {
+                if (row == null || row.getCells() == null || row.getCells().stream()
+                        .anyMatch(cell -> cell == null || cell.getQty() == null || cell.getQty() != 0)) {
+                    errors.rejectValue("labelPersistRequest", "order.entry.specimens.invalid",
+                            "请先采集并保存实体标本，再打印逐管标签；首次开单可保留申请级标签。");
+                    throw new BindException(errors);
+                }
+            }
         }
     }
 

@@ -2,10 +2,22 @@ package org.openelisglobal.sampletyperequest.service;
 
 import java.util.List;
 import org.openelisglobal.common.service.BaseObjectService;
+import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
+import org.openelisglobal.sampletyperequest.dto.SampleTypeRequestDTO;
 import org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest;
+import org.springframework.validation.BindException;
+import org.springframework.validation.BindingResult;
 
 public interface SampleTypeRequestService extends BaseObjectService<SampleTypeRequest, Integer> {
+
+    /**
+     * Create every requested tube in the caller's first-entry transaction. Validates
+     * the entire batch before inserting any tube; never fulfills physical specimens.
+     * This is not an idempotent edit/replay API.
+     */
+    List<SampleTypeRequestDTO> createRequestsForEntry(Sample sample, List<SampleTypeRequestDTO> requestedSpecimens,
+            String actor, BindingResult errors) throws BindException;
 
     /**
      * Get all sample type requests for a given sample.

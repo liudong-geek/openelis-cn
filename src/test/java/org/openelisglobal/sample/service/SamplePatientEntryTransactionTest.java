@@ -22,6 +22,9 @@ import org.openelisglobal.patient.action.bean.PatientManagementInfo;
 import org.openelisglobal.sample.action.util.SamplePatientUpdateData;
 import org.openelisglobal.sample.bean.SampleOrderItem;
 import org.openelisglobal.sample.form.SamplePatientEntryForm;
+import org.openelisglobal.sample.valueholder.Sample;
+import org.openelisglobal.sampletyperequest.dto.SampleTypeRequestDTO;
+import org.openelisglobal.sampletyperequest.service.SampleTypeRequestService;
 import org.openelisglobal.spring.util.SpringContext;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
@@ -58,6 +61,9 @@ public class SamplePatientEntryTransactionTest {
     private OrderLabelPersistRequest labels;
     private AutowireCapableBeanFactory factory;
     private ApplicationEventPublisher events;
+    private SampleService samples;
+    private SampleTypeRequestService specimenRequests;
+    private Sample savedSample;
 
     @Before
     public void setUp() throws Exception {
@@ -295,6 +301,179 @@ public class SamplePatientEntryTransactionTest {
         assertEquals("SIM-PRIOR", request.getSession().getAttribute("lastAccessionNumber"));
         // A real connection loss during commit is unknown, not proof of database rollback.
         assertEquals(0, manager.commits);
+    }
+
+    @Test
+    public void testSaveEntry_ExplicitSpecimensShareOrderAndLabelTransaction() throws Exception {
+        prepareSpecimens();
+        save();
+        assertEquals(List.of("SIM-initialized", "SIM-order-record", "SIM-order", "SIM-tube-1", "SIM-tube-2",
+                "SIM-label"), manager.committed);
+        assertEquals(1, manager.commits);
+        assertEquals("301", form.getSampleOrderItems().getSampleId());
+        assertEquals("701", form.getRequestedSpecimens().get(0).getId());
+        assertEquals("702", form.getRequestedSpecimens().get(1).getId());
+    }
+
+    @Test
+    public void testSaveEntry_SecondSpecimenFailureRollsBackOrderAndPatient() throws Exception {
+        prepareSpecimens();
+        when(patientUpdate.getPatientUpdateStatus()).thenReturn(PatientUpdateStatus.ADD);
+        when(patientUpdate.preparePatientData(request, form.getPatientProperties())).thenReturn(new BaseErrors());
+        doAnswer(call -> {
+            manager.write("SIM-patient");
+            return null;
+        }).when(patientUpdate).persistPatientData(form.getPatientProperties());
+        when(specimenRequests.createRequestsForEntry(same(savedSample), anyList(), eq("7"), same(errors)))
+                .thenAnswer(call -> {
+                    manager.write("SIM-tube-1");
+                    throw new IllegalStateException("SIM tube failure");
+                });
+        assertThrows(IllegalStateException.class, this::save);
+        assertRolledBack();
+        verify(patientUpdate).persistPatientData(form.getPatientProperties());
+        verify(target, never()).persistLabelRequests(data, labels, "7");
+        assertNull(form.getRequestedSpecimens().get(0).getId());
+    }
+
+    @Test
+    public void testSaveEntry_SpecimenValidationRollsBackOrder() throws Exception {
+        prepareSpecimens();
+        when(specimenRequests.createRequestsForEntry(same(savedSample), anyList(), eq("7"), same(errors)))
+                .thenAnswer(call -> {
+                    errors.rejectValue("requestedSpecimens", "SIM-invalid-tube");
+                    throw new BindException(errors);
+                });
+        assertThrows(BindException.class, this::save);
+        assertRolledBack();
+    }
+
+    @Test
+    public void testSaveEntry_LabelFailureAlsoRollsBackSpecimens() throws Exception {
+        prepareSpecimens();
+        doThrow(new IllegalStateException("SIM label failure")).when(target).persistLabelRequests(data, labels, "7");
+        assertThrows(IllegalStateException.class, this::save);
+        verify(specimenRequests).createRequestsForEntry(same(savedSample), anyList(), eq("7"), same(errors));
+        assertRolledBack();
+        assertNull(form.getRequestedSpecimens().get(0).getId());
+    }
+
+    @Test
+    public void testSaveEntry_ExplicitBatchCannotEditExistingIdentity() throws Exception {
+        prepareSpecimens();
+        form.getSampleOrderItems().setSampleId("301");
+        assertBatchRejectedBeforeInitialization();
+    }
+
+    @Test
+    public void testSaveEntry_ExplicitBatchCannotReuseExistingAccession() throws Exception {
+        prepareSpecimens();
+        var existing = new Sample();
+        existing.setId("999");
+        when(samples.getSampleByAccessionNumber("SIM-ENTRY")).thenReturn(existing);
+        assertBatchRejectedBeforeInitialization();
+    }
+
+    @Test
+    public void testSaveEntry_ExplicitBatchCannotUseModifiedFlag() throws Exception {
+        prepareSpecimens();
+        form.getSampleOrderItems().setModified(true);
+        assertBatchRejectedBeforeInitialization();
+    }
+
+    @Test
+    public void testSaveEntry_ExplicitBatchCannotMixPhysicalSampleXml() throws Exception {
+        prepareSpecimens();
+        form.setSampleXML("<SIM-physical-sample/>");
+        assertBatchRejectedBeforeInitialization();
+    }
+
+    @Test
+    public void testSaveEntry_ExplicitBatchRequiresEntryMode() throws Exception {
+        prepareSpecimens();
+        form.setOrderEntryOnly(false);
+        assertBatchRejectedBeforeInitialization();
+    }
+
+    @Test
+    public void testSaveEntry_EmptyExplicitBatchIsRejectedBeforeInitialization() throws Exception {
+        prepareSpecimens();
+        form.setRequestedSpecimens(List.of());
+        assertBatchRejectedBeforeInitialization();
+    }
+
+    @Test
+    public void testSaveEntry_CollectionFlagCannotEnterNewBatchService() throws Exception {
+        prepareSpecimens();
+        form.setCollectionOnly(true);
+        assertBatchRejectedBeforeInitialization();
+    }
+
+    @Test
+    public void testSaveEntry_ExplicitBatchRejectsPerTubeLabelRequests() throws Exception {
+        prepareSpecimens();
+        var row = new OrderLabelPersistRequest.PersistSampleRow("SIM-1");
+        row.setCells(List.of(new OrderLabelPersistRequest.PersistCell(1, 2)));
+        labels.setSampleRows(List.of(row));
+        assertBatchRejectedBeforeInitialization();
+    }
+
+    @Test
+    public void testSaveEntry_ExplicitBatchCanKeepOrderLabelsAndEmptyTubeCells() throws Exception {
+        prepareSpecimens();
+        labels.setOrderCells(List.of(new OrderLabelPersistRequest.PersistCell(1, 2)));
+        var row = new OrderLabelPersistRequest.PersistSampleRow("SIM-1");
+        row.setCells(List.of(new OrderLabelPersistRequest.PersistCell(1, 0)));
+        labels.setSampleRows(List.of(row));
+        save();
+        verify(target).persistLabelRequests(data, labels, "7");
+        assertEquals(1, manager.commits);
+    }
+
+    private void assertBatchRejectedBeforeInitialization() {
+        assertThrows(BindException.class, this::save);
+        verify(target, never()).createEntryUpdateData("7");
+        assertRolledBack();
+    }
+
+    private void prepareSpecimens() throws Exception {
+        var first = new SampleTypeRequestDTO();
+        first.setTypeOfSampleId("31");
+        first.setRequestedQuantity(1.0);
+        first.setRequestedTests("41");
+        var second = new SampleTypeRequestDTO();
+        second.setTypeOfSampleId("31");
+        second.setRequestedQuantity(1.0);
+        second.setRequestedTests("41");
+        form.setRequestedSpecimens(List.of(first, second));
+        samples = mock(SampleService.class);
+        specimenRequests = mock(SampleTypeRequestService.class);
+        ReflectionTestUtils.setField(target, "sampleService", samples);
+        ReflectionTestUtils.setField(target, "sampleTypeRequestService", specimenRequests);
+        ReflectionTestUtils.setField(target, "sampleHumanService",
+                mock(org.openelisglobal.samplehuman.service.SampleHumanService.class));
+        ReflectionTestUtils.setField(target, "barcodeInfoService",
+                mock(org.openelisglobal.barcode.service.BarcodeInfoService.class));
+        savedSample = new Sample();
+        savedSample.setAccessionNumber("SIM-ENTRY");
+        when(data.getSample()).thenReturn(savedSample);
+        doAnswer(call -> {
+            manager.write("SIM-order-record");
+            savedSample.setId("301");
+            return null;
+        }).when(samples).insertDataWithAccessionNumber(savedSample);
+        when(specimenRequests.createRequestsForEntry(same(savedSample), anyList(), eq("7"), same(errors)))
+                .thenAnswer(call -> {
+                    assertTrue(TransactionSynchronizationManager.isActualTransactionActive());
+                    assertEquals("301", savedSample.getId());
+                    manager.write("SIM-tube-1");
+                    manager.write("SIM-tube-2");
+                    var savedFirst = new SampleTypeRequestDTO();
+                    savedFirst.setId("701");
+                    var savedSecond = new SampleTypeRequestDTO();
+                    savedSecond.setId("702");
+                    return List.of(savedFirst, savedSecond);
+                });
     }
 
     private void save() throws Exception {

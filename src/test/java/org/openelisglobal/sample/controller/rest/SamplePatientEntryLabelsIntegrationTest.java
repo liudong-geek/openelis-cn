@@ -73,6 +73,33 @@ public class SamplePatientEntryLabelsIntegrationTest {
     }
 
     @Test
+    public void testSaveEntry_ExplicitSpecimensReachEntryServiceAndResponse() throws Exception {
+        var input = new org.openelisglobal.sampletyperequest.dto.SampleTypeRequestDTO();
+        input.setTypeOfSampleId("31");
+        form.setRequestedSpecimens(java.util.List.of(input));
+        doAnswer(call -> {
+            assertSame(input, form.getRequestedSpecimens().get(0));
+            var saved = new org.openelisglobal.sampletyperequest.dto.SampleTypeRequestDTO();
+            saved.setId("701");
+            form.setRequestedSpecimens(java.util.List.of(saved));
+            return null;
+        }).when(service).saveEntry(form, request, errors);
+        assertEquals(200, save().getStatusCode().value());
+        assertEquals("701", form.getRequestedSpecimens().get(0).getId());
+        assertNoSplitSave();
+    }
+
+    @Test
+    public void testSaveEntry_CollectionFlagCannotBypassExplicitBatchGuard() throws Exception {
+        form.setCollectionOnly(true);
+        form.setRequestedSpecimens(java.util.List.of());
+        assertEquals(400, save().getStatusCode().value());
+        assertTrue(errors.hasFieldErrors("requestedSpecimens"));
+        verifyZeroInteractions(service);
+        verify(samples, never()).getSampleByAccessionNumber("SIM-ENTRY");
+    }
+
+    @Test
     public void testSaveEntry_ValidationFailureMapsTo400WithoutReadback() throws Exception {
         rejectDuringSave("SIM-invalid");
         assertEquals(400, save().getStatusCode().value());

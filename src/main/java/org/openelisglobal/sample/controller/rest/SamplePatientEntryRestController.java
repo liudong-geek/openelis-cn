@@ -243,6 +243,13 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
             BindingResult result, RedirectAttributes redirectAttributes)
             throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
 
+        if (form.isCollectionOnly() && form.getRequestedSpecimens() != null) {
+            result.rejectValue("requestedSpecimens", "order.entry.specimens.invalid",
+                    "采集操作不能同时新建标本申请，请先完成首次开单。");
+            return ResponseEntity.badRequest().body(buildErrorBody(result, "Validation failed"));
+        }
+
+
         // Extract sampleOrder and workflowType early so we can check for environmental
         // workflow
         SampleOrderItem sampleOrder = form.getSampleOrderItems();

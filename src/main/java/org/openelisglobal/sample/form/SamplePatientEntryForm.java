@@ -20,6 +20,7 @@ import org.openelisglobal.patient.action.bean.PatientSearch;
 import org.openelisglobal.project.valueholder.Project;
 import org.openelisglobal.referral.action.beanitems.ReferralItem;
 import org.openelisglobal.sample.bean.SampleOrderItem;
+import org.openelisglobal.sampletyperequest.dto.SampleTypeRequestDTO;
 import org.openelisglobal.validation.annotations.ValidDate;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -102,6 +103,15 @@ public class SamplePatientEntryForm extends BaseForm {
      * samples are added in a later step.
      */
     private boolean orderEntryOnly = false;
+    private boolean collectionOnly = false;
+
+    public boolean isCollectionOnly() {
+        return collectionOnly;
+    }
+
+    public void setCollectionOnly(boolean collectionOnly) {
+        this.collectionOnly = collectionOnly;
+    }
 
     // for display
     private List<IdValuePair> rejectReasonList;
@@ -118,6 +128,21 @@ public class SamplePatientEntryForm extends BaseForm {
      * {@link JsonIgnoreProperties} even when the frontend omits it.
      */
     private OrderLabelPersistRequest labelPersistRequest;
+
+    /**
+     * Explicit first-entry batch; null preserves legacy saves. Each element is one
+     * requested tube, not a collected SampleItem. Populated with server IDs only
+     * after all requested tubes and optional order labels have been saved.
+     */
+    private List<SampleTypeRequestDTO> requestedSpecimens;
+
+    public List<SampleTypeRequestDTO> getRequestedSpecimens() {
+        return requestedSpecimens;
+    }
+
+    public void setRequestedSpecimens(List<SampleTypeRequestDTO> requestedSpecimens) {
+        this.requestedSpecimens = requestedSpecimens;
+    }
 
     public SamplePatientEntryForm() {
         setFormName("samplePatientEntryForm");
