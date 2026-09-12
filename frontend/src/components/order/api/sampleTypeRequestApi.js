@@ -93,9 +93,14 @@ export const createRequest = (request) => {
  * @param {Array} sampleTypes - Array of sample type selections
  * @returns {Promise<Array>} - Array of created SampleTypeRequestDTO objects
  */
-export const createRequestsForSamples = async (sampleId, sampleTypes) => {
+export const createRequestsForSamples = async (
+  sampleId,
+  sampleTypes,
+  shouldContinue = () => true,
+) => {
   const results = [];
   for (let i = 0; i < sampleTypes.length; i++) {
+    if (!shouldContinue()) throw new Error("order.progress.requestChanged");
     const sample = sampleTypes[i];
     const request = {
       sampleId: sampleId,
@@ -107,6 +112,7 @@ export const createRequestsForSamples = async (sampleId, sampleTypes) => {
       requestedPanels: sample.panels?.map((p) => p.id || p).join(",") || "",
     };
     const created = await createRequest(request);
+    if (!shouldContinue()) throw new Error("order.progress.requestChanged");
     results.push(created);
   }
   return results;

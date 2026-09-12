@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { IntlProvider } from "react-intl";
-import { Router } from "react-router-dom";
+import { Router, Route } from "react-router-dom";
 import { createMemoryHistory } from "history";
 
 const api = vi.hoisted(() => ({
@@ -554,5 +554,54 @@ describe("申请首次保存与采集入口：SIM父级交互", () => {
     expect(
       screen.getByText(messages["order.save.readbackUnconfirmed"]),
     ).toBeVisible();
+  });
+  it("离开开单页后返回，Provider仍保留待核实编号并阻止再次保存", async () => {
+    const user = userEvent.setup();
+    history = createMemoryHistory({ initialEntries: ["/order/enter"] });
+    let context;
+    function Probe() {
+      context = useOrderContext();
+      return null;
+    }
+    render(
+      <Router history={history}>
+        <IntlProvider locale="zh" messages={messages}>
+          <UserSessionDetailsContext.Provider
+            value={{
+              userSessionDetails: {
+                authenticated: true,
+                userId: "SIM-USER",
+                sessionId: "SIM-SESSION",
+                csrf: "SIM-CSRF",
+              },
+            }}
+          >
+            <OrderProvider>
+              <Probe />
+              <Route path="/order/enter" component={OrderEnter} />
+            </OrderProvider>
+          </UserSessionDetailsContext.Provider>
+        </IntlProvider>
+      </Router>,
+    );
+    act(() => {
+      context.setOrderData(draft("SIM-REENTER").orderData);
+      context.setSamples(draft().samples);
+    });
+    await user.click(button("next"));
+    expect(api.post).toHaveBeenCalledTimes(1);
+    act(() => history.push("/order/collect"));
+    act(() => history.push("/order/enter"));
+    expect(
+      screen.getByText(messages["order.saveStatus.unconfirmed"]),
+    ).toBeVisible();
+    expect(screen.getByText(/SIM-REENTER/, { selector: "p" })).toBeVisible();
+    expect(button()).toBeDisabled();
+    expect(button("draft")).toBeDisabled();
+    await user.click(button("next"));
+    expect(api.post).toHaveBeenCalledTimes(1);
+    await act(async () => api.post.mock.calls[0][2]({ status: 200 }));
+    expect(history.location.pathname).toBe("/order/enter");
+    expect(api.createRequests).not.toHaveBeenCalled();
   });
 });

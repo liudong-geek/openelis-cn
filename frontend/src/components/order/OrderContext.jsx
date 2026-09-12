@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
 } from "react";
 import { useLocation } from "react-router-dom";
@@ -20,6 +21,7 @@ import {
 } from "./api/sampleTypeRequestApi";
 import { SampleOrderFormValues } from "../formModel/innitialValues/OrderEntryFormValues";
 import { convertIsoToBackendDate } from "./orderDateUtils";
+import { entrySubmissionError, submitOrderEntry } from "./orderEntrySubmission";
 
 /**
  * OrderContext - Shared state for the decoupled sample collection workflow.
@@ -44,6 +46,7 @@ export const SaveStatus = {
   SAVING: "saving",
   UNSAVED: "unsaved",
   ERROR: "error",
+  UNCONFIRMED: "unconfirmed",
 };
 
 export const OrderContext = createContext({
@@ -186,6 +189,102 @@ export const OrderProvider = ({ children }) => {
     qa: false,
   });
 
+  const currentSaveBlocked = useRef(false);
+  currentSaveBlocked.current = isReadOnly && !isEditMode;
+  const progressReadSequence = useRef(0);
+  // A lifecycle is invalidated synchronously when another request starts loading,
+  // even when navigation eventually returns to the same accession number.
+  const requestEpoch = useRef(0);
+  const activeLoad = useRef(null);
+  const activeSave = useRef(null);
+  const activeIdentity = useRef("");
+  const entryUnconfirmed = useRef(new Map());
+  const latestEntryInput = useRef(null);
+  latestEntryInput.current = JSON.stringify({
+    orderData: {
+      ...orderData,
+      sampleOrderItems: { ...orderData?.sampleOrderItems, labNo: undefined },
+    },
+    samples,
+  });
+  const renderEntryInput = latestEntryInput.current;
+  const isMounted = useRef(true);
+  const currentLabNumber = labNumber || orderData?.sampleOrderItems?.labNo;
+  const latestLabNumber = useRef(currentLabNumber);
+  latestLabNumber.current = currentLabNumber;
+  activeIdentity.current = `${orderId || ""}:${currentLabNumber || ""}`;
+  const renderEpoch = requestEpoch.current;
+  const renderIdentity = activeIdentity.current;
+  useLayoutEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      interruptEntrySave();
+      requestEpoch.current += 1;
+      activeLoad.current = null;
+      activeSave.current = null;
+      progressReadSequence.current += 1;
+    };
+  }, []);
+
+  // Separate save tokens prevent an old completion/finally from clearing the
+  // busy state of a newer save. Already-sent requests are not rolled back.
+  const beginSave = useCallback(
+    (kind, entryLabNo) => {
+      if (
+        !isMounted.current ||
+        renderEpoch !== requestEpoch.current ||
+        renderEntryInput !== latestEntryInput.current ||
+        (kind === "entry" &&
+          latestLabNumber.current &&
+          entryLabNo !== latestLabNumber.current) ||
+        activeLoad.current
+      ) {
+        throw new Error("order.progress.requestChanged");
+      }
+      if (activeSave.current) throw new Error("order.progress.saveInProgress");
+      if (entryUnconfirmed.current.has(entryLabNo || currentLabNumber))
+        throw entrySubmissionError("order.save.readbackUnconfirmed");
+      if (unconfirmedWrite.current)
+        throw entrySubmissionError("order.save.readbackUnconfirmed");
+      if (currentSaveBlocked.current)
+        throw new Error("Cannot save in read-only mode");
+      const operation = {
+        kind,
+        labNo: entryLabNo,
+        input: latestEntryInput.current,
+        epoch: renderEpoch,
+      };
+      activeSave.current = operation;
+      return operation;
+    },
+    [renderEpoch, currentLabNumber, renderEntryInput],
+  );
+  const isCurrentSave = useCallback((operation) => {
+    const current =
+      isMounted.current &&
+      !operation.invalidated &&
+      activeSave.current === operation &&
+      requestEpoch.current === operation.epoch;
+    if (
+      current &&
+      operation.kind === "entry" &&
+      operation.input !== latestEntryInput.current
+    ) {
+      markEntryUnknown(operation);
+      operation.cancel?.();
+      return false;
+    }
+    return current;
+  }, []);
+  const finishSave = useCallback((operation) => {
+    if (activeSave.current !== operation) return;
+    activeSave.current = null;
+    if (isMounted.current && requestEpoch.current === operation.epoch) {
+      setIsSubmitting(false);
+    }
+  }, []);
+
   // Storage assignment skipped flag (Label step)
   // Persisted to backend via /rest/order/storage-skipped endpoint
   const [storageSkipped, setStorageSkippedState] = useState(false);
@@ -208,128 +307,191 @@ export const OrderProvider = ({ children }) => {
   const [testSampleAssignments, setTestSampleAssignments] = useState({});
 
   const autoSaveTimerRef = useRef(null);
+  const autoSaveSuspended = useRef(false);
+  const unconfirmedWrite = useRef(false);
+  const markEntryUnknown = useCallback((operation) => {
+    if (
+      operation?.kind !== "entry" ||
+      !operation.labNo ||
+      !operation.dispatched
+    )
+      return;
+    entryUnconfirmed.current.set(operation.labNo, true);
+    if (isMounted.current && activeSave.current === operation) {
+      autoSaveSuspended.current = true;
+      setIsDirty(true);
+      setSaveStatus(SaveStatus.UNCONFIRMED);
+      setError("order.save.readbackUnconfirmed");
+    }
+  }, []);
+  const interruptEntrySave = useCallback(() => {
+    const operation = activeSave.current;
+    if (operation?.kind !== "entry") return;
+    markEntryUnknown(operation);
+    operation.cancel?.();
+  }, [markEntryUnknown]);
+  const markEntrySubmissionUnconfirmed = useCallback(
+    (entryLabNo) => {
+      const operation = activeSave.current;
+      if (
+        operation?.kind !== "entry" ||
+        operation.epoch !== renderEpoch ||
+        operation.labNo !== entryLabNo
+      )
+        return;
+      operation.markUnknown?.();
+    },
+    [renderEpoch],
+  );
   const lastSavedDataRef = useRef(null);
 
   /**
    * Wrapper for setOrderData that marks form as dirty
    */
-  const setOrderData = useCallback((newData) => {
-    setOrderDataState(newData);
-    setIsDirty(true);
-    setSaveStatus(SaveStatus.UNSAVED);
-  }, []);
+  const setOrderData = useCallback(
+    (newData) => {
+      interruptEntrySave();
+      setOrderDataState(newData);
+      setIsDirty(true);
+      setSaveStatus(SaveStatus.UNSAVED);
+    },
+    [interruptEntrySave],
+  );
 
   /**
    * Wrapper for setSamples that marks form as dirty
    */
-  const setSamples = useCallback((newSamples) => {
-    setSamplesState(newSamples);
-    setIsDirty(true);
-    setSaveStatus(SaveStatus.UNSAVED);
-  }, []);
+  const setSamples = useCallback(
+    (newSamples) => {
+      interruptEntrySave();
+      setSamplesState(newSamples);
+      setIsDirty(true);
+      setSaveStatus(SaveStatus.UNSAVED);
+    },
+    [interruptEntrySave],
+  );
 
   /**
    * Load an existing order by lab number (accession number).
    * Used when user scans a barcode or enters a lab number.
    * Loads in read-only mode by default (user must click Edit to modify).
    */
-  const loadOrder = useCallback(async (searchLabNumber, readOnly = true) => {
-    setIsLoading(true);
-    setError(null);
+  const loadOrder = useCallback(
+    async (searchLabNumber, readOnly = true) => {
+      if (!isMounted.current)
+        throw entrySubmissionError("order.progress.requestChanged");
+      interruptEntrySave();
+      const operation = { epoch: ++requestEpoch.current };
+      activeLoad.current = operation;
+      activeSave.current = null;
+      const isCurrent = () =>
+        isMounted.current && requestEpoch.current === operation.epoch;
+      setIsSubmitting(false);
+      setIsLoading(true);
+      setError(null);
 
-    return new Promise((resolve, reject) => {
-      getFromOpenElisServer(
-        `/rest/order/search?labNumber=${encodeURIComponent(searchLabNumber)}`,
-        (response) => {
-          setIsLoading(false);
-
-          if (response && response.labNumber) {
-            setOrderId(response.id);
-            setLabNumber(response.labNumber);
-
-            // Build order data by merging response fields with defaults
-            // The backend returns patientProperties at top level and inside orderData
-            const loadedOrderData = {
-              ...SampleOrderFormValues,
-              ...(response.orderData || {}),
-              patientProperties: {
-                ...SampleOrderFormValues.patientProperties,
-                ...(response.patientProperties || {}),
-                ...(response.orderData?.patientProperties || {}),
-                // Keep patient status from response or default to NO_ACTION for subsequent saves
-                // Only set UPDATE when patient data has actually been modified
-                patientUpdateStatus:
-                  response.patientProperties?.patientUpdateStatus ||
-                  "NO_ACTION",
-              },
-              sampleOrderItems: {
-                ...SampleOrderFormValues.sampleOrderItems,
-                ...(response.sampleOrderItems || {}),
-                labNo: response.labNumber,
-              },
-            };
-
-            setOrderDataState(loadedOrderData);
-
-            // Load sample type requests if no sample_items exist (decoupled workflow)
-            // This handles Step 1 edit where samples are stored as requests, not items
-            const hasSampleItems =
-              response.samples &&
-              response.samples.length > 0 &&
-              response.samples.some((s) => s.sampleItemId);
-
-            if (!hasSampleItems && response.id) {
-              // Try to load sample type requests
-              getRequestsBySample(response.id)
-                .then((requests) => {
-                  if (requests && requests.length > 0) {
-                    const samplesFromRequests =
-                      convertRequestsToSamples(requests);
-                    setSamplesState(samplesFromRequests);
-                  } else {
-                    setSamplesState(response.samples || [sampleObject]);
-                  }
-                })
-                .catch(() => {
-                  setSamplesState(response.samples || [sampleObject]);
-                });
-            } else {
-              setSamplesState(response.samples || [sampleObject]);
+      return new Promise((resolve, reject) => {
+        getFromOpenElisServer(
+          `/rest/order/search?labNumber=${encodeURIComponent(searchLabNumber)}`,
+          (response) => {
+            if (!isCurrent()) {
+              reject(entrySubmissionError("order.progress.requestChanged"));
+              return;
             }
+            activeLoad.current = null;
+            setIsLoading(false);
 
-            setIsReadOnly(readOnly);
-            setIsEditMode(false);
-            setIsDirty(false);
-            setSaveStatus(SaveStatus.SAVED);
+            if (response && response.labNumber) {
+              setOrderId(response.id);
+              setLabNumber(response.labNumber);
 
-            setStepProgress(
-              response.stepProgress || {
-                enter: false,
-                collect: false,
-                label: false,
-                qa: false,
-              },
-            );
+              // Build order data by merging response fields with defaults
+              // The backend returns patientProperties at top level and inside orderData
+              const loadedOrderData = {
+                ...SampleOrderFormValues,
+                ...(response.orderData || {}),
+                patientProperties: {
+                  ...SampleOrderFormValues.patientProperties,
+                  ...(response.patientProperties || {}),
+                  ...(response.orderData?.patientProperties || {}),
+                  // Keep patient status from response or default to NO_ACTION for subsequent saves
+                  // Only set UPDATE when patient data has actually been modified
+                  patientUpdateStatus:
+                    response.patientProperties?.patientUpdateStatus ||
+                    "NO_ACTION",
+                },
+                sampleOrderItems: {
+                  ...SampleOrderFormValues.sampleOrderItems,
+                  ...(response.sampleOrderItems || {}),
+                  labNo: response.labNumber,
+                },
+              };
 
-            // Load storageSkipped from backend response
-            const savedStorageSkipped = response.storageSkipped === true;
-            setStorageSkippedState(savedStorageSkipped);
+              setOrderDataState(loadedOrderData);
 
-            setError(null);
-            lastSavedDataRef.current = JSON.stringify({
-              orderData: loadedOrderData,
-              samples: response.samples,
-            });
-            resolve(response);
-          } else {
-            const errorMsg = "Order not found";
-            setError(errorMsg);
-            reject(new Error(errorMsg));
-          }
-        },
-      );
-    });
-  }, []);
+              // Load sample type requests if no sample_items exist (decoupled workflow)
+              // This handles Step 1 edit where samples are stored as requests, not items
+              const hasSampleItems =
+                response.samples &&
+                response.samples.length > 0 &&
+                response.samples.some((s) => s.sampleItemId);
+
+              if (!hasSampleItems && response.id) {
+                // Try to load sample type requests
+                getRequestsBySample(response.id)
+                  .then((requests) => {
+                    if (!isCurrent()) return;
+                    if (requests && requests.length > 0) {
+                      const samplesFromRequests =
+                        convertRequestsToSamples(requests);
+                      setSamplesState(samplesFromRequests);
+                    } else {
+                      setSamplesState(response.samples || [sampleObject]);
+                    }
+                  })
+                  .catch(() => {
+                    if (!isCurrent()) return;
+                    setSamplesState(response.samples || [sampleObject]);
+                  });
+              } else {
+                setSamplesState(response.samples || [sampleObject]);
+              }
+
+              setIsReadOnly(readOnly);
+              setIsEditMode(false);
+              setIsDirty(false);
+              setSaveStatus(SaveStatus.SAVED);
+
+              setStepProgress(
+                response.stepProgress || {
+                  enter: false,
+                  collect: false,
+                  label: false,
+                  qa: false,
+                },
+              );
+
+              // Load storageSkipped from backend response
+              const savedStorageSkipped = response.storageSkipped === true;
+              setStorageSkippedState(savedStorageSkipped);
+
+              setError(null);
+              lastSavedDataRef.current = JSON.stringify({
+                orderData: loadedOrderData,
+                samples: response.samples,
+              });
+              resolve(response);
+            } else {
+              const errorMsg = "Order not found";
+              setError(errorMsg);
+              reject(new Error(errorMsg));
+            }
+          },
+        );
+      });
+    },
+    [interruptEntrySave],
+  );
 
   /**
    * Convert samples array to XML format expected by backend
@@ -474,12 +636,6 @@ export const OrderProvider = ({ children }) => {
         return Promise.reject(new Error("Cannot save in read-only mode"));
       }
 
-      if (!silent) {
-        setIsSubmitting(true);
-      }
-      setSaveStatus(SaveStatus.SAVING);
-      setError(null);
-
       // Build sample XML and referral items
       // Pass environmentalFields for GPS fallback in environmental workflow
       const envFields = orderData?.sampleOrderItems?.environmentalFields || {};
@@ -525,6 +681,10 @@ export const OrderProvider = ({ children }) => {
         delete submitData.sampleOrderItems.program;
       }
 
+      const operation = beginSave();
+      if (!silent) setIsSubmitting(true);
+      setSaveStatus(SaveStatus.SAVING);
+      setError(null);
       return new Promise((resolve, reject) => {
         // Always use SamplePatientEntry endpoint - the backend handles both insert and update
         // based on whether sampleOrderItems.sampleId is present
@@ -541,11 +701,18 @@ export const OrderProvider = ({ children }) => {
         postToOpenElisServerFullResponse(
           endpoint,
           JSON.stringify(submitData),
-          async (response) => {
-            const status = response?.status || 0;
-            if (!silent) {
-              setIsSubmitting(false);
+          async (response, _extra, requestError) => {
+            if (!isCurrentSave(operation)) {
+              reject(entrySubmissionError("order.progress.requestChanged"));
+              return;
             }
+            if (requestError) {
+              setSaveStatus(SaveStatus.ERROR);
+              setError(requestError.errorKey);
+              reject(requestError);
+              return;
+            }
+            const status = response?.status || 0;
 
             if (status === 200 || status === 201) {
               setIsDirty(false);
@@ -562,6 +729,12 @@ export const OrderProvider = ({ children }) => {
                 getFromOpenElisServer(
                   `/rest/order/search?labNumber=${encodeURIComponent(labNo)}`,
                   (response) => {
+                    if (!isCurrentSave(operation)) {
+                      reject(
+                        entrySubmissionError("order.progress.requestChanged"),
+                      );
+                      return;
+                    }
                     if (response) {
                       // CRITICAL: Update orderId from the response - needed for Step 2 to work correctly
                       // The orderId is used to set sampleOrderItems.sampleId which tells the backend
@@ -607,6 +780,10 @@ export const OrderProvider = ({ children }) => {
               } catch {
                 // Preserve a stable fallback when an intermediary returns HTML.
               }
+              if (!isCurrentSave(operation)) {
+                reject(entrySubmissionError("order.progress.requestChanged"));
+                return;
+              }
               const errorMsg = responseBody.error || "Failed to save order";
               setError(errorMsg);
               const saveError = new Error(errorMsg);
@@ -616,7 +793,12 @@ export const OrderProvider = ({ children }) => {
             }
           },
         );
-      });
+      })
+        .catch((error) => {
+          if (isCurrentSave(operation)) autoSaveSuspended.current = true;
+          throw error;
+        })
+        .finally(() => finishSave(operation));
     },
     [
       orderId,
@@ -627,6 +809,9 @@ export const OrderProvider = ({ children }) => {
       isEditMode,
       buildSampleXML,
       buildReferralItems,
+      beginSave,
+      isCurrentSave,
+      finishSave,
     ],
   );
 
@@ -645,12 +830,6 @@ export const OrderProvider = ({ children }) => {
       if (isReadOnly && !isEditMode) {
         return Promise.reject(new Error("Cannot save in read-only mode"));
       }
-
-      if (!silent) {
-        setIsSubmitting(true);
-      }
-      setSaveStatus(SaveStatus.SAVING);
-      setError(null);
 
       const effectiveLabNumber =
         labNumberOverride || orderData?.sampleOrderItems?.labNo || "";
@@ -693,121 +872,90 @@ export const OrderProvider = ({ children }) => {
         delete submitData.sampleOrderItems.program;
       }
 
-      return new Promise((resolve, reject) => {
-        const endpoint = "/rest/SamplePatientEntry";
-
-        if (orderId) {
-          submitData.sampleOrderItems = {
-            ...submitData.sampleOrderItems,
-            sampleId: orderId,
-          };
+      if (
+        typeof effectiveLabNumber !== "string" ||
+        !effectiveLabNumber.trim()
+      ) {
+        throw entrySubmissionError("order.save.incomplete");
+      }
+      if (orderId) submitData.sampleOrderItems.sampleId = orderId;
+      const body = JSON.stringify(submitData);
+      const operation = beginSave("entry", effectiveLabNumber);
+      // Silent draft saves still own the shared lock across page navigation.
+      setIsSubmitting(true);
+      setSaveStatus(SaveStatus.SAVING);
+      setError(null);
+      try {
+        const receipt = await submitOrderEntry({
+          operation,
+          body,
+          samples: samples.filter((sample) => sample.sampleTypeId),
+          orderId,
+          patientId: orderData?.patientProperties?.patientPK,
+          requiresPatient: envFields.workflowType !== "environmental",
+          post: postToOpenElisServerFullResponse,
+          read: getFromOpenElisServer,
+          createRequests: createRequestsForSamples,
+          isCurrent: isCurrentSave,
+          canContinue: () => true,
+          onUnknown: markEntryUnknown,
+        });
+        if (!isCurrentSave(operation)) {
+          throw entrySubmissionError("order.progress.requestChanged");
         }
-
-        postToOpenElisServerFullResponse(
-          endpoint,
-          JSON.stringify(submitData),
-          async (response) => {
-            const status = response?.status || 0;
-            if (status === 200 || status === 201) {
-              // Reload order to get the created sample ID
-              const labNo = effectiveLabNumber;
-              if (labNo) {
-                getFromOpenElisServer(
-                  `/rest/order/search?labNumber=${encodeURIComponent(labNo)}`,
-                  async (response) => {
-                    if (response) {
-                      const sampleId = response.id;
-                      setOrderId(sampleId);
-                      setLabNumber(labNo);
-
-                      // Create sample_type_requests for each selected sample type
-                      const samplesWithTypes = samples.filter(
-                        (s) => s.sampleTypeId,
-                      );
-                      if (samplesWithTypes.length > 0 && sampleId) {
-                        try {
-                          await createRequestsForSamples(
-                            sampleId,
-                            samplesWithTypes,
-                          );
-                        } catch (err) {
-                          // Reject with error so UI shows failure
-                          if (!silent) {
-                            setIsSubmitting(false);
-                          }
-                          setSaveStatus(SaveStatus.ERROR);
-                          setError("Failed to save sample type requests");
-                          reject(
-                            new Error(
-                              "Failed to save sample type requests: " +
-                                err.message,
-                            ),
-                          );
-                          return;
-                        }
-                      }
-
-                      // Update state
-                      setIsDirty(false);
-                      setSaveStatus(SaveStatus.SAVED);
-                      setOrderDataState((prev) => ({
-                        ...prev,
-                        sampleOrderItems: {
-                          ...prev.sampleOrderItems,
-                          labNo,
-                        },
-                        patientProperties: {
-                          ...prev.patientProperties,
-                          patientUpdateStatus: "NO_ACTION",
-                          patientPK:
-                            response.patientProperties?.patientPK ||
-                            prev.patientProperties?.patientPK,
-                        },
-                      }));
-
-                      if (!silent) {
-                        setIsSubmitting(false);
-                      }
-                      resolve({ success: true, sampleId });
-                    } else {
-                      if (!silent) {
-                        setIsSubmitting(false);
-                      }
-                      resolve({ success: true });
-                    }
-                  },
-                );
-              } else {
-                if (!silent) {
-                  setIsSubmitting(false);
-                }
-                setIsDirty(false);
-                setSaveStatus(SaveStatus.SAVED);
-                resolve({ success: true });
-              }
-            } else {
-              if (!silent) {
-                setIsSubmitting(false);
-              }
-              setSaveStatus(SaveStatus.ERROR);
-              let responseBody = {};
-              try {
-                responseBody = (await response?.json()) || {};
-              } catch {
-                // Preserve a stable fallback when an intermediary returns HTML.
-              }
-              const errorMsg = responseBody.error || "Failed to save order";
-              setError(errorMsg);
-              const saveError = new Error(errorMsg);
-              saveError.status = status;
-              saveError.details = responseBody;
-              reject(saveError);
-            }
-          },
-        );
-      });
+        setOrderId(receipt.id);
+        setLabNumber(effectiveLabNumber);
+        setOrderDataState((previous) => {
+          if (
+            !isMounted.current ||
+            requestEpoch.current !== operation.epoch ||
+            latestEntryInput.current !== operation.input
+          )
+            return previous;
+          return {
+            ...previous,
+            sampleOrderItems: {
+              ...previous.sampleOrderItems,
+              labNo: effectiveLabNumber,
+            },
+            patientProperties: {
+              ...previous.patientProperties,
+              patientUpdateStatus: "NO_ACTION",
+              patientPK:
+                receipt.patientProperties?.patientPK ||
+                previous.patientProperties?.patientPK,
+            },
+          };
+        });
+        setIsDirty(false);
+        setSaveStatus(SaveStatus.SAVED);
+        setError(null);
+        autoSaveSuspended.current = false;
+        return { success: true, sampleId: receipt.id };
+      } catch (error) {
+        if (isCurrentSave(operation)) {
+          autoSaveSuspended.current = true;
+          if (!entryUnconfirmed.current.has(effectiveLabNumber)) {
+            setSaveStatus(SaveStatus.ERROR);
+            setError(error.errorKey || "order.save.incomplete");
+          }
+        }
+        throw error;
+      } finally {
+        finishSave(operation);
+      }
     },
-    [orderId, orderData, samples, isReadOnly, isEditMode],
+    [
+      orderId,
+      orderData,
+      samples,
+      isReadOnly,
+      isEditMode,
+      beginSave,
+      finishSave,
+      isCurrentSave,
+      markEntryUnknown,
+    ],
   );
 
   /**
@@ -943,6 +1091,14 @@ export const OrderProvider = ({ children }) => {
    * Used when starting a new order.
    */
   const resetOrder = useCallback(() => {
+    if (!isMounted.current) return;
+    interruptEntrySave();
+    const epoch = ++requestEpoch.current;
+    activeLoad.current = null;
+    activeSave.current = null;
+    setIsLoading(false);
+    setIsSubmitting(false);
+    autoSaveSuspended.current = false;
     setOrderId(null);
     setLabNumber(null);
     setOrderDataState(getInitialOrderData());
@@ -959,11 +1115,12 @@ export const OrderProvider = ({ children }) => {
       label: false,
       qa: false,
     });
-    setStorageSkipped(false);
+    setStorageSkippedState(false);
     lastSavedDataRef.current = null;
 
     // Re-fetch form defaults from API to get correct date format
     getFromOpenElisServer("/rest/SamplePatientEntry", (response) => {
+      if (!isMounted.current || epoch !== requestEpoch.current) return;
       if (response && response.currentDate) {
         setOrderDataState((prev) => ({
           ...prev,
@@ -991,14 +1148,17 @@ export const OrderProvider = ({ children }) => {
         }));
       }
     });
-  }, []);
+  }, [interruptEntrySave]);
 
   /**
    * Initialize form defaults from API on mount.
    * This ensures we get the correct date format from the server.
    */
   useEffect(() => {
+    if (activeLoad.current || activeIdentity.current !== ":") return;
+    const epoch = requestEpoch.current;
     getFromOpenElisServer("/rest/SamplePatientEntry", (response) => {
+      if (!isMounted.current || epoch !== requestEpoch.current) return;
       if (response && response.currentDate) {
         setOrderDataState((prev) => ({
           ...prev,
@@ -1063,7 +1223,13 @@ export const OrderProvider = ({ children }) => {
 
     if (isDirty && !isReadOnly && canAutoSave) {
       autoSaveTimerRef.current = setInterval(() => {
-        if (isDirty && !isSubmitting) {
+        if (
+          isDirty &&
+          !isSubmitting &&
+          !activeSave.current &&
+          !autoSaveSuspended.current &&
+          !entryUnconfirmed.current.has(currentLabNumber)
+        ) {
           saveOrder(true).catch(() => {});
         }
       }, AUTO_SAVE_INTERVAL);
@@ -1107,6 +1273,7 @@ export const OrderProvider = ({ children }) => {
     };
   }, [isDirty]);
 
+  const entryNeedsConfirmation = entryUnconfirmed.current.has(currentLabNumber);
   const value = {
     // State
     orderId,
@@ -1118,7 +1285,9 @@ export const OrderProvider = ({ children }) => {
     currentStep,
     isLoading,
     isSubmitting,
-    saveStatus,
+    saveStatus: entryNeedsConfirmation ? SaveStatus.UNCONFIRMED : saveStatus,
+    isSaveUnconfirmed: entryNeedsConfirmation,
+    unconfirmedLabNumber: entryNeedsConfirmation ? currentLabNumber : "",
     isDirty,
     error,
     stepProgress,
@@ -1128,6 +1297,7 @@ export const OrderProvider = ({ children }) => {
     // Actions
     loadOrder,
     saveOrder,
+    markEntrySubmissionUnconfirmed,
     saveOrderEntry, // Step 1: saves order + creates sample_type_requests (no sample_items)
     setCurrentStep,
     setOrderData,

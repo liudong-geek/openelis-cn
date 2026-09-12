@@ -98,6 +98,8 @@ const OrderEnter = () => {
     orderId,
     isSubmitting,
     isSaveUnconfirmed,
+    unconfirmedLabNumber,
+    markEntrySubmissionUnconfirmed,
     saveOrderEntry, // Step 1 uses saveOrderEntry (creates sample_type_requests, not sample_items)
     markStepComplete,
     isReadOnly,
@@ -183,6 +185,7 @@ const OrderEnter = () => {
       // A dispatched write cannot become retryable just because asynchronous
       // metadata (or another draft) changed. Keep its number available to query.
       if (pending.phase === "save") {
+        pending.markUnknown?.();
         setUnconfirmed(true);
         setUnconfirmedNumber(pending.labNo);
       }
@@ -198,6 +201,7 @@ const OrderEnter = () => {
       componentMounted.current = false;
       const pending = operation.current;
       if (pending) {
+        if (pending.phase === "save") pending.markUnknown?.();
         pending.cancelled = true;
         pending.cancel?.();
         operation.current = null;
@@ -451,6 +455,8 @@ const OrderEnter = () => {
       if (!ownsEntry(pending)) return;
       pending.labNo = effectiveLabNumber;
       pending.phase = "save";
+      pending.markUnknown = () =>
+        markEntrySubmissionUnconfirmed?.(effectiveLabNumber);
       setIsGeneratingLabNo(false);
       setOrderData((prev) => ({
         ...prev,
@@ -473,10 +479,10 @@ const OrderEnter = () => {
         };
         pending.cancel = () =>
           finish(null, entryError("order.progress.requestChanged"));
-        timer = setTimeout(
-          () => finish(null, entryError("order.save.readbackUnconfirmed")),
-          30000,
-        );
+        timer = setTimeout(() => {
+          pending.markUnknown?.();
+          finish(null, entryError("order.save.readbackUnconfirmed"));
+        }, 30000);
         try {
           Promise.resolve(
             saveOrderEntry(mode === "draft", effectiveLabNumber),
@@ -520,6 +526,7 @@ const OrderEnter = () => {
           [400, 401, 403, 409, 422].includes(error?.status));
       const unknown = pending.phase === "save" && !knownRejection;
       if (unknown) {
+        pending.markUnknown?.();
         setUnconfirmed(true);
         setUnconfirmedNumber(pending.labNo);
       }
@@ -545,7 +552,10 @@ const OrderEnter = () => {
   const handleSaveAndNext = () => submitEntry("next");
   const handleSaveAsDraft = () => submitEntry("draft");
   const savingBlocked = unconfirmed || isSaveUnconfirmed;
-  const inputsLocked = isSaving || savingBlocked || (isReadOnly && !isEditMode);
+  const savingInProgress = isSaving || isSubmitting;
+  const inputsLocked =
+    savingInProgress || savingBlocked || (isReadOnly && !isEditMode);
+  const numberToVerify = unconfirmedNumber || unconfirmedLabNumber;
 
   // Check if lab unit supports both workflow types
   const showWorkflowToggle =
@@ -557,11 +567,11 @@ const OrderEnter = () => {
       currentStep={0}
       title="order.step.enter"
       showBarcodeScanner={false}
-      canProceed={canProceed && !isSaving && !savingBlocked}
-      isSaving={isSaving}
+      canProceed={canProceed && !savingInProgress && !savingBlocked}
+      isSaving={savingInProgress}
       saveDisabled={!canProceed || savingBlocked}
-      showSaveStatus={!isSaving && !savingBlocked}
-      showGuidance={!isSaving && !savingBlocked}
+      showSaveStatus={!savingInProgress && !savingBlocked}
+      showGuidance={!savingInProgress && !savingBlocked}
       onSave={handleSave}
       onSaveAndNext={handleSaveAndNext}
       blockingReasons={blockingReasons}
@@ -580,7 +590,7 @@ const OrderEnter = () => {
       }
     >
       {notificationVisible && <AlertDialog />}
-      {isSaving && (
+      {savingInProgress && (
         <InlineLoading
           description={intl.formatMessage({ id: "order.saveStatus.saving" })}
         />
@@ -596,10 +606,10 @@ const OrderEnter = () => {
               <p>
                 {intl.formatMessage({ id: "order.save.readbackUnconfirmed" })}
               </p>
-              {unconfirmedNumber && (
+              {numberToVerify && (
                 <p>
                   <FormattedMessage id="order.entry.number.title" />：
-                  {unconfirmedNumber}
+                  {numberToVerify}
                 </p>
               )}
             </>
