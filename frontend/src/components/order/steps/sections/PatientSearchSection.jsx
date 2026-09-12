@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useHistory } from "react-router-dom";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useHistory, useLocation } from "react-router-dom";
 import { useIntl, FormattedMessage } from "react-intl";
 import {
   Tile,
@@ -14,10 +14,36 @@ import {
   TableCell,
   Pagination,
   Tag,
-  Link,
+  InlineLoading,
+  InlineNotification,
 } from "@carbon/react";
 import { getFromOpenElisServer } from "../../../utils/Utils";
 import CreatePatientForm from "../../../patient/CreatePatientForm";
+
+const emptyPatient = () => ({
+  patientPK: "",
+  guid: "",
+  firstName: "",
+  lastName: "",
+  birthDateForDisplay: "",
+  gender: "",
+  nationalId: "",
+  patientUpdateStatus: "",
+});
+const newPatientSelection = {
+  id: "",
+  healthRegion: [],
+  nationalId: "",
+  subjectNumber: "",
+};
+const patientId = (value) =>
+  typeof value === "string" || typeof value === "number"
+    ? String(value).trim()
+    : "";
+const emptyPhoneValidation = () => ({
+  primaryPhone: { body: "", status: true },
+  contactPhone: { body: "", status: true },
+});
 
 /**
  * PatientSearchSection - Patient search with results table and selection card
@@ -36,7 +62,12 @@ const PatientSearchSection = ({
 }) => {
   const intl = useIntl();
   const history = useHistory();
+  const location = useLocation();
   const componentMounted = useRef(true);
+  const requestRef = useRef(null);
+  const draftRef = useRef(null);
+  const savedDraftRef = useRef(null);
+  const latest = useRef(null);
 
   // Tab state
   const [activeTab, setActiveTab] = useState("search"); // "search" | "new"
@@ -49,35 +80,126 @@ const PatientSearchSection = ({
   // Results state
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [errorKey, setErrorKey] = useState(null);
   const [totalItems, setTotalItems] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
 
-  // Selected patient
-  const [selectedPatient, setSelectedPatient] = useState(null);
+  // The application is the single source of truth for the selected identity.
+  const selectedPatient = orderData?.patientProperties?.patientPK
+    ? orderData.patientProperties
+    : null;
+  const pendingPatient =
+    !selectedPatient &&
+    orderData?.patientProperties?.patientUpdateStatus === "ADD"
+      ? orderData.patientProperties
+      : null;
+  const orderBaseKey = JSON.stringify([
+    location.key,
+    location.pathname,
+    location.search,
+    orderData?.sampleOrderItems?.sampleId,
+  ]);
+  const labNo = orderData?.sampleOrderItems?.labNo || "";
+  const orderKey = JSON.stringify([orderBaseKey, labNo]);
+  latest.current = { orderKey, orderData, isReadOnly };
+
+  // First-save numbering changes only the number, not the application or its
+  // patient draft. Permit this one-way transition only for the same draft object.
+  if (
+    draftRef.current &&
+    !draftRef.current.labNo &&
+    labNo &&
+    draftRef.current.orderBaseKey === orderBaseKey &&
+    draftRef.current.patientProperties === orderData?.patientProperties
+  ) {
+    draftRef.current.orderKey = orderKey;
+    draftRef.current.labNo = labNo;
+  }
+
+  const cancelRequest = useCallback(() => {
+    requestRef.current?.controller.abort();
+    requestRef.current = null;
+    setIsSearching(false);
+    setIsSelecting(false);
+    setErrorKey(null);
+  }, []);
+
+  const isCurrentRequest = (request, data = latest.current.orderData) =>
+    componentMounted.current &&
+    requestRef.current === request &&
+    !latest.current.isReadOnly &&
+    request.orderKey === latest.current.orderKey &&
+    request.patientProperties === data?.patientProperties;
+
+  const beginRequest = () => {
+    cancelRequest();
+    const request = {
+      controller: new AbortController(),
+      orderKey,
+      patientProperties: orderData?.patientProperties,
+    };
+    requestRef.current = request;
+    return request;
+  };
+
+  // A new-patient form owns only its current application draft. In particular,
+  // a late Formik observer/validation must not write into another application.
+  const isCurrentDraft = useCallback(
+    (draft, data = latest.current.orderData) =>
+      componentMounted.current &&
+      draft &&
+      draftRef.current === draft &&
+      !latest.current.isReadOnly &&
+      draft.orderKey === latest.current.orderKey &&
+      !data?.patientProperties?.patientPK &&
+      draft.patientProperties === data?.patientProperties,
+    [],
+  );
+  const draft = draftRef.current;
+  const showNewPatient = activeTab === "new" && isCurrentDraft(draft);
 
   useEffect(() => {
     componentMounted.current = true;
     return () => {
       componentMounted.current = false;
+      requestRef.current?.controller.abort();
+      requestRef.current = null;
+      draftRef.current = null;
     };
   }, []);
 
-  // Update selectedPatient when orderData.patientProperties changes (e.g., from barcode scan)
+  // Reset stale presentation when a barcode load, readonly transition or route
+  // replaces the application. Callback checks also run before effects flush.
   useEffect(() => {
-    if (orderData?.patientProperties?.patientPK) {
-      setSelectedPatient(orderData.patientProperties);
-      setActiveTab("search"); // Stay on search but show selected
+    if (requestRef.current && !isCurrentRequest(requestRef.current)) {
+      cancelRequest();
     }
-  }, [orderData?.patientProperties?.patientPK]);
+    if (draftRef.current && !isCurrentDraft(draftRef.current)) {
+      draftRef.current = null;
+      setActiveTab("search");
+    }
+  });
+  useEffect(() => {
+    cancelRequest();
+    setQuickQuery("");
+    setSearchResults([]);
+    setTotalItems(0);
+    setCurrentPage(1);
+    setSearchAttempted(false);
+  }, [orderKey, isReadOnly, selectedPatient?.patientPK, cancelRequest]);
 
   // Execute search
   const handleSearch = () => {
     const query = quickQuery.trim();
-    if (!query || isReadOnly) return;
+    if (!query || isReadOnly || isSearching || selectedPatient) return;
 
+    const request = beginRequest();
     setIsSearching(true);
     setSearchResults([]);
+    setTotalItems(0);
+    setCurrentPage(1);
     setSearchAttempted(true);
 
     const params = new URLSearchParams({
@@ -86,99 +208,168 @@ const PatientSearchSection = ({
     });
     const searchEndpoint = `/rest/patient-search-results?${params.toString()}`;
 
-    getFromOpenElisServer(searchEndpoint, (response) => {
-      if (componentMounted.current) {
-        setIsSearching(false);
-        if (response?.patientSearchResults) {
-          // Map results to ensure each has an 'id' field for DataTable
-          const mappedResults = response.patientSearchResults.map((p) => ({
-            ...p,
-            id: p.patientID || p.id,
-            displayName:
-              `${p.lastName || ""}${p.firstName || ""}`.trim() || "—",
-            patientNumber:
-              p.nationalId ||
-              p.subjectNumber ||
-              p.STNumber ||
-              p.patientID ||
-              "—",
-            genderDisplay:
-              p.gender === "M"
-                ? intl.formatMessage({ id: "patient.male" })
-                : p.gender === "F"
-                  ? intl.formatMessage({ id: "patient.female" })
-                  : p.gender || "—",
-            birthDateForDisplay:
-              p.birthDateForDisplay || p.birthdate || p.dob || "—",
-            dataSource: "Local",
-          }));
-          setSearchResults(mappedResults);
-          setTotalItems(mappedResults.length);
+    getFromOpenElisServer(
+      searchEndpoint,
+      (response) => {
+        if (isCurrentRequest(request)) {
+          setIsSearching(false);
+          const results = response?.patientSearchResults;
+          if (
+            !Array.isArray(results) ||
+            results.some((p) => !p || !patientId(p.patientID || p.id))
+          ) {
+            setErrorKey("patient.management.list.error");
+          } else {
+            // Map results to ensure each has an 'id' field for DataTable
+            const mappedResults = results.map((p) => ({
+              ...p,
+              id: patientId(p.patientID || p.id),
+              displayName:
+                `${p.lastName || ""}${p.firstName || ""}`.trim() || "—",
+              patientNumber:
+                p.nationalId ||
+                p.subjectNumber ||
+                p.STNumber ||
+                p.patientID ||
+                "—",
+              genderDisplay:
+                p.gender === "M"
+                  ? intl.formatMessage({ id: "patient.male" })
+                  : p.gender === "F"
+                    ? intl.formatMessage({ id: "patient.female" })
+                    : p.gender || "—",
+              birthDateForDisplay:
+                p.birthDateForDisplay || p.birthdate || p.dob || "—",
+              dataSource: "Local",
+            }));
+            setSearchResults(mappedResults);
+            setTotalItems(mappedResults.length);
+          }
         }
-      }
-    });
+      },
+      request.controller.signal,
+    );
   };
 
   // Clear search
   const handleClear = () => {
+    if (isReadOnly) return;
+    cancelRequest();
     setQuickQuery("");
     setSearchResults([]);
     setTotalItems(0);
     setSearchAttempted(false);
+    setCurrentPage(1);
   };
 
   // Select patient
   const handleSelectPatient = (patient) => {
     // Get patientID from either field
-    const patientId = patient.patientID || patient.id;
-    if (!patientId) {
-      console.error("No patient ID found");
+    if (isReadOnly || isSelecting || !patient || patient.isMerged === true)
       return;
-    }
+    const id = patientId(patient.patientID || patient.id);
+    if (!id) return;
+    const request = beginRequest();
+    setIsSelecting(true);
 
     // Fetch full patient details
     getFromOpenElisServer(
-      `/rest/patient-details?patientID=${patientId}`,
+      `/rest/patient-details?patientID=${encodeURIComponent(id)}`,
       (response) => {
-        if (componentMounted.current && response) {
-          setSelectedPatient(response);
+        if (isCurrentRequest(request)) {
+          setIsSelecting(false);
+          if (
+            !response ||
+            patientId(response.patientPK) !== id ||
+            response.isMerged === true
+          ) {
+            setErrorKey("patient.fetch.error");
+            return;
+          }
+          savedDraftRef.current = null;
+          setPhoneValidation?.(emptyPhoneValidation());
           // IMPORTANT: patientUpdateStatus must be INSIDE patientProperties for backend to recognize it
-          setOrderData((prev) => ({
-            ...prev,
-            patientUpdateStatus: "UPDATE",
-            patientProperties: {
-              ...response,
-              patientUpdateStatus: "UPDATE", // Backend reads this from patientProperties
-            },
-          }));
+          setOrderData((prev) =>
+            !isCurrentRequest(request, prev)
+              ? prev
+              : {
+                  ...prev,
+                  patientUpdateStatus: "UPDATE",
+                  patientProperties: {
+                    ...response,
+                    patientUpdateStatus: "UPDATE", // Backend reads this from patientProperties
+                  },
+                },
+          );
         }
       },
+      request.controller.signal,
     );
   };
 
   // Clear selection
   const handleClearSelection = () => {
-    setSelectedPatient(null);
+    if (isReadOnly) return;
+    cancelRequest();
+    draftRef.current = null;
+    savedDraftRef.current = null;
+    setPhoneValidation?.(emptyPhoneValidation());
     setOrderData((prev) => ({
       ...prev,
       patientUpdateStatus: "",
-      patientProperties: {
-        patientPK: "",
-        guid: "",
-        firstName: "",
-        lastName: "",
-        birthDateForDisplay: "",
-        gender: "",
-        nationalId: "",
-      },
+      patientProperties: emptyPatient(),
     }));
   };
 
   // Handle new patient tab
   const handleNewPatient = () => {
+    if (isReadOnly) return;
+    cancelRequest();
+    const properties = pendingPatient || emptyPatient();
+    draftRef.current = {
+      orderKey,
+      orderBaseKey,
+      labNo,
+      patientProperties: properties,
+      phoneValidation:
+        pendingPatient &&
+        savedDraftRef.current?.patientProperties === pendingPatient
+          ? savedDraftRef.current.phoneValidation
+          : emptyPhoneValidation(),
+    };
+    savedDraftRef.current = draftRef.current;
+    setPhoneValidation?.(draftRef.current.phoneValidation);
+    if (!pendingPatient) {
+      setOrderData((prev) => ({
+        ...prev,
+        patientUpdateStatus: "",
+        patientProperties: properties,
+      }));
+    }
     setActiveTab("new");
-    // Clear any existing selection for new patient entry
   };
+
+  const updateDraft = useCallback(
+    (update) => {
+      if (!isCurrentDraft(draft)) return;
+      setOrderData((prev) => {
+        if (!isCurrentDraft(draft, prev)) return prev;
+        const next = typeof update === "function" ? update(prev) : update;
+        draft.patientProperties = next.patientProperties;
+        return next;
+      });
+    },
+    [draft, isCurrentDraft, setOrderData],
+  );
+  const updateDraftPhone = useCallback(
+    (validation) => {
+      if (isCurrentDraft(draft)) {
+        draft.phoneValidation = validation;
+        setPhoneValidation?.(validation);
+      }
+    },
+    [draft, isCurrentDraft, setPhoneValidation],
+  );
 
   // Table headers
   const headers = [
@@ -226,11 +417,15 @@ const PatientSearchSection = ({
           </p>
         </div>
         <div className="order-section-heading__actions">
-          {activeTab === "new" && (
+          {showNewPatient && (
             <Button
               kind="ghost"
               size="sm"
-              onClick={() => setActiveTab("search")}
+              onClick={() => {
+                draftRef.current = null;
+                cancelRequest();
+                setActiveTab("search");
+              }}
             >
               <FormattedMessage id="patient.search.return" />
             </Button>
@@ -242,7 +437,7 @@ const PatientSearchSection = ({
           >
             <FormattedMessage id="patient.manage.open" />
           </Button>
-          {activeTab !== "new" && (
+          {!showNewPatient && (
             <Button
               kind="tertiary"
               size="sm"
@@ -250,8 +445,7 @@ const PatientSearchSection = ({
               disabled={isReadOnly}
             >
               <FormattedMessage
-                id="new.patient.label"
-                defaultMessage="New Patient"
+                id={pendingPatient ? "label.button.edit" : "new.patient.label"}
               />
             </Button>
           )}
@@ -259,8 +453,31 @@ const PatientSearchSection = ({
       </div>
 
       {/* Search Tab Content */}
-      {activeTab === "search" && (
+      {!showNewPatient && (
         <div className="search-content">
+          {pendingPatient && (
+            <div className="selected-entity-card">
+              <div className="selected-card-header">
+                <Tag type="blue" size="sm">
+                  <FormattedMessage id="order.saveStatus.unsaved" />
+                </Tag>
+                <Button
+                  kind="ghost"
+                  size="sm"
+                  disabled={isReadOnly}
+                  onClick={handleClearSelection}
+                >
+                  <FormattedMessage id="label.button.clear" />
+                </Button>
+              </div>
+              <div className="selected-card-content">
+                <h5>
+                  {`${pendingPatient.lastName || ""}${pendingPatient.firstName || ""}` ||
+                    intl.formatMessage({ id: "new.patient.label" })}
+                </h5>
+              </div>
+            </div>
+          )}
           {!selectedPatient && (
             <div className="patient-quick-search">
               <TextInput
@@ -272,7 +489,10 @@ const PatientSearchSection = ({
                   id: "patient.quickSearch.placeholder",
                 })}
                 value={quickQuery}
-                onChange={(event) => setQuickQuery(event.target.value)}
+                onChange={(event) => {
+                  handleClear();
+                  setQuickQuery(event.target.value);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
@@ -291,7 +511,12 @@ const PatientSearchSection = ({
                   <FormattedMessage id="label.button.search" />
                 </Button>
                 {(quickQuery || searchAttempted) && (
-                  <Button kind="ghost" size="md" onClick={handleClear}>
+                  <Button
+                    kind="ghost"
+                    size="md"
+                    onClick={handleClear}
+                    disabled={isReadOnly}
+                  >
                     <FormattedMessage id="label.button.clear" />
                   </Button>
                 )}
@@ -302,6 +527,25 @@ const PatientSearchSection = ({
             </div>
           )}
 
+          {(isSearching || isSelecting) && (
+            <InlineLoading
+              description={intl.formatMessage({
+                id: "patient.management.list.loading",
+              })}
+            />
+          )}
+          {errorKey && (
+            <InlineNotification
+              kind="error"
+              lowContrast
+              hideCloseButton
+              title={intl.formatMessage({ id: errorKey })}
+              subtitle={intl.formatMessage({
+                id: "patient.management.list.error.helper",
+              })}
+            />
+          )}
+
           {/* Selected Patient Card */}
           {selectedPatient && (
             <div className="selected-entity-card">
@@ -309,12 +553,17 @@ const PatientSearchSection = ({
                 <Tag type="green" size="sm">
                   <FormattedMessage id="selected" defaultMessage="Selected" />
                 </Tag>
-                <Link onClick={handleClearSelection}>
+                <Button
+                  kind="ghost"
+                  size="sm"
+                  onClick={handleClearSelection}
+                  disabled={isReadOnly}
+                >
                   <FormattedMessage
                     id="label.button.clear"
                     defaultMessage="Clear"
                   />
-                </Link>
+                </Button>
               </div>
               <div className="selected-card-content">
                 <h5>
@@ -405,6 +654,9 @@ const PatientSearchSection = ({
                                     <Button
                                       kind="primary"
                                       size="sm"
+                                      disabled={
+                                        isReadOnly || isSelecting || isMerged
+                                      }
                                       onClick={() =>
                                         handleSelectPatient(patient)
                                       }
@@ -474,6 +726,7 @@ const PatientSearchSection = ({
                   defaultMessage: "Next page",
                 })}
                 pageSize={pageSize}
+                page={currentPage}
                 pageSizes={[25, 50, 100]}
                 itemsPerPageText={intl.formatMessage({
                   id: "pagination.itemsPerPage",
@@ -491,6 +744,7 @@ const PatientSearchSection = ({
           {searchAttempted &&
             searchResults.length === 0 &&
             !isSearching &&
+            !errorKey &&
             !selectedPatient && (
               <div className="no-results">
                 <p>
@@ -505,23 +759,16 @@ const PatientSearchSection = ({
       )}
 
       {/* New Patient Tab Content */}
-      {activeTab === "new" && (
+      {showNewPatient && (
         <div className="new-patient-content">
           <CreatePatientForm
-            key={(selectedPatient && selectedPatient.patientPK) || "new"}
             showActionsButton={false}
-            selectedPatient={
-              selectedPatient || {
-                id: "",
-                healthRegion: [],
-                nationalId: "",
-                subjectNumber: "",
-              }
-            }
+            selectedPatient={newPatientSelection}
             orderFormValues={orderData}
-            setOrderFormValues={setOrderData}
+            setOrderFormValues={updateDraft}
             error={() => null}
-            setPhoneValidation={setPhoneValidation}
+            setPhoneValidation={updateDraftPhone}
+            initialPhoneValidation={draft.phoneValidation}
           />
         </div>
       )}

@@ -62,6 +62,10 @@ type ConfigurationItem = {
 };
 
 interface CreatePatientFormProps {
+  initialPhoneValidation?: {
+    primaryPhone: { body: string; status: boolean };
+    contactPhone: { body: string; status: boolean };
+  };
   selectedPatient?: PatientRecord;
   orderFormValues?: {
     patientProperties?: PatientRecord;
@@ -138,7 +142,12 @@ const buildInitialFormValues = ({
   }
 
   const fromOrder = orderFormValues?.patientProperties;
-  if (fromOrder && (fromOrder.firstName !== "" || fromOrder.guid !== "")) {
+  if (
+    fromOrder &&
+    (fromOrder.patientUpdateStatus === "ADD" ||
+      fromOrder.firstName !== "" ||
+      fromOrder.guid !== "")
+  ) {
     const flattenedAddressHierarchy: Record<string, string> = {};
     if (fromOrder.addressHierarchy) {
       Object.entries(fromOrder.addressHierarchy).forEach(([k, v]) => {
@@ -268,10 +277,13 @@ function CreatePatientForm(props: CreatePatientFormProps) {
   const [isEditing, setIsEditing] = useState(false);
   const isExistingPatient = !!props.selectedPatient?.patientPK;
   const isReadOnly = isExistingPatient && !isEditing;
-  const [phoneValidation, setPhoneValidation] = useState({
-    primaryPhone: { body: "", status: true },
-    contactPhone: { body: "", status: true },
-  });
+  const [phoneValidation, setPhoneValidation] = useState(
+    () =>
+      props.initialPhoneValidation || {
+        primaryPhone: { body: "", status: true },
+        contactPhone: { body: "", status: true },
+      },
+  );
 
   const handlePhotoChange = (photo, setFieldValue) => {
     if (setFieldValue) {
