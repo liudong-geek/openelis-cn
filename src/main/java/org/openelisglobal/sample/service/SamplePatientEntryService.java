@@ -1,14 +1,24 @@
 package org.openelisglobal.sample.service;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import org.openelisglobal.labelpreset.dto.OrderLabelPersistRequest;
 import org.openelisglobal.labelpreset.valueholder.OrderLabelRequest;
 import org.openelisglobal.patient.action.bean.PatientManagementInfo;
 import org.openelisglobal.sample.action.util.SamplePatientUpdateData;
 import org.openelisglobal.sample.form.SamplePatientEntryForm;
+import org.springframework.validation.BindException;
+import org.springframework.validation.BindingResult;
 
 public interface SamplePatientEntryService {
+
+    /**
+     * Initialize, validate and save the ordinary REST entry and its optional labels
+     * in one transaction. Separate sample-type-request HTTP calls are not included.
+     */
+    void saveEntry(SamplePatientEntryForm form, HttpServletRequest request, BindingResult errors)
+            throws IllegalAccessException, InvocationTargetException, NoSuchMethodException, BindException;
 
     void persistData(SamplePatientUpdateData updateData, PatientManagementUpdate patientUpdate,
             PatientManagementInfo patientInfo, SamplePatientEntryForm form, HttpServletRequest request);

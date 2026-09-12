@@ -1,6 +1,7 @@
 package org.openelisglobal.sample.service;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.lang.reflect.InvocationTargetException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -24,8 +25,11 @@ import org.openelisglobal.common.services.SampleAddService.SampleTestCollection;
 import org.openelisglobal.common.services.StatusService.AnalysisStatus;
 import org.openelisglobal.common.services.TableIdService;
 import org.openelisglobal.common.util.ConfigurationProperties;
+import org.openelisglobal.common.util.ConfigurationProperties.Property;
+import org.openelisglobal.common.util.ControllerUtills;
 import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.common.util.IdValuePair;
+import org.openelisglobal.common.validator.BaseErrors;
 import org.openelisglobal.dataexchange.service.order.ElectronicOrderService;
 import org.openelisglobal.eqa.service.SampleEQAService;
 import org.openelisglobal.eqa.valueholder.EQAPriority;
@@ -50,7 +54,10 @@ import org.openelisglobal.organization.service.OrganizationService;
 import org.openelisglobal.organization.valueholder.Organization;
 import org.openelisglobal.organization.valueholder.OrganizationType;
 import org.openelisglobal.panel.valueholder.Panel;
+import org.openelisglobal.patient.action.IPatientUpdate.PatientUpdateStatus;
 import org.openelisglobal.patient.action.bean.PatientManagementInfo;
+import org.openelisglobal.patient.service.PatientService;
+import org.openelisglobal.patient.valueholder.Patient;
 import org.openelisglobal.person.service.PersonService;
 import org.openelisglobal.program.service.ImmunohistochemistrySampleService;
 import org.openelisglobal.program.service.PathologySampleService;
@@ -61,8 +68,10 @@ import org.openelisglobal.provider.service.ProviderService;
 import org.openelisglobal.requester.service.SampleRequesterService;
 import org.openelisglobal.requester.valueholder.SampleRequester;
 import org.openelisglobal.sample.action.util.SamplePatientUpdateData;
+import org.openelisglobal.sample.bean.SampleOrderItem;
 import org.openelisglobal.sample.form.SamplePatientEntryForm;
 import org.openelisglobal.sample.valueholder.SampleAdditionalField;
+import org.openelisglobal.sample.valueholder.SampleAdditionalField.AdditionalFieldName;
 import org.openelisglobal.samplehuman.service.SampleHumanService;
 import org.openelisglobal.samplehuman.valueholder.SampleHuman;
 import org.openelisglobal.sampleitem.dao.SampleItemDAO;
@@ -77,6 +86,8 @@ import org.openelisglobal.test.valueholder.TestSection;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.validation.BindException;
+import org.springframework.validation.BindingResult;
 
 @Service
 public class SamplePatientEntryServiceImpl implements SamplePatientEntryService {
@@ -135,6 +146,102 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
     private OrderLabelRequestService orderLabelRequestService;
     @Autowired
     private SampleTypeRequestService sampleTypeRequestService;
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void saveEntry(SamplePatientEntryForm form, HttpServletRequest request, BindingResult errors)
+            throws IllegalAccessException, InvocationTargetException, NoSuchMethodException, BindException {
+        SampleOrderItem order = form.getSampleOrderItems();
+        boolean environmental = order != null
+                && "environmental".equals(order.getEnvironmentalFieldAsString("workflowType"));
+        rejectEntryErrors(errors, environmental);
+
+        String actor = ControllerUtills.getSysUserId(request);
+        SamplePatientUpdateData data = createEntryUpdateData(actor);
+        String received = order.getReceivedDateForDisplay() + " "
+                + (GenericValidator.isBlankOrNull(order.getReceivedTime()) ? "00:00" : order.getReceivedTime());
+        data.setCollectionDateFromRecieveDateIfNeeded(received);
+        data.initializeRequester(order);
+
+        PatientManagementUpdate patientUpdate = SpringContext.getBean(PatientManagementUpdate.class);
+        patientUpdate.setSysUserIdFromRequest(request);
+        PatientManagementInfo patientInfo = form.getPatientProperties();
+        if (!environmental) {
+            if (order.getIsEQASample()) {
+                Patient eqaPatient = SpringContext.getBean(PatientService.class).getPatientByNationalId("NULL");
+                if (eqaPatient != null) {
+                    patientInfo.setPatientPK(eqaPatient.getId());
+                    patientInfo.setPatientUpdateStatus(PatientUpdateStatus.NO_ACTION);
+                }
+            }
+            patientUpdate.setPatientUpdateStatus(patientInfo);
+            data.setSavePatient(patientUpdate.getPatientUpdateStatus() != PatientUpdateStatus.NO_ACTION);
+            data.setPatientErrors(data.isSavePatient() ? patientUpdate.preparePatientData(request, patientInfo)
+                    : new BaseErrors());
+        } else {
+            // Do not load or mutate patient entities for an explicitly patient-free order.
+            data.setSavePatient(false);
+            data.setPatientErrors(new BaseErrors());
+        }
+
+        data.setAccessionNumber(order.getLabNo());
+        data.setReferringId(order.getExternalOrderNumber());
+        data.setPriority(order.getPriority());
+        data.initProvider(order);
+        boolean trackPayments = ConfigurationProperties.getInstance()
+                .isPropertyValueEqual(Property.TRACK_PATIENT_PAYMENT, "true");
+        data.initSampleData(form.getSampleXML(), received, trackPayments, order);
+        if (!GenericValidator.isBlankOrNull(order.getProgramId())) {
+            data.initProgramQuestions(order.getProgramId(), order.getAdditionalQuestions());
+        }
+        data.setPatientEmailNotificationTestIds(form.getPatientEmailNotificationTestIds());
+        data.setPatientSMSNotificationTestIds(form.getPatientSMSNotificationTestIds());
+        data.setProviderEmailNotificationTestIds(form.getProviderEmailNotificationTestIds());
+        data.setProviderSMSNotificationTestIds(form.getProviderSMSNotificationTestIds());
+        data.setCustomNotificationLogic(form.getCustomNotificationLogic());
+        if (order.getIsEQASample()) {
+            data.setEqaSample(true);
+            data.setEqaProgramId(order.getEqaProgramId());
+            data.setEqaProviderSampleId(order.getEqaProviderSampleId());
+            data.setEqaDeadline(order.getEqaDeadline());
+            data.setEqaPriority(order.getEqaPriority());
+        }
+        if (Boolean.parseBoolean(ConfigurationProperties.getInstance().getPropertyValue(Property.CONTACT_TRACING))) {
+            addEntryField(data, AdditionalFieldName.CONTACT_TRACING_INDEX_NAME, order.getContactTracingIndexName());
+            addEntryField(data, AdditionalFieldName.CONTACT_TRACING_INDEX_RECORD_NUMBER,
+                    order.getContactTracingIndexRecordNumber());
+        }
+        data.validateSample(errors, !form.isOrderEntryOnly());
+        // A normal return on invalid data would let Hibernate flush initialized entities.
+        rejectEntryErrors(errors, environmental);
+        persistData(data, patientUpdate, patientInfo, form, request);
+        if (form.getLabelPersistRequest() != null) {
+            persistLabelRequests(data, form.getLabelPersistRequest(), actor);
+        }
+    }
+
+    SamplePatientUpdateData createEntryUpdateData(String actor) {
+        return new SamplePatientUpdateData(actor);
+    }
+
+    private static void rejectEntryErrors(BindingResult errors, boolean environmental) throws BindException {
+        boolean blocking = !environmental ? errors.hasErrors()
+                : errors.hasGlobalErrors() || errors.getFieldErrors().stream()
+                        .anyMatch(error -> !"patientProperties".equals(error.getField())
+                                && !error.getField().startsWith("patientProperties."));
+        if (blocking) {
+            throw new BindException(errors);
+        }
+    }
+
+    private static void addEntryField(SamplePatientUpdateData data, AdditionalFieldName name, String value) {
+        if (!GenericValidator.isBlankOrNull(value)) {
+            SampleAdditionalField field = new SampleAdditionalField();
+            field.setFieldName(name);
+            field.setFieldValue(value);
+            data.addSampleField(field);
+        }
+    }
 
     @Transactional
     @Override

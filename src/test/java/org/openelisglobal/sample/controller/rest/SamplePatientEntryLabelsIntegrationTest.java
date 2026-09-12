@@ -1,70 +1,118 @@
 package org.openelisglobal.sample.controller.rest;
 
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.Mock;
-import org.mockito.junit.MockitoJUnitRunner;
 import org.openelisglobal.labelpreset.dto.OrderLabelPersistRequest;
-import org.openelisglobal.sample.action.util.SamplePatientUpdateData;
+import org.openelisglobal.sample.bean.SampleOrderItem;
 import org.openelisglobal.sample.form.SamplePatientEntryForm;
 import org.openelisglobal.sample.service.SamplePatientEntryService;
+import org.openelisglobal.sample.service.SampleService;
+import org.openelisglobal.sample.validator.SamplePatientEntryFormValidator;
+import org.openelisglobal.sample.valueholder.OrderPriority;
+import org.openelisglobal.sample.valueholder.Sample;
+import org.openelisglobal.userrole.service.UserRoleService;
+import org.springframework.http.ResponseEntity;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.validation.BeanPropertyBindingResult;
+import org.springframework.validation.BindException;
+import org.springframework.validation.BindingResult;
+import org.springframework.web.servlet.mvc.support.RedirectAttributesModelMap;
 
 /**
- * OGC-285 M5b SAFETY guard for the order-save label-persistence hook. The
- * legacy {@code populateWorkflowPrintModels}/{@code extractLabelQuantities}
- * BarcodeWorkflowPrintService path that this controller used to run on every
- * save was deleted in the OGC-285 flow migration (the post-save print dialog
- * now reads the persisted JSONB snapshots from {@code GET
- * /api/orders/by-accession/{labNo}/labels}). These tests pin the remaining
- * contract: {@code maybePersistLabelRequests} fires the snapshot persistence
- * ONLY when the save body carried a {@code labelPersistRequest}, so every
- * legacy / decoupled / batch save (which leaves the field null) is completely
- * untouched.
+ * Controller delegation only; real transaction behavior has a separate service test.
  */
-@RunWith(MockitoJUnitRunner.class)
 public class SamplePatientEntryLabelsIntegrationTest {
-
-    @Mock
-    private SamplePatientEntryService samplePatientService;
-
+    private SamplePatientEntryService service;
     private SamplePatientEntryRestController controller;
+    private SamplePatientEntryForm form;
+    private BindingResult errors;
+    private MockHttpServletRequest request;
+    private SampleService samples;
 
     @Before
     public void setUp() {
         controller = new SamplePatientEntryRestController();
-        ReflectionTestUtils.setField(controller, "samplePatientService", samplePatientService);
+        service = mock(SamplePatientEntryService.class);
+        samples = mock(SampleService.class);
+        ReflectionTestUtils.setField(controller, "samplePatientService", service);
+        ReflectionTestUtils.setField(controller, "sampleService", samples);
+        ReflectionTestUtils.setField(controller, "formValidator", mock(SamplePatientEntryFormValidator.class));
+        form = new SamplePatientEntryForm();
+        SampleOrderItem order = new SampleOrderItem();
+        order.setLabNo("SIM-ENTRY");
+        form.setSampleOrderItems(order);
+        errors = new BeanPropertyBindingResult(form, "form");
+        request = new MockHttpServletRequest();
+        ReflectionTestUtils.setField(controller, "request", request);
+        Sample sample = mock(Sample.class);
+        when(sample.getId()).thenReturn("701");
+        when(samples.getSampleByAccessionNumber("SIM-ENTRY")).thenReturn(sample);
     }
 
     @Test
-    public void maybePersistLabelRequests_firesPersistence_whenPayloadPresent() {
-        SamplePatientEntryForm form = new SamplePatientEntryForm();
-        OrderLabelPersistRequest payload = new OrderLabelPersistRequest();
-        form.setLabelPersistRequest(payload);
-        // mock (not new) — SamplePatientUpdateData's constructor reaches into
-        // SpringContext, and the helper only passes the value through to the
-        // (mocked) service, never dereferencing it.
-        SamplePatientUpdateData updateData = mock(SamplePatientUpdateData.class);
-
-        controller.maybePersistLabelRequests(form, updateData, "1");
-
-        verify(samplePatientService).persistLabelRequests(updateData, payload, "1");
+    public void testSaveEntry_LabelPayloadUsesSingleServiceCall() throws Exception {
+        OrderLabelPersistRequest labels = new OrderLabelPersistRequest();
+        form.setLabelPersistRequest(labels);
+        assertSame(form, save().getBody());
+        assertSame(labels, form.getLabelPersistRequest());
+        verify(service).saveEntry(form, request, errors);
+        assertNoSplitSave();
     }
 
     @Test
-    public void maybePersistLabelRequests_isNoOp_whenPayloadNull() {
-        SamplePatientEntryForm form = new SamplePatientEntryForm();
-        // no labelPersistRequest set — the legacy/decoupled save path
-        SamplePatientUpdateData updateData = mock(SamplePatientUpdateData.class);
+    public void testSaveEntry_AbsentLabelsRemainAbsent() throws Exception {
+        assertNull(form.getLabelPersistRequest());
+        assertEquals(200, save().getStatusCode().value());
+        verify(service).saveEntry(form, request, errors);
+        assertNoSplitSave();
+    }
 
-        controller.maybePersistLabelRequests(form, updateData, "1");
+    @Test
+    public void testSaveEntry_ValidationFailureMapsTo400WithoutReadback() throws Exception {
+        rejectDuringSave("SIM-invalid");
+        assertEquals(400, save().getStatusCode().value());
+        verify(samples, never()).getSampleByAccessionNumber("SIM-ENTRY");
+        assertNoSplitSave();
+    }
 
-        verify(samplePatientService, never()).persistLabelRequests(org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    @Test
+    public void testSaveEntry_DuplicatePatientStillMapsTo409() throws Exception {
+        rejectDuringSave("error.duplicate.patient");
+        assertEquals(409, save().getStatusCode().value());
+        verify(samples, never()).getSampleByAccessionNumber("SIM-ENTRY");
+    }
+
+    @Test
+    public void testSaveEntry_OptionalNotificationFailureDoesNotUndoSuccess() throws Exception {
+        form.getSampleOrderItems().setPriority(OrderPriority.STAT);
+        UserRoleService roles = mock(UserRoleService.class);
+        ReflectionTestUtils.setField(controller, "userRoleService", roles);
+        when(roles.getUserIdsForRole(org.openelisglobal.common.constants.Constants.ROLE_RESULTS))
+                .thenThrow(new IllegalStateException("SIM notification unavailable"));
+        assertEquals(200, save().getStatusCode().value());
+        verify(service).saveEntry(form, request, errors);
+        assertFalse(errors.hasErrors());
+    }
+
+    private void rejectDuringSave(String code) throws Exception {
+        doAnswer(call -> {
+            errors.reject(code);
+            throw new BindException(errors);
+        }).when(service).saveEntry(form, request, errors);
+    }
+
+    private ResponseEntity<?> save() throws Exception {
+        return controller.samplePatientEntrySave(request, form, errors, new RedirectAttributesModelMap());
+    }
+
+    private void assertNoSplitSave() {
+        // Broad matchers intentionally prohibit every former split-write argument combination.
+        verify(service, never()).persistData(any(), any(), any(), any(), any());
+        verify(service, never()).persistLabelRequests(any(), any(), any());
     }
 }

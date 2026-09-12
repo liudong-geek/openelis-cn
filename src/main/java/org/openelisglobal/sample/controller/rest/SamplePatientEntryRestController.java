@@ -23,10 +23,7 @@ import org.openelisglobal.common.provider.validation.AlphanumAccessionValidator;
 import org.openelisglobal.common.services.DisplayListService;
 import org.openelisglobal.common.services.DisplayListService.ListType;
 import org.openelisglobal.common.services.SampleOrderService;
-import org.openelisglobal.common.util.ConfigurationProperties;
-import org.openelisglobal.common.util.ConfigurationProperties.Property;
 import org.openelisglobal.common.util.DateUtil;
-import org.openelisglobal.common.validator.BaseErrors;
 import org.openelisglobal.dataexchange.fhir.FhirUtil;
 import org.openelisglobal.dataexchange.fhir.service.FhirTransformService;
 import org.openelisglobal.dataexchange.order.valueholder.ElectronicOrder;
@@ -36,27 +33,18 @@ import org.openelisglobal.notifications.dao.NotificationDAO;
 import org.openelisglobal.notifications.entity.Notification;
 import org.openelisglobal.organization.service.OrganizationService;
 import org.openelisglobal.organization.valueholder.Organization;
-import org.openelisglobal.patient.action.IPatientUpdate;
-import org.openelisglobal.patient.action.IPatientUpdate.PatientUpdateStatus;
 import org.openelisglobal.patient.action.bean.PatientManagementInfo;
 import org.openelisglobal.patient.action.bean.PatientSearch;
-import org.openelisglobal.patient.service.PatientService;
-import org.openelisglobal.patient.valueholder.Patient;
 import org.openelisglobal.provider.service.ProviderService;
 import org.openelisglobal.provider.valueholder.Provider;
-import org.openelisglobal.sample.action.util.SamplePatientUpdateData;
 import org.openelisglobal.sample.bean.SampleOrderItem;
 import org.openelisglobal.sample.controller.BaseSampleEntryController;
 import org.openelisglobal.sample.form.SamplePatientEntryForm;
-import org.openelisglobal.sample.service.PatientManagementUpdate;
 import org.openelisglobal.sample.service.SamplePatientEntryService;
 import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.validator.SamplePatientEntryFormValidator;
 import org.openelisglobal.sample.valueholder.OrderPriority;
 import org.openelisglobal.sample.valueholder.Sample;
-import org.openelisglobal.sample.valueholder.SampleAdditionalField;
-import org.openelisglobal.sample.valueholder.SampleAdditionalField.AdditionalFieldName;
-import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.systemuser.service.SystemUserService;
 import org.openelisglobal.systemuser.service.UserService;
 import org.openelisglobal.userrole.service.UserRoleService;
@@ -163,9 +151,6 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
     private ProviderService providerService;
 
     @Autowired
-    private PatientService patientService;
-
-    @Autowired
     private ElectronicOrderService electronicOrderService;
 
     @Autowired
@@ -243,7 +228,7 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
      * <li>{@code 400 Bad Request} — validation failed (formValidator or
      * {@code updateData.validateSample})</li>
      * <li>{@code 500 Internal Server Error} — persistence exception caught from
-     * {@code samplePatientService.persistData()}, or (belt-and- suspenders) the
+     * {@code samplePatientService.saveEntry()}, or (belt-and- suspenders) the
      * response claims success but no row is found in {@code clinlims.sample}</li>
      * <li>{@code 200 OK} — verified success, row confirmed in DB</li>
      * </ul>
@@ -292,100 +277,6 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
                 return ResponseEntity.badRequest().body(buildErrorBody(result, "Validation failed"));
             }
         }
-        SamplePatientUpdateData updateData = new SamplePatientUpdateData(getSysUserId(request));
-
-        PatientManagementInfo patientInfo = form.getPatientProperties();
-
-        boolean trackPayments = ConfigurationProperties.getInstance()
-                .isPropertyValueEqual(Property.TRACK_PATIENT_PAYMENT, "true");
-
-        String receivedDateForDisplay = sampleOrder.getReceivedDateForDisplay();
-
-        if (!GenericValidator.isBlankOrNull(sampleOrder.getReceivedTime())) {
-            receivedDateForDisplay += " " + sampleOrder.getReceivedTime();
-        } else {
-            receivedDateForDisplay += " 00:00";
-        }
-
-        updateData.setCollectionDateFromRecieveDateIfNeeded(receivedDateForDisplay);
-        updateData.initializeRequester(sampleOrder);
-
-        PatientManagementUpdate patientUpdate = SpringContext.getBean(PatientManagementUpdate.class);
-        patientUpdate.setSysUserIdFromRequest(request);
-
-        if (sampleOrder.getIsEQASample()) {
-            Patient existingEqaPatient = patientService.getPatientByNationalId("NULL");
-            if (existingEqaPatient != null) {
-                patientInfo.setPatientPK(existingEqaPatient.getId());
-                patientInfo.setPatientUpdateStatus(PatientUpdateStatus.NO_ACTION);
-            }
-        }
-
-        testAndInitializePatientForSaving(request, patientInfo, patientUpdate, updateData);
-
-        // OGC-356: For environmental workflow, don't save patient data
-        if ("environmental".equals(workflowType)) {
-            updateData.setSavePatient(false);
-            updateData.setPatientErrors(new BaseErrors());
-        }
-
-        updateData.setAccessionNumber(sampleOrder.getLabNo());
-        updateData.setReferringId(sampleOrder.getExternalOrderNumber());
-        updateData.setPriority(sampleOrder.getPriority());
-        updateData.initProvider(sampleOrder);
-
-        // initSampleData MUST be called before initProgramQuestions so that the sample
-        // object is loaded (for updates) before we try to load the existing
-        // ProgramSample
-        updateData.initSampleData(form.getSampleXML(), receivedDateForDisplay, trackPayments, sampleOrder);
-
-        // Now that sample is loaded, we can initialize program questions (which needs
-        // sample.id for updates)
-        if (!GenericValidator.isBlankOrNull(sampleOrder.getProgramId())) {
-            updateData.initProgramQuestions(sampleOrder.getProgramId(), sampleOrder.getAdditionalQuestions());
-        }
-
-        updateData.setPatientEmailNotificationTestIds(form.getPatientEmailNotificationTestIds());
-        updateData.setPatientSMSNotificationTestIds(form.getPatientSMSNotificationTestIds());
-        updateData.setProviderEmailNotificationTestIds(form.getProviderEmailNotificationTestIds());
-        updateData.setProviderSMSNotificationTestIds(form.getProviderSMSNotificationTestIds());
-        updateData.setCustomNotificationLogic(form.getCustomNotificationLogic());
-        if (sampleOrder.getIsEQASample()) {
-            updateData.setEqaSample(true);
-            updateData.setEqaProgramId(sampleOrder.getEqaProgramId());
-            updateData.setEqaProviderSampleId(sampleOrder.getEqaProviderSampleId());
-            updateData.setEqaDeadline(sampleOrder.getEqaDeadline());
-            updateData.setEqaPriority(sampleOrder.getEqaPriority());
-        }
-        if (Boolean.valueOf(ConfigurationProperties.getInstance().getPropertyValue(Property.CONTACT_TRACING))) {
-            setContactTracingInfo(updateData, sampleOrder);
-        }
-
-        // For decoupled workflow (orderEntryOnly=true), samples are not required
-        // They will be added in a later step (Collect Sample)
-        boolean requireSampleItems = !form.isOrderEntryOnly();
-
-        updateData.validateSample(result, requireSampleItems);
-
-        // OGC-356: For environmental workflow, ignore patient-related validation errors
-        // Environmental samples don't require patient data (gender, nationalId, etc.)
-        boolean hasNonPatientErrors = result.hasErrors();
-        if (hasNonPatientErrors && "environmental".equals(workflowType)) {
-            // Check if all errors are patient-related
-            List<org.springframework.validation.FieldError> nonPatientErrors = result.getFieldErrors().stream()
-                    .filter(error -> !error.getField().startsWith("patientProperties.")).collect(Collectors.toList());
-            hasNonPatientErrors = !nonPatientErrors.isEmpty();
-        }
-
-        if (hasNonPatientErrors) {
-            saveErrors(result);
-            logger.warn("SamplePatientEntry 400 (validateSample): {}", result.getAllErrors());
-            if (hasDuplicatePatientError(result)) {
-                return ResponseEntity.status(HttpStatus.CONFLICT).body(buildDuplicatePatientErrorBody(result));
-            }
-            return ResponseEntity.badRequest().body(buildErrorBody(result, "Validation failed"));
-        }
-
         // OGC-584: track persistence failure so we can return a proper HTTP
         // status after the catch blocks. `result.hasErrors()` alone isn't
         // reliable because the environmental-workflow path above intentionally
@@ -399,48 +290,49 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
         String persistErrorMessage = null;
 
         try {
-            // Note: persistData now publishes SamplePatientUpdateDataCreatedEvent
-            // internally (inside its @Transactional boundary) so listener
-            // failures roll back the whole save. Don't republish here.
-            samplePatientService.persistData(updateData, patientUpdate, patientInfo, form, request);
+            // The service transaction starts before any managed entity initialization
+            // and includes optional label writes. Never split these calls here again.
+            samplePatientService.saveEntry(form, request, result);
 
-            // OGC-285: persist the technician's chosen label quantities for the
-            // just-saved order. The post-save print dialog (OrderSuccessMessage)
-            // reads these back from GET /api/orders/by-accession/{labNo}/labels —
-            // the legacy BarcodeWorkflowPrintService LabelsSection/PostSavePrintDialog
-            // model that used to be built here is gone.
-            maybePersistLabelRequests(form, updateData, getSysUserId(request));
-
-            if (sampleOrder.getPriority() != null && sampleOrder.getPriority().equals(OrderPriority.STAT)) {
-                List<String> systemUserIds = userRoleService.getUserIdsForRole(Constants.ROLE_RESULTS);
-                Sample statSample = sampleService.getSampleByAccessionNumber(sampleOrder.getLabNo());
-                List<Analysis> analyses = statSample != null ? sampleService.getAnalysis(statSample) : null;
-                String message = MessageUtil.getMessage("notification.order.stat",
-                        AlphanumAccessionValidator.convertAlphaNumLabNumForDisplay(sampleOrder.getLabNo()));
-                StringBuffer sb = new StringBuffer(message);
-                for (String userId : systemUserIds) {
-                    List<Analysis> userAnalyses = userService.filterAnalysesByLabUnitRoles(userId, analyses,
-                            Constants.ROLE_RESULTS);
-                    if (userAnalyses != null && !userAnalyses.isEmpty()) {
-                        List<String> tests = userAnalyses.stream().map(a -> a.getTest().getLocalizedName())
-                                .collect(Collectors.toList());
-                        String testString = String.join(", ", tests);
-                        sb.append(testString);
-                        try {
-                            Notification notification = new Notification();
-                            notification.setMessage(sb.toString());
-                            notification.setUser(systemUserService.getUserById(userId));
-                            notification.setCreatedDate(OffsetDateTime.now());
-                            notification.setReadAt(null);
-                            notificationDAO.save(notification);
-                        } catch (Exception e) {
+            try {
+                if (sampleOrder.getPriority() != null && sampleOrder.getPriority().equals(OrderPriority.STAT)) {
+                    List<String> systemUserIds = userRoleService.getUserIdsForRole(Constants.ROLE_RESULTS);
+                    Sample statSample = sampleService.getSampleByAccessionNumber(sampleOrder.getLabNo());
+                    List<Analysis> analyses = statSample != null ? sampleService.getAnalysis(statSample) : null;
+                    String message = MessageUtil.getMessage("notification.order.stat",
+                            AlphanumAccessionValidator.convertAlphaNumLabNumForDisplay(sampleOrder.getLabNo()));
+                    StringBuffer sb = new StringBuffer(message);
+                    for (String userId : systemUserIds) {
+                        List<Analysis> userAnalyses = userService.filterAnalysesByLabUnitRoles(userId, analyses,
+                                Constants.ROLE_RESULTS);
+                        if (userAnalyses != null && !userAnalyses.isEmpty()) {
+                            List<String> tests = userAnalyses.stream().map(a -> a.getTest().getLocalizedName())
+                                    .collect(Collectors.toList());
+                            String testString = String.join(", ", tests);
+                            sb.append(testString);
+                            try {
+                                Notification notification = new Notification();
+                                notification.setMessage(sb.toString());
+                                notification.setUser(systemUserService.getUserById(userId));
+                                notification.setCreatedDate(OffsetDateTime.now());
+                                notification.setReadAt(null);
+                                notificationDAO.save(notification);
+                            } catch (Exception e) {
+                            }
                         }
                     }
                 }
+            } catch (Exception notificationFailure) {
+                // Best-effort notifications run after the save transaction returns.
+                // They must not turn an already committed entry into a save failure.
+                logger.warn("Entry committed; optional STAT notification could not be completed");
             }
-
-            // String fhir_json = fhirTransformService.CreateFhirFromOESample(updateData,
-            // patientUpdate, patientInfo, form, request);
+        } catch (org.springframework.validation.BindException e) {
+            saveErrors(result);
+            if (hasDuplicatePatientError(result)) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(buildDuplicatePatientErrorBody(result));
+            }
+            return ResponseEntity.badRequest().body(buildErrorBody(result, "Validation failed"));
         } catch (LIMSRuntimeException e) {
             LogEvent.logError("persistData failed with LIMSRuntimeException", e);
             if (e.getCause() instanceof StaleObjectStateException) {
@@ -509,9 +401,8 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
         }
 
         // Belt-and-suspenders: verify the row actually made it to the DB. Guards
-        // against any future silent-failure path that forgets to set
-        // persistFailed. @Transactional on persistData guarantees all-or-nothing,
-        // so if the accession isn't found we know the write rolled back.
+        // against obvious missing-row failures only. This ordinary read is not a
+        // durable submission receipt and cannot prove rollback after a lost response.
         String labNoForVerify = sampleOrder != null ? sampleOrder.getLabNo() : null;
         Sample persistedSample = !GenericValidator.isBlankOrNull(labNoForVerify)
                 ? sampleService.getSampleByAccessionNumber(labNoForVerify)
@@ -522,21 +413,6 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
         }
 
         return ResponseEntity.ok(form);
-    }
-
-    /**
-     * OGC-285 M5b — fire the Order Entry label persistence ONLY when the save body
-     * carried a {@code labelPersistRequest} (i.e. the dynamic LabelsSection was
-     * rendered and edited). This null-guard is the SAFETY contract: every legacy /
-     * decoupled / batch save leaves the field null and is therefore completely
-     * untouched. Positional correlation is handled downstream by
-     * {@link SamplePatientEntryService#persistLabelRequests}.
-     */
-    void maybePersistLabelRequests(SamplePatientEntryForm form, SamplePatientUpdateData updateData, String sysUserId) {
-        if (form.getLabelPersistRequest() == null) {
-            return;
-        }
-        samplePatientService.persistLabelRequests(updateData, form.getLabelPersistRequest(), sysUserId);
     }
 
     private void setupForm(SamplePatientEntryForm form, HttpServletRequest request, String externalOrderNumber)
@@ -601,36 +477,6 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
         }
         if (FormFields.getInstance().useField(FormFields.Field.SampleNature)) {
             form.setSampleNatureList(DisplayListService.getInstance().getList(ListType.SAMPLE_NATURE));
-        }
-    }
-
-    private void setContactTracingInfo(SamplePatientUpdateData updateData, SampleOrderItem sampleOrder) {
-        SampleAdditionalField field;
-        if (!GenericValidator.isBlankOrNull(sampleOrder.getContactTracingIndexName())) {
-            field = new SampleAdditionalField();
-            field.setFieldName(AdditionalFieldName.CONTACT_TRACING_INDEX_NAME);
-            field.setFieldValue(sampleOrder.getContactTracingIndexName());
-            updateData.addSampleField(field);
-        }
-        if (!GenericValidator.isBlankOrNull(sampleOrder.getContactTracingIndexRecordNumber())) {
-            field = new SampleAdditionalField();
-            field.setFieldName(AdditionalFieldName.CONTACT_TRACING_INDEX_RECORD_NUMBER);
-            field.setFieldValue(sampleOrder.getContactTracingIndexRecordNumber());
-            updateData.addSampleField(field);
-        }
-    }
-
-    private void testAndInitializePatientForSaving(HttpServletRequest request, PatientManagementInfo patientInfo,
-            IPatientUpdate patientUpdate, SamplePatientUpdateData updateData)
-            throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
-
-        patientUpdate.setPatientUpdateStatus(patientInfo);
-        updateData.setSavePatient(patientUpdate.getPatientUpdateStatus() != PatientUpdateStatus.NO_ACTION);
-
-        if (updateData.isSavePatient()) {
-            updateData.setPatientErrors(patientUpdate.preparePatientData(request, patientInfo));
-        } else {
-            updateData.setPatientErrors(new BaseErrors());
         }
     }
 
