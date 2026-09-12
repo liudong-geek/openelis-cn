@@ -340,6 +340,9 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
                 return ResponseEntity.status(HttpStatus.CONFLICT).body(buildDuplicatePatientErrorBody(result));
             }
             return ResponseEntity.badRequest().body(buildErrorBody(result, "Validation failed"));
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("success", false, "message",
+                    org.openelisglobal.sample.service.OrderEntryActorGuard.DENIED_MESSAGE));
         } catch (LIMSRuntimeException e) {
             LogEvent.logError("persistData failed with LIMSRuntimeException", e);
             if (e.getCause() instanceof StaleObjectStateException) {

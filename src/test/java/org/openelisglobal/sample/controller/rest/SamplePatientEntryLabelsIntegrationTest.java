@@ -34,6 +34,20 @@ public class SamplePatientEntryLabelsIntegrationTest {
     private MockHttpServletRequest request;
     private SampleService samples;
 
+    @Test
+    public void testSaveEntry_IdentityDenialDoesNotReloadOrClaimSuccess() throws Exception {
+        doThrow(new org.springframework.security.access.AccessDeniedException("SIM-private-account-detail"))
+                .when(service).saveEntry(form, request, errors);
+        var redirects = new RedirectAttributesModelMap();
+        var response = controller.samplePatientEntrySave(request, form, errors, redirects);
+        assertEquals(403, response.getStatusCode().value());
+        var body = (java.util.Map<?, ?>) response.getBody();
+        assertEquals(false, body.get("success"));
+        assertEquals("登录身份或登记权限已变化，请重新登录后再保存。", body.get("message"));
+        assertTrue(redirects.getFlashAttributes().isEmpty());
+        verifyZeroInteractions(samples);
+    }
+
     @Before
     public void setUp() {
         controller = new SamplePatientEntryRestController();

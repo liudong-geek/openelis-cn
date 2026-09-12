@@ -7,6 +7,7 @@ import static org.mockito.Mockito.*;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.After;
 import org.junit.Before;
@@ -17,6 +18,12 @@ import org.openelisglobal.common.util.DefaultConfigurationProperties;
 import org.openelisglobal.common.validator.BaseErrors;
 import org.openelisglobal.labelpreset.dto.OrderLabelPersistRequest;
 import org.openelisglobal.login.valueholder.UserSessionData;
+import org.openelisglobal.login.valueholder.LoginUser;
+import org.openelisglobal.login.service.LoginUserService;
+import org.openelisglobal.systemuser.valueholder.SystemUser;
+import org.openelisglobal.systemuser.service.SystemUserService;
+import org.openelisglobal.userrole.service.UserRoleService;
+import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.patient.action.IPatientUpdate.PatientUpdateStatus;
 import org.openelisglobal.patient.action.bean.PatientManagementInfo;
 import org.openelisglobal.sample.action.util.SamplePatientUpdateData;
@@ -31,6 +38,10 @@ import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.User;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionSystemException;
@@ -43,6 +54,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.validation.BeanPropertyBindingResult;
 import org.springframework.validation.BindException;
 import org.springframework.validation.BindingResult;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 /**
  * Actual entry service and annotated Spring proxy, with SIM memory resources only.
@@ -82,6 +95,7 @@ public class SamplePatientEntryTransactionTest {
         form.setLabelPersistRequest(labels);
         errors = new BeanPropertyBindingResult(form, "form");
         request = new MockHttpServletRequest();
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
         UserSessionData user = mock(UserSessionData.class);
         when(user.getSystemUserId()).thenReturn(7);
         request.getSession().setAttribute(IActionConstants.USER_SESSION_DATA, user);
@@ -131,6 +145,119 @@ public class SamplePatientEntryTransactionTest {
         ReflectionTestUtils.setField(SpringContext.class, "factory", oldFactory);
         ReflectionTestUtils.setField(FormFields.class, "instance", oldFields);
         TransactionSynchronizationManager.clear();
+        SecurityContextHolder.clearContext();
+        RequestContextHolder.resetRequestAttributes();
+    }
+
+    @Test
+    public void testExplicitBatch_SessionWithoutAuthenticatedPrincipalCannotWrite() throws Exception {
+        prepareSpecimens();
+        SecurityContextHolder.clearContext();
+        assertThrows(AccessDeniedException.class, this::save);
+        verify(target, never()).createEntryUpdateData("7");
+        assertRolledBack();
+    }
+
+    @Test
+    public void testExplicitBatch_AuthenticatedUserCannotUseAnotherUsersSession() throws Exception {
+        prepareSpecimens();
+        authenticate("SIM-other-operator");
+        assertThrows(AccessDeniedException.class, this::save);
+        verify(target, never()).createEntryUpdateData("7");
+        assertRolledBack();
+    }
+
+    @Test
+    public void testExplicitBatch_PrincipalChangedDuringSaveRollsBackEverything() throws Exception {
+        prepareSpecimens();
+        doAnswer(call -> {
+            manager.write("SIM-label");
+            authenticate("SIM-other-operator");
+            return List.of();
+        }).when(target).persistLabelRequests(data, labels, "7");
+        assertThrows(AccessDeniedException.class, this::save);
+        assertRolledBack();
+        assertNull(form.getRequestedSpecimens().get(0).getId());
+    }
+
+    private static void authenticate(String login) {
+        var principal = User.withUsername(login).password("SIM-not-a-real-password").roles("RECEPTION").build();
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+    }
+
+    @Test
+    public void testExplicitBatch_OtherSecuritySessionCannotSupplyTestPermissions() throws Exception {
+        prepareSpecimens();
+        var other = User.withUsername("SIM-other-operator").password("SIM-unused").roles("RECEPTION").build();
+        request.getSession().setAttribute("SPRING_SECURITY_CONTEXT",
+                new org.springframework.security.core.context.SecurityContextImpl(
+                        new UsernamePasswordAuthenticationToken(other, null, other.getAuthorities())));
+        assertThrows(AccessDeniedException.class, this::save);
+        verify(target, never()).createEntryUpdateData("7");
+        assertRolledBack();
+    }
+
+    @Test
+    public void testExplicitBatch_OuterTransactionIdentityChangeAfterReturnRollsBack() throws Exception {
+        prepareSpecimens();
+        var outer = new TransactionTemplate(manager);
+        assertThrows(AccessDeniedException.class, () -> outer.execute(status -> {
+            try {
+                save();
+            } catch (Exception failure) {
+                throw new AssertionError(failure);
+            }
+            authenticate("SIM-other-operator");
+            return null;
+        }));
+        verify(specimenRequests).createRequestsForEntry(same(savedSample), anyList(), eq("7"), same(errors));
+        assertRolledBack();
+    }
+
+    @Test
+    public void testExplicitBatch_OeIdentityChangedDuringSaveRollsBack() throws Exception {
+        prepareSpecimens();
+        doAnswer(call -> {
+            manager.write("SIM-label");
+            var changed = new UserSessionData();
+            changed.setSytemUserId(8);
+            request.getSession().setAttribute(IActionConstants.USER_SESSION_DATA, changed);
+            return List.of();
+        }).when(target).persistLabelRequests(data, labels, "7");
+        assertThrows(AccessDeniedException.class, this::save);
+        assertRolledBack();
+        assertNull(form.getRequestedSpecimens().get(0).getId());
+    }
+
+    @Test
+    public void testExplicitBatch_PermissionRequestChangedDuringSaveRollsBack() throws Exception {
+        prepareSpecimens();
+        doAnswer(call -> {
+            manager.write("SIM-label");
+            RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest()));
+            return List.of();
+        }).when(target).persistLabelRequests(data, labels, "7");
+        assertThrows(AccessDeniedException.class, this::save);
+        assertRolledBack();
+        assertNull(form.getRequestedSpecimens().get(0).getId());
+    }
+
+    @Test
+    public void testExplicitBatch_OuterTransactionPermissionRequestChangeRollsBack() throws Exception {
+        prepareSpecimens();
+        var outer = new TransactionTemplate(manager);
+        assertThrows(AccessDeniedException.class, () -> outer.execute(status -> {
+            try {
+                save();
+            } catch (Exception failure) {
+                throw new AssertionError(failure);
+            }
+            RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(new MockHttpServletRequest()));
+            return null;
+        }));
+        verify(specimenRequests).createRequestsForEntry(same(savedSample), anyList(), eq("7"), same(errors));
+        assertRolledBack();
     }
 
     @Test
@@ -437,6 +564,29 @@ public class SamplePatientEntryTransactionTest {
     }
 
     private void prepareSpecimens() throws Exception {
+        authenticate("SIM-entry-operator");
+        request.getSession().setAttribute("SPRING_SECURITY_CONTEXT", SecurityContextHolder.getContext());
+        OrderEntryActorGuard actorGuard = new OrderEntryActorGuard();
+        var users = mock(SystemUserService.class);
+        var logins = mock(LoginUserService.class);
+        var roles = mock(UserRoleService.class);
+        var current = new SystemUser();
+        current.setId("7");
+        current.setLoginName("SIM-entry-operator");
+        current.setIsActive("Y");
+        var account = new LoginUser();
+        account.setLoginName("SIM-entry-operator");
+        account.setSystemUserId(7);
+        account.setAccountDisabled("N");
+        account.setAccountLocked("N");
+        account.setPasswordExpiredDayNo(1);
+        when(users.getMatch("loginName", "SIM-entry-operator")).thenReturn(Optional.of(current));
+        when(logins.getMatch("loginName", "SIM-entry-operator")).thenReturn(Optional.of(account));
+        when(roles.userInRole("7", Constants.ROLE_RECEPTION)).thenReturn(true);
+        ReflectionTestUtils.setField(actorGuard, "systemUserService", users);
+        ReflectionTestUtils.setField(actorGuard, "loginUserService", logins);
+        ReflectionTestUtils.setField(actorGuard, "userRoleService", roles);
+        ReflectionTestUtils.setField(target, "orderEntryActorGuard", actorGuard);
         var first = new SampleTypeRequestDTO();
         first.setTypeOfSampleId("31");
         first.setRequestedQuantity(1.0);

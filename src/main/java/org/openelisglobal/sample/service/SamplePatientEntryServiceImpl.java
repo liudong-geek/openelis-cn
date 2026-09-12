@@ -146,12 +146,16 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
     @Autowired
     private OrderLabelRequestService orderLabelRequestService;
     @Autowired
+    private OrderEntryActorGuard orderEntryActorGuard;
+    @Autowired
     private SampleTypeRequestService sampleTypeRequestService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void saveEntry(SamplePatientEntryForm form, HttpServletRequest request, BindingResult errors)
             throws IllegalAccessException, InvocationTargetException, NoSuchMethodException, BindException {
+        OrderEntryActorGuard.BoundActor boundActor = form.getRequestedSpecimens() == null ? null
+                : orderEntryActorGuard.bind(request);
         SampleOrderItem order = form.getSampleOrderItems();
         boolean environmental = order != null
                 && "environmental".equals(order.getEnvironmentalFieldAsString("workflowType"));
@@ -159,7 +163,7 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
 
         validateFirstEntrySpecimens(form, errors);
 
-        String actor = ControllerUtills.getSysUserId(request);
+        String actor = boundActor == null ? ControllerUtills.getSysUserId(request) : boundActor.userId();
         SamplePatientUpdateData data = createEntryUpdateData(actor);
         String received = order.getReceivedDateForDisplay() + " "
                 + (GenericValidator.isBlankOrNull(order.getReceivedTime()) ? "00:00" : order.getReceivedTime());
@@ -225,6 +229,7 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
             persistLabelRequests(data, form.getLabelPersistRequest(), actor);
         }
         if (savedSpecimens != null) {
+            orderEntryActorGuard.requireUnchanged(request, boundActor);
             form.setRequestedSpecimens(savedSpecimens);
             order.setSampleId(data.getSample().getId());
         }
