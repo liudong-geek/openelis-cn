@@ -1,10 +1,14 @@
 vi.mock("../../utils/Utils", () => ({
   getFromOpenElisServer: vi.fn(),
   postToOpenElisServer: vi.fn(),
+  postToOpenElisServerFullResponse: vi.fn(),
   putToOpenElisServerFullResponse: vi.fn(),
 }));
 import { createRequestsForSamples } from "./sampleTypeRequestApi";
-import { postToOpenElisServer } from "../../utils/Utils";
+import {
+  postToOpenElisServer,
+  postToOpenElisServerFullResponse,
+} from "../../utils/Utils";
 
 const samples = [
   { sampleTypeId: "1", tests: [{ id: "11" }] },
@@ -12,6 +16,17 @@ const samples = [
 ];
 beforeEach(() => {
   postToOpenElisServer.mockReset();
+  postToOpenElisServerFullResponse
+    .mockReset()
+    .mockImplementation((url, input, finish) =>
+      postToOpenElisServer(url, input, (status, body) =>
+        finish({
+          status,
+          json: async () =>
+            typeof body === "string" ? JSON.parse(body) : body,
+        }),
+      ),
+    );
 });
 test("首管发送前失效，不创建任何标本申请", async () => {
   await expect(
@@ -30,7 +45,16 @@ test("第一管在途后申请失效，不继续创建第二管", async () => {
   );
   expect(postToOpenElisServer).toHaveBeenCalledTimes(1);
   allowed = false;
-  callback(201, '{"id":"901"}');
+  callback(201, {
+    id: "901",
+    sampleId: "701",
+    typeOfSampleId: "1",
+    sortOrder: 0,
+    requestedQuantity: 1,
+    requestedTests: "11",
+    requestedPanels: "",
+    status: "REQUESTED",
+  });
   expect((await result).message).toBe("order.progress.requestChanged");
   expect(postToOpenElisServer).toHaveBeenCalledTimes(1);
 });
@@ -39,7 +63,7 @@ test.each([false, true])(
   async (guarded) => {
     postToOpenElisServer.mockImplementation((_url, body, finish) => {
       const data = JSON.parse(body);
-      finish(201, { id: data.typeOfSampleId, sampleId: data.sampleId });
+      finish(201, { ...data, id: data.typeOfSampleId, status: "REQUESTED" });
       finish(201, {});
     });
     const results = await createRequestsForSamples(
@@ -47,7 +71,7 @@ test.each([false, true])(
       samples,
       guarded ? () => true : undefined,
     );
-    expect(results).toEqual([
+    expect(results.map(({ id, sampleId }) => ({ id, sampleId }))).toEqual([
       { id: "1", sampleId: "701" },
       { id: "2", sampleId: "701" },
     ]);

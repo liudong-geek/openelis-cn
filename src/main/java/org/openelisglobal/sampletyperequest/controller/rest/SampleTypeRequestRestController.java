@@ -126,6 +126,13 @@ public class SampleTypeRequestRestController {
             }
 
             Integer requestId = sampleTypeRequestService.insert(sampleTypeRequest);
+            // No usable creation ID means an unknown outcome, never a successful
+            // echo of the input. This does not prove whole-order atomicity.
+            if (requestId == null || requestId <= 0) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(java.util.Map.of("success", false, "code", "WRITE_READBACK_UNCONFIRMED", "errorKey",
+                                "order.save.readbackUnconfirmed", "error", "标本申请保存状态待确认，请勿重复提交。"));
+            }
             sampleTypeRequest.setId(requestId);
 
             LogEvent.logInfo(this.getClass().getSimpleName(), "createRequest",

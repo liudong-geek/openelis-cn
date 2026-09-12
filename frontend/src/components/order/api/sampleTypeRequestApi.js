@@ -7,9 +7,13 @@
 
 import {
   getFromOpenElisServer,
-  postToOpenElisServer,
+  postToOpenElisServerFullResponse,
   putToOpenElisServerFullResponse,
 } from "../../utils/Utils";
+import {
+  unconfirmedRequestReceipt,
+  verifyRequestReceipt,
+} from "./sampleTypeRequestReceipt";
 
 const BASE_URL = "/rest/sample-type-requests";
 
@@ -72,18 +76,31 @@ export const getPendingRequests = (sampleId) => {
  */
 export const createRequest = (request) => {
   return new Promise((resolve, reject) => {
-    postToOpenElisServer(BASE_URL, JSON.stringify(request), (status, body) => {
-      if (status === 200 || status === 201) {
-        try {
-          const data = typeof body === "string" ? JSON.parse(body) : body;
-          resolve(data);
-        } catch (e) {
-          resolve(body);
+    const payload = JSON.stringify(request);
+    const sent = JSON.parse(payload);
+    let callbackAccepted = false;
+    // The status-only adapter's second argument is extraParams, not the body.
+    postToOpenElisServerFullResponse(
+      BASE_URL,
+      payload,
+      async (response, _extra, requestError) => {
+        if (callbackAccepted) return;
+        callbackAccepted = true;
+        if (requestError) {
+          reject(requestError);
+          return;
         }
-      } else {
-        reject(new Error(body || "Failed to create sample type request"));
-      }
-    });
+        if (response?.status === 200 || response?.status === 201) {
+          try {
+            resolve(verifyRequestReceipt(await response.json(), sent));
+          } catch {
+            reject(unconfirmedRequestReceipt());
+          }
+        } else {
+          reject(unconfirmedRequestReceipt());
+        }
+      },
+    );
   });
 };
 
@@ -91,6 +108,8 @@ export const createRequest = (request) => {
  * Create multiple sample type requests at once.
  * @param {string} sampleId - The sample ID
  * @param {Array} sampleTypes - Array of sample type selections
+ * @param {Function} [shouldContinue] - Guards later writes after a request switch.
+ * Already-submitted writes may have committed; this does not roll them back.
  * @returns {Promise<Array>} - Array of created SampleTypeRequestDTO objects
  */
 export const createRequestsForSamples = async (
@@ -99,6 +118,7 @@ export const createRequestsForSamples = async (
   shouldContinue = () => true,
 ) => {
   const results = [];
+  const receiptIds = new Set();
   for (let i = 0; i < sampleTypes.length; i++) {
     if (!shouldContinue()) throw new Error("order.progress.requestChanged");
     const sample = sampleTypes[i];
@@ -113,6 +133,8 @@ export const createRequestsForSamples = async (
     };
     const created = await createRequest(request);
     if (!shouldContinue()) throw new Error("order.progress.requestChanged");
+    if (receiptIds.has(String(created.id))) throw unconfirmedRequestReceipt();
+    receiptIds.add(String(created.id));
     results.push(created);
   }
   return results;
