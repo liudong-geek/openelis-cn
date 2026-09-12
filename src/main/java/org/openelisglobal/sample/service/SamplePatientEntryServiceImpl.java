@@ -173,8 +173,7 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
             persistObservations(updateData);
         }
 
-        request.getSession().setAttribute("lastAccessionNumber", updateData.getAccessionNumber());
-        request.getSession().setAttribute("lastPatientId", updateData.getPatientId());
+        SampleEntrySessionContext.publishAfterCommit(request, updateData.getAccessionNumber(), updateData.getPatientId());
 
         // Publish post-persist event INSIDE this @Transactional method so any
         // listener (e.g. SampleStorageAssignmentListener) runs while this tx
