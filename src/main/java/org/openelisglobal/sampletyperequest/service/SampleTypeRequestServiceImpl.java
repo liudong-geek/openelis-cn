@@ -286,6 +286,14 @@ public class SampleTypeRequestServiceImpl extends AuditableBaseObjectServiceImpl
         if (request == null) {
             throw new IllegalArgumentException("SampleTypeRequest not found: " + requestId);
         }
+        SampleItem sampleItem = sampleItemService.get(sampleItemId);
+        if (sampleItem == null) {
+            throw new IllegalArgumentException("SampleItem not found: " + sampleItemId);
+        }
+
+        if (fulfillmentIdentityConflict(request, requestId, sampleItem, sampleItemId) != null) {
+            throw new IllegalStateException("标本关联的申请、类型或状态不一致，请核对后重试。");
+        }
         if (request.getStatus() == SampleTypeRequest.Status.COLLECTED && request.getSampleItem() != null
                 && sampleItemId.equals(request.getSampleItem().getId())) {
             initializeLazyAssociations(request);
@@ -295,16 +303,37 @@ public class SampleTypeRequestServiceImpl extends AuditableBaseObjectServiceImpl
             throw new IllegalStateException("Cannot fulfill request in status: " + request.getStatus());
         }
 
-        SampleItem sampleItem = sampleItemService.get(sampleItemId);
-        if (sampleItem == null) {
-            throw new IllegalArgumentException("SampleItem not found: " + sampleItemId);
-        }
-
         request.setStatus(SampleTypeRequest.Status.COLLECTED);
         request.setSampleItem(sampleItem);
         update(request);
         initializeLazyAssociations(request);
         return request;
+    }
+
+    /** Identity checks apply to new links AND read-only retries of existing links. */
+    private String fulfillmentIdentityConflict(SampleTypeRequest request, Integer requestId, SampleItem item,
+            String itemId) {
+        if (requestId == null || requestId <= 0 || !requestId.equals(request.getId())
+                || !entryId(itemId) || !itemId.equals(item.getId())) {
+            return "requestChanged";
+        }
+        if (request.getSample() == null || item.getSample() == null
+                || !entryId(request.getSample().getId())
+                || !request.getSample().getId().equals(item.getSample().getId())
+                || request.getTypeOfSample() == null || item.getTypeOfSample() == null
+                || !entryId(request.getTypeOfSample().getId())
+                || !request.getTypeOfSample().getId().equals(item.getTypeOfSample().getId())) {
+            return "sampleMismatch";
+        }
+        if (item.isVoided() || item.isRejected()
+                || (request.getStatus() == SampleTypeRequest.Status.REQUESTED && request.getSampleItem() != null)
+                || (request.getStatus() == SampleTypeRequest.Status.COLLECTED
+                        && (request.getSampleItem() == null || !itemId.equals(request.getSampleItem().getId())))
+                || (request.getStatus() != SampleTypeRequest.Status.REQUESTED
+                        && request.getStatus() != SampleTypeRequest.Status.COLLECTED)) {
+            return "requestChanged";
+        }
+        return null;
     }
 
     @Override
