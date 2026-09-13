@@ -477,6 +477,42 @@ public class BarcodeLabelMaker {
      *
      * @return Stream of all labels that have been generated
      */
+    public ByteArrayOutputStream createLabelsAsStreamStrict() throws DocumentException, IOException {
+        if (labels == null || labels.isEmpty()) {
+            throw new IllegalArgumentException("No labels to render");
+        }
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        Document document = new Document();
+        PdfWriter writer = PdfWriter.getInstance(document, stream);
+        try {
+            document.open();
+            for (Label label : labels) {
+                if (label == null || label.getNumLabels() < 1 || label.getCode() == null || label.getCode().isBlank()
+                        || !Float.isFinite(label.getWidth()) || !Float.isFinite(label.getHeight())
+                        || label.getWidth() <= 0 || label.getHeight() <= 0) {
+                    throw new IllegalArgumentException("Invalid label render data");
+                }
+                // Configuration uses millimetres (barcode.label.helper.text and
+                // label_preset.width_mm/height_mm); PDF coordinates use points.
+                label.pdfWidth = label.getWidth() * 72f / 25.4f;
+                label.pdfHeight = label.getHeight() * 72f / 25.4f;
+                for (int copy = 0; copy < label.getNumLabels(); copy++) {
+                    drawLabel(label, writer, document);
+                }
+            }
+            document.close();
+            writer.close();
+            return stream;
+        } finally {
+            // Close resources on failure, but never return a partial stream or mutate
+            // print counters. The calling transaction owns accounting after success.
+            if (document.isOpen()) {
+                document.close();
+            }
+            writer.close();
+        }
+    }
+
     public ByteArrayOutputStream createLabelsAsStream() {
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         if (labels.isEmpty()) {
