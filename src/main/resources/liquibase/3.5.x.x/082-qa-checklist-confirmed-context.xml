@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+  <changeSet id="3.5.0-082-qa-checklist-confirmed-context" author="local-chinese-edition">
+    <!-- No historical row is backfilled or promoted to a confirmed tube set. -->
+    <addColumn schemaName="clinlims" tableName="sample_qa_checklist">
+      <column name="confirmation_id" type="varchar(36)"/>
+      <column name="confirmed_context_json" type="text"/>
+    </addColumn>
+    <addUniqueConstraint schemaName="clinlims" tableName="sample_qa_checklist"
+        columnNames="confirmation_id" constraintName="uq_qa_checklist_confirmation"/>
+    <!-- Downgrade must first archive confirmation evidence; never automatically discard it. -->
+    <rollback><sql>DO $$ BEGIN RAISE EXCEPTION 'QA confirmation downgrade requires an authorized evidence-preserving migration'; END $$;</sql></rollback>
+  </changeSet>
+</databaseChangeLog>

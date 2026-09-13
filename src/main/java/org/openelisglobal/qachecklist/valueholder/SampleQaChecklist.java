@@ -53,6 +53,28 @@ public class SampleQaChecklist extends BaseObject<Integer> {
     @Column(name = "VERIFIED_DATE")
     private Timestamp verifiedDate;
 
+    @Column(name = "CONFIRMATION_ID", length = 36)
+    private String confirmationId;
+
+    @Column(name = "CONFIRMED_CONTEXT_JSON", columnDefinition = "text")
+    private String confirmedContextJson;
+
+    public String getConfirmationId() {
+        return confirmationId;
+    }
+
+    public void setConfirmationId(String value) {
+        confirmationId = value;
+    }
+
+    public String getConfirmedContextJson() {
+        return confirmedContextJson;
+    }
+
+    public void setConfirmedContextJson(String value) {
+        confirmedContextJson = value;
+    }
+
     @Transient
     private Map<String, Boolean> verifiedItems;
 

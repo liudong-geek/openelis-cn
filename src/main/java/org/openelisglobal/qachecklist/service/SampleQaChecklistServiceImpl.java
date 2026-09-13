@@ -37,6 +37,9 @@ public class SampleQaChecklistServiceImpl extends BaseObjectServiceImpl<SampleQa
     @Autowired
     private QaChecklistPrerequisiteDAO qaChecklistPrerequisiteDAO;
 
+    @Autowired
+    private org.openelisglobal.patient.service.PatientService patientService;
+
     public SampleQaChecklistServiceImpl() {
         super(SampleQaChecklist.class);
     }
@@ -59,7 +62,7 @@ public class SampleQaChecklistServiceImpl extends BaseObjectServiceImpl<SampleQa
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, noRollbackFor = org.openelisglobal.qachecklist.exception.QaChecklistValidationException.class)
     public List<Dictionary> getActiveChecklistItems() {
         // Get all dictionary entries for the QAChecklistItem category
         List<Dictionary> allItems = dictionaryService
@@ -196,6 +199,7 @@ public class SampleQaChecklistServiceImpl extends BaseObjectServiceImpl<SampleQa
         // All validation precedes modifying a managed checklist. A failed check
         // must not leave dirty state in the caller's transaction.
         SampleQaChecklist checklist = sampleQaChecklistDAO.findBySampleId(sampleId);
+        requireValidExistingConfirmation(checklist);
 
         if (checklist == null) {
             checklist = new SampleQaChecklist();
@@ -212,6 +216,9 @@ public class SampleQaChecklistServiceImpl extends BaseObjectServiceImpl<SampleQa
         // Rechecking a mutable checklist is a new action. Without a persisted
         // tube/configuration version, equal ticks cannot prove an old review.
         checklist.setVerifiedItems(normalizedItems);
+        // Compatibility writes are not explicit confirmation of a reviewed tube set.
+        checklist.setConfirmationId(null);
+        checklist.setConfirmedContextJson(null);
         checklist.setAllRequiredVerified(allVerified);
         checklist.setSysUserId(userId.toString());
 
@@ -232,6 +239,127 @@ public class SampleQaChecklistServiceImpl extends BaseObjectServiceImpl<SampleQa
         }
         allRecheck.run();
         return saved;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class, timeout = 45)
+    public Map<String, Object> confirmCurrentChecklist(com.fasterxml.jackson.databind.JsonNode body,
+            jakarta.servlet.http.HttpServletRequest request) {
+        var command = org.openelisglobal.qachecklist.form.QaChecklistConfirmationCommand.parse(body);
+        QaChecklistWriteGuard.requireRequestContext(request);
+        Object sessionData = request.getSession(false)
+                .getAttribute(org.openelisglobal.common.action.IActionConstants.USER_SESSION_DATA);
+        if (!(sessionData instanceof org.openelisglobal.login.valueholder.UserSessionData user)) {
+            throw new org.springframework.security.access.AccessDeniedException("请重新登录后确认标本核对结果。");
+        }
+        Integer actorId = user.getSystemUserId();
+        var preflight = writeGuard.begin(command.sampleId(), actorId);
+        var graph = writeGuard.lockAndVerify(preflight, true);
+        java.util.function.Supplier<QaChecklistFacts.Basis> current = () -> {
+            QaChecklistWriteGuard.requireRequestContext(request);
+            graph.recheck().run();
+            var patient = patientService.get(graph.patientId());
+            if (patient == null || !graph.patientId().equals(patient.getId())) {
+                throw QaChecklistFacts.conflict();
+            }
+            return QaChecklistFacts.capture(graph.sample(), patient, graph.requests(), graph.items(), graph.analyses(),
+                    getActiveChecklistItems(), qaChecklistPrerequisiteDAO.findPrerequisites(command.sampleId()),
+                    writeGuard::statusName);
+        };
+        var basis = current.get();
+        var checks = QaChecklistSnapshot.normalize(getActiveChecklistItems(), command.verifiedItems());
+        if (!checks.equals(command.verifiedItems()) || !checks.values().stream().allMatch(Boolean.TRUE::equals)
+                || !basis.digest().equals(command.expectedFactsDigest())
+                || !basis.specimenIds().equals(command.specimenIds())) {
+            throw rejected(409, "QA_CONFIRMATION_CHANGED", "confirmationChanged", null);
+        }
+        Runnable recheck = () -> {
+            if (!basis.equals(current.get())) {
+                throw rejected(409, "QA_CONFIRMATION_CHANGED", "confirmationChanged", null);
+            }
+        };
+        org.springframework.transaction.support.TransactionSynchronizationManager
+                .registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void beforeCommit(boolean readOnly) {
+                        if (readOnly) {
+                            throw QaChecklistFacts.conflict();
+                        }
+                        recheck.run();
+                    }
+                });
+        var existing = sampleQaChecklistDAO.findBySampleId(command.sampleId());
+        requireValidExistingConfirmation(existing);
+        if (existing != null && !command.sampleId().equals(existing.getSampleId())) {
+            throw QaChecklistFacts.conflict();
+        }
+        if (existing != null && command.confirmationId().equals(existing.getConfirmationId())) {
+            if (!QaChecklistConfirmation.sameRequest(existing, command, basis, actorId)) {
+                throw rejected(409, "QA_CONFIRMATION_REPLAY_CONFLICT", "confirmationChanged", null);
+            }
+            String originalContext = existing.getConfirmedContextJson();
+            org.springframework.transaction.support.TransactionSynchronizationManager
+                    .registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void beforeCommit(boolean readOnly) {
+                            if (!originalContext.equals(existing.getConfirmedContextJson())
+                                    || !QaChecklistConfirmation.sameRequest(existing, command, basis, actorId)) {
+                                throw QaChecklistFacts.conflict();
+                            }
+                        }
+                    });
+            recheck.run();
+            return confirmationAcknowledgement(existing, true);
+        }
+        String version = existing == null ? null : QaChecklistFacts.time(existing.getLastupdated());
+        if (existing != null && version == null
+                || !java.util.Objects.equals(version, command.expectedChecklistVersion())) {
+            throw rejected(409, "QA_CHECKLIST_VERSION_CHANGED", "confirmationChanged", null);
+        }
+        var saved = new SampleQaChecklist();
+        if (existing != null) {
+            org.springframework.beans.BeanUtils.copyProperties(existing, saved);
+        }
+        saved.setSampleId(command.sampleId());
+        saved.setVerifiedItems(new LinkedHashMap<>(checks));
+        saved.setAllRequiredVerified(true);
+        saved.setVerifiedByUserId(actorId);
+        saved.setVerifiedDate(new Timestamp(System.currentTimeMillis()));
+        saved.setSysUserId(actorId.toString());
+        saved.setConfirmationId(command.confirmationId());
+        saved.setConfirmedContextJson(QaChecklistConfirmation.encode(command, basis, saved));
+        String expectedContext = saved.getConfirmedContextJson();
+        var result = save(saved);
+        if (result == null || !expectedContext.equals(result.getConfirmedContextJson())
+                || !QaChecklistConfirmation.sameRequest(result, command, basis, actorId)) {
+            throw QaChecklistFacts.conflict();
+        }
+        // An outer transaction must not mutate this confirmation after returning.
+        org.springframework.transaction.support.TransactionSynchronizationManager
+                .registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization() {
+                    @Override
+                    public void beforeCommit(boolean readOnly) {
+                        if (!expectedContext.equals(result.getConfirmedContextJson())
+                                || !QaChecklistConfirmation.sameRequest(result, command, basis, actorId)) {
+                            throw QaChecklistFacts.conflict();
+                        }
+                    }
+                });
+        recheck.run();
+        return confirmationAcknowledgement(result, false);
+    }
+
+    private Map<String, Object> confirmationAcknowledgement(SampleQaChecklist row, boolean replayed) {
+        return Map.of("sampleId", row.getSampleId().toString(), "confirmationId", row.getConfirmationId(), "scope",
+                QaChecklistFacts.SCOPE, "replayed", replayed, "readbackRequired", true, "currentAcceptanceVerified",
+                false);
+    }
+
+    private void requireValidExistingConfirmation(SampleQaChecklist row) {
+        if (row != null && (row.getConfirmationId() != null || row.getConfirmedContextJson() != null)
+                && QaChecklistConfirmation.validated(row) == null) {
+            throw rejected(409, "QA_CONFIRMATION_STORED_INVALID", "confirmationStoredInvalid", null);
+        }
     }
 
     @Override

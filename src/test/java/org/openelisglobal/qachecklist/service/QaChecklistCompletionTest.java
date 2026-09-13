@@ -640,6 +640,22 @@ public class QaChecklistCompletionTest {
         rejects(this::save);
     }
 
+    @Test
+    public void aDifferentButValidReceiptTimeCannotReplaceTheReviewedFacts() {
+        afterSave = () -> items.get(0).setReceivedDate(time("2026-09-01T03:00:00.123456Z"));
+        rejects(this::save);
+    }
+
+    @Test
+    public void aDifferentCollectorCannotReplaceTheReviewedFactsAtOuterCommit() {
+        var template = new TransactionTemplate(transactions);
+        rejects(() -> template.execute(status -> {
+            save();
+            items.get(0).setCollector("SIM-other-collector");
+            return null;
+        }));
+    }
+
     public class CapturingService extends SampleQaChecklistServiceImpl {
         @Override
         public SampleQaChecklist save(SampleQaChecklist row) {
@@ -649,8 +665,10 @@ public class QaChecklistCompletionTest {
         }
     }
 
-    private class MemoryTransactions extends AbstractPlatformTransactionManager {
+    private class MemoryTransactions extends AbstractPlatformTransactionManager
+            implements org.springframework.transaction.support.SmartTransactionObject {
         private boolean active, failCommit;
+        private boolean rollbackOnly;
         private int commits, rollbacks;
 
         @Override
@@ -683,11 +701,22 @@ public class QaChecklistCompletionTest {
 
         @Override
         protected void doSetRollbackOnly(DefaultTransactionStatus status) {
+            rollbackOnly = true;
+        }
+
+        @Override
+        public boolean isRollbackOnly() {
+            return rollbackOnly;
+        }
+
+        @Override
+        public void flush() {
         }
 
         @Override
         protected void doCleanupAfterCompletion(Object tx) {
             active = false;
+            rollbackOnly = false;
         }
     }
 }

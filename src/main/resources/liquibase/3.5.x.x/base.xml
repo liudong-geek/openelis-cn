@@ -205,4 +205,5 @@
   <include relativeToChangelogFile="true" file="079-fhir-clinical-order-intake.xml"/>
 
   <include relativeToChangelogFile="true" file="081-entry-submission-receipt.xml"/>
+  <include relativeToChangelogFile="true" file="082-qa-checklist-confirmed-context.xml"/>
 </databaseChangeLog>

@@ -69,6 +69,19 @@ public class QaChecklistWriteGuard {
     }
 
     public Runnable verify(Preflight preflight, boolean complete) {
+        return lockAndVerify(preflight, complete).recheck();
+    }
+
+    record LockedGraph(org.openelisglobal.sample.valueholder.Sample sample, String patientId,
+            List<SampleTypeRequest> requests, List<SampleItem> items,
+            List<org.openelisglobal.analysis.valueholder.Analysis> analyses, Runnable recheck) {
+    }
+
+    String statusName(String id, String type) {
+        return specimens.statusName(id, type);
+    }
+
+    LockedGraph lockAndVerify(Preflight preflight, boolean complete) {
         var request = preflight.request();
         var actor = preflight.actor();
         actors.requireUnchanged(request, actor);
@@ -194,7 +207,14 @@ public class QaChecklistWriteGuard {
             requirePermission(actor.userId(), permissionTests);
         };
         recheck.run();
-        return recheck;
+        String frozen = QaChecklistFacts.graph(sample, requests, items, analyses);
+        Runnable exactRecheck = () -> {
+            recheck.run();
+            if (!frozen.equals(QaChecklistFacts.graph(sample, requests, items, analyses))) {
+                throw conflict();
+            }
+        };
+        return new LockedGraph(sample, patients.get(0), requests, items, analyses, exactRecheck);
     }
 
     private void requirePermission(String userId, Set<String> tests) {

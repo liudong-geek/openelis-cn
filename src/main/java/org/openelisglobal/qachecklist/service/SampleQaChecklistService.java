@@ -53,6 +53,9 @@ public interface SampleQaChecklistService extends BaseObjectService<SampleQaChec
     SampleQaChecklist saveFromRequest(Integer sampleId, String labNumber, Map<String, Boolean> verifiedItems,
             Integer userId, jakarta.servlet.http.HttpServletRequest request);
 
+    Map<String, Object> confirmCurrentChecklist(com.fasterxml.jackson.databind.JsonNode command,
+            jakarta.servlet.http.HttpServletRequest request);
+
     /**
      * Check if all active checklist items are verified for a sample.
      *
