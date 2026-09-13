@@ -1,0 +1,87 @@
+.recovered-label-panel.cds--tile {
+  background: #fff;
+  border: 1px solid #dce3ed;
+  border-radius: 8px;
+  padding: 1.25rem;
+  min-width: 0;
+  h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+  .section-description,
+  .helper-text {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: #526175;
+    margin: 0.5rem 0 1rem;
+  }
+  .recovered-label-table {
+    overflow-x: auto;
+    max-width: 100%;
+  }
+  .label-generation-table {
+    table-layout: fixed;
+    min-width: 640px;
+    width: 100%;
+    .label-identity-column {
+      width: 28%;
+    }
+    .label-quantity-column {
+      width: 14%;
+    }
+    .label-receipt-column {
+      width: 26%;
+    }
+    .label-verification-column {
+      width: 32%;
+    }
+    th,
+    td {
+      white-space: normal;
+      vertical-align: middle;
+      padding: 0.75rem;
+      overflow-wrap: anywhere;
+    }
+    code {
+      display: block;
+      margin-top: 0.5rem;
+      font-size: 0.8125rem;
+    }
+    .cds--number {
+      min-width: 0;
+      width: 100%;
+    }
+    .cds--number input[type="number"] {
+      min-width: 0;
+      width: 100%;
+      padding: 0.5rem;
+      padding-inline: 0.5rem;
+    }
+    .label-receipt-cell .cds--btn {
+      display: flex;
+    }
+    .cds--checkbox-label-text {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+  }
+  .print-all-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+  .cds--inline-notification {
+    max-width: 100%;
+    margin: 0.75rem 0;
+  }
+  @media (max-width: 850px) {
+    padding: 1rem;
+    .print-all-actions {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  }
+}

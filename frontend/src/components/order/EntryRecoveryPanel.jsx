@@ -11,6 +11,7 @@ import { useIntl } from "react-intl";
 import { useOrderContext } from "./OrderContext";
 import EntryCurrentSummary from "./EntryCurrentSummary";
 import RecoveredCollectionEditor from "./RecoveredCollectionEditor";
+import OrderLabelPrintPanel from "./OrderLabelPrintPanel";
 
 // Kept outside the locked clinical form: recovery is an explicit authorized
 // read, not another Save button. A receipt never silently replaces a draft.
@@ -23,6 +24,7 @@ export default function EntryRecoveryPanel() {
     queryCurrentEntryRecovery,
     isRecoveryCurrent,
     isSubmitting,
+    prepareRecoveredLabels,
   } = context;
   const [expanded, setExpanded] = useState(false);
   const [code, setCode] = useState("");
@@ -31,6 +33,8 @@ export default function EntryRecoveryPanel() {
   const [error, setError] = useState(null);
   const [collectionSaved, setCollectionSaved] = useState(false);
   const [collectionDraft, setCollectionDraft] = useState(null);
+  const [labelOperation, setLabelOperation] = useState(null);
+  const [labelError, setLabelError] = useState(null);
   const active = useRef(null);
   useEffect(() => () => active.current?.abort(), []);
   const t = (id) => intl.formatMessage({ id });
@@ -46,6 +50,8 @@ export default function EntryRecoveryPanel() {
     setBusy(true);
     setError(null);
     setReceipt(null);
+    setLabelOperation(null);
+    setLabelError(null);
     setCollectionSaved(false);
     setCollectionDraft(
       draft?.rows && Array.isArray(draft?.current) ? draft : null,
@@ -103,6 +109,7 @@ export default function EntryRecoveryPanel() {
           onChange={(event) => {
             setCode(event.target.value);
             setReceipt(null);
+            setLabelOperation(null);
             setCollectionSaved(false);
             setError(null);
           }}
@@ -133,10 +140,50 @@ export default function EntryRecoveryPanel() {
               onReview={query}
               onSaved={(next) => {
                 setReceipt(next);
+                setLabelOperation(null);
                 setCollectionSaved(true);
               }}
             />
           ))}
+        {visibleReceipt && prepareRecoveredLabels && (
+          <>
+            {!labelOperation && (
+              <Button
+                kind="tertiary"
+                disabled={busy || isSubmitting}
+                onClick={() => {
+                  try {
+                    setLabelOperation(prepareRecoveredLabels(visibleReceipt));
+                    setLabelError(null);
+                  } catch (failure) {
+                    setLabelError(failure.code || "STALE");
+                  }
+                }}
+              >
+                {t("order.labels.open")}
+              </Button>
+            )}
+            {labelError && (
+              <InlineNotification
+                kind="warning"
+                hideCloseButton
+                title={t(
+                  {
+                    UNSUPPORTED: "order.labels.unsupported",
+                    NO_COLLECTED: "order.labels.noCollected",
+                    INVALID_CURRENT: "order.labels.invalid",
+                  }[labelError] || "order.labels.stale",
+                )}
+              />
+            )}
+            {labelOperation && (
+              <OrderLabelPrintPanel
+                {...labelOperation}
+                operation={labelOperation}
+              />
+            )}
+          </>
+        )}
       </Stack>
     </Tile>
   );

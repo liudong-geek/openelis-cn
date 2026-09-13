@@ -32,6 +32,9 @@ import {
 } from "./orderEntryRecovery";
 import { isEntryInputRejection } from "./orderEntryReceipt";
 import { recoverCurrentEntrySubmission } from "./orderEntryCurrent";
+import { recoveredLabelIdentity, labelSessionReady } from "./recoveredLabels";
+import { generateOrderLabels } from "./api/orderLabelApi";
+import { hasPendingLabels, labelFailure } from "./labelCheckpoint";
 import { buildRecoveredCollection, collectionRecoveryOptions, submitRecoveredCollection, verifyRecoveredCollection, freezeCollectionAttempt } from "./collectionRecovery";
 import { postRecoveredCollection } from "./collectionTransport";
 import { readCollectionCheckpoint, rememberCollectionCheckpoint, reconcileCollectionCheckpoint, forgetCollectionCheckpoint } from "./collectionCheckpoint";
@@ -320,9 +323,13 @@ export const OrderProvider = ({ children }) => {
   const [entryRecovery, setEntryRecovery] = useState(readEntryCheckpoint);
   const recoveredEntry = useRef(null);
   const activeRecoveredCollection = useRef(null);
+  const activeRecoveredLabels = useRef(null);
+  const recoveredLabelOperation = useRef(null);
+  // Latch interruption during rendering too: a later return to the same account
+  // must not revive a PDF or operation from before a failed session check.
+  recoveredLabelOperation.current?.isCurrent();
   const pendingRecoveredCollection = useRef(null);
   const recoverySequence = useRef(0);
-
   const [labNumber, setLabNumber] = useState(null);
   const [orderData, setOrderDataState] = useState(getInitialOrderData);
   const [samples, setSamplesState] = useState([sampleObject]);
@@ -394,7 +401,7 @@ export const OrderProvider = ({ children }) => {
       ) {
         throw new Error("order.progress.requestChanged");
       }
-      if (activeSave.current || activeRecoveredCollection.current) throw new Error("order.progress.saveInProgress");
+      if (activeSave.current || activeRecoveredCollection.current || activeRecoveredLabels.current) throw new Error("order.progress.saveInProgress");
       if (readCollectionCheckpoint()) throw entrySubmissionError("order.collectionRecovery.unknown");
       const recovery = readEntryCheckpoint();
       if (recovery.error) throw entrySubmissionError(recovery.error);
@@ -695,7 +702,7 @@ export const OrderProvider = ({ children }) => {
   );
   const queryEntryRecovery = useCallback(
     async (code, signal, currentState = false) => {
-      if (activeSave.current || activeLoad.current || activeRecoveredCollection.current)
+      if (activeSave.current || activeLoad.current || activeRecoveredCollection.current || activeRecoveredLabels.current)
         throw entrySubmissionError("order.progress.saveInProgress");
       const identity = readSessionIdentity(latestSessionContext.current);
       const generation = readSessionCheckGeneration(
@@ -769,7 +776,7 @@ export const OrderProvider = ({ children }) => {
   // command. It never fills or unlocks the legacy editable order form.
   const adoptRecoveredCollection = useCallback((visible) => {
     const record = recoveredEntry.current;
-    if (!record?.result || !record.isCurrent() || record.used || activeRecoveredCollection.current || readCollectionCheckpoint() ||
+    if (!record?.result || !record.isCurrent() || record.used || activeRecoveredCollection.current || activeRecoveredLabels.current || readCollectionCheckpoint() ||
         JSON.stringify(visible) !== JSON.stringify(record.result) || !collectionRecoveryOptions(record.result).length)
       throw entrySubmissionError("order.collectionRecovery.requery");
     record.adopted = true;
@@ -778,7 +785,7 @@ export const OrderProvider = ({ children }) => {
 
   const saveRecoveredCollection = useCallback(async (visible, selections) => {
     const record = recoveredEntry.current;
-    if (!record?.adopted || record.used || !record.isCurrent() || activeRecoveredCollection.current || readCollectionCheckpoint() ||
+    if (!record?.adopted || record.used || !record.isCurrent() || activeRecoveredCollection.current || activeRecoveredLabels.current || readCollectionCheckpoint() ||
         JSON.stringify(visible) !== JSON.stringify(record.result))
       throw entrySubmissionError("order.collectionRecovery.requery");
     const command = buildRecoveredCollection(record.result, selections);
@@ -834,6 +841,51 @@ export const OrderProvider = ({ children }) => {
         if (isMounted.current) setIsSubmitting(false);
       }
     }
+  }, []);
+
+  const prepareRecoveredLabels = useCallback((visible) => {
+    const record = recoveredEntry.current;
+    if (!record?.result || !record.isCurrent() || activeRecoveredCollection.current || activeRecoveredLabels.current ||
+        readCollectionCheckpoint() || !labelSessionReady(latestSessionContext.current) ||
+        JSON.stringify(visible) !== JSON.stringify(record.result)) throw labelFailure("STALE");
+    const identity = recoveredLabelIdentity(record.result);
+    const snapshot = JSON.stringify(record.result);
+    const barcodes = Object.fromEntries(identity.samples.map(tube =>
+      [`specimen:${tube.sampleItemId}`, `${identity.labNumber}.${tube.sortOrder}`]));
+    barcodes["order:"] = identity.labNumber;
+    let valid = true;
+    const capability = {
+      ...identity,
+      invalidate: () => { valid = false; },
+      isCurrent: () => {
+        valid = valid && recoveredLabelOperation.current === capability && recoveredEntry.current === record && record.isCurrent() &&
+          JSON.stringify(record.result) === snapshot && !activeRecoveredCollection.current &&
+          labelSessionReady(latestSessionContext.current);
+        return valid;
+      },
+      generate: async (request) => {
+        if (!capability.isCurrent() || recoveredLabelOperation.current !== capability || activeRecoveredLabels.current ||
+            hasPendingLabels() || request?.orderId !== identity.orderId || request?.labNumber !== identity.labNumber)
+          throw labelFailure(hasPendingLabels() ? "UNCONFIRMED" : "STALE");
+        const operation = {};
+        activeRecoveredLabels.current = operation;
+        setIsSubmitting(true);
+        try {
+          return await generateOrderLabels(request, {
+            barcodes,
+            csrf: latestSessionContext.current.userSessionDetails?.csrf,
+            isCurrent: () => capability.isCurrent(),
+          });
+        } finally {
+          if (activeRecoveredLabels.current === operation) {
+            activeRecoveredLabels.current = null;
+            if (isMounted.current) setIsSubmitting(false);
+          }
+        }
+      },
+    };
+    recoveredLabelOperation.current = capability;
+    return capability;
   }, []);
 
   /**
@@ -975,6 +1027,7 @@ export const OrderProvider = ({ children }) => {
    */
   const saveOrder = useCallback(
     async (silent = false, orderEntryOnly = false) => {
+      if (activeRecoveredLabels.current) throw entrySubmissionError("order.progress.saveInProgress");
       if (isReadOnly && !isEditMode) {
         return Promise.reject(new Error("Cannot save in read-only mode"));
       }
@@ -1170,6 +1223,7 @@ export const OrderProvider = ({ children }) => {
    */
   const saveOrderEntry = useCallback(
     async (silent = false, labNumberOverride = null) => {
+      if (activeRecoveredLabels.current) throw entrySubmissionError("order.progress.saveInProgress");
       assertSessionWrite(draftSessionIdentity.current);
       if (isReadOnly && !isEditMode) {
         return Promise.reject(new Error("Cannot save in read-only mode"));
@@ -1724,6 +1778,7 @@ export const OrderProvider = ({ children }) => {
     adoptRecoveredCollection,
     saveRecoveredCollection,
     isRecoveryCurrent: () => recoveredEntry.current?.isCurrent() === true,
+    prepareRecoveredLabels,
     isDirty,
     error,
     stepProgress,
