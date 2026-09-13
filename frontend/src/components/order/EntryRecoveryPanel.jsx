@@ -13,6 +13,7 @@ import EntryCurrentSummary from "./EntryCurrentSummary";
 import RecoveredCollectionEditor from "./RecoveredCollectionEditor";
 import OrderLabelPrintPanel from "./OrderLabelPrintPanel";
 import RecoveredReceiptEditor from "./RecoveredReceiptEditor";
+import RecoveredQaReview from "./RecoveredQaReview";
 
 // Kept outside the locked clinical form: recovery is an explicit authorized
 // read, not another Save button. A receipt never silently replaces a draft.
@@ -23,6 +24,7 @@ export default function EntryRecoveryPanel() {
     entryRecovery,
     collectionRecovery,
     receiptRecovery,
+    qaRecovery,
     queryCurrentEntryRecovery,
     isRecoveryCurrent,
     isSubmitting,
@@ -45,7 +47,8 @@ export default function EntryRecoveryPanel() {
   const pending =
     entryRecovery?.checkpoint ||
     collectionRecovery?.checkpoint ||
-    receiptRecovery?.checkpoint;
+    receiptRecovery?.checkpoint ||
+    qaRecovery?.checkpoint;
   const visibleReceipt = receipt && isRecoveryCurrent?.() ? receipt : null;
   const lookupCode = pending?.submissionId || code.trim();
   const query = async (draft = null) => {
@@ -81,7 +84,8 @@ export default function EntryRecoveryPanel() {
     !expanded &&
     !entryRecovery?.error &&
     !collectionRecovery?.error &&
-    !receiptRecovery?.error
+    !receiptRecovery?.error &&
+    !qaRecovery?.error
   )
     return (
       <Button kind="ghost" size="sm" onClick={() => setExpanded(true)}>
@@ -93,6 +97,13 @@ export default function EntryRecoveryPanel() {
       <Stack gap={4}>
         <h4>{t("order.recovery.currentTitle")}</h4>
         <p>{t("order.recovery.help")}</p>
+        {(qaRecovery?.checkpoint || qaRecovery?.error) && (
+          <InlineNotification
+            kind="warning"
+            hideCloseButton
+            title={t("order.qaReview.unknown")}
+          />
+        )}
         {(receiptRecovery?.checkpoint || receiptRecovery?.error) && (
           <InlineNotification
             kind="warning"
@@ -141,6 +152,15 @@ export default function EntryRecoveryPanel() {
           <InlineNotification kind="warning" hideCloseButton title={t(error)} />
         )}
         {visibleReceipt && <EntryCurrentSummary result={visibleReceipt} />}
+        {visibleReceipt && (
+          <RecoveredQaReview
+            result={visibleReceipt}
+            onSaved={(next) => {
+              setReceipt(next);
+              setLabelOperation(null);
+            }}
+          />
+        )}
         {visibleReceipt &&
           (receiptSaved ? (
             <InlineNotification

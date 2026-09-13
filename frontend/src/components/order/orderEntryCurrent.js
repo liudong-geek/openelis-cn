@@ -1,5 +1,6 @@
 import { entrySubmissionError, validOrderId } from "./orderEntryReceipt";
 import { verifyCollectionContext } from "./collectionRecovery";
+import { verifyQaReview } from "./qaConfirmation";
 import {
   recoverEntrySubmission,
   verifyRecoveredEntryReceipt,
@@ -219,6 +220,8 @@ export const verifyCurrentEntry = (data, reference, command) => {
       ),
     })),
   };
+  const qaReview = verifyQaReview(c.qaReview, facts);
+  if (qaReview !== undefined) facts.qaReview = qaReview;
   return JSON.parse(JSON.stringify({ receipt, current: facts }));
 };
 

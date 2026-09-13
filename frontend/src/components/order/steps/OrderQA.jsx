@@ -52,6 +52,7 @@ const OrderQA = () => {
     resetOrder,
     labNumber,
     markStepComplete,
+    runLegacyQaWrite,
   } = useOrderContext();
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
@@ -123,22 +124,24 @@ const OrderQA = () => {
       return Promise.resolve();
     }
 
-    return new Promise((resolve, reject) => {
-      postToOpenElisServerJsonResponse(
-        "/rest/qa-checklist",
-        JSON.stringify({
-          labNumber: displayLabNumber,
-          verifiedItems: verifiedItems,
-        }),
-        (response) => {
-          if (response && response.success) {
-            resolve(response);
-          } else {
-            reject(new Error(response?.error || "Failed to save checklist"));
-          }
-        },
-      );
-    });
+    const write = () =>
+      new Promise((resolve, reject) => {
+        postToOpenElisServerJsonResponse(
+          "/rest/qa-checklist",
+          JSON.stringify({
+            labNumber: displayLabNumber,
+            verifiedItems: verifiedItems,
+          }),
+          (response) => {
+            if (response && response.success) {
+              resolve(response);
+            } else {
+              reject(new Error(response?.error || "Failed to save checklist"));
+            }
+          },
+        );
+      });
+    return runLegacyQaWrite ? runLegacyQaWrite(write) : write();
   };
 
   const handleSave = async () => {
