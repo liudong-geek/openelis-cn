@@ -77,6 +77,9 @@ public class SamplePatientEntryTransactionTest {
     private SampleService samples;
     private SampleTypeRequestService specimenRequests;
     private Sample savedSample;
+    private EntrySubmissionService submissionService;
+    private org.openelisglobal.sample.dao.EntrySubmissionReceiptDAO submissionReceipts;
+    private EntrySubmissionCommand submissionCommand;
 
     @Before
     public void setUp() throws Exception {
@@ -557,6 +560,116 @@ public class SamplePatientEntryTransactionTest {
         assertEquals(1, manager.commits);
     }
 
+    @Test
+    public void receiptAndRealEntryUseOneTransaction() throws Exception {
+        prepareSubmission();
+        var result = submitEntry();
+        assertEquals("301", result.receipt().path("sampleId").asText());
+        assertEquals(1, manager.commits);
+        assertEquals(List.of("SIM-receipt-claim", "SIM-initialized", "SIM-order-record", "SIM-order",
+                "SIM-tube-1", "SIM-tube-2", "SIM-label", "SIM-receipt-complete"), manager.committed);
+        assertEquals("SIM-ENTRY", request.getSession().getAttribute("lastAccessionNumber"));
+    }
+
+    @Test
+    public void receiptCompletionFailureRollsBackActualEntryAndTubes() throws Exception {
+        prepareSubmission();
+        doThrow(new IllegalStateException("SIM receipt flush failure")).when(submissionReceipts).complete(any(), any());
+        assertThrows(IllegalStateException.class, this::submitEntry);
+        verify(target).persistLabelRequests(data, labels, "7");
+        assertRolledBack();
+    }
+
+    @Test
+    public void missingActualTubeReadbackRollsBackEntryAndClaim() throws Exception {
+        prepareSubmission();
+        when(specimenRequests.getRequestsBySampleId("301")).thenReturn(List.of());
+        assertThrows(org.openelisglobal.sample.exception.EntrySubmissionException.class, this::submitEntry);
+        verify(submissionReceipts, never()).complete(any(), any()); assertRolledBack();
+    }
+
+    @Test
+    public void claimConflictCannotInitializeActualEntry() throws Exception {
+        prepareSubmission();
+        doThrow(new IllegalStateException("SIM unique conflict")).when(submissionReceipts).claim(any());
+        assertThrows(IllegalStateException.class, this::submitEntry);
+        verify(target, never()).createEntryUpdateData(anyString()); assertRolledBack();
+    }
+
+    @Test
+    public void actualLabelFailureAlsoRollsBackClaim() throws Exception {
+        prepareSubmission();
+        doThrow(new IllegalStateException("SIM label failure")).when(target).persistLabelRequests(data, labels, "7");
+        assertThrows(IllegalStateException.class, this::submitEntry);
+        verify(submissionReceipts, never()).complete(any(), any()); assertRolledBack();
+    }
+
+    @Test
+    public void actorChangesAfterReceiptReturnAbortOuterCommit() throws Exception {
+        prepareSubmission();
+        assertThrows(AccessDeniedException.class, () -> new TransactionTemplate(manager).execute(status -> {
+            try { submitEntry(); } catch (Exception error) { throw new AssertionError(error); }
+            authenticate("SIM-other-operator"); return null;
+        }));
+        assertRolledBack();
+    }
+
+    private EntrySubmissionService.Result submitEntry() throws Exception {
+        return submissionService.submit(submissionCommand, form, request, errors);
+    }
+
+    private void prepareSubmission() throws Exception {
+        prepareSpecimens();
+        form.getPatientProperties().setPatientPK("501");
+        form.getPatientProperties().setPatientUpdateStatus(PatientUpdateStatus.NO_ACTION);
+        var patient = new org.openelisglobal.patient.valueholder.Patient(); patient.setId("501");
+        when(samples.get("301")).thenReturn(savedSample); when(samples.getPatient(savedSample)).thenReturn(patient);
+        var rows = new ArrayList<org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest>();
+        for (int index = 0; index < 2; index++) {
+            var row = new org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest();
+            row.setId(701 + index); row.setSortOrder(index); row.setSample(savedSample);
+            var type = new org.openelisglobal.typeofsample.valueholder.TypeOfSample(); type.setId("31");
+            row.setTypeOfSample(type); row.setRequestedTests("41"); rows.add(row);
+        }
+        when(specimenRequests.getRequestsBySampleId("301")).thenReturn(rows);
+        when(specimenRequests.createRequestsForEntry(same(savedSample), anyList(), eq("7"), same(errors)))
+                .thenAnswer(call -> {
+                    manager.write("SIM-tube-1"); manager.write("SIM-tube-2");
+                    List<SampleTypeRequestDTO> result = new ArrayList<>();
+                    for (var row : rows) {
+                        var dto = new SampleTypeRequestDTO(); dto.setId(row.getId().toString());
+                        dto.setSampleId("301"); dto.setTypeOfSampleId("31"); dto.setSortOrder(row.getSortOrder());
+                        dto.setRequestedQuantity(1.0); dto.setRequestedTests("41"); dto.setStatus("REQUESTED");
+                        result.add(dto);
+                    }
+                    return result;
+                });
+        var coordinator = new EntrySubmissionService();
+        submissionReceipts = mock(org.openelisglobal.sample.dao.EntrySubmissionReceiptDAO.class);
+        doAnswer(call -> { manager.write("SIM-receipt-claim"); return null; }).when(submissionReceipts).claim(any());
+        doAnswer(call -> {
+            manager.write("SIM-receipt-complete");
+            ((org.openelisglobal.sample.valueholder.EntrySubmissionReceipt) call.getArgument(0)).complete(call.getArgument(1));
+            return null;
+        }).when(submissionReceipts).complete(any(), any());
+        ReflectionTestUtils.setField(coordinator, "receipts", submissionReceipts);
+        ReflectionTestUtils.setField(coordinator, "actors", ReflectionTestUtils.getField(target, "orderEntryActorGuard"));
+        ReflectionTestUtils.setField(coordinator, "entries", service);
+        ReflectionTestUtils.setField(coordinator, "samples", samples);
+        ReflectionTestUtils.setField(coordinator, "specimenRequests", specimenRequests);
+        ReflectionTestUtils.setField(coordinator, "validator", mock(org.openelisglobal.sample.validator.SamplePatientEntryFormValidator.class));
+        var labelDao = mock(org.openelisglobal.labelpreset.dao.OrderLabelRequestDAO.class);
+        when(labelDao.listByParentSampleId("301")).thenReturn(List.of());
+        ReflectionTestUtils.setField(coordinator, "labels", labelDao);
+        var proxy = new ProxyFactory(coordinator);
+        proxy.addAdvice(new TransactionInterceptor(manager, new AnnotationTransactionAttributeSource()));
+        submissionService = (EntrySubmissionService) proxy.getProxy();
+        String key = "f3cdcd87-a1ef-4e67-b297-b26af08a36fc";
+        request.addHeader(EntrySubmissionCommand.HEADER, key);
+        submissionCommand = new EntrySubmissionCommand(key, EntrySubmissionCommand.fingerprint(new byte[] {1, 2}), form);
+        request.setAttribute(EntrySubmissionCommand.ATTRIBUTE, submissionCommand);
+    }
+
     private void assertBatchRejectedBeforeInitialization() {
         assertThrows(BindException.class, this::save);
         verify(target, never()).createEntryUpdateData("7");
@@ -649,13 +762,19 @@ public class SamplePatientEntryTransactionTest {
         return form;
     }
 
-    private static class MemoryTransactionManager extends AbstractPlatformTransactionManager {
+    private static class MemoryTransactionManager extends AbstractPlatformTransactionManager
+            implements org.springframework.transaction.support.SmartTransactionObject {
         private final List<String> pending = new ArrayList<>();
         private final List<String> committed = new ArrayList<>();
         private int commits;
         private int rollbacks;
         private boolean active;
         private boolean failCommit;
+        private boolean rollbackOnly;
+
+        @Override public boolean isRollbackOnly() { return rollbackOnly; }
+        @Override public void flush() { }
+        @Override protected void doSetRollbackOnly(DefaultTransactionStatus status) { rollbackOnly = true; }
 
         void write(String value) {
             assertTrue("write outside transaction", active);
@@ -675,6 +794,7 @@ public class SamplePatientEntryTransactionTest {
         @Override
         protected void doBegin(Object value, TransactionDefinition definition) {
             active = true;
+            rollbackOnly = false;
             pending.clear();
         }
 

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+  <changeSet id="3.5.0-081-entry-submission-receipt" author="local-chinese-edition">
+    <createTable schemaName="clinlims" tableName="entry_submission_receipt">
+      <column name="submission_id" type="varchar(36)"><constraints nullable="false" primaryKey="true" primaryKeyName="pk_entry_submission_receipt"/></column>
+      <column name="created_by" type="varchar(20)"><constraints nullable="false"/></column>
+      <column name="hash_version" type="varchar(24)"><constraints nullable="false"/></column>
+      <column name="request_hash" type="varchar(64)"><constraints nullable="false"/></column>
+      <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+      <column name="response_json" type="text"/>
+      <column name="last_updated" type="timestamp"><constraints nullable="false"/></column>
+    </createTable>
+    <!-- Pending rows exist only inside the same uncommitted entry transaction.
+         Rollback is destructive: use only with an authorized backup and no newer writes. -->
+    <rollback><dropTable schemaName="clinlims" tableName="entry_submission_receipt"/></rollback>
+  </changeSet>
+</databaseChangeLog>

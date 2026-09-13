@@ -35,6 +35,13 @@ public class SamplePatientEntryLabelsIntegrationTest {
     private SampleService samples;
 
     @Test
+    public void testSaveEntry_SubmissionHeaderCannotSilentlyUseLegacySave() throws Exception {
+        request.addHeader("Idempotency-Key", "a9e817f3-3356-4518-9b85-81b0a143a531");
+        assertEquals(400, save().getStatusCode().value());
+        verifyZeroInteractions(service, samples);
+    }
+
+    @Test
     public void testSaveEntry_IdentityDenialDoesNotReloadOrClaimSuccess() throws Exception {
         doThrow(new org.springframework.security.access.AccessDeniedException("SIM-private-account-detail"))
                 .when(service).saveEntry(form, request, errors);

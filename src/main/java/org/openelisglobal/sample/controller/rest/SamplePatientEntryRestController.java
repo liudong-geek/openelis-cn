@@ -137,6 +137,8 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
 
     @Autowired
     private SamplePatientEntryFormValidator formValidator;
+    @Autowired
+    private org.openelisglobal.sample.service.EntrySubmissionService entrySubmissions;
 
     @Autowired
     private SamplePatientEntryService samplePatientService;
@@ -243,6 +245,21 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
             BindingResult result, RedirectAttributes redirectAttributes)
             throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
 
+        if (request.getHeader(org.openelisglobal.sample.service.EntrySubmissionCommand.HEADER) != null) {
+            try {
+                var command = org.openelisglobal.sample.service.EntrySubmissionCommand.fromRequest(request, form);
+                var saved = entrySubmissions.submit(command, form, request, result);
+                if (!saved.replayed()) { notifyCommittedEntry(form.getSampleOrderItems()); }
+                return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(saved);
+            } catch (org.springframework.validation.BindException failure) {
+                return ResponseEntity.status(hasDuplicatePatientError(result) ? 409 : 400)
+                        .cacheControl(org.springframework.http.CacheControl.noStore())
+                        .body(buildErrorBody(result, "请核对申请信息后再保存。"));
+            } catch (Exception failure) {
+                return submissionFailure(failure);
+            }
+        }
+
         if (form.isCollectionOnly() && form.getRequestedSpecimens() != null) {
             result.rejectValue("requestedSpecimens", "order.entry.specimens.invalid",
                     "采集操作不能同时新建标本申请，请先完成首次开单。");
@@ -301,39 +318,7 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
             // and includes optional label writes. Never split these calls here again.
             samplePatientService.saveEntry(form, request, result);
 
-            try {
-                if (sampleOrder.getPriority() != null && sampleOrder.getPriority().equals(OrderPriority.STAT)) {
-                    List<String> systemUserIds = userRoleService.getUserIdsForRole(Constants.ROLE_RESULTS);
-                    Sample statSample = sampleService.getSampleByAccessionNumber(sampleOrder.getLabNo());
-                    List<Analysis> analyses = statSample != null ? sampleService.getAnalysis(statSample) : null;
-                    String message = MessageUtil.getMessage("notification.order.stat",
-                            AlphanumAccessionValidator.convertAlphaNumLabNumForDisplay(sampleOrder.getLabNo()));
-                    StringBuffer sb = new StringBuffer(message);
-                    for (String userId : systemUserIds) {
-                        List<Analysis> userAnalyses = userService.filterAnalysesByLabUnitRoles(userId, analyses,
-                                Constants.ROLE_RESULTS);
-                        if (userAnalyses != null && !userAnalyses.isEmpty()) {
-                            List<String> tests = userAnalyses.stream().map(a -> a.getTest().getLocalizedName())
-                                    .collect(Collectors.toList());
-                            String testString = String.join(", ", tests);
-                            sb.append(testString);
-                            try {
-                                Notification notification = new Notification();
-                                notification.setMessage(sb.toString());
-                                notification.setUser(systemUserService.getUserById(userId));
-                                notification.setCreatedDate(OffsetDateTime.now());
-                                notification.setReadAt(null);
-                                notificationDAO.save(notification);
-                            } catch (Exception e) {
-                            }
-                        }
-                    }
-                }
-            } catch (Exception notificationFailure) {
-                // Best-effort notifications run after the save transaction returns.
-                // They must not turn an already committed entry into a save failure.
-                logger.warn("Entry committed; optional STAT notification could not be completed");
-            }
+            notifyCommittedEntry(sampleOrder);
         } catch (org.springframework.validation.BindException e) {
             saveErrors(result);
             if (hasDuplicatePatientError(result)) {
@@ -423,6 +408,71 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
         }
 
         return ResponseEntity.ok(form);
+    }
+
+    private void notifyCommittedEntry(SampleOrderItem sampleOrder) {
+        try {
+            if (sampleOrder.getPriority() != null && sampleOrder.getPriority().equals(OrderPriority.STAT)) {
+                List<String> systemUserIds = userRoleService.getUserIdsForRole(Constants.ROLE_RESULTS);
+                Sample statSample = sampleService.getSampleByAccessionNumber(sampleOrder.getLabNo());
+                List<Analysis> analyses = statSample != null ? sampleService.getAnalysis(statSample) : null;
+                String message = MessageUtil.getMessage("notification.order.stat",
+                        AlphanumAccessionValidator.convertAlphaNumLabNumForDisplay(sampleOrder.getLabNo()));
+                StringBuffer sb = new StringBuffer(message);
+                for (String userId : systemUserIds) {
+                    List<Analysis> userAnalyses = userService.filterAnalysesByLabUnitRoles(userId, analyses,
+                            Constants.ROLE_RESULTS);
+                    if (userAnalyses != null && !userAnalyses.isEmpty()) {
+                        List<String> tests = userAnalyses.stream().map(a -> a.getTest().getLocalizedName())
+                                .collect(Collectors.toList());
+                        String testString = String.join(", ", tests);
+                        sb.append(testString);
+                        try {
+                            Notification notification = new Notification();
+                            notification.setMessage(sb.toString());
+                            notification.setUser(systemUserService.getUserById(userId));
+                            notification.setCreatedDate(OffsetDateTime.now());
+                            notification.setReadAt(null);
+                            notificationDAO.save(notification);
+                        } catch (Exception e) {
+                        }
+                    }
+                }
+            }
+        } catch (Exception notificationFailure) {
+            // Best-effort notifications run after the save transaction returns.
+            // They must not turn an already committed entry into a save failure.
+            logger.warn("Entry committed; optional STAT notification could not be completed");
+        }
+    }
+
+    @GetMapping(value = "SamplePatientEntry/submissions/{submissionId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public ResponseEntity<?> recoverEntrySubmission(
+            @org.springframework.web.bind.annotation.PathVariable("submissionId") String id,
+            HttpServletRequest request) {
+        try {
+            return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                    .body(entrySubmissions.recover(id, request));
+        } catch (Exception failure) {
+            return submissionFailure(failure);
+        }
+    }
+
+    @org.springframework.web.bind.annotation.ExceptionHandler(org.openelisglobal.sample.exception.EntrySubmissionException.class)
+    public ResponseEntity<?> submissionFailure(Exception failure) {
+        int status = 503;
+        String code = "ENTRY_SAVE_UNKNOWN";
+        String message = "暂时无法确认保存结果，请保留原保存标识并查询，不要重复开单。";
+        if (failure instanceof org.openelisglobal.sample.exception.EntrySubmissionException expected) {
+            status = expected.getStatus(); code = expected.getCode(); message = expected.getMessage();
+        } else if (failure instanceof org.springframework.security.access.AccessDeniedException) {
+            status = 403; code = "ENTRY_SUBMISSION_FORBIDDEN";
+            message = "当前登录身份或登记权限不足，请重新登录后核对保存记录。";
+        }
+        // Never expose raw persistence messages, patient data or a false rollback claim.
+        return ResponseEntity.status(status).cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(Map.of("success", false, "code", code, "message", message));
     }
 
     private void setupForm(SamplePatientEntryForm form, HttpServletRequest request, String externalOrderNumber)

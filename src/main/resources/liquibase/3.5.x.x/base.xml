@@ -204,4 +204,5 @@
   <include relativeToChangelogFile="true" file="078-cn-normalize-bootstrap-organization-short-names.xml"/>
   <include relativeToChangelogFile="true" file="079-fhir-clinical-order-intake.xml"/>
 
+  <include relativeToChangelogFile="true" file="081-entry-submission-receipt.xml"/>
 </databaseChangeLog>
