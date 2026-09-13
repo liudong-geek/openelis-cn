@@ -11,6 +11,8 @@ import {
 } from "@carbon/react";
 import { useIntl } from "react-intl";
 import "./entry-current-summary.scss";
+import { collectionMaster } from "./collectionRecovery";
+import { localizeSampleType } from "./sampleTypeIntl";
 
 // Display current facts only. This component cannot change the active order or
 // infer a writable intake stage from the existence of physical specimens.
@@ -75,7 +77,13 @@ export default function EntryCurrentSummary({ result }) {
                 "collectionDate",
                 "physicalState",
               ].map((key) => (
-                <TableHeader key={key}>{t(key)}</TableHeader>
+                <TableHeader key={key}>
+                  {key === "testCount" && current.collectionContext
+                    ? intl.formatMessage({
+                        id: "order.collectionRecovery.tests",
+                      })
+                    : t(key)}
+                </TableHeader>
               ))}
             </TableRow>
           </TableHead>
@@ -89,7 +97,14 @@ export default function EntryCurrentSummary({ result }) {
                       {t("specimenSequence", { number: index + 1 })}
                     </strong>
                     <div className="entry-current-summary__secondary">
-                      {t("typeReference", { id: request.typeOfSampleId })}
+                      {localizeSampleType(
+                        intl,
+                        collectionMaster(
+                          current,
+                          "TYPE",
+                          request.typeOfSampleId,
+                        )?.name,
+                      ) || t("typeReference", { id: request.typeOfSampleId })}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -97,7 +112,22 @@ export default function EntryCurrentSummary({ result }) {
                       {t(state[request.status])}
                     </Tag>
                   </TableCell>
-                  <TableCell>{request.testIds.length}</TableCell>
+                  <TableCell>
+                    {current.collectionContext
+                      ? request.testIds
+                          .map(
+                            (id) =>
+                              collectionMaster(current, "TEST", id)?.name ||
+                              intl.formatMessage(
+                                {
+                                  id: "order.collectionRecovery.missingMaster",
+                                },
+                                { id },
+                              ),
+                          )
+                          .join("、")
+                      : request.testIds.length}
+                  </TableCell>
                   <TableCell>
                     {item?.collectionDate
                       ? intl.formatDate(item.collectionDate, {
@@ -107,6 +137,9 @@ export default function EntryCurrentSummary({ result }) {
                           hour: "2-digit",
                           minute: "2-digit",
                           hour12: false,
+                          ...(current.collectionContext?.timeZone
+                            ? { timeZone: current.collectionContext.timeZone }
+                            : {}),
                         })
                       : "—"}
                   </TableCell>
@@ -114,7 +147,17 @@ export default function EntryCurrentSummary({ result }) {
                     {item ? (
                       <>
                         <div>
-                          {t("physicalStatusReference", { id: item.statusId })}
+                          {collectionMaster(
+                            current,
+                            "SAMPLE_STATUS",
+                            item.statusId,
+                          )?.name === "SampleEntered"
+                            ? intl.formatMessage({
+                                id: "order.collectionRecovery.sampleEntered",
+                              })
+                            : t("physicalStatusReference", {
+                                id: item.statusId,
+                              })}
                         </div>
                         {item.voided && <Tag type="red">{t("voided")}</Tag>}
                         {item.rejected && <Tag type="red">{t("rejected")}</Tag>}
@@ -130,7 +173,11 @@ export default function EntryCurrentSummary({ result }) {
         </Table>
       </div>
       <p className="entry-current-summary__notice">
-        {t("currentReadOnlyNotice")}
+        {current.collectionContext
+          ? intl.formatMessage({
+              id: "order.collectionRecovery.snapshotNotice",
+            })
+          : t("currentReadOnlyNotice")}
       </p>
     </section>
   );

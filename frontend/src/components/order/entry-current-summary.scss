@@ -39,3 +39,58 @@
     line-height: 1.6;
   }
 }
+
+.recovered-collection {
+  border-top: 1px solid var(--cds-border-subtle);
+  margin-top: 1rem;
+  padding-top: 1rem;
+  min-width: 0;
+  > p {
+    margin: 0.75rem 0;
+    color: var(--cds-text-secondary);
+    line-height: 1.5;
+  }
+  &__tube {
+    min-width: 0;
+    margin: 1rem 0;
+    padding: 1rem;
+    border: 1px solid var(--cds-border-subtle);
+    border-radius: 0.5rem;
+    legend {
+      font-weight: 600;
+      padding: 0 0.5rem;
+    }
+    > p {
+      margin-bottom: 0.75rem;
+      overflow-wrap: anywhere;
+    }
+  }
+  &__fields {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+    .cds--form-item,
+    .cds--text-input__field-wrapper {
+      min-width: 0;
+      width: 100%;
+    }
+  }
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+    justify-content: space-between;
+  }
+  @media (max-width: 1100px) {
+    &__fields {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 600px) {
+    &__fields {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}

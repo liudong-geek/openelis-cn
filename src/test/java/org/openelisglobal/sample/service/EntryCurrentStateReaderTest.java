@@ -54,6 +54,7 @@ public class EntryCurrentStateReaderTest {
     private SampleHuman link;
     private List<SampleTypeRequest> logical;
     private List<SampleItem> physical;
+    private Object oldFactory;
     private static final Timestamp SIM_TIME = Timestamp.valueOf("2026-09-13 08:00:00");
 
     @Before public void setUp() {
@@ -65,8 +66,25 @@ public class EntryCurrentStateReaderTest {
         set("samples", samples); set("patientLinks", links); set("patients", patients); set("requests", requests);
         set("items", items); set("analyses", analyses); set("statuses", statuses); set("users", users);
         var configuration = mock(DefaultConfigurationProperties.class); set("configuration", configuration);
+        oldFactory = ReflectionTestUtils.getField(org.openelisglobal.spring.util.SpringContext.class, "factory");
+        var factory = mock(org.springframework.beans.factory.config.AutowireCapableBeanFactory.class);
+        ReflectionTestUtils.setField(org.openelisglobal.spring.util.SpringContext.class, "factory", factory);
+        when(factory.getBean(DefaultConfigurationProperties.class)).thenReturn(configuration);
+        when(configuration.getPropertyValue(org.openelisglobal.common.util.ConfigurationProperties.Property.AmbiguousDateHolder)).thenReturn("X");
         when(configuration.getPropertyValue("domain.human")).thenReturn("H");
         when(configuration.getPropertyValue("domain.environmental")).thenReturn("E");
+        when(configuration.getPropertyValue(org.openelisglobal.common.util.ConfigurationProperties.Property.DEFAULT_DATE_LOCALE)).thenReturn("zh-CN");
+        var sampleTypes = mock(org.openelisglobal.typeofsample.service.TypeOfSampleService.class);
+        var tests = mock(org.openelisglobal.test.service.TestService.class);
+        var panels = mock(org.openelisglobal.panel.service.PanelService.class);
+        var units = mock(org.openelisglobal.unitofmeasure.service.UnitOfMeasureService.class);
+        set("sampleTypes", sampleTypes); set("tests", tests); set("panels", panels); set("units", units);
+        when(sampleTypes.getMatch("id", "31")).thenReturn(java.util.Optional.of(type("31")));
+        for (String id : List.of("41", "42")) {
+            var value = new org.openelisglobal.test.valueholder.Test(); value.setId(id);
+            value.setDescription("SIM-test-" + id); value.setIsActive("Y"); value.setOrderable(true);
+            when(tests.getMatch("id", id)).thenReturn(java.util.Optional.of(value));
+        }
         TransactionSynchronizationManager.setActualTransactionActive(true);
         TransactionSynchronizationManager.setCurrentTransactionReadOnly(true);
         TransactionSynchronizationManager.setCurrentTransactionIsolationLevel(java.sql.Connection.TRANSACTION_REPEATABLE_READ);
@@ -91,7 +109,10 @@ public class EntryCurrentStateReaderTest {
         for (var row : logical) { tubes.addObject().put("id", row.getId().toString()).put("requestedTests", "41"); }
     }
 
-    @After public void tearDown() { TransactionSynchronizationManager.clear(); }
+    @After public void tearDown() {
+        TransactionSynchronizationManager.clear();
+        ReflectionTestUtils.setField(org.openelisglobal.spring.util.SpringContext.class, "factory", oldFactory);
+    }
     private void set(String field, Object value) { ReflectionTestUtils.setField(reader, field, value); }
     private SampleTypeRequest request(int id, int sort) {
         var row = new SampleTypeRequest(); row.setId(id); row.setSample(sample); row.setSortOrder(sort);
@@ -99,10 +120,11 @@ public class EntryCurrentStateReaderTest {
         row.setCreatedDate(SIM_TIME); return row;
     }
     private TypeOfSample type(String id) {
-        var value = new TypeOfSample(); value.setId(id); value.setDescription("SIM-type"); return value;
+        var value = new TypeOfSample(); value.setId(id); value.setDescription("SIM-type"); value.setActive(true); return value;
     }
     private void status(String id, String kind) {
         var value = new StatusOfSample(); value.setId(id); value.setStatusType(kind);
+        value.setIsActive("Y"); value.setStatusOfSampleName("ORDER".equals(kind) ? "Test Entered" : "SAMPLE".equals(kind) ? "SampleEntered" : "Not Tested");
         when(statuses.get(id)).thenReturn(value);
     }
     private SampleItem collect(int index, String id) {
@@ -122,6 +144,58 @@ public class EntryCurrentStateReaderTest {
     }
     private EntryCurrentStateReader.Snapshot read() { return reader.read(original, "7"); }
     private void conflict() { assertEquals(409, assertThrows(EntrySubmissionException.class, this::read).getStatus()); }
+
+    @Test public void collectionContextCarriesNamesAndExplicitUnknownConsentWithoutGrantingWrites() {
+        sample.setConsentGiven(null);
+        var json = new ObjectMapper().valueToTree(read());
+        var context = json.path("collectionContext");
+        assertEquals(1, context.path("version").asInt());
+        assertTrue(context.path("consentGiven").isNull());
+        assertTrue(json.path("readOnly").asBoolean());
+        assertEquals("SIM-type", context.path("masterData").get(0).path("name").asText());
+        assertFalse(context.has("canCollect"));
+    }
+
+    @Test public void falseConsentIsNotPromotedToTrue() {
+        sample.setConsentGiven(false);
+        assertEquals(Boolean.FALSE, read().collectionContext().consentGiven());
+    }
+
+    @Test public void usesConfiguredParserDateFormatWithoutBrowserDefaults() {
+        var configuration = (DefaultConfigurationProperties) ReflectionTestUtils.getField(reader, "configuration");
+        for (String[] pair : new String[][] {{"zh-CN", "yyyy/MM/dd"}, {"fr-FR", "dd/MM/yyyy"}, {"en-US", "MM/dd/yyyy"}}) {
+            when(configuration.getPropertyValue(org.openelisglobal.common.util.ConfigurationProperties.Property.DEFAULT_DATE_LOCALE)).thenReturn(pair[0]);
+            assertEquals(pair[1], read().collectionContext().dateFormat());
+        }
+        when(configuration.getPropertyValue(org.openelisglobal.common.util.ConfigurationProperties.Property.DEFAULT_DATE_LOCALE)).thenReturn(null);
+        assertNull(read().collectionContext().dateFormat());
+    }
+
+    @Test public void retainsInactiveAndMissingNamesButNeverInventsActiveMasterData() {
+        var types = (org.openelisglobal.typeofsample.service.TypeOfSampleService) ReflectionTestUtils.getField(reader, "sampleTypes");
+        var value = type("31"); value.setActive(false);
+        when(types.getMatch("id", "31")).thenReturn(java.util.Optional.of(value));
+        assertFalse(read().collectionContext().masterData().get(0).active());
+        assertEquals("SIM-type", read().collectionContext().masterData().get(0).name());
+        value.setDescription("  ");
+        assertNull(read().collectionContext().masterData().get(0).name());
+        when(types.getMatch("id", "31")).thenReturn(java.util.Optional.empty());
+        assertNull(read().collectionContext().masterData().get(0).name());
+        assertEquals(3, read().requestedSpecimens().size());
+        when(types.getMatch("id", "31")).thenReturn(java.util.Optional.of(type("99")));
+        conflict();
+    }
+
+    @Test public void collectionContextKeepsReadOnlyConsentFactsAndLaboratoryClock() {
+        sample.setConsentGiven(true); sample.setConsentFormReference("SIM-CONSENT");
+        sample.setConsentRecordedBy("SIM-STAFF"); sample.setConsentRecordedAt(SIM_TIME);
+        var context = new ObjectMapper().valueToTree(read()).path("collectionContext");
+        assertTrue(context.path("consentGiven").asBoolean());
+        assertEquals("SIM-CONSENT", context.path("consentFormReference").asText());
+        assertEquals("SIM-STAFF", context.path("consentRecordedBy").asText());
+        assertEquals(java.util.TimeZone.getDefault().getID(), context.path("timeZone").asText());
+        assertTrue(context.path("laboratoryNow").asText().matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}"));
+    }
 
     @Test public void pendingRequestsAreCurrentRowsWithNoInventedPhysicalItems() {
         var snapshot = read();

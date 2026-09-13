@@ -10,6 +10,7 @@ import {
 import { useIntl } from "react-intl";
 import { useOrderContext } from "./OrderContext";
 import EntryCurrentSummary from "./EntryCurrentSummary";
+import RecoveredCollectionEditor from "./RecoveredCollectionEditor";
 
 // Kept outside the locked clinical form: recovery is an explicit authorized
 // read, not another Save button. A receipt never silently replaces a draft.
@@ -18,6 +19,7 @@ export default function EntryRecoveryPanel() {
   const context = useOrderContext();
   const {
     entryRecovery,
+    collectionRecovery,
     queryCurrentEntryRecovery,
     isRecoveryCurrent,
     isSubmitting,
@@ -27,11 +29,12 @@ export default function EntryRecoveryPanel() {
   const [busy, setBusy] = useState(false);
   const [receipt, setReceipt] = useState(null);
   const [error, setError] = useState(null);
+  const [collectionSaved, setCollectionSaved] = useState(false);
   const active = useRef(null);
   useEffect(() => () => active.current?.abort(), []);
   const t = (id) => intl.formatMessage({ id });
   if (!queryCurrentEntryRecovery) return null;
-  const pending = entryRecovery?.checkpoint;
+  const pending = entryRecovery?.checkpoint || collectionRecovery?.checkpoint;
   const visibleReceipt = receipt && isRecoveryCurrent?.() ? receipt : null;
   const lookupCode = pending?.submissionId || code.trim();
   const query = async () => {
@@ -42,6 +45,7 @@ export default function EntryRecoveryPanel() {
     setBusy(true);
     setError(null);
     setReceipt(null);
+    setCollectionSaved(false);
     try {
       const result = await queryCurrentEntryRecovery(
         lookupCode,
@@ -55,7 +59,12 @@ export default function EntryRecoveryPanel() {
       if (!controller.signal.aborted) setBusy(false);
     }
   };
-  if (!pending && !expanded && !entryRecovery?.error)
+  if (
+    !pending &&
+    !expanded &&
+    !entryRecovery?.error &&
+    !collectionRecovery?.error
+  )
     return (
       <Button kind="ghost" size="sm" onClick={() => setExpanded(true)}>
         {t("order.recovery.currentTitle")}
@@ -73,6 +82,13 @@ export default function EntryRecoveryPanel() {
             title={t(entryRecovery.error)}
           />
         )}
+        {collectionRecovery?.error && (
+          <InlineNotification
+            kind="error"
+            hideCloseButton
+            title={t(collectionRecovery.error)}
+          />
+        )}
         <TextInput
           id="entry-recovery-code"
           labelText={t("order.save.submissionReference")}
@@ -83,6 +99,7 @@ export default function EntryRecoveryPanel() {
           onChange={(event) => {
             setCode(event.target.value);
             setReceipt(null);
+            setCollectionSaved(false);
             setError(null);
           }}
         />
@@ -98,6 +115,22 @@ export default function EntryRecoveryPanel() {
           <InlineNotification kind="warning" hideCloseButton title={t(error)} />
         )}
         {visibleReceipt && <EntryCurrentSummary result={visibleReceipt} />}
+        {visibleReceipt &&
+          (collectionSaved ? (
+            <InlineNotification
+              kind="success"
+              hideCloseButton
+              title={t("order.collectionRecovery.saved")}
+            />
+          ) : (
+            <RecoveredCollectionEditor
+              result={visibleReceipt}
+              onSaved={(next) => {
+                setReceipt(next);
+                setCollectionSaved(true);
+              }}
+            />
+          ))}
       </Stack>
     </Tile>
   );

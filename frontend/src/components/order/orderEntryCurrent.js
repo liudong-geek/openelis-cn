@@ -1,4 +1,5 @@
 import { entrySubmissionError, validOrderId } from "./orderEntryReceipt";
+import { verifyCollectionContext } from "./collectionRecovery";
 import {
   recoverEntrySubmission,
   verifyRecoveredEntryReceipt,
@@ -159,6 +160,9 @@ export const verifyCurrentEntry = (data, reference, command) => {
   // Only the verified CurrentResult fact fields may leave this boundary.
   // No transport-provided capabilities or workflow commands are propagated.
   const facts = {
+    ...(c.collectionContext == null
+      ? {}
+      : { collectionContext: verifyCollectionContext(c.collectionContext, c) }),
     ...pick(c, [
       "version",
       "readOnly",

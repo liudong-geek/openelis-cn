@@ -41,6 +41,10 @@ public class EntryCurrentStateReader {
     @Autowired private StatusOfSampleService statuses;
     @Autowired private UserService users;
     @Autowired private DefaultConfigurationProperties configuration;
+    @Autowired private org.openelisglobal.typeofsample.service.TypeOfSampleService sampleTypes;
+    @Autowired private org.openelisglobal.test.service.TestService tests;
+    @Autowired private org.openelisglobal.panel.service.PanelService panels;
+    @Autowired private org.openelisglobal.unitofmeasure.service.UnitOfMeasureService units;
 
     public record PatientView(String id, String nationalId, String firstName, String lastName,
             String gender, String birthDate) { }
@@ -52,9 +56,21 @@ public class EntryCurrentStateReader {
             Double quantity, String unitOfMeasureId, String statusId, boolean voided, boolean rejected,
             String collectionDate, String receivedDate, String collector, String lastUpdated,
             List<AnalysisView> analyses) { }
+    public record MasterDataView(String kind, String id, String name, boolean active) { }
+    public record CollectionContext(int version, String dateFormat, String timeZone, String laboratoryNow,
+            Boolean consentGiven, String consentFormReference, String consentRecordedAt, String consentRecordedBy,
+            List<MasterDataView> masterData) { }
     public record Snapshot(int version, boolean readOnly, String sampleId, String labNo, String workflowType,
             String orderStatusId, String lastUpdated, PatientView patient,
-            List<RequestView> requestedSpecimens, List<SpecimenView> physicalSpecimens) { }
+            List<RequestView> requestedSpecimens, List<SpecimenView> physicalSpecimens,
+            CollectionContext collectionContext) {
+        public Snapshot(int version, boolean readOnly, String sampleId, String labNo, String workflowType,
+                String orderStatusId, String lastUpdated, PatientView patient,
+                List<RequestView> requestedSpecimens, List<SpecimenView> physicalSpecimens) {
+            this(version, readOnly, sampleId, labNo, workflowType, orderStatusId, lastUpdated, patient,
+                    requestedSpecimens, physicalSpecimens, null);
+        }
+    }
 
     @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
     public Snapshot read(JsonNode original, String actorId) {
@@ -164,7 +180,96 @@ public class EntryCurrentStateReader {
                 .sorted(Comparator.comparingInt(RequestView::sortOrder).thenComparing(RequestView::id)).toList();
         specimens.sort(Comparator.comparing(SpecimenView::requestId));
         return new Snapshot(1, true, sampleId, sample.getAccessionNumber(), workflow, orderStatus,
-                time(sample.getLastupdated()), patient, ordered, List.copyOf(specimens));
+                time(sample.getLastupdated()), patient, ordered, List.copyOf(specimens),
+                collectionContext(sample, ordered, specimens));
+    }
+
+    // Facts from the same read transaction, not a capability token. Historical
+    // inactive/missing names remain visible; the collection writer revalidates.
+    private CollectionContext collectionContext(org.openelisglobal.sample.valueholder.Sample sample,
+            List<RequestView> requested, List<SpecimenView> physical) {
+        Map<String, MasterDataView> data = new LinkedHashMap<>();
+        for (var request : requested) {
+            master(data, "TYPE", request.typeOfSampleId());
+            request.testIds().forEach(id -> master(data, "TEST", id));
+            request.panelIds().forEach(id -> master(data, "PANEL", id));
+            master(data, "UNIT", request.unitOfMeasureId());
+        }
+        master(data, "ORDER_STATUS", sample.getStatusId());
+        for (var item : physical) {
+            master(data, "TYPE", item.typeOfSampleId());
+            master(data, "UNIT", item.unitOfMeasureId());
+            master(data, "SAMPLE_STATUS", item.statusId());
+            for (var analysis : item.analyses()) {
+                master(data, "TEST", analysis.testId());
+                master(data, "ANALYSIS_STATUS", analysis.statusId());
+            }
+        }
+        String locale = configuration.getPropertyValue(
+                org.openelisglobal.common.util.ConfigurationProperties.Property.DEFAULT_DATE_LOCALE);
+        String format = locale == null || locale.isBlank() ? null
+                : org.openelisglobal.common.util.DateUtil.getDateFormatForLocale(
+                        java.util.Locale.forLanguageTag(locale.replace('_', '-')));
+        var zone = java.util.TimeZone.getDefault().toZoneId();
+        return new CollectionContext(1, format, zone.getId(), java.time.ZonedDateTime.now(zone)
+                .format(java.time.format.DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm")),
+                sample.getConsentGiven(), sample.getConsentFormReference(), time(sample.getConsentRecordedAt()),
+                sample.getConsentRecordedBy(), List.copyOf(data.values()));
+    }
+
+    private void master(Map<String, MasterDataView> data, String kind, String id) {
+        if (id == null || data.containsKey(kind + ":" + id)) { return; }
+        String name = null;
+        boolean active = false;
+        switch (kind) {
+        case "TYPE": {
+            var value = sampleTypes.getMatch("id", id).orElse(null);
+            if (value != null) {
+                if (!id.equals(value.getId())) { throw conflict(); }
+                name = localized(value.getLocalization(), value.getDescription()); active = value.isActive();
+            }
+            break;
+        }
+        case "TEST": {
+            var value = tests.getMatch("id", id).orElse(null);
+            if (value != null) {
+                if (!id.equals(value.getId())) { throw conflict(); }
+                name = localized(value.getLocalizedTestName(), value.getDescription());
+                active = value.isActive() && Boolean.TRUE.equals(value.getOrderable());
+            }
+            break;
+        }
+        case "PANEL": {
+            var value = panels.getPanelById(id);
+            if (value != null) {
+                if (!id.equals(value.getId())) { throw conflict(); }
+                name = localized(value.getLocalization(), value.getPanelName()); active = "Y".equals(value.getIsActive());
+            }
+            break;
+        }
+        case "UNIT": {
+            var value = units.getUnitOfMeasureById(id);
+            if (value != null) {
+                if (!id.equals(value.getId())) { throw conflict(); }
+                name = value.getUnitOfMeasureName(); active = "Y".equals(value.getIsActive());
+            }
+            break;
+        }
+        default: {
+            var value = statuses.get(id);
+            if (value == null || !id.equals(value.getId())
+                    || !kind.equals(value.getStatusType() + "_STATUS")) { throw conflict(); }
+            name = value.getStatusOfSampleName(); active = "Y".equals(value.getIsActive());
+        }
+        }
+        data.put(kind + ":" + id, new MasterDataView(kind, id,
+                name == null || name.isBlank() ? null : name.trim(), active));
+    }
+
+    private static String localized(org.openelisglobal.localization.valueholder.Localization localization,
+            String fallback) {
+        String name = localization == null ? null : localization.getLocalizedValue();
+        return name == null || name.isBlank() ? fallback : name;
     }
 
     private PatientView patient(JsonNode original, String sampleId, String workflow) {

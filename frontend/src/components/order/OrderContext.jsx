@@ -32,6 +32,9 @@ import {
 } from "./orderEntryRecovery";
 import { isEntryInputRejection } from "./orderEntryReceipt";
 import { recoverCurrentEntrySubmission } from "./orderEntryCurrent";
+import { buildRecoveredCollection, collectionRecoveryOptions, submitRecoveredCollection, verifyRecoveredCollection } from "./collectionRecovery";
+import { postRecoveredCollection } from "./collectionTransport";
+import { readCollectionCheckpoint, rememberCollectionCheckpoint, reconcileCollectionCheckpoint, forgetCollectionCheckpoint } from "./collectionCheckpoint";
 
 /**
  * OrderContext - Shared state for the decoupled sample collection workflow.
@@ -316,6 +319,8 @@ export const OrderProvider = ({ children }) => {
   const confirmedEntry = useRef(null);
   const [entryRecovery, setEntryRecovery] = useState(readEntryCheckpoint);
   const recoveredEntry = useRef(null);
+  const activeRecoveredCollection = useRef(null);
+  const pendingRecoveredCollection = useRef(null);
   const recoverySequence = useRef(0);
 
   const [labNumber, setLabNumber] = useState(null);
@@ -389,7 +394,8 @@ export const OrderProvider = ({ children }) => {
       ) {
         throw new Error("order.progress.requestChanged");
       }
-      if (activeSave.current) throw new Error("order.progress.saveInProgress");
+      if (activeSave.current || activeRecoveredCollection.current) throw new Error("order.progress.saveInProgress");
+      if (readCollectionCheckpoint()) throw entrySubmissionError("order.collectionRecovery.unknown");
       const recovery = readEntryCheckpoint();
       if (recovery.error) throw entrySubmissionError(recovery.error);
       if (recovery.checkpoint)
@@ -689,7 +695,7 @@ export const OrderProvider = ({ children }) => {
   );
   const queryEntryRecovery = useCallback(
     async (code, signal, currentState = false) => {
-      if (activeSave.current || activeLoad.current)
+      if (activeSave.current || activeLoad.current || activeRecoveredCollection.current)
         throw entrySubmissionError("order.progress.saveInProgress");
       const identity = readSessionIdentity(latestSessionContext.current);
       const generation = readSessionCheckGeneration(
@@ -736,8 +742,19 @@ export const OrderProvider = ({ children }) => {
       });
       if (!isCurrent())
         throw entrySubmissionError("order.progress.requestChanged");
+      if (currentState && pendingRecoveredCollection.current) {
+        const pending = pendingRecoveredCollection.current;
+        if (pending.submissionId !== code)
+          throw entrySubmissionError("order.collectionRecovery.unknown");
+        // REQUESTED is not proof that a timed-out write rolled back. Only a
+        // matching persisted collection resolves an in-flight/unknown attempt.
+        verifyRecoveredCollection(receipt, pending.command);
+        pendingRecoveredCollection.current = null;
+      }
+      if (currentState) await reconcileCollectionCheckpoint(receipt, isCurrent);
+      if (!isCurrent()) throw entrySubmissionError("order.progress.requestChanged");
       // Private authoritative snapshot; callers cannot authorize an arbitrary ID.
-      recoveredEntry.current = { isCurrent };
+      recoveredEntry.current = { isCurrent, result: currentState ? JSON.parse(JSON.stringify(receipt)) : null, adopted: false, used: false };
       return JSON.parse(JSON.stringify(receipt));
     },
     [assertSessionWrite, canWriteForSession],
@@ -747,6 +764,66 @@ export const OrderProvider = ({ children }) => {
     (code, signal) => queryEntryRecovery(code, signal, true),
     [queryEntryRecovery],
   );
+
+  // Explicit adoption authorizes only this private current snapshot's collection
+  // command. It never fills or unlocks the legacy editable order form.
+  const adoptRecoveredCollection = useCallback((visible) => {
+    const record = recoveredEntry.current;
+    if (!record?.result || !record.isCurrent() || record.used || activeRecoveredCollection.current || readCollectionCheckpoint() ||
+        JSON.stringify(visible) !== JSON.stringify(record.result) || !collectionRecoveryOptions(record.result).length)
+      throw entrySubmissionError("order.collectionRecovery.requery");
+    record.adopted = true;
+    return JSON.parse(JSON.stringify(record.result));
+  }, []);
+
+  const saveRecoveredCollection = useCallback(async (visible, selections) => {
+    const record = recoveredEntry.current;
+    if (!record?.adopted || record.used || !record.isCurrent() || activeRecoveredCollection.current || readCollectionCheckpoint() ||
+        JSON.stringify(visible) !== JSON.stringify(record.result))
+      throw entrySubmissionError("order.collectionRecovery.requery");
+    const command = buildRecoveredCollection(record.result, selections);
+    const operation = {};
+    activeRecoveredCollection.current = operation;
+    record.used = true;
+    pendingRecoveredCollection.current = { submissionId: record.result.receipt.submissionId, command };
+    setIsSubmitting(true);
+    const isCurrent = () => activeRecoveredCollection.current === operation &&
+      recoveredEntry.current === record && record.isCurrent();
+    let checkpoint, preparationTimer, dispatched = false;
+    try {
+      checkpoint = await Promise.race([
+        rememberCollectionCheckpoint(record.result.receipt.submissionId, command, isCurrent),
+        new Promise((_, reject) => { preparationTimer = setTimeout(() => reject(entrySubmissionError("order.collectionRecovery.unknown")), 10000); }),
+      ]);
+      clearTimeout(preparationTimer);
+      await submitRecoveredCollection({ command, post: postRecoveredCollection, isCurrent, onDispatch: () => { dispatched = true; } });
+      const next = await recoverCurrentEntrySubmission({
+        reference: record.result.receipt, read: readOpenElisResponse, isCurrent,
+      });
+      verifyRecoveredCollection(next, command);
+      if (!isCurrent()) throw entrySubmissionError("order.progress.requestChanged");
+      await reconcileCollectionCheckpoint(next, isCurrent);
+      if (!isCurrent()) throw entrySubmissionError("order.progress.requestChanged");
+      pendingRecoveredCollection.current = null;
+      record.result = JSON.parse(JSON.stringify(next));
+      return JSON.parse(JSON.stringify(next));
+    } catch (failure) {
+      if (!dispatched) {
+        pendingRecoveredCollection.current = null;
+        if (checkpoint) forgetCollectionCheckpoint(checkpoint);
+      }
+      // A dispatched operation never becomes safe to retry because its response
+      // was lost or the operator changed. Another explicit current read is needed.
+      throw entrySubmissionError(failure.errorKey === "order.progress.requestChanged"
+        ? failure.errorKey : "order.collectionRecovery.unknown");
+    } finally {
+      clearTimeout(preparationTimer);
+      if (activeRecoveredCollection.current === operation) {
+        activeRecoveredCollection.current = null;
+        if (isMounted.current) setIsSubmitting(false);
+      }
+    }
+  }, []);
 
   /**
    * Convert samples array to XML format expected by backend
@@ -1602,6 +1679,13 @@ export const OrderProvider = ({ children }) => {
     entryUnconfirmed.current.has(currentLabNumber) ||
     Boolean(entryRecovery.checkpoint && !activeSave.current);
   const pendingEntry = entryUnconfirmed.current.get(currentLabNumber);
+  let collectionRecovery;
+  try {
+    const checkpoint = readCollectionCheckpoint();
+    collectionRecovery = { checkpoint: checkpoint ? { submissionId: checkpoint.submissionId } : null, error: null };
+  } catch (failure) {
+    collectionRecovery = { checkpoint: null, error: failure.errorKey || "order.collectionRecovery.unknown" };
+  }
   const value = {
     // State
     orderId,
@@ -1623,8 +1707,11 @@ export const OrderProvider = ({ children }) => {
         ? pendingEntry.command?.submissionId || ""
         : "",
     entryRecovery,
+    collectionRecovery,
     queryEntryRecovery,
     queryCurrentEntryRecovery,
+    adoptRecoveredCollection,
+    saveRecoveredCollection,
     isRecoveryCurrent: () => recoveredEntry.current?.isCurrent() === true,
     isDirty,
     error,
