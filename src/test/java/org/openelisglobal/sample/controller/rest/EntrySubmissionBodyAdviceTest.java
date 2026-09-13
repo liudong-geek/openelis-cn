@@ -109,6 +109,49 @@ public class EntrySubmissionBodyAdviceTest {
         verify(service, never()).submit(any(), any(), any(), any());
     }
 
+    @Test public void currentRecoveryUsesOriginalKeyAndReturnsNoStoreReadOnlyFacts() throws Exception {
+        var current = new org.openelisglobal.sample.service.EntryCurrentStateReader.Snapshot(
+                1, true, "301", "SIM-CURRENT", "clinical", "11", null, null, java.util.List.of(), java.util.List.of());
+        when(service.recoverCurrent(eq(KEY), any())).thenReturn(new EntrySubmissionService.CurrentResult(true,
+                new ObjectMapper().createObjectNode().put("submissionId", KEY), current));
+        var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .get("/rest/SamplePatientEntry/submissions/" + KEY + "/current"))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        assertEquals("no-store", response.getHeader("Cache-Control"));
+        var body = new ObjectMapper().readTree(response.getContentAsString());
+        assertEquals(KEY, body.path("receipt").path("submissionId").asText());
+        assertTrue(body.path("current").path("readOnly").asBoolean());
+        assertEquals("301", body.path("current").path("sampleId").asText());
+        verify(service).recoverCurrent(eq(KEY), any()); verify(service, never()).recover(any(), any());
+        verify(service, never()).submit(any(), any(), any(), any());
+    }
+
+    @Test public void currentRecoveryFailuresAreNoStoreAndNeverExposePartialFacts() throws Exception {
+        for (int code : new int[]{404, 409}) {
+            when(service.recoverCurrent(eq(KEY), any())).thenThrow(new EntrySubmissionException(code,
+                    "ENTRY_CURRENT_STATE_CONFLICT", "请保留保存核对码并联系管理员核对。"));
+            var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                    .get("/rest/SamplePatientEntry/submissions/" + KEY + "/current"))
+                    .andExpect(status().is(code)).andReturn().getResponse();
+            assertEquals("no-store", response.getHeader("Cache-Control"));
+            var body = new ObjectMapper().readTree(response.getContentAsString());
+            assertFalse(body.path("success").asBoolean()); assertFalse(body.has("current")); assertFalse(body.has("receipt"));
+        }
+    }
+
+    @Test public void currentRecoverySanitizesPermissionAndUnexpectedFailures() throws Exception {
+        for (Exception failure : new Exception[]{new org.springframework.security.access.AccessDeniedException("SIM-private-patient"),
+                new IllegalStateException("SIM-private-patient")}) {
+            doThrow(failure).when(service).recoverCurrent(eq(KEY), any());
+            var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                    .get("/rest/SamplePatientEntry/submissions/" + KEY + "/current"))
+                    .andExpect(status().is(failure instanceof IllegalStateException ? 503 : 403)).andReturn().getResponse();
+            assertEquals("no-store", response.getHeader("Cache-Control"));
+            assertFalse(response.getContentAsString().contains("SIM-private-patient"));
+            assertFalse(new ObjectMapper().readTree(response.getContentAsString()).path("success").asBoolean());
+        }
+    }
+
     @Test public void unknownSaveFailureDoesNotExposeDetailsOrClaimRollback() throws Exception {
         doThrow(new IllegalStateException("SIM-private-persistence-detail")).when(service).submit(any(), any(), any(), any());
         var response = mvc.perform(post("/rest/SamplePatientEntry").header(EntrySubmissionCommand.HEADER, KEY)

@@ -60,6 +60,7 @@ public class EntrySubmissionServiceTest {
     private OrderLabelRequestDAO labels;
     private SampleTypeRequestService specimenRequests;
     private PatientService patients;
+    private EntryCurrentStateReader currentStates;
     private MockHttpServletRequest request;
     private SamplePatientEntryForm form;
     private BindingResult errors;
@@ -78,6 +79,7 @@ public class EntrySubmissionServiceTest {
         specimenRequests = mock(SampleTypeRequestService.class);
         set("specimenRequests", specimenRequests);
         patients = mock(PatientService.class); set("patients", patients);
+        currentStates = mock(EntryCurrentStateReader.class); set("currentStates", currentStates);
         set("receipts", receipts); set("entries", entries); set("validator", validator);
         set("samples", samples); set("users", users); set("labels", labels);
         request = new MockHttpServletRequest();
@@ -185,6 +187,48 @@ public class EntrySubmissionServiceTest {
         assertEquals("REQUESTED", result.receipt().path("requestedSpecimens").get(0).path("status").asText());
         verifyZeroInteractions(entries, validator, samples, labels);
     }
+    @Test public void currentReadUsesAuthorizedReceiptAndNeverRepeatsTheSave() throws Exception {
+        completed();
+        var facts = new EntryCurrentStateReader.Snapshot(1, true, "301", "SIM-RECEIPT", "clinical", "11", null, null, List.of(), List.of());
+        when(currentStates.read(any(), eq("7"))).thenReturn(facts);
+        String original = stored.getResponseJson();
+        var result = subject.recoverCurrent(KEY, request);
+        assertTrue(result.success()); assertSame(facts, result.current());
+        assertEquals(original, result.receipt().toString()); assertEquals(original, stored.getResponseJson());
+        verify(currentStates).read(eq(result.receipt()), eq("7"));
+        verifyZeroInteractions(entries, validator, samples, labels);
+        verify(receipts, never()).claim(any()); verify(receipts, never()).complete(any(), any());
+    }
+    @Test public void currentReadRejectsMissingOrOtherOwnersReceiptBeforeReadingPatientFacts() throws Exception {
+        assertEquals(404, assertThrows(EntrySubmissionException.class, () -> subject.recoverCurrent(KEY, request)).getStatus());
+        when(receipts.find(KEY)).thenReturn(EntrySubmissionReceipt.claim(KEY, "8", command.fingerprint()));
+        assertThrows(AccessDeniedException.class, () -> subject.recoverCurrent(KEY, request));
+        verifyZeroInteractions(currentStates, entries);
+    }
+    @Test public void currentReadRequiresOriginalPermissionAndCompleteReceipt() throws Exception {
+        completed(); when(users.getAllDisplayUserTestsByLabUnit("7", Constants.ROLE_RECEPTION)).thenReturn(List.of());
+        assertThrows(AccessDeniedException.class, () -> subject.recoverCurrent(KEY, request));
+        when(receipts.find(KEY)).thenReturn(EntrySubmissionReceipt.claim(KEY, "7", command.fingerprint()));
+        assertThrows(EntrySubmissionException.class, () -> subject.recoverCurrent(KEY, request));
+        verifyZeroInteractions(currentStates, entries);
+    }
+    @Test public void currentReadCannotReturnSuccessAfterActorChangesDuringRead() throws Exception {
+        completed(); when(currentStates.read(any(), any())).thenAnswer(call -> {
+            SecurityContextHolder.clearContext();
+            return new EntryCurrentStateReader.Snapshot(1, true, "301", "SIM-RECEIPT", "clinical", "11", null, null, List.of(), List.of());
+        });
+        assertThrows(AccessDeniedException.class, () -> subject.recoverCurrent(KEY, request));
+    }
+    @Test public void currentReadFailureOrNullNeverReturnsAnHistoricalOnlySuccess() throws Exception {
+        completed(); assertThrows(EntrySubmissionException.class, () -> subject.recoverCurrent(KEY, request));
+        when(currentStates.read(any(), any())).thenThrow(new IllegalStateException("SIM-read-failure"));
+        assertThrows(IllegalStateException.class, () -> subject.recoverCurrent(KEY, request));
+        verifyZeroInteractions(entries, samples, labels);
+    }
+    @Test public void historicalRecoveryDoesNotLoadCurrentFacts() throws Exception {
+        completed(); subject.recover(KEY, request); verifyZeroInteractions(currentStates);
+    }
+
     @Test public void revokedTestPermissionDeniesReplayAndRecovery() throws Exception {
         completed(); when(users.getAllDisplayUserTestsByLabUnit("7", Constants.ROLE_RECEPTION)).thenReturn(List.of());
         assertThrows(AccessDeniedException.class, this::save);

@@ -417,6 +417,29 @@ public class EntryRecoveryTransactionManagerTest {
         }
     }
 
+    @Test public void actualCurrentEntryUsesNewReadOnlySnapshotAndRestoresCaller() {
+        var target = new EntrySubmissionService(); var actors = mock(OrderEntryActorGuard.class);
+        ReflectionTestUtils.setField(target, "actors", actors);
+        new TransactionTemplate(ordinary).execute(outer -> {
+            EntityManager previous = current();
+            when(actors.bind(any())).thenAnswer(call -> {
+                assertNotSame(previous, current()); assertRecoveryContext(); throw new SimFailure();
+            });
+            assertThrows(SimFailure.class, () -> proxy(target).recoverCurrent("SIM-boundary-only", new MockHttpServletRequest()));
+            assertSame(previous, current()); assertFalse(outer.isRollbackOnly()); return null;
+        });
+    }
+
+    @Test public void actualCurrentEntryRollsBackCheckedReadFailure() throws Exception {
+        var target = new EntrySubmissionService(); var actors = mock(OrderEntryActorGuard.class);
+        ReflectionTestUtils.setField(target, "actors", actors);
+        var failure = new java.io.IOException("SIM current read failure");
+        when(actors.bind(any())).thenAnswer(call -> { assertRecoveryContext(); throw failure; });
+        assertSame(failure, assertThrows(java.io.IOException.class,
+                () -> proxy(target).recoverCurrent("SIM-boundary-only", new MockHttpServletRequest())));
+        verify(connections.get(0)).rollback(); verify(connections.get(0), never()).commit();
+    }
+
     private EntrySubmissionService proxy(EntrySubmissionService target) {
         DefaultListableBeanFactory beans = new DefaultListableBeanFactory();
         beans.registerSingleton("transactionManager", ordinary);

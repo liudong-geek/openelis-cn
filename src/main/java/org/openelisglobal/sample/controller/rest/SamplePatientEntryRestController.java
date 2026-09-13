@@ -459,6 +459,19 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
         }
     }
 
+    @GetMapping(value = "SamplePatientEntry/submissions/{submissionId}/current", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public ResponseEntity<?> recoverCurrentEntrySubmission(
+            @org.springframework.web.bind.annotation.PathVariable("submissionId") String id,
+            HttpServletRequest request) {
+        try {
+            return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                    .body(entrySubmissions.recoverCurrent(id, request));
+        } catch (Exception failure) {
+            return submissionFailure(failure);
+        }
+    }
+
     @org.springframework.web.bind.annotation.ExceptionHandler(org.openelisglobal.sample.exception.EntrySubmissionException.class)
     public ResponseEntity<?> submissionFailure(Exception failure) {
         int status = 503;

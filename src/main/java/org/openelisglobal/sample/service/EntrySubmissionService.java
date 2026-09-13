@@ -46,9 +46,11 @@ public class EntrySubmissionService {
     @Autowired private OrderLabelRequestDAO labels;
     @Autowired private SampleTypeRequestService specimenRequests;
     @Autowired private PatientService patients;
+    @Autowired private EntryCurrentStateReader currentStates;
     private final ObjectMapper json = new ObjectMapper();
 
     public record Result(boolean success, boolean replayed, JsonNode receipt) { }
+    public record CurrentResult(boolean success, JsonNode receipt, EntryCurrentStateReader.Snapshot current) { }
 
     @Transactional(rollbackFor = Exception.class, timeout = 45)
     public Result submit(EntrySubmissionCommand command, SamplePatientEntryForm form,
@@ -102,6 +104,24 @@ public class EntrySubmissionService {
         }
         requireOwner(receipt, actor.userId());
         return read(receipt, request, actor);
+    }
+
+    @Transactional(transactionManager = EntryRecoveryTransactionManager.BEAN_NAME,
+            propagation = Propagation.REQUIRES_NEW, isolation = Isolation.REPEATABLE_READ,
+            readOnly = true, rollbackFor = Exception.class, timeout = 20)
+    public CurrentResult recoverCurrent(String key, HttpServletRequest request) throws Exception {
+        var actor = actors.bind(request);
+        var receipt = receipts.find(EntrySubmissionCommand.validateKey(key));
+        if (receipt == null) {
+            throw new EntrySubmissionException(404, "ENTRY_SUBMISSION_NOT_FOUND",
+                    "暂未查到已提交的保存记录；原请求可能仍在处理，请保留原保存标识，不要重新开单。");
+        }
+        requireOwner(receipt, actor.userId());
+        var history = read(receipt, request, actor);
+        var current = currentStates.read(history.receipt(), actor.userId());
+        if (current == null) { throw incomplete(); }
+        actors.requireUnchanged(request, actor);
+        return new CurrentResult(true, history.receipt(), current);
     }
 
     private Result read(EntrySubmissionReceipt receipt, HttpServletRequest request,
