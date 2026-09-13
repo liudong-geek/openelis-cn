@@ -26,6 +26,7 @@ import {
 } from "@carbon/react";
 import { Printer } from "@carbon/icons-react";
 import OrderWorkflowLayout from "../OrderWorkflowLayout";
+import EntryRecoveryPanel from "../EntryRecoveryPanel";
 import { useOrderContext } from "../OrderContext";
 import { NotificationContext, ConfigurationContext } from "../../layout/Layout";
 import {
@@ -106,6 +107,7 @@ const OrderEnter = () => {
     markStepComplete,
     isReadOnly,
     isEditMode,
+    entryRecovery,
   } = useOrderContext();
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
@@ -567,10 +569,14 @@ const OrderEnter = () => {
   const handleSave = () => submitEntry("save");
   const handleSaveAndNext = () => submitEntry("next");
   const handleSaveAsDraft = () => submitEntry("draft");
-  const savingBlocked = unconfirmed || isSaveUnconfirmed;
+  const savingBlocked =
+    unconfirmed || isSaveUnconfirmed || Boolean(entryRecovery?.error);
   const savingInProgress = isSaving || isSubmitting;
   const inputsLocked =
-    savingInProgress || savingBlocked || (isReadOnly && !isEditMode);
+    savingInProgress ||
+    savingBlocked ||
+    Boolean(orderId) ||
+    (isReadOnly && !isEditMode);
   const numberToVerify = unconfirmedNumber || unconfirmedLabNumber;
 
   // Check if lab unit supports both workflow types
@@ -606,6 +612,15 @@ const OrderEnter = () => {
       }
     >
       {notificationVisible && <AlertDialog />}
+      <EntryRecoveryPanel />
+      {orderId && (
+        <InlineNotification
+          kind="info"
+          hideCloseButton
+          lowContrast
+          title={intl.formatMessage({ id: "order.entry.editUnavailable" })}
+        />
+      )}
       {savingInProgress && (
         <InlineLoading
           description={intl.formatMessage({ id: "order.saveStatus.saving" })}

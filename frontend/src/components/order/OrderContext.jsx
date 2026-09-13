@@ -16,7 +16,6 @@ import {
 import { ConfigurationContext } from "../layout/Layout";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import {
-  createRequestsForSamples,
   getRequestsBySample,
   convertRequestsToSamples,
 } from "./api/sampleTypeRequestApi";
@@ -24,6 +23,14 @@ import { SampleOrderFormValues } from "../formModel/innitialValues/OrderEntryFor
 import { convertIsoToBackendDate } from "./orderDateUtils";
 import { entrySubmissionError, submitOrderEntry } from "./orderEntrySubmission";
 import { isFirstEntry } from "./orderEntryReceipt";
+import { readOpenElisResponse } from "../utils/readOpenElisResponse";
+import {
+  readEntryCheckpoint,
+  rememberEntryCheckpoint,
+  forgetEntryCheckpoint,
+  recoverEntrySubmission,
+} from "./orderEntryRecovery";
+import { isEntryInputRejection } from "./orderEntryReceipt";
 
 /**
  * OrderContext - Shared state for the decoupled sample collection workflow.
@@ -306,6 +313,10 @@ export const OrderProvider = ({ children }) => {
     configurationProperties.DEFAULT_DATE_LOCALE || "en-US";
   const [orderId, setOrderId] = useState(null);
   const confirmedEntry = useRef(null);
+  const [entryRecovery, setEntryRecovery] = useState(readEntryCheckpoint);
+  const recoveredEntry = useRef(null);
+  const recoverySequence = useRef(0);
+
   const [labNumber, setLabNumber] = useState(null);
   const [orderData, setOrderDataState] = useState(getInitialOrderData);
   const [samples, setSamplesState] = useState([sampleObject]);
@@ -378,6 +389,10 @@ export const OrderProvider = ({ children }) => {
         throw new Error("order.progress.requestChanged");
       }
       if (activeSave.current) throw new Error("order.progress.saveInProgress");
+      const recovery = readEntryCheckpoint();
+      if (recovery.error) throw entrySubmissionError(recovery.error);
+      if (recovery.checkpoint)
+        throw entrySubmissionError("order.save.readbackUnconfirmed");
       if (entryUnconfirmed.current.has(entryLabNo || currentLabNumber))
         throw entrySubmissionError("order.save.readbackUnconfirmed");
       if (unconfirmedWrite.current)
@@ -670,6 +685,58 @@ export const OrderProvider = ({ children }) => {
       });
     },
     [interruptEntrySave],
+  );
+  const queryEntryRecovery = useCallback(
+    async (code, signal) => {
+      if (activeSave.current || activeLoad.current)
+        throw entrySubmissionError("order.progress.saveInProgress");
+      const identity = readSessionIdentity(latestSessionContext.current);
+      const generation = readSessionCheckGeneration(
+        latestSessionContext.current,
+      );
+      assertSessionWrite(identity, generation);
+      const checkpointState = readEntryCheckpoint();
+      // A pending key must not be replaced by querying another operation.
+      if (
+        checkpointState.checkpoint &&
+        checkpointState.checkpoint.submissionId !== code
+      )
+        throw entrySubmissionError("order.recovery.pendingMismatch");
+      const reference = checkpointState.checkpoint || { submissionId: code };
+      const epoch = requestEpoch.current;
+      const input = latestEntryInput.current;
+      const sequence = ++recoverySequence.current;
+      const pauseGeneration = sessionPauseGeneration.current;
+      recoveredEntry.current = null;
+      const isAuthorized = () =>
+        isMounted.current &&
+        !signal?.aborted &&
+        sequence === recoverySequence.current &&
+        canWriteForSession(identity, generation) &&
+        pauseGeneration === sessionPauseGeneration.current;
+      const isCurrent = () =>
+        isAuthorized() &&
+        requestEpoch.current === epoch &&
+        latestEntryInput.current === input &&
+        !activeSave.current &&
+        !activeLoad.current;
+      const pending = [...entryUnconfirmed.current.values()].find(
+        (item) => item.command?.submissionId === code,
+      );
+      const receipt = await recoverEntrySubmission({
+        reference,
+        command: pending?.command,
+        read: readOpenElisResponse,
+        isCurrent,
+        signal,
+      });
+      if (!isCurrent())
+        throw entrySubmissionError("order.progress.requestChanged");
+      // Private authoritative snapshot; callers cannot authorize an arbitrary ID.
+      recoveredEntry.current = { isCurrent };
+      return JSON.parse(JSON.stringify(receipt));
+    },
+    [assertSessionWrite, canWriteForSession],
   );
 
   /**
@@ -1014,9 +1081,6 @@ export const OrderProvider = ({ children }) => {
       const effectiveLabNumber =
         labNumberOverride || orderData?.sampleOrderItems?.labNo || "";
 
-      // For Step 1, we send empty sampleXML - sample types will be saved as requests
-      const envFields = orderData?.sampleOrderItems?.environmentalFields || {};
-
       // Prepare order data WITHOUT sample items
       const submitData = {
         ...orderData,
@@ -1088,14 +1152,12 @@ export const OrderProvider = ({ children }) => {
             ? samples
             : samples.filter((sample) => sample.sampleTypeId),
           orderId,
-          patientId: orderData?.patientProperties?.patientPK,
-          requiresPatient: envFields.workflowType !== "environmental",
           post: postToOpenElisServerFullResponse,
-          read: getFromOpenElisServer,
-          createRequests: createRequestsForSamples,
           isCurrent: isCurrentSave,
           canContinue: canContinueSessionSave,
           onUnknown: markEntryUnknown,
+          beforeDispatch: (command) =>
+            setEntryRecovery(rememberEntryCheckpoint(command)),
         });
         if (!isCurrentSave(operation)) {
           throw entrySubmissionError("order.progress.requestChanged");
@@ -1105,6 +1167,8 @@ export const OrderProvider = ({ children }) => {
           throw entrySubmissionError("order.save.readbackUnconfirmed");
         }
         operation.verifiedReceipt = receipt.entryReceipt ? receipt : null;
+        if (receipt.entryReceipt)
+          setEntryRecovery(forgetEntryCheckpoint(operation.command));
         setOrderId(receipt.id);
         setLabNumber(effectiveLabNumber);
         setOrderDataState((previous) => {
@@ -1155,6 +1219,12 @@ export const OrderProvider = ({ children }) => {
         confirmManualSessionSave(operation, silent);
         return { success: true, sampleId: receipt.id };
       } catch (error) {
+        if (
+          operation.command &&
+          [400, 422].includes(error.status) &&
+          isEntryInputRejection(error.details)
+        )
+          setEntryRecovery(forgetEntryCheckpoint(operation.command));
         if (isCurrentSave(operation)) {
           autoSaveSuspended.current = true;
           if (!entryUnconfirmed.current.has(effectiveLabNumber)) {
@@ -1519,7 +1589,9 @@ export const OrderProvider = ({ children }) => {
     };
   }, [isDirty]);
 
-  const entryNeedsConfirmation = entryUnconfirmed.current.has(currentLabNumber);
+  const entryNeedsConfirmation =
+    entryUnconfirmed.current.has(currentLabNumber) ||
+    Boolean(entryRecovery.checkpoint && !activeSave.current);
   const pendingEntry = entryUnconfirmed.current.get(currentLabNumber);
   const value = {
     // State
@@ -1541,6 +1613,9 @@ export const OrderProvider = ({ children }) => {
       pendingEntry?.sessionIdentity === observedSessionIdentity
         ? pendingEntry.command?.submissionId || ""
         : "",
+    entryRecovery,
+    queryEntryRecovery,
+    isRecoveryCurrent: () => recoveredEntry.current?.isCurrent() === true,
     isDirty,
     error,
     stepProgress,

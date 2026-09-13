@@ -24,30 +24,24 @@ describe("开单首个派发前的生命周期检查", () => {
       );
     },
   );
-  it("写请求发送后身份失效也记录未知，不能仅返回切换错误后丢失防重锁", async () => {
-    let callback,
-      valid = true;
+  it("已保存申请不得进入旧的读取再逐管追加链", async () => {
     const operation = { labNo: "SIM-SESSION-LOST" };
     const onUnknown = vi.fn();
     const read = vi.fn();
     const result = submitOrderEntry({
       operation,
-      orderId: "701", // Existing-entry compatibility path; atomic first-entry is covered separately.
+      orderId: "701",
       body: "{}",
       samples: [],
-      post: (_url, _body, finish) => {
-        callback = finish;
-      },
+      post: vi.fn(),
       read,
       createRequests: vi.fn(),
-      isCurrent: () => valid,
+      isCurrent: () => true,
       canContinue: () => true,
       onUnknown,
     }).catch((error) => error);
-    valid = false;
-    callback({ status: 200 });
-    expect((await result).errorKey).toBe("order.progress.requestChanged");
-    expect(onUnknown).toHaveBeenCalledWith(operation);
+    expect((await result).errorKey).toBe("order.entry.editUnavailable");
+    expect(onUnknown).not.toHaveBeenCalled();
     expect(read).not.toHaveBeenCalled();
   });
 });

@@ -8649,5 +8649,20 @@
   "order.saveStatus.unconfirmed": "已提交，状态待确认",
   "order.progress.requestChanged": "当前申请已切换，请重新查询确认状态。",
   "order.save.submissionReference": "保存核对码",
-  "order.entry.workflowPatientConflict": "已填写患者资料或选择室间质评，不能切换为环境标本。请保留临床检验类型；如需环境采样，请先清除患者资料并取消室间质评，或新建另一份申请。"
+  "order.entry.workflowPatientConflict": "已填写患者资料或选择室间质评，不能切换为环境标本。请保留临床检验类型；如需环境采样，请先清除患者资料并取消室间质评，或新建另一份申请。",
+  "order.entry.editUnavailable": "本页暂不支持修改已保存申请。请核对后继续采集，勿重复添加标本。",
+  "order.recovery.title": "查询保存结果",
+  "order.recovery.help": "保存超时或刷新页面后，请先核对原保存结果。核对码不是权限凭证，需要使用原提交账号登录；查询不会重新开单。",
+  "order.recovery.check": "核对保存结果",
+  "order.recovery.loading": "正在核对，请勿重复开单…",
+  "order.recovery.invalidCode": "保存核对码格式不正确，请粘贴完整的原核对码。",
+  "order.recovery.invalidReceipt": "返回的保存记录不完整或不匹配，尚不能确认；请保留核对码，勿重复开单。",
+  "order.recovery.storageUnavailable": "浏览器无法可靠保留保存核对信息，已暂停开单。请保留现有核对码并联系管理员，勿清除浏览器数据。",
+  "order.recovery.pendingMismatch": "本页还有待核对的保存，请先查询该核对码，不要替换为其他保存。",
+  "order.recovery.permission": "当前会话或权限不能查询此保存记录。请使用原提交账号重新登录后再核对，勿重复开单。",
+  "order.recovery.notFound": "暂未查到已提交记录，原请求可能仍在处理。请稍后再次核对，勿重复开单。",
+  "order.recovery.unavailable": "暂时无法核对保存结果。请保留核对码，稍后再查，勿重复开单。",
+  "order.recovery.confirmed": "已确认该次申请已保存",
+  "order.recovery.summary": "申请编号：{labNo}；该次保存包含 {count} 管标本申请。",
+  "order.recovery.readOnlyNotice": "这里只核对该码对应的历史保存，不代表当前草稿已保存或当前采集进度。本版本尚未开放恢复编辑；待核对保护不会解除，请保留核对码并联系管理员，勿重复建单。"
 }

@@ -1,6 +1,5 @@
 import {
   entrySubmissionError,
-  validOrderId,
   isFirstEntry,
   isPersistedEntry,
   isEntryInputRejection,
@@ -14,22 +13,17 @@ export const submitOrderEntry = ({
   body,
   samples,
   orderId,
-  patientId,
-  requiresPatient = true,
   post,
-  read,
-  createRequests,
   isCurrent,
   canContinue,
   onUnknown,
+  beforeDispatch = () => {},
 }) =>
   new Promise((resolve, reject) => {
     let settled = false;
     let postAccepted = false;
-    let readAccepted = false;
     let timer;
     let command;
-    let persistedOrderId;
     const finish = (value, error) => {
       if (settled) return;
       settled = true;
@@ -87,7 +81,10 @@ export const submitOrderEntry = ({
           finish(null, entrySubmissionError("order.save.incomplete"));
           return;
         }
-        persistedOrderId = orderId || form.sampleOrderItems?.sampleId;
+        if (isPersistedEntry(form, orderId)) {
+          finish(null, entrySubmissionError("order.entry.editUnavailable"));
+          return;
+        }
         if (isFirstEntry(form, orderId)) {
           command = await freezeEntrySubmission(form, samples);
           // This exact key and serialized body remain attached to the operation,
@@ -104,6 +101,7 @@ export const submitOrderEntry = ({
           }
         }
         clearTimeout(timer);
+        beforeDispatch(command);
         timer = setTimeout(unknown, 30000);
         operation.dispatched = true;
         post(
@@ -145,79 +143,21 @@ export const submitOrderEntry = ({
               }
               return;
             }
-            // Existing-entry compatibility only. This path is not a durable,
-            // atomic edit contract; its removal is tracked with the entry rollout.
-            if (requestError || (status !== 200 && status !== 201)) {
-              // Only an explicit rejection of the FIRST write is retryable. A
-              // rejection after metadata was saved is a partial, unknown outcome.
-              if (![400, 401, 403, 409, 422].includes(status)) {
-                unknown();
-                return;
-              }
-              let details;
-              try {
-                details = await response?.json();
-              } catch {
-                /* Keep a stable error. */
-              }
-              if (!current()) return;
-              finish(
-                null,
-                requestError ||
-                  Object.assign(
-                    entrySubmissionError("order.save.incomplete", status),
-                    { details },
-                  ),
-              );
-              return;
-            }
-            try {
-              read(
-                `/rest/order/search?labNumber=${encodeURIComponent(operation.labNo)}`,
-                async (receipt, readError) => {
-                  if (readAccepted || !current()) return;
-                  readAccepted = true;
-                  if (
-                    readError ||
-                    receipt?.labNumber !== operation.labNo ||
-                    !validOrderId(receipt?.id) ||
-                    (requiresPatient &&
-                      !patientId &&
-                      !validOrderId(receipt.patientProperties?.patientPK)) ||
-                    (persistedOrderId &&
-                      String(receipt.id) !== String(persistedOrderId)) ||
-                    (patientId &&
-                      String(receipt.patientProperties?.patientPK || "") !==
-                        String(patientId))
-                  ) {
-                    unknown();
-                    return;
-                  }
-                  try {
-                    if (samples.length) {
-                      await createRequests(receipt.id, samples, () =>
-                        current(),
-                      );
-                    }
-                    if (!current()) return;
-                    finish(receipt);
-                  } catch {
-                    if (current()) unknown();
-                  }
-                },
-              );
-            } catch {
-              if (current()) unknown();
-            }
           },
           undefined,
           command ? { "Idempotency-Key": command.submissionId } : undefined,
         );
-      } catch {
+      } catch (error) {
         // The transport adapter may throw after dispatch; never infer rollback.
         if (operation.dispatched) {
           if (current()) unknown();
-        } else finish(null, entrySubmissionError("order.save.incomplete"));
+        } else
+          finish(
+            null,
+            error?.errorKey
+              ? error
+              : entrySubmissionError("order.save.incomplete"),
+          );
       }
     };
     void dispatch();
