@@ -181,6 +181,7 @@ export const postToOpenElisServerFullResponse = <TExtra = unknown>(
   payLoad: RequestPayload,
   callback: (response: Response | undefined, extraParams?: TExtra) => void,
   extraParams?: TExtra,
+  headers?: Record<string, string>,
 ): void => {
   fetch(
     config.serverBaseUrl + endPoint,
@@ -189,10 +190,12 @@ export const postToOpenElisServerFullResponse = <TExtra = unknown>(
       //includes the browser sessionId in the Header for Authentication on the backend server
       credentials: "include",
       method: "POST",
+      ...(headers?.["Idempotency-Key"] ? { redirect: "manual" as const } : {}),
       headers: {
         "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken(),
         "Accept-Language": getRequestLocale(),
+        ...headers,
       },
       body: payLoad as BodyInit,
     },

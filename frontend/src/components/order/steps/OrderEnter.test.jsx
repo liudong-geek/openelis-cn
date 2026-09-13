@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { act, render, screen } from "@testing-library/react";
+import { waitFor } from "@testing-library/dom";
+import { webcrypto, createHash } from "node:crypto";
 import userEvent from "@testing-library/user-event";
 import { IntlProvider } from "react-intl";
 import { Router, Route } from "react-router-dom";
@@ -94,9 +96,7 @@ const draft = (labNo = "", patient = "SIM患者A") => ({
     patientProperties: { lastName: patient, patientUpdateStatus: "ADD" },
     sampleOrderItems: { labNo, referringSiteId: "SIM-SITE" },
   },
-  samples: [
-    { id: "SIM-TUBE", sampleTypeId: "SIM-TYPE", tests: [{ id: "SIM-TEST" }] },
-  ],
+  samples: [{ id: "SIM-TUBE", sampleTypeId: "11", tests: [{ id: "31" }] }],
 });
 let changeState;
 let currentState;
@@ -175,9 +175,43 @@ beforeEach(() => {
     else requests.push({ url, callback, signal });
   });
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe("申请首次保存与采集入口：SIM父级交互", () => {
+  it.each(["patient", "eqa"])(
+    "%s已关联时不能静默切成环境标本，说明原因并保留临床输入",
+    async (kind) => {
+      api.get.mockImplementation((url, callback) => {
+        if (url === "/rest/labUnit/config") callback({ workflowType: "Both" });
+      });
+      const initial = draft(
+        "SIM-WORKFLOW",
+        kind === "patient" ? "SIM患者" : "",
+      );
+      initial.orderData.patientProperties.patientPK =
+        kind === "patient" ? "801" : "";
+      initial.orderData.sampleOrderItems.isEQASample = kind === "eqa";
+      mount(initial);
+      const toggle = screen.getByRole("tab", {
+        name: messages["workflow.environmental"],
+      });
+      expect(toggle).toBeDisabled();
+      expect(
+        screen.getByText(messages["order.entry.workflowPatientConflict"]),
+      ).toBeVisible();
+      await userEvent.setup().click(toggle);
+      expect(currentState.orderData.patientProperties.patientPK).toBe(
+        kind === "patient" ? "801" : "",
+      );
+      expect(
+        currentState.orderData.sampleOrderItems.environmentalFields
+          ?.workflowType,
+      ).not.toBe("environmental");
+    },
+  );
   it("空表单不分配编号、不提交", async () => {
     const user = userEvent.setup();
     mount({ ...draft("", ""), samples: [] });
@@ -465,69 +499,124 @@ describe("申请首次保存与采集入口：SIM父级交互", () => {
     expect(markComplete).not.toHaveBeenCalled();
     expect(history.location.pathname).toBe("/order/enter");
   });
-  it("真实OrderProvider首次持久回读及患者主键回填后进入采集（SIM接口）", async () => {
-    const user = userEvent.setup();
-    let context;
-    const Probe = () => {
-      context = useOrderContext();
-      return null;
-    };
-    history = createMemoryHistory({ initialEntries: ["/order/enter"] });
-    api.get.mockImplementation((url, callback) => {
-      if (url === "/rest/labUnit/config")
-        callback({ workflowType: "Clinical" });
-      else if (url === "/rest/SampleEntryGenerateScanProvider")
-        callback({ body: "SIM-PROVIDER" });
-      else if (url.startsWith("/rest/order/search?"))
+  it.each([
+    ["next", false],
+    ["draft", false],
+    ["next", true],
+    ["draft", true],
+  ])(
+    "真实Provider单次整单保存%s/EQA=%s及未修改继续采集（SIM接口）",
+    async (mode, eqa) => {
+      vi.stubGlobal("crypto", webcrypto);
+      const user = userEvent.setup();
+      let context;
+      const Probe = () => {
+        context = useOrderContext();
+        return null;
+      };
+      history = createMemoryHistory({ initialEntries: ["/order/enter"] });
+      api.get.mockImplementation((url, callback) => {
+        if (url === "/rest/labUnit/config")
+          callback({ workflowType: "Clinical" });
+        else if (url === "/rest/SampleEntryGenerateScanProvider")
+          callback({ body: "SIM-PROVIDER" });
+        else if (url.startsWith("/rest/order/search?"))
+          callback({
+            id: "701",
+            labNumber: "SIM-PROVIDER",
+            patientProperties: { patientPK: "801" },
+          });
+      });
+      api.post.mockImplementation((_url, body, callback, _extra, headers) => {
+        const sent = JSON.parse(body);
         callback({
-          id: "701",
-          labNumber: "SIM-PROVIDER",
-          patientProperties: { patientPK: "801" },
+          status: 200,
+          json: async () => ({
+            success: true,
+            replayed: false,
+            receipt: {
+              version: 1,
+              submissionId: headers["Idempotency-Key"],
+              hashVersion: "raw-json-v1",
+              requestHash: createHash("sha256")
+                .update("raw-json-v1\n" + body)
+                .digest("hex"),
+              createdAt: "2026-09-13T02:00:00Z",
+              sampleId: "701",
+              labNo: "SIM-PROVIDER",
+              patientId: "801",
+              workflowType: "clinical",
+              requestedSpecimens: sent.requestedSpecimens.map(
+                (tube, index) => ({
+                  ...tube,
+                  id: String(901 + index),
+                  sampleId: "701",
+                  status: "REQUESTED",
+                  sampleItemId: null,
+                }),
+              ),
+              labelRequests: [],
+            },
+          }),
         });
-    });
-    api.post.mockImplementation((_url, _body, callback) =>
-      callback({ status: 200 }),
-    );
-    render(
-      <Router history={history}>
-        <IntlProvider locale="zh" messages={messages}>
-          <UserSessionDetailsContext.Provider
-            value={{
-              userSessionDetails: {
-                authenticated: true,
-                userId: "SIM-USER",
-                sessionId: "SIM-SESSION",
-                csrf: "SIM-CSRF",
-              },
-            }}
-          >
-            <OrderProvider>
-              <Probe />
-              <OrderEnter />
-            </OrderProvider>
-          </UserSessionDetailsContext.Provider>
-        </IntlProvider>
-      </Router>,
-    );
-    act(() => {
-      context.setOrderData(draft().orderData);
-      context.setSamples(draft().samples);
-    });
-    await user.click(button("next"));
-    expect(history.location.pathname).toBe("/order/collect");
-    expect(context.orderId).toBe("701");
-    expect(context.orderData.patientProperties.patientPK).toBe("801");
-    expect(api.createRequests.mock.calls[0].slice(0, 2)).toEqual([
-      "701",
-      expect.arrayContaining([
-        expect.objectContaining({ sampleTypeId: "SIM-TYPE" }),
-      ]),
-    ]);
-    const payload = JSON.parse(api.post.mock.calls[0][1]);
-    expect(payload.sampleOrderItems.labNo).toBe("SIM-PROVIDER");
-    expect(payload.patientProperties.lastName).toBe("SIM患者A");
-    expect(payload.orderEntryOnly).toBe(true);
-  });
+      });
+      render(
+        <Router history={history}>
+          <IntlProvider locale="zh" messages={messages}>
+            <UserSessionDetailsContext.Provider
+              value={{
+                userSessionDetails: {
+                  authenticated: true,
+                  userId: "SIM-USER",
+                  sessionId: "SIM-SESSION",
+                  csrf: "SIM-CSRF",
+                },
+              }}
+            >
+              <OrderProvider>
+                <Probe />
+                <OrderEnter />
+              </OrderProvider>
+            </UserSessionDetailsContext.Provider>
+          </IntlProvider>
+        </Router>,
+      );
+      act(() => {
+        const data = draft().orderData;
+        if (eqa) {
+          data.sampleOrderItems.isEQASample = true;
+          data.patientProperties.patientPK = "802";
+          data.patientProperties.patientUpdateStatus = "NO_ACTION";
+        }
+        context.setOrderData(data);
+        context.setSamples(draft().samples);
+      });
+      await user.click(button(mode));
+      await waitFor(() => expect(context.orderId).toBe("701"));
+      if (mode === "draft") {
+        await waitFor(() => expect(button("next")).toBeEnabled());
+        await user.click(button("next"));
+      }
+      await waitFor(() =>
+        expect(history.location.pathname).toBe("/order/collect"),
+      );
+      expect(context.orderId).toBe("701");
+      expect(context.orderData.patientProperties.patientPK).toBe("801");
+      expect(api.post).toHaveBeenCalledTimes(1);
+      expect(api.createRequests).not.toHaveBeenCalled();
+      expect(
+        api.get.mock.calls.some(([url]) =>
+          url.startsWith("/rest/order/search?"),
+        ),
+      ).toBe(false);
+      const payload = JSON.parse(api.post.mock.calls[0][1]);
+      expect(payload.sampleOrderItems.labNo).toBe("SIM-PROVIDER");
+      expect(payload.patientProperties.lastName).toBe("SIM患者A");
+      expect(payload.orderEntryOnly).toBe(true);
+      expect(payload.requestedSpecimens).toHaveLength(1);
+      vi.unstubAllGlobals();
+    },
+  );
   it("保存中附加信息迟到不得静默解锁并重复提交", async () => {
     const user = userEvent.setup();
     const pending = deferred();
@@ -556,6 +645,7 @@ describe("申请首次保存与采集入口：SIM父级交互", () => {
     ).toBeVisible();
   });
   it("离开开单页后返回，Provider仍保留待核实编号并阻止再次保存", async () => {
+    vi.stubGlobal("crypto", webcrypto);
     const user = userEvent.setup();
     history = createMemoryHistory({ initialEntries: ["/order/enter"] });
     let context;
@@ -589,7 +679,7 @@ describe("申请首次保存与采集入口：SIM父级交互", () => {
       context.setSamples(draft().samples);
     });
     await user.click(button("next"));
-    expect(api.post).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
     act(() => history.push("/order/collect"));
     act(() => history.push("/order/enter"));
     expect(
@@ -603,5 +693,6 @@ describe("申请首次保存与采集入口：SIM父级交互", () => {
     await act(async () => api.post.mock.calls[0][2]({ status: 200 }));
     expect(history.location.pathname).toBe("/order/enter");
     expect(api.createRequests).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

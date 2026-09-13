@@ -31,12 +31,20 @@ const initial = (labNo = "SIM-ENTRY-A") => ({
     patientPK: "801",
     patientUpdateStatus: "NO_ACTION",
   },
-  sampleOrderItems: { labNo, referringSiteId: "SIM-SITE" },
+  // Explicit legacy edit form. Fresh atomic entry no longer has read/serial
+  // creation stages; it is covered by orderEntryAtomicSubmission/OrderEnter.
+  sampleOrderItems: {
+    labNo,
+    referringSiteId: "SIM-SITE",
+    modified: true,
+    sampleId: "701",
+  },
 });
 const record = (labNumber = "SIM-ENTRY-A", id = "701") => ({
   id,
   labNumber,
   ...initial(labNumber),
+  sampleOrderItems: { ...initial(labNumber).sampleOrderItems, sampleId: id },
   samples: [],
   stepProgress: { enter: true, collect: false, label: false, qa: false },
 });

@@ -14,6 +14,7 @@ import {
   putToOpenElisServer,
 } from "../utils/Utils";
 import { ConfigurationContext } from "../layout/Layout";
+import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import {
   createRequestsForSamples,
   getRequestsBySample,
@@ -22,6 +23,7 @@ import {
 import { SampleOrderFormValues } from "../formModel/innitialValues/OrderEntryFormValues";
 import { convertIsoToBackendDate } from "./orderDateUtils";
 import { entrySubmissionError, submitOrderEntry } from "./orderEntrySubmission";
+import { isFirstEntry } from "./orderEntryReceipt";
 
 /**
  * OrderContext - Shared state for the decoupled sample collection workflow.
@@ -40,6 +42,61 @@ import { entrySubmissionError, submitOrderEntry } from "./orderEntrySubmission";
  */
 
 const AUTO_SAVE_INTERVAL = 30000; // 30 seconds
+
+const nonemptyString = (value) =>
+  typeof value === "string" && value.trim().length > 0;
+const readSessionIdentity = (context) => {
+  try {
+    if (typeof context.getSessionIdentity === "function") {
+      const identity = context.getSessionIdentity();
+      return nonemptyString(identity) ? identity : null;
+    }
+    const details = context.userSessionDetails;
+    return details?.authenticated === true &&
+      nonemptyString(details.userId) &&
+      nonemptyString(details.sessionId)
+      ? JSON.stringify([details.userId, details.sessionId])
+      : null;
+  } catch {
+    return null;
+  }
+};
+const readSessionCheckGeneration = (context) => {
+  if (typeof context.getSessionCheckGeneration !== "function") return undefined;
+  try {
+    const generation = context.getSessionCheckGeneration();
+    return Number.isSafeInteger(generation) && generation >= 0
+      ? generation
+      : NaN;
+  } catch {
+    return NaN;
+  }
+};
+const sessionAllowsWrite = (context, expectedIdentity, expectedGeneration) => {
+  if (!expectedIdentity || readSessionIdentity(context) !== expectedIdentity)
+    return false;
+  if (
+    expectedGeneration !== undefined &&
+    readSessionCheckGeneration(context) !== expectedGeneration
+  )
+    return false;
+  try {
+    if (typeof context.isSessionWriteAllowed === "function")
+      return (
+        context.isSessionWriteAllowed(expectedIdentity, expectedGeneration) ===
+        true
+      );
+    return (
+      context.userSessionDetails?.authenticated === true &&
+      nonemptyString(context.userSessionDetails.csrf) &&
+      (!context.sessionPhase || context.sessionPhase === "authenticated")
+    );
+  } catch {
+    return false;
+  }
+};
+const sessionWriteBlocked = () =>
+  entrySubmissionError("security.sessionWriteBlocked");
 
 export const SaveStatus = {
   SAVED: "saved",
@@ -154,6 +211,9 @@ const getInitialOrderData = () => {
     currentDate: "",
     sampleOrderItems: {
       ...SampleOrderFormValues.sampleOrderItems,
+      // The shared legacy editor template defaults to modified=true. This
+      // workspace is a fresh application until a persisted ID is loaded.
+      modified: false,
       // Date fields will be set from API
       requestDate: "",
       receivedDateForDisplay: "",
@@ -166,11 +226,86 @@ const getInitialOrderData = () => {
 
 export const OrderProvider = ({ children }) => {
   const location = useLocation();
+  const sessionContext = useContext(UserSessionDetailsContext) || {};
+  const latestSessionContext = useRef(sessionContext);
+  latestSessionContext.current = sessionContext;
+  const observedSessionIdentity = readSessionIdentity(sessionContext);
+  const draftSessionIdentity = useRef(observedSessionIdentity);
+  const sessionAutoSaveSuspended = useRef(false);
+  const sessionPauseGeneration = useRef(0);
+  const observedCheckGeneration = useRef(
+    readSessionCheckGeneration(sessionContext),
+  );
+  const previousSessionWritable = useRef(false);
+  const canWriteForSession = useCallback((identity, expectedGeneration) => {
+    const generation = readSessionCheckGeneration(latestSessionContext.current);
+    if (!Object.is(generation, observedCheckGeneration.current)) {
+      observedCheckGeneration.current = generation;
+      sessionAutoSaveSuspended.current = true;
+      sessionPauseGeneration.current += 1;
+    }
+    const allowed =
+      (generation === undefined || Number.isSafeInteger(generation)) &&
+      sessionAllowsWrite(
+        latestSessionContext.current,
+        identity,
+        expectedGeneration,
+      );
+    if (!allowed) {
+      sessionAutoSaveSuspended.current = true;
+      if (previousSessionWritable.current) sessionPauseGeneration.current += 1;
+    }
+    previousSessionWritable.current = allowed;
+    return allowed;
+  }, []);
+  // Observe committed session transitions as well as checking synchronously at
+  // each write. Recovery never grants permission to replay a paused draft.
+  canWriteForSession(draftSessionIdentity.current);
+  const assertSessionWrite = useCallback(
+    (identity, generation) => {
+      if (!canWriteForSession(identity, generation))
+        throw sessionWriteBlocked();
+    },
+    [canWriteForSession],
+  );
+  const canContinueSessionSave = useCallback(
+    (operation) => {
+      const allowed = canWriteForSession(
+        operation.sessionIdentity,
+        operation.sessionCheckGeneration,
+      );
+      if (
+        operation.sessionInterrupted ||
+        !allowed ||
+        operation.sessionPauseGeneration !== sessionPauseGeneration.current ||
+        !Object.is(
+          operation.sessionCheckGeneration,
+          readSessionCheckGeneration(latestSessionContext.current),
+        )
+      ) {
+        // Recovery can authorize a NEW manual operation, never the remainder of
+        // one that crossed an unverified interval.
+        operation.sessionInterrupted = true;
+        sessionAutoSaveSuspended.current = true;
+        return false;
+      }
+      return true;
+    },
+    [canWriteForSession],
+  );
+  const confirmManualSessionSave = useCallback(
+    (operation, silent) => {
+      if (!silent && canContinueSessionSave(operation))
+        sessionAutoSaveSuspended.current = false;
+    },
+    [canContinueSessionSave],
+  );
   const { configurationProperties = {} } =
     useContext(ConfigurationContext) || {};
   const backendDateLocale =
     configurationProperties.DEFAULT_DATE_LOCALE || "en-US";
   const [orderId, setOrderId] = useState(null);
+  const confirmedEntry = useRef(null);
   const [labNumber, setLabNumber] = useState(null);
   const [orderData, setOrderDataState] = useState(getInitialOrderData);
   const [samples, setSamplesState] = useState([sampleObject]);
@@ -249,23 +384,35 @@ export const OrderProvider = ({ children }) => {
         throw entrySubmissionError("order.save.readbackUnconfirmed");
       if (currentSaveBlocked.current)
         throw new Error("Cannot save in read-only mode");
+      const sessionIdentity = draftSessionIdentity.current;
+      const sessionCheckGeneration = readSessionCheckGeneration(
+        latestSessionContext.current,
+      );
+      assertSessionWrite(sessionIdentity, sessionCheckGeneration);
       const operation = {
         kind,
         labNo: entryLabNo,
         input: latestEntryInput.current,
         epoch: renderEpoch,
+        sessionIdentity,
+        sessionCheckGeneration,
+        sessionInterrupted: false,
+        sessionPauseGeneration: sessionPauseGeneration.current,
       };
       activeSave.current = operation;
       return operation;
     },
-    [renderEpoch, currentLabNumber, renderEntryInput],
+    [assertSessionWrite, renderEpoch, currentLabNumber, renderEntryInput],
   );
   const isCurrentSave = useCallback((operation) => {
     const current =
       isMounted.current &&
       !operation.invalidated &&
       activeSave.current === operation &&
-      requestEpoch.current === operation.epoch;
+      requestEpoch.current === operation.epoch &&
+      draftSessionIdentity.current === operation.sessionIdentity &&
+      readSessionIdentity(latestSessionContext.current) ===
+        operation.sessionIdentity;
     if (
       current &&
       operation.kind === "entry" &&
@@ -283,6 +430,32 @@ export const OrderProvider = ({ children }) => {
     if (isMounted.current && requestEpoch.current === operation.epoch) {
       setIsSubmitting(false);
     }
+  }, []);
+
+  // EQA may be assigned to the server's configured control patient. Permit
+  // only this already-verified operation's exact patient mapping, never a
+  // general relaxation of the page's cross-patient guard.
+  const isEntryPatientReceipt = useCallback((labNo, fromId, toId) => {
+    const operation = activeSave.current;
+    const receipt = operation?.verifiedReceipt;
+    if (
+      !receipt ||
+      !operation.command ||
+      operation.invalidated ||
+      !isMounted.current ||
+      requestEpoch.current !== operation.epoch ||
+      readSessionIdentity(latestSessionContext.current) !==
+        operation.sessionIdentity
+    )
+      return false;
+    const sent = JSON.parse(operation.command.body);
+    return (
+      sent.sampleOrderItems.isEQASample === true &&
+      receipt.labNumber === labNo &&
+      String(sent.patientProperties?.patientPK || "") ===
+        String(fromId || "") &&
+      String(receipt.patientProperties?.patientPK || "") === String(toId || "")
+    );
   }, []);
 
   // Storage assignment skipped flag (Label step)
@@ -316,7 +489,13 @@ export const OrderProvider = ({ children }) => {
       !operation.dispatched
     )
       return;
-    entryUnconfirmed.current.set(operation.labNo, true);
+    // Keep the original opaque key/body in this workspace for explicit receipt
+    // recovery. No clinical command is written to browser persistent storage.
+    entryUnconfirmed.current.set(operation.labNo, {
+      command: operation.command || null,
+      sessionIdentity: operation.sessionIdentity,
+      epoch: operation.epoch,
+    });
     if (isMounted.current && activeSave.current === operation) {
       autoSaveSuspended.current = true;
       setIsDirty(true);
@@ -827,6 +1006,7 @@ export const OrderProvider = ({ children }) => {
    */
   const saveOrderEntry = useCallback(
     async (silent = false, labNumberOverride = null) => {
+      assertSessionWrite(draftSessionIdentity.current);
       if (isReadOnly && !isEditMode) {
         return Promise.reject(new Error("Cannot save in read-only mode"));
       }
@@ -886,10 +1066,27 @@ export const OrderProvider = ({ children }) => {
       setSaveStatus(SaveStatus.SAVING);
       setError(null);
       try {
+        const confirmed = confirmedEntry.current;
+        if (
+          confirmed &&
+          confirmed.sampleId === String(orderId) &&
+          confirmed.labNo === effectiveLabNumber &&
+          confirmed.input === operation.input &&
+          confirmed.sessionIdentity === operation.sessionIdentity &&
+          confirmed.epoch === operation.epoch &&
+          canContinueSessionSave(operation)
+        ) {
+          // Save draft -> continue with unchanged data does not create tubes again.
+          setIsDirty(false);
+          setSaveStatus(SaveStatus.SAVED);
+          return { success: true, sampleId: confirmed.sampleId };
+        }
         const receipt = await submitOrderEntry({
           operation,
           body,
-          samples: samples.filter((sample) => sample.sampleTypeId),
+          samples: isFirstEntry(submitData, orderId)
+            ? samples
+            : samples.filter((sample) => sample.sampleTypeId),
           orderId,
           patientId: orderData?.patientProperties?.patientPK,
           requiresPatient: envFields.workflowType !== "environmental",
@@ -897,12 +1094,17 @@ export const OrderProvider = ({ children }) => {
           read: getFromOpenElisServer,
           createRequests: createRequestsForSamples,
           isCurrent: isCurrentSave,
-          canContinue: () => true,
+          canContinue: canContinueSessionSave,
           onUnknown: markEntryUnknown,
         });
         if (!isCurrentSave(operation)) {
           throw entrySubmissionError("order.progress.requestChanged");
         }
+        if (!canContinueSessionSave(operation)) {
+          markEntryUnknown(operation);
+          throw entrySubmissionError("order.save.readbackUnconfirmed");
+        }
+        operation.verifiedReceipt = receipt.entryReceipt ? receipt : null;
         setOrderId(receipt.id);
         setLabNumber(effectiveLabNumber);
         setOrderDataState((previous) => {
@@ -912,7 +1114,7 @@ export const OrderProvider = ({ children }) => {
             latestEntryInput.current !== operation.input
           )
             return previous;
-          return {
+          const nextData = {
             ...previous,
             sampleOrderItems: {
               ...previous.sampleOrderItems,
@@ -926,11 +1128,31 @@ export const OrderProvider = ({ children }) => {
                 previous.patientProperties?.patientPK,
             },
           };
+          if (receipt.entryReceipt) {
+            confirmedEntry.current = {
+              sampleId: String(receipt.id),
+              labNo: effectiveLabNumber,
+              sessionIdentity: operation.sessionIdentity,
+              epoch: operation.epoch,
+              input: JSON.stringify({
+                orderData: {
+                  ...nextData,
+                  sampleOrderItems: {
+                    ...nextData.sampleOrderItems,
+                    labNo: undefined,
+                  },
+                },
+                samples,
+              }),
+            };
+          }
+          return nextData;
         });
         setIsDirty(false);
         setSaveStatus(SaveStatus.SAVED);
         setError(null);
         autoSaveSuspended.current = false;
+        confirmManualSessionSave(operation, silent);
         return { success: true, sampleId: receipt.id };
       } catch (error) {
         if (isCurrentSave(operation)) {
@@ -954,7 +1176,10 @@ export const OrderProvider = ({ children }) => {
       beginSave,
       finishSave,
       isCurrentSave,
+      assertSessionWrite,
+      canContinueSessionSave,
       markEntryUnknown,
+      confirmManualSessionSave,
     ],
   );
 
@@ -1093,6 +1318,14 @@ export const OrderProvider = ({ children }) => {
   const resetOrder = useCallback(() => {
     if (!isMounted.current) return;
     interruptEntrySave();
+    draftSessionIdentity.current = readSessionIdentity(
+      latestSessionContext.current,
+    );
+    sessionAutoSaveSuspended.current = !sessionAllowsWrite(
+      latestSessionContext.current,
+      draftSessionIdentity.current,
+    );
+    sessionPauseGeneration.current += 1;
     const epoch = ++requestEpoch.current;
     activeLoad.current = null;
     activeSave.current = null;
@@ -1149,6 +1382,19 @@ export const OrderProvider = ({ children }) => {
       }
     });
   }, [interruptEntrySave]);
+
+  useLayoutEffect(() => {
+    // Temporary failure/expiry can hide the identity while preserving local
+    // input. A newly confirmed, different session must never inherit that input.
+    if (!observedSessionIdentity) return;
+    if (
+      draftSessionIdentity.current &&
+      draftSessionIdentity.current !== observedSessionIdentity
+    ) {
+      resetOrder();
+    }
+    draftSessionIdentity.current = observedSessionIdentity;
+  }, [observedSessionIdentity, resetOrder]);
 
   /**
    * Initialize form defaults from API on mount.
@@ -1274,6 +1520,7 @@ export const OrderProvider = ({ children }) => {
   }, [isDirty]);
 
   const entryNeedsConfirmation = entryUnconfirmed.current.has(currentLabNumber);
+  const pendingEntry = entryUnconfirmed.current.get(currentLabNumber);
   const value = {
     // State
     orderId,
@@ -1288,6 +1535,12 @@ export const OrderProvider = ({ children }) => {
     saveStatus: entryNeedsConfirmation ? SaveStatus.UNCONFIRMED : saveStatus,
     isSaveUnconfirmed: entryNeedsConfirmation,
     unconfirmedLabNumber: entryNeedsConfirmation ? currentLabNumber : "",
+    // Show only an opaque recovery reference to the same signed-in operator.
+    // The frozen clinical body remains private, in this workspace's memory.
+    unconfirmedSubmissionId:
+      pendingEntry?.sessionIdentity === observedSessionIdentity
+        ? pendingEntry.command?.submissionId || ""
+        : "",
     isDirty,
     error,
     stepProgress,
@@ -1298,6 +1551,7 @@ export const OrderProvider = ({ children }) => {
     loadOrder,
     saveOrder,
     markEntrySubmissionUnconfirmed,
+    isEntryPatientReceipt,
     saveOrderEntry, // Step 1: saves order + creates sample_type_requests (no sample_items)
     setCurrentStep,
     setOrderData,

@@ -100,6 +100,8 @@ const OrderEnter = () => {
     isSaveUnconfirmed,
     unconfirmedLabNumber,
     markEntrySubmissionUnconfirmed,
+    isEntryPatientReceipt,
+    unconfirmedSubmissionId,
     saveOrderEntry, // Step 1 uses saveOrderEntry (creates sample_type_requests, not sample_items)
     markStepComplete,
     isReadOnly,
@@ -167,7 +169,11 @@ const OrderEnter = () => {
     )
       return false;
     const patientId = current.orderData?.patientProperties?.patientPK;
-    if (pending.patientId && String(patientId || "") !== pending.patientId)
+    if (
+      pending.patientId &&
+      String(patientId || "") !== pending.patientId &&
+      !isEntryPatientReceipt?.(pending.labNo, pending.patientId, patientId)
+    )
       return false;
     if (patientId) pending.patientId = String(patientId);
     if (
@@ -313,8 +319,18 @@ const OrderEnter = () => {
     }));
   };
 
-  // Handle workflow type switch
+  const environmentalSwitchBlocked =
+    workflowType === "clinical" &&
+    Boolean(
+      orderData?.sampleOrderItems?.isEQASample ||
+      ["patientPK", "lastName", "firstName", "nationalId"].some((field) =>
+        String(orderData?.patientProperties?.[field] || "").trim(),
+      ),
+    );
+  // Switching workflow must not silently carry a clinical patient into an
+  // environment-only command or discard the clinical draft to make it fit.
   const handleWorkflowTypeChange = (index) => {
+    if (index === 1 && environmentalSwitchBlocked) return;
     const newWorkflowType = index === 0 ? "clinical" : "environmental";
     setWorkflowType(newWorkflowType);
 
@@ -612,6 +628,15 @@ const OrderEnter = () => {
                   {numberToVerify}
                 </p>
               )}
+              {unconfirmedSubmissionId && (
+                <p style={{ overflowWrap: "anywhere" }}>
+                  <FormattedMessage
+                    id="order.save.submissionReference"
+                    defaultMessage="保存核对码"
+                  />
+                  ：{unconfirmedSubmissionId}
+                </p>
+              )}
             </>
           }
         />
@@ -790,7 +815,10 @@ const OrderEnter = () => {
                     defaultMessage="Clinical"
                   />
                 </Switch>
-                <Switch name="environmental">
+                <Switch
+                  name="environmental"
+                  disabled={environmentalSwitchBlocked}
+                >
                   <FormattedMessage
                     id="workflow.environmental"
                     defaultMessage="Environmental / Other"
@@ -799,8 +827,11 @@ const OrderEnter = () => {
               </ContentSwitcher>
               <p className="helper-text">
                 <FormattedMessage
-                  id="order.sampleCategory.helper"
-                  defaultMessage="This toggle appears only when the lab unit is configured for 'Both' workflow types."
+                  id={
+                    environmentalSwitchBlocked
+                      ? "order.entry.workflowPatientConflict"
+                      : "order.sampleCategory.helper"
+                  }
                 />
               </p>
             </Tile>

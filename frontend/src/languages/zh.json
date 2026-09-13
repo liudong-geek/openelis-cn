@@ -8647,5 +8647,7 @@
   "error.dateRange.start": "请选择开始和结束日期",
   "order.save.readbackUnconfirmed": "申请已提交，但最新状态未能读取。请保留当前输入，恢复连接或登录后先查询核实，不要重复提交。",
   "order.saveStatus.unconfirmed": "已提交，状态待确认",
-  "order.progress.requestChanged": "当前申请已切换，请重新查询确认状态。"
+  "order.progress.requestChanged": "当前申请已切换，请重新查询确认状态。",
+  "order.save.submissionReference": "保存核对码",
+  "order.entry.workflowPatientConflict": "已填写患者资料或选择室间质评，不能切换为环境标本。请保留临床检验类型；如需环境采样，请先清除患者资料并取消室间质评，或新建另一份申请。"
 }

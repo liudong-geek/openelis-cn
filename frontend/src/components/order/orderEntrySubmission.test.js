@@ -32,6 +32,7 @@ describe("开单首个派发前的生命周期检查", () => {
     const read = vi.fn();
     const result = submitOrderEntry({
       operation,
+      orderId: "701", // Existing-entry compatibility path; atomic first-entry is covered separately.
       body: "{}",
       samples: [],
       post: (_url, _body, finish) => {

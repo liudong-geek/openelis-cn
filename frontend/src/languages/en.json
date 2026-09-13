@@ -8444,5 +8444,7 @@
   "barcode.print.table.specimenLabel": "Specimen label",
   "order.save.readbackUnconfirmed": "The order was submitted, but its latest state could not be read. Keep your input and verify the order after reconnecting or signing in. Do not submit it again.",
   "order.saveStatus.unconfirmed": "Submitted, status unconfirmed",
-  "order.progress.requestChanged": "The current request changed. Reload it to confirm its state."
+  "order.progress.requestChanged": "The current request changed. Reload it to confirm its state.",
+  "order.save.submissionReference": "保存核对码",
+  "order.entry.workflowPatientConflict": "已填写患者资料或选择室间质评，不能切换为环境标本。请保留临床检验类型；如需环境采样，请先清除患者资料并取消室间质评，或新建另一份申请。"
 }
