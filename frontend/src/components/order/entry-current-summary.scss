@@ -1,0 +1,41 @@
+.entry-current-summary {
+  min-width: 0;
+  .cds--inline-notification {
+    max-width: none;
+  }
+  &__patient {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 3rem;
+    margin: 1rem 0;
+    dt {
+      color: var(--cds-text-secondary);
+      font-size: 0.75rem;
+      margin-bottom: 0.25rem;
+    }
+    dd {
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+  }
+  &__table {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  table {
+    min-width: 38rem;
+  }
+  td {
+    vertical-align: middle;
+  }
+  &__secondary {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--cds-text-secondary);
+  }
+  &__notice {
+    margin-top: 1rem;
+    color: var(--cds-text-secondary);
+    line-height: 1.6;
+  }
+}

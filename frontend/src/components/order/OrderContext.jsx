@@ -31,6 +31,7 @@ import {
   recoverEntrySubmission,
 } from "./orderEntryRecovery";
 import { isEntryInputRejection } from "./orderEntryReceipt";
+import { recoverCurrentEntrySubmission } from "./orderEntryCurrent";
 
 /**
  * OrderContext - Shared state for the decoupled sample collection workflow.
@@ -687,7 +688,7 @@ export const OrderProvider = ({ children }) => {
     [interruptEntrySave],
   );
   const queryEntryRecovery = useCallback(
-    async (code, signal) => {
+    async (code, signal, currentState = false) => {
       if (activeSave.current || activeLoad.current)
         throw entrySubmissionError("order.progress.saveInProgress");
       const identity = readSessionIdentity(latestSessionContext.current);
@@ -723,7 +724,10 @@ export const OrderProvider = ({ children }) => {
       const pending = [...entryUnconfirmed.current.values()].find(
         (item) => item.command?.submissionId === code,
       );
-      const receipt = await recoverEntrySubmission({
+      const query = currentState
+        ? recoverCurrentEntrySubmission
+        : recoverEntrySubmission;
+      const receipt = await query({
         reference,
         command: pending?.command,
         read: readOpenElisResponse,
@@ -737,6 +741,11 @@ export const OrderProvider = ({ children }) => {
       return JSON.parse(JSON.stringify(receipt));
     },
     [assertSessionWrite, canWriteForSession],
+  );
+
+  const queryCurrentEntryRecovery = useCallback(
+    (code, signal) => queryEntryRecovery(code, signal, true),
+    [queryEntryRecovery],
   );
 
   /**
@@ -1615,6 +1624,7 @@ export const OrderProvider = ({ children }) => {
         : "",
     entryRecovery,
     queryEntryRecovery,
+    queryCurrentEntryRecovery,
     isRecoveryCurrent: () => recoveredEntry.current?.isCurrent() === true,
     isDirty,
     error,

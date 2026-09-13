@@ -20,11 +20,32 @@ const checkpoint = {
   submissionId,
   requestHash: "a".repeat(64),
 };
-const historicalReceipt = () => ({
-  version: 1,
-  submissionId,
-  labNo: "SIM-RECOVERY-PANEL-701",
-  requestedSpecimens: [{ id: "901" }, { id: "902" }],
+const currentFacts = () => ({
+  receipt: { version: 1, submissionId, labNo: "SIM-RECOVERY-PANEL-701" },
+  current: {
+    labNo: "SIM-RECOVERY-PANEL-701",
+    patient: { lastName: "模拟患者", birthDate: "2000-01-02" },
+    requestedSpecimens: ["COLLECTED", "REQUESTED", "CANCELLED"].map(
+      (status, i) => ({
+        id: String(901 + i),
+        sortOrder: i,
+        typeOfSampleId: "11",
+        testIds: ["31"],
+        status,
+        sampleItemId: i === 0 ? "1001" : null,
+      }),
+    ),
+    physicalSpecimens: [
+      {
+        id: "1001",
+        requestId: "901",
+        statusId: "2",
+        voided: true,
+        rejected: true,
+        collectionDate: "2026-09-13T06:00:00Z",
+      },
+    ],
+  },
 });
 const deferred = () => {
   let resolve;
@@ -43,7 +64,7 @@ const content = () => (
   </IntlProvider>
 );
 const queryButton = () =>
-  screen.getByRole("button", { name: messages["order.recovery.check"] });
+  screen.getByRole("button", { name: messages["order.recovery.currentCheck"] });
 const codeInput = () =>
   screen.getByRole("textbox", {
     name: messages["order.save.submissionReference"],
@@ -53,7 +74,7 @@ beforeEach(() => {
   sessionStorage.clear();
   fixture.context = {
     entryRecovery: { checkpoint: { ...checkpoint }, error: null },
-    queryEntryRecovery: vi.fn().mockResolvedValue(historicalReceipt()),
+    queryCurrentEntryRecovery: vi.fn().mockResolvedValue(currentFacts()),
     isRecoveryCurrent: vi.fn(() => true),
     isSubmitting: false,
     // Querying must not invoke clinical writes or reinterpret the current draft.
@@ -76,24 +97,26 @@ describe("EntryRecoveryPanel 的真实 Carbon/Intl 只读交互", () => {
     render(content());
 
     expect(
-      screen.getByRole("heading", { name: messages["order.recovery.title"] }),
+      screen.getByRole("heading", {
+        name: messages["order.recovery.currentTitle"],
+      }),
     ).toBeInTheDocument();
     expect(codeInput()).toHaveValue(submissionId);
     expect(codeInput()).toHaveAttribute("readonly");
     await userEvent.type(codeInput(), "SIM-OTHER");
     expect(codeInput()).toHaveValue(submissionId);
-    expect(fixture.context.queryEntryRecovery).not.toHaveBeenCalled();
+    expect(fixture.context.queryCurrentEntryRecovery).not.toHaveBeenCalled();
   });
 
   it("连续点击在途查询只发送一次，完成前禁止重查和修改核对码", async () => {
     const request = deferred();
-    fixture.context.queryEntryRecovery.mockReturnValue(request.promise);
+    fixture.context.queryCurrentEntryRecovery.mockReturnValue(request.promise);
     render(content());
 
     await userEvent.dblClick(queryButton());
 
-    expect(fixture.context.queryEntryRecovery).toHaveBeenCalledTimes(1);
-    expect(fixture.context.queryEntryRecovery).toHaveBeenCalledWith(
+    expect(fixture.context.queryCurrentEntryRecovery).toHaveBeenCalledTimes(1);
+    expect(fixture.context.queryCurrentEntryRecovery).toHaveBeenCalledWith(
       submissionId,
       expect.any(AbortSignal),
     );
@@ -106,18 +129,18 @@ describe("EntryRecoveryPanel 的真实 Carbon/Intl 只读交互", () => {
       screen.getByText(messages["order.recovery.loading"]),
     ).toBeInTheDocument();
     await userEvent.click(queryButton());
-    expect(fixture.context.queryEntryRecovery).toHaveBeenCalledTimes(1);
+    expect(fixture.context.queryCurrentEntryRecovery).toHaveBeenCalledTimes(1);
 
-    await act(async () => request.resolve(historicalReceipt()));
+    await act(async () => request.resolve(currentFacts()));
     await waitFor(() => expect(queryButton()).toBeEnabled());
   });
 
   it("404 明确提示尚未查到并允许只读重查，不移除原核对码", async () => {
     const stored = JSON.stringify(checkpoint);
     sessionStorage.setItem(ENTRY_CHECKPOINT_KEY, stored);
-    fixture.context.queryEntryRecovery
+    fixture.context.queryCurrentEntryRecovery
       .mockRejectedValueOnce({ errorKey: "order.recovery.notFound" })
-      .mockResolvedValueOnce(historicalReceipt());
+      .mockResolvedValueOnce(currentFacts());
     render(content());
 
     await userEvent.click(queryButton());
@@ -125,7 +148,7 @@ describe("EntryRecoveryPanel 的真实 Carbon/Intl 只读交互", () => {
       await screen.findByText(messages["order.recovery.notFound"]),
     ).toBeInTheDocument();
     expect(
-      screen.queryByText(messages["order.recovery.confirmed"]),
+      screen.queryByText(messages["order.recovery.currentConfirmed"]),
     ).not.toBeInTheDocument();
     expect(queryButton()).toBeEnabled();
     expect(codeInput()).toHaveValue(submissionId);
@@ -133,31 +156,40 @@ describe("EntryRecoveryPanel 的真实 Carbon/Intl 只读交互", () => {
 
     await userEvent.click(queryButton());
     expect(
-      await screen.findByText(messages["order.recovery.confirmed"]),
+      await screen.findByText(messages["order.recovery.currentConfirmed"]),
     ).toBeInTheDocument();
-    expect(fixture.context.queryEntryRecovery).toHaveBeenCalledTimes(2);
+    expect(fixture.context.queryCurrentEntryRecovery).toHaveBeenCalledTimes(2);
     expect(sessionStorage.getItem(ENTRY_CHECKPOINT_KEY)).toBe(stored);
     expect(
       screen.queryByText(messages["order.recovery.notFound"]),
     ).not.toBeInTheDocument();
   });
 
-  it("成功只显示历史保存和未开放恢复说明，不提供打开、继续或写入操作", async () => {
+  it("成功显示当前逐管事实和未开放恢复说明，不提供打开、继续或写入操作", async () => {
     render(content());
     await userEvent.click(queryButton());
 
     expect(
-      await screen.findByText(messages["order.recovery.confirmed"]),
+      await screen.findByText(messages["order.recovery.currentConfirmed"]),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(
-        /申请编号：SIM-RECOVERY-PANEL-701；该次保存包含 2 管标本申请/,
-      ),
+      screen.getByText(/申请编号：SIM-RECOVERY-PANEL-701；当前共 3 管标本申请/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(messages["order.recovery.readOnlyNotice"]),
+      screen.getByText(messages["order.recovery.currentReadOnlyNotice"]),
     ).toBeInTheDocument();
     expect(screen.getAllByRole("button")).toEqual([queryButton()]);
+    for (const label of [
+      "已采集",
+      "待采集",
+      "已取消",
+      "已作废",
+      "已拒收",
+      "模拟患者",
+      "2000-01-02",
+    ])
+      expect(screen.getByText(label)).toBeInTheDocument();
+    expect(screen.getAllByRole("row")).toHaveLength(4);
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     for (const action of [
@@ -177,7 +209,9 @@ describe("EntryRecoveryPanel 的真实 Carbon/Intl 只读交互", () => {
     render(content());
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     await userEvent.click(
-      screen.getByRole("button", { name: messages["order.recovery.title"] }),
+      screen.getByRole("button", {
+        name: messages["order.recovery.currentTitle"],
+      }),
     );
     expect(queryButton()).toBeDisabled();
     expect(codeInput()).not.toHaveAttribute("readonly");
@@ -185,9 +219,9 @@ describe("EntryRecoveryPanel 的真实 Carbon/Intl 只读交互", () => {
     await userEvent.click(queryButton());
 
     expect(
-      await screen.findByText(messages["order.recovery.confirmed"]),
+      await screen.findByText(messages["order.recovery.currentConfirmed"]),
     ).toBeInTheDocument();
-    expect(fixture.context.queryEntryRecovery).toHaveBeenCalledWith(
+    expect(fixture.context.queryCurrentEntryRecovery).toHaveBeenCalledWith(
       submissionId,
       expect.any(AbortSignal),
     );
@@ -197,14 +231,36 @@ describe("EntryRecoveryPanel 的真实 Carbon/Intl 只读交互", () => {
     expect(fixture.context.setSamples).not.toHaveBeenCalled();
   });
 
+  it.each(["8", "9"])(
+    "异常布尔值均为否时仍展示实管状态编号 %s，不推断正常",
+    async (statusId) => {
+      const facts = currentFacts();
+      Object.assign(facts.current.physicalSpecimens[0], {
+        voided: false,
+        rejected: false,
+        statusId,
+      });
+      fixture.context.queryCurrentEntryRecovery.mockResolvedValue(facts);
+      render(content());
+      await userEvent.click(queryButton());
+      expect(
+        await screen.findByText(`实管状态编号：${statusId}（名称待映射）`),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("正常")).not.toBeInTheDocument();
+      expect(screen.queryByText("已登记实管")).not.toBeInTheDocument();
+    },
+  );
+
   it.each(["resolve", "reject"])(
     "卸载取消查询，迟到 %s 不出现在新的面板",
     async (completion) => {
       const request = deferred();
-      fixture.context.queryEntryRecovery.mockReturnValue(request.promise);
+      fixture.context.queryCurrentEntryRecovery.mockReturnValue(
+        request.promise,
+      );
       const view = render(content());
       await userEvent.click(queryButton());
-      const signal = fixture.context.queryEntryRecovery.mock.calls[0][1];
+      const signal = fixture.context.queryCurrentEntryRecovery.mock.calls[0][1];
       expect(signal.aborted).toBe(false);
 
       act(() => {
@@ -213,19 +269,21 @@ describe("EntryRecoveryPanel 的真实 Carbon/Intl 只读交互", () => {
       expect(signal.aborted).toBe(true);
       render(content());
       await act(async () => {
-        if (completion === "resolve") request.resolve(historicalReceipt());
+        if (completion === "resolve") request.resolve(currentFacts());
         else request.reject({ errorKey: "order.recovery.notFound" });
         await request.promise.catch(() => {});
       });
 
       expect(
-        screen.queryByText(messages["order.recovery.confirmed"]),
+        screen.queryByText(messages["order.recovery.currentConfirmed"]),
       ).not.toBeInTheDocument();
       expect(
         screen.queryByText(messages["order.recovery.notFound"]),
       ).not.toBeInTheDocument();
       expect(queryButton()).toBeEnabled();
-      expect(fixture.context.queryEntryRecovery).toHaveBeenCalledTimes(1);
+      expect(fixture.context.queryCurrentEntryRecovery).toHaveBeenCalledTimes(
+        1,
+      );
     },
   );
 
@@ -233,20 +291,20 @@ describe("EntryRecoveryPanel 的真实 Carbon/Intl 只读交互", () => {
     const view = render(content());
     await userEvent.click(queryButton());
     expect(
-      await screen.findByText(messages["order.recovery.confirmed"]),
+      await screen.findByText(messages["order.recovery.currentConfirmed"]),
     ).toBeInTheDocument();
 
     fixture.context.isRecoveryCurrent.mockReturnValue(false);
     view.rerender(content());
 
     expect(
-      screen.queryByText(messages["order.recovery.confirmed"]),
+      screen.queryByText(messages["order.recovery.currentConfirmed"]),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText(/SIM-RECOVERY-PANEL-701/),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByText(messages["order.recovery.readOnlyNotice"]),
+      screen.queryByText(messages["order.recovery.currentReadOnlyNotice"]),
     ).not.toBeInTheDocument();
     expect(codeInput()).toHaveValue(submissionId);
   });
@@ -257,31 +315,33 @@ describe("EntryRecoveryPanel 的真实 Carbon/Intl 只读交互", () => {
     expect(queryButton()).toBeDisabled();
     expect(codeInput()).toHaveAttribute("readonly");
     await userEvent.click(queryButton());
-    expect(fixture.context.queryEntryRecovery).not.toHaveBeenCalled();
+    expect(fixture.context.queryCurrentEntryRecovery).not.toHaveBeenCalled();
 
     fixture.context.isSubmitting = false;
     view.rerender(content());
     expect(queryButton()).toBeEnabled();
   });
 
-  it("手工改动核对码后立即清除之前的历史结果", async () => {
+  it("手工改动核对码后立即清除之前的当前结果", async () => {
     fixture.context.entryRecovery = { checkpoint: null, error: null };
     render(content());
     await userEvent.click(
-      screen.getByRole("button", { name: messages["order.recovery.title"] }),
+      screen.getByRole("button", {
+        name: messages["order.recovery.currentTitle"],
+      }),
     );
     await userEvent.type(codeInput(), submissionId);
     await userEvent.click(queryButton());
     expect(
-      await screen.findByText(messages["order.recovery.confirmed"]),
+      await screen.findByText(messages["order.recovery.currentConfirmed"]),
     ).toBeInTheDocument();
 
     await userEvent.clear(codeInput());
 
     expect(
-      screen.queryByText(messages["order.recovery.confirmed"]),
+      screen.queryByText(messages["order.recovery.currentConfirmed"]),
     ).not.toBeInTheDocument();
     expect(queryButton()).toBeDisabled();
-    expect(fixture.context.queryEntryRecovery).toHaveBeenCalledTimes(1);
+    expect(fixture.context.queryCurrentEntryRecovery).toHaveBeenCalledTimes(1);
   });
 });

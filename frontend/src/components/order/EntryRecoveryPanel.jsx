@@ -9,14 +9,19 @@ import {
 } from "@carbon/react";
 import { useIntl } from "react-intl";
 import { useOrderContext } from "./OrderContext";
+import EntryCurrentSummary from "./EntryCurrentSummary";
 
 // Kept outside the locked clinical form: recovery is an explicit authorized
 // read, not another Save button. A receipt never silently replaces a draft.
 export default function EntryRecoveryPanel() {
   const intl = useIntl();
   const context = useOrderContext();
-  const { entryRecovery, queryEntryRecovery, isRecoveryCurrent, isSubmitting } =
-    context;
+  const {
+    entryRecovery,
+    queryCurrentEntryRecovery,
+    isRecoveryCurrent,
+    isSubmitting,
+  } = context;
   const [expanded, setExpanded] = useState(false);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -25,7 +30,7 @@ export default function EntryRecoveryPanel() {
   const active = useRef(null);
   useEffect(() => () => active.current?.abort(), []);
   const t = (id) => intl.formatMessage({ id });
-  if (!queryEntryRecovery) return null;
+  if (!queryCurrentEntryRecovery) return null;
   const pending = entryRecovery?.checkpoint;
   const visibleReceipt = receipt && isRecoveryCurrent?.() ? receipt : null;
   const lookupCode = pending?.submissionId || code.trim();
@@ -38,7 +43,10 @@ export default function EntryRecoveryPanel() {
     setError(null);
     setReceipt(null);
     try {
-      const result = await queryEntryRecovery(lookupCode, controller.signal);
+      const result = await queryCurrentEntryRecovery(
+        lookupCode,
+        controller.signal,
+      );
       if (!controller.signal.aborted) setReceipt(result);
     } catch (failure) {
       if (!controller.signal.aborted)
@@ -50,13 +58,13 @@ export default function EntryRecoveryPanel() {
   if (!pending && !expanded && !entryRecovery?.error)
     return (
       <Button kind="ghost" size="sm" onClick={() => setExpanded(true)}>
-        {t("order.recovery.title")}
+        {t("order.recovery.currentTitle")}
       </Button>
     );
   return (
     <Tile>
       <Stack gap={4}>
-        <h4>{t("order.recovery.title")}</h4>
+        <h4>{t("order.recovery.currentTitle")}</h4>
         <p>{t("order.recovery.help")}</p>
         {entryRecovery?.error && (
           <InlineNotification
@@ -83,29 +91,13 @@ export default function EntryRecoveryPanel() {
           disabled={busy || isSubmitting || !lookupCode}
           onClick={query}
         >
-          {t("order.recovery.check")}
+          {t("order.recovery.currentCheck")}
         </Button>
         {busy && <InlineLoading description={t("order.recovery.loading")} />}
         {error && (
           <InlineNotification kind="warning" hideCloseButton title={t(error)} />
         )}
-        {visibleReceipt && (
-          <>
-            <InlineNotification
-              kind="success"
-              hideCloseButton
-              title={t("order.recovery.confirmed")}
-              subtitle={intl.formatMessage(
-                { id: "order.recovery.summary" },
-                {
-                  labNo: visibleReceipt.labNo,
-                  count: visibleReceipt.requestedSpecimens.length,
-                },
-              )}
-            />
-            <p>{t("order.recovery.readOnlyNotice")}</p>
-          </>
-        )}
+        {visibleReceipt && <EntryCurrentSummary result={visibleReceipt} />}
       </Stack>
     </Tile>
   );

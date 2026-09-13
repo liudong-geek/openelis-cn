@@ -220,6 +220,87 @@ const recoveryResponse = async (original) => ({
   headers: new Headers({ "content-type": "application/json" }),
   json: async () => ({ ...(await response(original).json()), replayed: true }),
 });
+const currentRecoveryResponse = async (original) => {
+  const { receipt } = await response(original).json();
+  return {
+    status: 200,
+    redirected: false,
+    headers: new Headers({ "content-type": "application/json" }),
+    json: async () => ({
+      success: true,
+      receipt,
+      current: {
+        version: 1,
+        readOnly: true,
+        sampleId: receipt.sampleId,
+        labNo: receipt.labNo,
+        workflowType: receipt.workflowType,
+        orderStatusId: "1",
+        lastUpdated: null,
+        patient: {
+          id: receipt.patientId,
+          lastName: "SIM当前患者",
+          firstName: "",
+          birthDate: null,
+          gender: "F",
+          nationalId: null,
+        },
+        requestedSpecimens: receipt.requestedSpecimens.map((row) => ({
+          ...row,
+          testIds: row.requestedTests.split(","),
+          panelIds: [],
+          createdAt: null,
+          lastUpdated: null,
+        })),
+        physicalSpecimens: [],
+      },
+    }),
+  };
+};
+it("current真实适配器查询成功只显示当前事实，不回填/清码/写入或调用旧GET", async () => {
+  const { original, code } = await makeUnknown();
+  const before = JSON.stringify(context.orderData);
+  readOpenElisResponse.mockResolvedValue(
+    await currentRecoveryResponse(original),
+  );
+  const result = await context.queryCurrentEntryRecovery(code);
+  expect(result.current.patient.lastName).toBe("SIM当前患者");
+  expect(readOpenElisResponse).toHaveBeenCalledWith(
+    `/rest/SamplePatientEntry/submissions/${code}/current`,
+    expect.any(AbortSignal),
+  );
+  expect(JSON.stringify(context.orderData)).toBe(before);
+  expect(context.orderId).toBeNull();
+  expect(context.isSaveUnconfirmed).toBe(true);
+  expect(sessionStorage.getItem("lis.entry.pending.v1")).toContain(code);
+  expect(
+    getFromOpenElisServer.mock.calls.filter(([url]) =>
+      url.includes("order/search"),
+    ),
+  ).toHaveLength(0);
+  expect(writes).toHaveLength(1);
+  expect(context.openRecoveredEntry).toBeUndefined();
+});
+it("current查询遇会话变化拒绝迟到结果；再次查询也不放行原写入", async () => {
+  const { view, original, code } = await makeUnknown();
+  let finish;
+  readOpenElisResponse.mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  const pending = context
+    .queryCurrentEntryRecovery(code)
+    .catch((error) => error);
+  view.rerender(<View session="SIM-OTHER" />);
+  finish(await currentRecoveryResponse(original));
+  expect(await pending).toMatchObject({
+    errorKey: "order.progress.requestChanged",
+  });
+  expect(context.isRecoveryCurrent()).toBe(false);
+  expect(writes).toHaveLength(1);
+  expect(sessionStorage.getItem("lis.entry.pending.v1")).toContain(code);
+});
 it("404后仍锁定；刷新后重新核对成功只展示回执，不覆盖当前草稿", async () => {
   const { view, original, code } = await makeUnknown();
   readOpenElisResponse.mockResolvedValue({ status: 404 });

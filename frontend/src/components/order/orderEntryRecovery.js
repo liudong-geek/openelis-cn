@@ -159,8 +159,11 @@ export const recoverEntrySubmission = async ({
   read,
   isCurrent,
   signal,
+  resource = "history",
+  verify = verifyRecoveredEntryReceipt,
 }) => {
   if (!uuid(reference?.submissionId)) return fail("order.recovery.invalidCode");
+  if (!["history", "current"].includes(resource)) return fail();
   const controller = new AbortController();
   const abort = () => controller.abort();
   signal?.addEventListener("abort", abort, { once: true });
@@ -174,13 +177,15 @@ export const recoverEntrySubmission = async ({
     return await Promise.race([
       (async () => {
         const response = await read(
-          `/rest/SamplePatientEntry/submissions/${reference.submissionId}`,
+          `/rest/SamplePatientEntry/submissions/${reference.submissionId}${resource === "current" ? "/current" : ""}`,
           controller.signal,
         );
         current();
         if ([401, 403].includes(response.status))
           return fail("order.recovery.permission");
         if (response.status === 404) return fail("order.recovery.notFound");
+        if (resource === "current" && response.status === 409)
+          return fail("order.recovery.currentUnavailable");
         if (
           response.status !== 200 ||
           response.redirected ||
@@ -189,7 +194,7 @@ export const recoverEntrySubmission = async ({
           return fail();
         const data = await response.json();
         current();
-        return verifyRecoveredEntryReceipt(data, reference, command);
+        return verify(data, reference, command);
       })(),
       new Promise((_, reject) => {
         timer = setTimeout(() => {
