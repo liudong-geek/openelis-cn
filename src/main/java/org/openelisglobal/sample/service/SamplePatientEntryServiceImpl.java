@@ -4,10 +4,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.InvocationTargetException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.apache.commons.validator.GenericValidator;
 import org.openelisglobal.address.service.OrganizationAddressService;
@@ -15,6 +19,7 @@ import org.openelisglobal.address.valueholder.OrganizationAddress;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.barcode.service.BarcodeInfoService;
+import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.formfields.FormFields.Field;
 import org.openelisglobal.common.formfields.FormFields;
 import org.openelisglobal.common.log.LogEvent;
@@ -22,6 +27,7 @@ import org.openelisglobal.common.services.DisplayListService.ListType;
 import org.openelisglobal.common.services.DisplayListService;
 import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.SampleAddService.SampleTestCollection;
+import org.openelisglobal.common.services.SampleAddService;
 import org.openelisglobal.common.services.StatusService.AnalysisStatus;
 import org.openelisglobal.common.services.TableIdService;
 import org.openelisglobal.common.util.ConfigurationProperties.Property;
@@ -53,7 +59,10 @@ import org.openelisglobal.observationhistory.valueholder.ObservationHistory;
 import org.openelisglobal.organization.service.OrganizationService;
 import org.openelisglobal.organization.valueholder.Organization;
 import org.openelisglobal.organization.valueholder.OrganizationType;
+import org.openelisglobal.panel.service.PanelService;
 import org.openelisglobal.panel.valueholder.Panel;
+import org.openelisglobal.panelitem.service.PanelItemService;
+import org.openelisglobal.panelitem.valueholder.PanelItem;
 import org.openelisglobal.patient.action.IPatientUpdate.PatientUpdateStatus;
 import org.openelisglobal.patient.action.bean.PatientManagementInfo;
 import org.openelisglobal.patient.service.PatientService;
@@ -69,6 +78,7 @@ import org.openelisglobal.requester.service.SampleRequesterService;
 import org.openelisglobal.requester.valueholder.SampleRequester;
 import org.openelisglobal.sample.action.util.SamplePatientUpdateData;
 import org.openelisglobal.sample.bean.SampleOrderItem;
+import org.openelisglobal.sample.exception.SampleCollectionValidationException;
 import org.openelisglobal.sample.form.SamplePatientEntryForm;
 import org.openelisglobal.sample.valueholder.SampleAdditionalField.AdditionalFieldName;
 import org.openelisglobal.sample.valueholder.SampleAdditionalField;
@@ -79,14 +89,22 @@ import org.openelisglobal.sampleitem.service.SampleItemService;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
 import org.openelisglobal.sampletyperequest.dto.SampleTypeRequestDTO;
 import org.openelisglobal.sampletyperequest.service.SampleTypeRequestService;
+import org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest;
 import org.openelisglobal.spring.util.SpringContext;
+import org.openelisglobal.systemuser.service.UserService;
 import org.openelisglobal.test.service.TestSectionService;
 import org.openelisglobal.test.service.TestService;
 import org.openelisglobal.test.valueholder.Test;
 import org.openelisglobal.test.valueholder.TestSection;
+import org.openelisglobal.typeofsample.service.TypeOfSamplePanelService;
+import org.openelisglobal.typeofsample.service.TypeOfSampleService;
+import org.openelisglobal.typeofsample.service.TypeOfSampleTestService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.validation.BindException;
 import org.springframework.validation.BindingResult;
 
@@ -149,6 +167,21 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
     private OrderEntryActorGuard orderEntryActorGuard;
     @Autowired
     private SampleTypeRequestService sampleTypeRequestService;
+
+    @Autowired
+    private IStatusService statusService;
+    @Autowired
+    private PanelService panelService;
+    @Autowired
+    private PanelItemService panelItemService;
+    @Autowired
+    private UserService userService;
+    @Autowired
+    private TypeOfSampleService typeOfSampleService;
+    @Autowired
+    private TypeOfSampleTestService typeOfSampleTestService;
+    @Autowired
+    private TypeOfSamplePanelService typeOfSamplePanelService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -423,6 +456,351 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
             updateData.getProvider().setPerson(updateData.getProviderPerson());
 
             providerService.save(updateData.getProvider());
+        }
+    }
+
+    @Override
+    @Transactional(timeout = 45, rollbackFor = Exception.class)
+    public Map<String, String> persistCollection(String sampleId, String labNo, String sampleXML,
+            HttpServletRequest httpRequest) {
+        OrderEntryActorGuard.BoundActor actor = orderEntryActorGuard.bind(httpRequest);
+        String currentUserId = actor.userId();
+        if (sampleId == null || !sampleId.matches("[1-9][0-9]*")) {
+            throw new SampleCollectionValidationException(400, "collection.requestInvalid");
+        }
+        org.openelisglobal.sample.valueholder.Sample sample;
+        try {
+            Long.parseLong(sampleId);
+            sample = sampleService.get(sampleId);
+            if (sample == null || !sampleId.equals(sample.getId()) || sample.getAccessionNumber() == null
+                    || (labNo != null && !labNo.isBlank() && !labNo.trim().equals(sample.getAccessionNumber()))) {
+                throw new SampleCollectionValidationException(409, "collection.sampleMismatch");
+            }
+        } catch (NumberFormatException | org.hibernate.ObjectNotFoundException error) {
+            throw new SampleCollectionValidationException(409, "collection.sampleMismatch");
+        }
+        if (!statusService.matches(sample.getStatusId(),
+                org.openelisglobal.common.services.StatusService.OrderStatus.Entered)
+                && !statusService.matches(sample.getStatusId(),
+                        org.openelisglobal.common.services.StatusService.OrderStatus.Started)) {
+            throw new SampleCollectionValidationException(409, "collection.requestChanged");
+        }
+        // Reading the existing sample is intentional. Never initialise a general
+        // SamplePatientUpdateData: that path copies stale client master data into
+        // managed entities before its explicit persistence method is invoked.
+        List<SampleTestCollection> collections = new SampleAddService(sampleXML, currentUserId, sample, "", true)
+                .createSampleTestCollection();
+        // This dedicated path never guesses a pending tube from its type or position.
+        if (collections.stream().anyMatch(collection -> collection.sampleTypeRequestId == null)) {
+            throw new SampleCollectionValidationException(400, "collection.confirmationRequired");
+        }
+        prepareCollectionSave(sample, collections, true);
+
+        Map<SampleTestCollection, List<Test>> plannedTests = new IdentityHashMap<>();
+        Map<SampleTestCollection, Map<String, Panel>> plannedPanels = new IdentityHashMap<>();
+        Set<String> permissionTests = new LinkedHashSet<>();
+        // Resolve every new tube's server-authorised test plan before writing the
+        // first tube. Existing physical tubes cannot gain analyses on this screen.
+        for (SampleTestCollection collection : collections) {
+            Set<String> existingTests = new HashSet<>();
+            if (!GenericValidator.isBlankOrNull(collection.existingSampleItemId)) {
+                SampleItem existing = sampleItemService.get(collection.existingSampleItemId);
+                List<Analysis> actual = analysisService.getAnalysesBySampleItem(existing);
+                if (actual == null || actual.isEmpty()) {
+                    throw new SampleCollectionValidationException(409, "collection.requestChanged");
+                }
+                Set<String> actualTests = new HashSet<>();
+                for (Analysis analysis : actual) {
+                    if (analysis == null || analysis.getTest() == null || analysis.getTest().getId() == null
+                            || analysis.getSampleItem() == null
+                            || !existing.getId().equals(analysis.getSampleItem().getId())) {
+                        throw new SampleCollectionValidationException(409, "collection.requestChanged");
+                    }
+                    permissionTests.add(analysis.getTest().getId());
+                    actualTests.add(analysis.getTest().getId());
+                }
+                SampleTypeRequest saved = sampleTypeRequestService.get(collection.sampleTypeRequestId);
+                Set<String> savedTests = collectionIds(saved.getRequestedTests());
+                if (savedTests.isEmpty() || !actualTests.containsAll(savedTests)) {
+                    throw new SampleCollectionValidationException(409, "collection.requestChanged");
+                }
+                permissionTests.addAll(savedTests);
+                if (saved.getStatus() == SampleTypeRequest.Status.COLLECTED && existing.getCollectionDate() != null) {
+                    continue;
+                }
+                // An existing row can still be awaiting collection. It is a real
+                // write, not a replay: validate its current plan and actual values.
+                existingTests.addAll(actualTests);
+                if (collection.item.getQuantity() == null) {
+                    collection.item.setQuantity(existing.getQuantity());
+                }
+                if (collection.item.getUnitOfMeasure() == null) {
+                    collection.item.setUnitOfMeasure(existing.getUnitOfMeasure());
+                }
+            }
+            SampleTypeRequest request = sampleTypeRequestService.get(collection.sampleTypeRequestId);
+            if (request == null)
+                throw new SampleCollectionValidationException(409, "collection.requestChanged");
+            if (collection.item.getQuantity() == null || !Double.isFinite(collection.item.getQuantity())
+                    || collection.item.getQuantity() <= 0
+                    || (collection.item.getUnitOfMeasure() != null
+                            && !"Y".equals(collection.item.getUnitOfMeasure().getIsActive()))) {
+                throw new SampleCollectionValidationException(400, "collection.requestInvalid");
+            }
+            Set<String> testIds = collectionIds(request.getRequestedTests());
+            if (testIds.isEmpty()) {
+                throw new SampleCollectionValidationException(409, "collection.requestChanged");
+            }
+            testIds.addAll(existingTests);
+            var type = typeOfSampleService.get(request.getTypeOfSample().getId());
+            if (type == null || !type.isActive() || !request.getTypeOfSample().getId().equals(type.getId())) {
+                throw new SampleCollectionValidationException(409, "collection.requestChanged");
+            }
+            Set<String> eligible = new HashSet<>();
+            var links = typeOfSampleTestService.getTypeOfSampleTestsForSampleType(type.getId());
+            if (links != null) {
+                for (var link : links) {
+                    if (link != null && type.getId().equals(link.getTypeOfSampleId())) {
+                        Test linked = link.getTestId() == null ? null : testService.get(link.getTestId());
+                        if (linked != null && link.getTestId().equals(linked.getId()) && linked.isActive()
+                                && linked.getOrderable()) {
+                            eligible.add(linked.getId());
+                        }
+                    }
+                }
+            }
+            if (!eligible.containsAll(testIds)) {
+                throw new SampleCollectionValidationException(409, "collection.requestChanged");
+            }
+            Map<String, Panel> panelsByTest = new LinkedHashMap<>();
+            Set<String> panelIds = collectionIds(request.getRequestedPanels());
+            Set<String> linkedPanels = new HashSet<>();
+            if (!panelIds.isEmpty()) {
+                var panelLinks = typeOfSamplePanelService.getTypeOfSamplePanelsForSampleType(type.getId());
+                if (panelLinks != null) {
+                    panelLinks.stream().filter(link -> link != null && type.getId().equals(link.getTypeOfSampleId()))
+                            .forEach(link -> linkedPanels.add(link.getPanelId()));
+                }
+            }
+            for (String panelId : panelIds) {
+                Panel panel = panelService.getPanelById(panelId);
+                if (panel == null || !panelId.equals(panel.getId()) || !"Y".equals(panel.getIsActive())
+                        || !linkedPanels.contains(panelId))
+                    throw new SampleCollectionValidationException(409, "collection.requestChanged");
+                List<PanelItem> panelItems = panelItemService.getPanelItemsForPanel(panelId);
+                if (panelItems == null || panelItems.isEmpty()) {
+                    throw new SampleCollectionValidationException(409, "collection.requestChanged");
+                }
+                Set<String> relevant = new HashSet<>();
+                for (PanelItem panelItem : panelItems) {
+                    if (panelItem == null || panelItem.getTest() == null || panelItem.getTest().getId() == null) {
+                        throw new SampleCollectionValidationException(409, "collection.requestChanged");
+                    }
+                    String testId = panelItem.getTest().getId();
+                    if (!eligible.contains(testId)) {
+                        continue;
+                    }
+                    relevant.add(testId);
+                    panelsByTest.putIfAbsent(testId, panel);
+                }
+                // A saved flattened plan is authoritative. A changed panel never
+                // silently adds a test, nor imports another specimen type's members.
+                if (relevant.isEmpty() || !testIds.containsAll(relevant)) {
+                    throw new SampleCollectionValidationException(409, "collection.requestChanged");
+                }
+            }
+            if (testIds.isEmpty())
+                throw new SampleCollectionValidationException(409, "collection.requestChanged");
+            List<Test> tests = new ArrayList<>();
+            for (String testId : testIds) {
+                Test test = testService.get(testId);
+                if (test == null || !testId.equals(test.getId()) || !test.isActive() || !test.getOrderable()
+                        || test.getTestSection() == null) {
+                    throw new SampleCollectionValidationException(409, "collection.requestChanged");
+                }
+                tests.add(test);
+            }
+            plannedTests.put(collection, tests);
+            plannedPanels.put(collection, panelsByTest);
+            permissionTests.addAll(testIds);
+        }
+        requireCollectionPermissions(currentUserId, permissionTests);
+        Set<String> commitPermissions = Set.copyOf(permissionTests);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void beforeCommit(boolean readOnly) {
+                requireCollectionPermissions(actor.userId(), commitPermissions);
+            }
+        });
+
+        List<SampleItem> savedItems = new ArrayList<>();
+        Map<String, Integer> requestIds = new LinkedHashMap<>();
+        Set<String> insertedAnalysisIds = new HashSet<>();
+        String revision = ConfigurationProperties.getInstance().getPropertyValue("analysis.default.revision");
+        for (SampleTestCollection collection : collections) {
+            SampleItem item;
+            if (!GenericValidator.isBlankOrNull(collection.existingSampleItemId)) {
+                item = sampleItemService.get(collection.existingSampleItemId);
+                // A committed collection is wholly read-only; not even an audit
+                // timestamp or optional metadata is rewritten by a repeat save.
+                if (item.getCollectionDate() == null) {
+                    // Keep the managed baseline untouched until the audited service
+                    // compares it with the detached update and merges it.
+                    SampleItem updated = new SampleItem();
+                    org.springframework.beans.BeanUtils.copyProperties(item, updated);
+                    item = updated;
+                    item.setCollectionDate(collection.item.getCollectionDate());
+                    item.setCollector(collection.item.getCollector());
+                    if (collection.item.getReceivedDate() != null)
+                        item.setReceivedDate(collection.item.getReceivedDate());
+                    if (collection.item.getQuantity() != null)
+                        item.setQuantity(collection.item.getQuantity());
+                    if (collection.item.getUnitOfMeasure() != null)
+                        item.setUnitOfMeasure(collection.item.getUnitOfMeasure());
+                    if (collection.item.getCollectionConditions() != null)
+                        item.setCollectionConditions(collection.item.getCollectionConditions());
+                    item.setSysUserId(currentUserId);
+                    item = sampleItemService.update(item);
+                }
+            } else {
+                item = collection.item;
+                item.setFhirUuid(UUID.randomUUID());
+                String id = sampleItemService.insert(item);
+                if (id == null || !id.matches("[1-9][0-9]*") || requestIds.containsKey(id)) {
+                    throw new SampleCollectionValidationException(409, "collection.requestChanged");
+                }
+                item = sampleItemService.get(id);
+                if (item == null || !id.equals(item.getId()) || item.getSample() == null
+                        || !sampleId.equals(item.getSample().getId()) || item.getTypeOfSample() == null
+                        || !collection.item.getTypeOfSample().getId().equals(item.getTypeOfSample().getId())) {
+                    throw new SampleCollectionValidationException(409, "collection.sampleMismatch");
+                }
+                for (Test test : plannedTests.get(collection)) {
+                    Analysis analysis = new Analysis();
+                    analysis.setTest(test);
+                    analysis.setPanel(plannedPanels.get(collection).get(test.getId()));
+                    analysis.setIsReportable(test.getIsReportable());
+                    analysis.setAnalysisType(DEFAULT_ANALYSIS_TYPE);
+                    analysis.setSampleItem(item);
+                    analysis.setSysUserId(currentUserId);
+                    analysis.setRevision(revision);
+                    analysis.setStartedDate(item.getCollectionDate());
+                    analysis.setStatusId(statusService.getStatusID(AnalysisStatus.NotStarted));
+                    analysis.setTestSection(test.getTestSection());
+                    analysis.setFhirUuid(UUID.randomUUID());
+                    String analysisId = analysisService.insert(analysis);
+                    if (analysisId == null || !analysisId.matches("[1-9][0-9]*")
+                            || !insertedAnalysisIds.add(analysisId)) {
+                        throw new SampleCollectionValidationException(409, "collection.requestChanged");
+                    }
+                }
+            }
+            savedItems.add(item);
+            if (collection.sampleTypeRequestId != null)
+                requestIds.put(item.getId(), collection.sampleTypeRequestId);
+        }
+        sampleTypeRequestService.fulfillMatchingRequests(sampleId, savedItems, requestIds);
+        orderEntryActorGuard.requireUnchanged(httpRequest, actor);
+        // No ordinary order event: it would change storage, invoice and FHIR
+        // systems outside the explicit collection write set.
+        return Map.of("sampleId", sample.getId(), "labNo", sample.getAccessionNumber());
+    }
+
+    private void requireCollectionPermissions(String actor, Set<String> testIds) {
+        Set<String> allowed = new HashSet<>();
+        var current = userService.getAllDisplayUserTestsByLabUnit(actor, Constants.ROLE_RECEPTION);
+        if (current != null) {
+            current.stream().filter(java.util.Objects::nonNull).forEach(test -> allowed.add(test.getId()));
+        }
+        if (testIds.isEmpty() || !allowed.containsAll(testIds)) {
+            throw new AccessDeniedException(OrderEntryActorGuard.DENIED_MESSAGE);
+        }
+    }
+
+    private Set<String> collectionIds(String csv) {
+        Set<String> result = new LinkedHashSet<>();
+        if (csv == null || csv.isBlank())
+            return result;
+        for (String value : csv.split(",", -1)) {
+            String id = value.trim();
+            if (!id.matches("[1-9][0-9]*") || !result.add(id))
+                throw new SampleCollectionValidationException(409, "collection.requestChanged");
+        }
+        return result;
+    }
+
+    private void prepareCollectionSave(org.openelisglobal.sample.valueholder.Sample sample,
+            List<SampleTestCollection> collections, boolean collectionOnly) {
+        String sampleId = sample == null ? null : sample.getId();
+        if (collectionOnly && (sampleId == null || sampleId.isBlank())) {
+            throw new SampleCollectionValidationException(409, "collection.sampleMismatch");
+        }
+        if (collections == null || collections.isEmpty()) {
+            if (collectionOnly)
+                throw new SampleCollectionValidationException(400, "collection.confirmationRequired");
+            return;
+        }
+        List<SampleItem> candidates = new ArrayList<>();
+        Map<SampleItem, Integer> explicitIds = new IdentityHashMap<>();
+        Set<String> existingIds = new HashSet<>();
+        for (SampleTestCollection collection : collections) {
+            SampleItem incoming = collection.item;
+            if (incoming == null)
+                throw new SampleCollectionValidationException(400, "collection.requestInvalid");
+            if (collectionOnly && (!collection.explicitCollectionDateTime || incoming.getCollectionDate() == null
+                    || incoming.getCollectionDate().getTime() > System.currentTimeMillis())) {
+                throw new SampleCollectionValidationException(400, "collection.dateTimeInvalid");
+            }
+            if (!GenericValidator.isBlankOrNull(collection.existingSampleItemId)) {
+                if (!existingIds.add(collection.existingSampleItemId)) {
+                    throw new SampleCollectionValidationException(400, "collection.requestInvalid");
+                }
+                SampleItem existing = sampleItemService.get(collection.existingSampleItemId);
+                if (existing == null || existing.getSample() == null || sampleId == null
+                        || !sampleId.equals(existing.getSample().getId())
+                        || (collectionOnly && (existing.getTypeOfSample() == null || incoming.getTypeOfSample() == null
+                                || !existing.getTypeOfSample().getId().equals(incoming.getTypeOfSample().getId())))) {
+                    throw new SampleCollectionValidationException(409, "collection.sampleMismatch");
+                }
+                if (collectionOnly && (existing.isVoided() || existing.isRejected()
+                        || !statusService.matches(existing.getStatusId(),
+                                org.openelisglobal.common.services.StatusService.SampleStatus.Entered))) {
+                    throw new SampleCollectionValidationException(409, "collection.requestChanged");
+                }
+                if (collectionOnly && existing.getCollectionDate() != null) {
+                    if (existing.getCollectionDate().getTime() / 60000 != incoming.getCollectionDate().getTime()
+                            / 60000) {
+                        throw new SampleCollectionValidationException(409, "collection.requestChanged");
+                    }
+                    // UI timestamps have minute precision. Retain the committed
+                    // fact, including seconds, instead of rewriting it on save.
+                    incoming.setCollectionDate(existing.getCollectionDate());
+                    incoming.setCollector(existing.getCollector());
+                    incoming.setReceivedDate(existing.getReceivedDate());
+                    incoming.setQuantity(existing.getQuantity());
+                    incoming.setUnitOfMeasure(existing.getUnitOfMeasure());
+                    incoming.setCollectionConditions(existing.getCollectionConditions());
+                }
+                incoming.setId(existing.getId());
+                incoming.setSortOrder(existing.getSortOrder());
+            } else if (collectionOnly && collection.sampleTypeRequestId == null) {
+                throw new SampleCollectionValidationException(400, "collection.confirmationRequired");
+            }
+            if (collection.explicitCollectionDateTime || collection.sampleTypeRequestId != null) {
+                candidates.add(incoming);
+                if (collection.sampleTypeRequestId != null)
+                    explicitIds.put(incoming, collection.sampleTypeRequestId);
+            }
+        }
+        Map<SampleItem, Integer> matches = sampleTypeRequestService.validateCollectionMatches(sampleId, candidates,
+                explicitIds);
+        for (SampleTestCollection collection : collections) {
+            if (matches.containsKey(collection.item)) {
+                collection.sampleTypeRequestId = matches.get(collection.item);
+                if (collection.item.getId() != null) {
+                    collection.existingSampleItemId = collection.item.getId();
+                }
+            }
         }
     }
 

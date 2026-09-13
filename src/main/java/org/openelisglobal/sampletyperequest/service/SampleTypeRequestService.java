@@ -1,6 +1,7 @@
 package org.openelisglobal.sampletyperequest.service;
 
 import java.util.List;
+import java.util.Map;
 import org.openelisglobal.common.service.BaseObjectService;
 import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
@@ -40,12 +41,21 @@ public interface SampleTypeRequestService extends BaseObjectService<SampleTypeRe
     SampleTypeRequest fulfillRequest(Integer requestId, String sampleItemId);
 
     /**
-     * Link newly persisted specimen rows to pending requests of the same sample
-     * and specimen type.  Called inside the order save transaction.
+     * Link newly persisted specimen rows to pending requests of the same sample and
+     * specimen type. Called inside the order save transaction.
      *
      * @return number of requests fulfilled by this call
      */
     int fulfillMatchingRequests(String sampleId, List<SampleItem> sampleItems);
+
+    int fulfillMatchingRequests(String sampleId, List<SampleItem> sampleItems, Map<String, Integer> requestIdsByItemId);
+
+    /**
+     * Validate and lock before inserting any new physical tube. Keys use item
+     * identity.
+     */
+    Map<SampleItem, Integer> validateCollectionMatches(String sampleId, List<SampleItem> sampleItems,
+            Map<SampleItem, Integer> explicitRequestIds);
 
     /**
      * Cancel a pending request.

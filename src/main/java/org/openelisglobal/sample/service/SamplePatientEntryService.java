@@ -3,6 +3,7 @@ package org.openelisglobal.sample.service;
 import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
+import java.util.Map;
 import org.openelisglobal.labelpreset.dto.OrderLabelPersistRequest;
 import org.openelisglobal.labelpreset.valueholder.OrderLabelRequest;
 import org.openelisglobal.patient.action.bean.PatientManagementInfo;
@@ -22,6 +23,12 @@ public interface SamplePatientEntryService {
 
     void persistData(SamplePatientUpdateData updateData, PatientManagementUpdate patientUpdate,
             PatientManagementInfo patientInfo, SamplePatientEntryForm form, HttpServletRequest request);
+
+    /**
+     * Collection-only write set; excludes patient/order editing and general order
+     * events.
+     */
+    Map<String, String> persistCollection(String sampleId, String labNo, String sampleXML, HttpServletRequest request);
 
     /**
      * OGC-285 M5b — persist the Order Entry label requests for a just-saved order

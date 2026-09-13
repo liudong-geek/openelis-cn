@@ -11,6 +11,9 @@ public interface SampleTypeRequestDAO extends BaseDAO<SampleTypeRequest, Integer
      */
     List<SampleTypeRequest> getRequestsBySampleId(String sampleId);
 
+    /** Serialize collection decisions within the caller's write transaction. */
+    List<SampleTypeRequest> getRequestsBySampleIdForUpdate(String sampleId);
+
     /**
      * Get pending (not yet collected) requests for a sample.
      */

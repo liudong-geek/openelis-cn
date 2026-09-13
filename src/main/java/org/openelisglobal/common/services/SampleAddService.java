@@ -14,6 +14,10 @@
 package org.openelisglobal.common.services;
 
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.ResolverStyle;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -39,6 +43,7 @@ import org.openelisglobal.panel.service.PanelService;
 import org.openelisglobal.panel.valueholder.Panel;
 import org.openelisglobal.panelitem.service.PanelItemService;
 import org.openelisglobal.panelitem.valueholder.PanelItem;
+import org.openelisglobal.sample.exception.SampleCollectionValidationException;
 import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
 import org.openelisglobal.spring.util.SpringContext;
@@ -58,6 +63,7 @@ public class SampleAddService {
     private final Sample sample;
     private final List<SampleTestCollection> sampleItemsTests = new ArrayList<>();
     private final String receivedDate;
+    private final boolean collectionOnly;
     private final Map<String, Panel> panelIdPanelMap = new HashMap<>();
     private boolean xmlProcessed = false;
     private int sampleItemIdIndex = 0;
@@ -82,13 +88,23 @@ public class SampleAddService {
     }
 
     public SampleAddService(String xml, String currentUserId, Sample sample, String receiveDate) {
+        this(xml, currentUserId, sample, receiveDate, false);
+    }
+
+    public SampleAddService(String xml, String currentUserId, Sample sample, String receiveDate,
+            boolean collectionOnly) {
         this.xml = xml;
         this.currentUserId = currentUserId;
         this.sample = sample;
         receivedDate = receiveDate;
+        this.collectionOnly = collectionOnly;
     }
 
     public List<SampleTestCollection> createSampleTestCollection() {
+        if (collectionOnly
+                && (xml == null || xml.isBlank() || xml.toUpperCase(java.util.Locale.ROOT).contains("<!DOCTYPE"))) {
+            throw new SampleCollectionValidationException(400, "collection.requestInvalid");
+        }
         xmlProcessed = true;
         String collectionDateFromRecieveDate = null;
         if (USE_RECEIVE_DATE_FOR_COLLECTION_DATE) {
@@ -97,6 +113,10 @@ public class SampleAddService {
 
         try {
             Document sampleDom = DocumentHelper.parseText(xml);
+            if (collectionOnly && (!"samples".equals(sampleDom.getRootElement().getName())
+                    || sampleDom.getRootElement().elements().stream().anyMatch(child -> !"sample".equals(child.getName())))) {
+                throw new SampleCollectionValidationException(400, "collection.requestInvalid");
+            }
 
             for (@SuppressWarnings("rawtypes")
             Iterator i = sampleDom.getRootElement().elementIterator("sample"); i.hasNext();) {
@@ -104,20 +124,32 @@ public class SampleAddService {
 
                 Element sampleItem = (Element) i.next();
 
-                String testIDs = sampleItem.attributeValue("tests");
-                String panelIDs = sampleItem.attributeValue("panels");
-                Map<String, String> testIdToUserSectionMap = getTestIdToSelectionMap(
-                        sampleItem.attributeValue("testSectionMap"));
-                Map<String, String> testIdToSampleTypeMap = getTestIdToSelectionMap(
-                        sampleItem.attributeValue("testSampleTypeMap"));
+                // The collection transaction resolves authorised tests/panels from
+                // the locked server request. Client mappings are never authoritative.
+                String testIDs = collectionOnly ? "" : sampleItem.attributeValue("tests");
+                String panelIDs = collectionOnly ? "" : sampleItem.attributeValue("panels");
+                Map<String, String> testIdToUserSectionMap = collectionOnly ? new HashMap<>()
+                        : getTestIdToSelectionMap(sampleItem.attributeValue("testSectionMap"));
+                Map<String, String> testIdToSampleTypeMap = collectionOnly ? new HashMap<>()
+                        : getTestIdToSelectionMap(sampleItem.attributeValue("testSampleTypeMap"));
 
                 String collectionDate = sampleItem.attributeValue("date") == null ? null
                         : sampleItem.attributeValue("date").trim();
                 String collectionTime = sampleItem.attributeValue("time") == null ? null
                         : sampleItem.attributeValue("time").trim();
                 String collectionDateTime = null;
+                boolean explicitCollectionDateTime = !GenericValidator.isBlankOrNull(collectionDate)
+                        && !GenericValidator.isBlankOrNull(collectionTime);
+                Integer sampleTypeRequestId = collectionOnly ? parseRequestId(sampleItem.attributeValue("sampleTypeRequestId")) : null;
+                Timestamp confirmedCollectionTime = collectionOnly
+                        ? requireCollectionTimestamp(collectionDate, collectionTime)
+                        : null;
                 String rejectedValue = sampleItem.attributeValue("rejected") == null ? null
                         : sampleItem.attributeValue("rejected").trim();
+                if (collectionOnly && rejectedValue != null && !rejectedValue.isBlank()
+                        && !"false".equals(rejectedValue)) {
+                    throw new SampleCollectionValidationException(409, "collection.requestChanged");
+                }
                 boolean rejected = StringUtils.isNotBlank(rejectedValue) ? Boolean.parseBoolean(rejectedValue) : false;
                 String rejectReasonId = sampleItem.attributeValue("rejectReasonId") == null ? null
                         : sampleItem.attributeValue("rejectReasonId").trim();
@@ -132,11 +164,11 @@ public class SampleAddService {
 
                 augmentPanelIdToPanelMap(panelIDs);
                 List<ObservationHistory> initialConditionList = null;
-                if (FormFields.getInstance().useField(Field.InitialSampleCondition)) {
+                if (!collectionOnly && FormFields.getInstance().useField(Field.InitialSampleCondition)) {
                     initialConditionList = addInitialSampleConditions(sampleItem, initialConditionList);
                 }
                 ObservationHistory sampleNature = null;
-                if (FormFields.getInstance().useField(Field.SampleNature)) {
+                if (!collectionOnly && FormFields.getInstance().useField(Field.SampleNature)) {
                     sampleNature = getSampleNature(sampleItem);
                 }
 
@@ -144,6 +176,10 @@ public class SampleAddService {
                 item.setSysUserId(currentUserId);
                 item.setSample(sample);
                 item.setTypeOfSample(typeOfSampleService.getTypeOfSampleById(sampleItem.attributeValue("sampleID")));
+                if (collectionOnly && (item.getTypeOfSample() == null || item.getTypeOfSample().getId() == null
+                        || !item.getTypeOfSample().getId().equals(sampleItem.attributeValue("sampleID")))) {
+                    throw new SampleCollectionValidationException(400, "collection.requestInvalid");
+                }
                 item.setSortOrder(Integer.toString(sampleItemIdIndex));
                 if (rejected) {
                     item.setStatusId(
@@ -159,7 +195,14 @@ public class SampleAddService {
 
                 String receivedDateStr = sampleItem.attributeValue("receivedDate");
                 String receivedTimeStr = sampleItem.attributeValue("receivedTime");
-                if (!GenericValidator.isBlankOrNull(receivedDateStr)) {
+                if (collectionOnly && (!GenericValidator.isBlankOrNull(receivedDateStr)
+                        || !GenericValidator.isBlankOrNull(receivedTimeStr))) {
+                    Timestamp received = requireCollectionTimestamp(receivedDateStr, receivedTimeStr);
+                    if (received.before(confirmedCollectionTime)) {
+                        throw new SampleCollectionValidationException(400, "collection.dateTimeInvalid");
+                    }
+                    item.setReceivedDate(received);
+                } else if (!collectionOnly && !GenericValidator.isBlankOrNull(receivedDateStr)) {
                     String receivedDateTime = receivedDateStr;
                     if (!GenericValidator.isBlankOrNull(receivedTimeStr)) {
                         receivedDateTime += " " + receivedTimeStr;
@@ -177,7 +220,18 @@ public class SampleAddService {
 
                 String quantityStr = sampleItem.attributeValue("quantity");
                 if (quantityStr != null && !quantityStr.trim().isEmpty()) {
-                    item.setQuantity(Double.valueOf(quantityStr));
+                    try {
+                        double quantity = Double.parseDouble(quantityStr);
+                        if (collectionOnly && (!Double.isFinite(quantity) || quantity <= 0)) {
+                            throw new NumberFormatException();
+                        }
+                        item.setQuantity(quantity);
+                    } catch (NumberFormatException failure) {
+                        if (collectionOnly) {
+                            throw new SampleCollectionValidationException(400, "collection.requestInvalid");
+                        }
+                        throw failure;
+                    }
                 }
 
                 item.setExternalId(sample.getAccessionNumber() + "-" + sampleItemIdIndex);
@@ -185,13 +239,18 @@ public class SampleAddService {
                 String uomId = sampleItem.attributeValue("uom");
                 if (uomId != null && !uomId.trim().isEmpty()) {
                     item.setUnitOfMeasure(unitOfMeasureService.getUnitOfMeasureById(uomId));
+                    if (collectionOnly && (item.getUnitOfMeasure() == null
+                            || !uomId.equals(item.getUnitOfMeasure().getId()))) {
+                        throw new SampleCollectionValidationException(400, "collection.requestInvalid");
+                    }
                 }
 
                 item.setRejected(rejected);
                 item.setRejectReasonId(rejectReasonId);
 
                 if (!GenericValidator.isBlankOrNull(collectionDateTime)) {
-                    item.setCollectionDate(DateUtil.convertStringDateToTimestamp(collectionDateTime));
+                    item.setCollectionDate(collectionOnly ? confirmedCollectionTime
+                            : DateUtil.convertStringDateToTimestamp(collectionDateTime));
                 }
                 List<Test> tests = new ArrayList<>();
 
@@ -213,14 +272,19 @@ public class SampleAddService {
                 String existingSampleItemId = sampleItem.attributeValue("sampleItemId");
 
                 SampleTestCollection stc = new SampleTestCollection(item, tests,
-                        USE_RECEIVE_DATE_FOR_COLLECTION_DATE ? collectionDateFromRecieveDate : collectionDateTime,
+                        !collectionOnly && USE_RECEIVE_DATE_FOR_COLLECTION_DATE ? collectionDateFromRecieveDate
+                                : collectionDateTime,
                         initialConditionList, testIdToUserSectionMap, testIdToSampleTypeMap, sampleNature,
                         storageLocationId, storageLocationType, storagePositionCoordinate, gpsLatitude, gpsLongitude,
                         gpsAccuracy, gpsCaptureMethod, numOrderLabels, numSpecimenLabels);
                 stc.existingSampleItemId = existingSampleItemId;
+                stc.sampleTypeRequestId = sampleTypeRequestId;
+                stc.explicitCollectionDateTime = explicitCollectionDateTime;
                 sampleItemsTests.add(stc);
             }
         } catch (DocumentException e) {
+            if (collectionOnly)
+                throw new SampleCollectionValidationException(400, "collection.requestInvalid");
             LogEvent.logDebug(e);
         }
 
@@ -250,7 +314,6 @@ public class SampleAddService {
 
     private Map<String, String> getTestIdToSelectionMap(String mapPairs) {
         Map<String, String> sectionMap = new HashMap<>();
-
         String[] maps = mapPairs.split(",");
         for (String map : maps) {
             String[] mapping = map.split(":");
@@ -260,6 +323,38 @@ public class SampleAddService {
         }
 
         return sectionMap;
+    }
+
+    private Integer parseRequestId(String value) {
+        if (value == null || value.isEmpty())
+            return null;
+        if (!value.matches("[1-9][0-9]*")) {
+            throw new SampleCollectionValidationException(400, "collection.requestInvalid");
+        }
+        try {
+            return Integer.valueOf(value);
+        } catch (NumberFormatException error) {
+            throw new SampleCollectionValidationException(400, "collection.requestInvalid");
+        }
+    }
+
+    private Timestamp requireCollectionTimestamp(String date, String time) {
+        try {
+            if (date == null || time == null || !time.matches("[0-9]{2}:[0-9]{2}")) {
+                throw new IllegalArgumentException();
+            }
+            DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern(DateUtil.getDateFormat().replace("yyyy", "uuuu"))
+                    .withResolverStyle(ResolverStyle.STRICT);
+            LocalDate day = LocalDate.parse(date, dateFormat);
+            LocalTime clock = LocalTime.parse(time,
+                    DateTimeFormatter.ofPattern("HH:mm").withResolverStyle(ResolverStyle.STRICT));
+            Timestamp result = Timestamp.valueOf(day.atTime(clock));
+            if (result.getTime() > System.currentTimeMillis())
+                throw new IllegalArgumentException();
+            return result;
+        } catch (RuntimeException error) {
+            throw new SampleCollectionValidationException(400, "collection.dateTimeInvalid");
+        }
     }
 
     private void augmentPanelIdToPanelMap(String panelIDs) {
@@ -353,6 +448,8 @@ public class SampleAddService {
 
         // Existing sample item ID - for updates, identifies which sample_item to update
         public String existingSampleItemId;
+        public Integer sampleTypeRequestId;
+        public boolean explicitCollectionDateTime;
 
         public SampleTestCollection(SampleItem item, List<Test> tests, String collectionDate,
                 List<ObservationHistory> initialConditionList, Map<String, String> testIdToUserSectionMap,

@@ -267,6 +267,33 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
         }
 
 
+        // Branch before loading or copying ANY ordinary order/patient form data.
+        // Those initializers mutate managed entities, even without an explicit save.
+        if (form.isCollectionOnly()) {
+            if (request.getSession(false) == null
+                    || org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication() == null) {
+                return collectionFailure(new org.openelisglobal.sample.exception.SampleCollectionValidationException(
+                        401, "collection.authRequired"));
+            }
+            SampleOrderItem identity = form.getSampleOrderItems();
+            try {
+                Map<String, String> receipt = samplePatientService.persistCollection(
+                        identity == null ? null : identity.getSampleId(), identity == null ? null : identity.getLabNo(),
+                        form.getSampleXML(), request);
+                return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                        .body(Map.of("success", true, "sampleOrderItems", receipt));
+            } catch (org.openelisglobal.sample.exception.SampleCollectionValidationException failure) {
+                return collectionFailure(failure);
+            } catch (org.springframework.security.access.AccessDeniedException failure) {
+                return ResponseEntity.status(403).cacheControl(org.springframework.http.CacheControl.noStore())
+                        .body(Map.of("success", false, "message",
+                                org.openelisglobal.sample.service.OrderEntryActorGuard.DENIED_MESSAGE));
+            } catch (Exception failure) {
+                return ResponseEntity.status(503).cacheControl(org.springframework.http.CacheControl.noStore())
+                        .body(Map.of("success", false, "message", "暂时无法确认采集结果，请核对当前标本状态，不要重复采集。"));
+            }
+        }
+
         // Extract sampleOrder and workflowType early so we can check for environmental
         // workflow
         SampleOrderItem sampleOrder = form.getSampleOrderItems();
@@ -623,6 +650,14 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
                         .map(oe -> oe.getDefaultMessage() != null ? oe.getDefaultMessage() : oe.getCode())
                         .collect(Collectors.toList()));
         return body;
+    }
+
+    @org.springframework.web.bind.annotation.ExceptionHandler(org.openelisglobal.sample.exception.SampleCollectionValidationException.class)
+    public ResponseEntity<Map<String, Object>> collectionFailure(
+            org.openelisglobal.sample.exception.SampleCollectionValidationException error) {
+        return ResponseEntity.status(error.getStatus()).cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(Map.of("success", false, "code", error.getCode(),
+                "errorKey", error.getErrorKey(), "error", error.getErrorKey()));
     }
 
     private static boolean hasDuplicatePatientError(BindingResult result) {

@@ -1,5 +1,6 @@
 package org.openelisglobal.sampletyperequest.daoimpl;
 
+import jakarta.persistence.LockModeType;
 import java.util.Collections;
 import java.util.List;
 import org.hibernate.Session;
@@ -49,6 +50,21 @@ public class SampleTypeRequestDAOImpl extends BaseDAOImpl<SampleTypeRequest, Int
                         + "AND str.status = :status ORDER BY str.sortOrder", SampleTypeRequest.class);
         query.setParameter("sampleId", id);
         query.setParameter("status", SampleTypeRequest.Status.REQUESTED);
+        return query.list();
+    }
+
+    @Override
+    public List<SampleTypeRequest> getRequestsBySampleIdForUpdate(String sampleId) {
+        String id = normalizeSampleId(sampleId);
+        if (id == null)
+            return Collections.emptyList();
+        Session session = entityManager.unwrap(Session.class);
+        Query<SampleTypeRequest> query = session.createQuery(
+                "FROM SampleTypeRequest str WHERE str.sample.id = :sampleId ORDER BY str.id", SampleTypeRequest.class);
+        query.setParameter("sampleId", id);
+        query.setTimeout(15);
+        query.setHint("jakarta.persistence.lock.timeout", 15000);
+        query.setLockMode(LockModeType.PESSIMISTIC_WRITE);
         return query.list();
     }
 

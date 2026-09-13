@@ -2,15 +2,23 @@ package org.openelisglobal.sampletyperequest.service;
 
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.service.AuditableBaseObjectServiceImpl;
+import org.openelisglobal.common.services.IStatusService;
+import org.openelisglobal.common.services.StatusService.SampleStatus;
 import org.openelisglobal.panel.service.PanelService;
 import org.openelisglobal.panelitem.service.PanelItemService;
+import org.openelisglobal.sample.exception.SampleCollectionValidationException;
 import org.openelisglobal.sample.valueholder.Sample;
+import org.openelisglobal.sampleitem.dao.SampleItemDAO;
 import org.openelisglobal.sampleitem.service.SampleItemService;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
 import org.openelisglobal.sampletyperequest.dao.SampleTypeRequestDAO;
@@ -38,6 +46,10 @@ public class SampleTypeRequestServiceImpl extends AuditableBaseObjectServiceImpl
 
     @Autowired
     private SampleItemService sampleItemService;
+    @Autowired
+    private SampleItemDAO sampleItemDAO;
+    @Autowired
+    private IStatusService statusService;
 
     @Autowired
     private TypeOfSampleService typeOfSampleService;
@@ -370,6 +382,192 @@ public class SampleTypeRequestServiceImpl extends AuditableBaseObjectServiceImpl
             }
         }
         return fulfilledCount;
+    }
+
+    @Override
+    @Transactional
+    public int fulfillMatchingRequests(String sampleId, List<SampleItem> sampleItems,
+            Map<String, Integer> requestIdsByItemId) {
+        if (sampleId == null || sampleId.trim().isEmpty() || sampleItems == null || sampleItems.isEmpty()) {
+            return 0;
+        }
+        Map<SampleItem, Integer> explicit = new IdentityHashMap<>();
+        for (SampleItem item : sampleItems) {
+            if (item != null && requestIdsByItemId.containsKey(item.getId())) {
+                explicit.put(item, requestIdsByItemId.get(item.getId()));
+            }
+        }
+        List<SampleTypeRequest> allRequests = sampleTypeRequestDAO.getRequestsBySampleIdForUpdate(sampleId);
+        Map<SampleItem, Integer> matches = matchRequests(sampleId, sampleItems, explicit, allRequests);
+        // Validate the entire batch before mutating even one managed request.
+        for (Map.Entry<SampleItem, Integer> entry : matches.entrySet()) {
+            SampleTypeRequest request = allRequests.stream().filter(r -> entry.getValue().equals(r.getId())).findFirst()
+                    .orElseThrow();
+            if (request.getStatus() == SampleTypeRequest.Status.COLLECTED) {
+                continue; // An exact bound replay is read-only, including its audit history.
+            }
+            request.setStatus(SampleTypeRequest.Status.COLLECTED);
+            request.setSampleItem(entry.getKey());
+            request.setSysUserId(entry.getKey().getSysUserId());
+            update(request);
+        }
+        return matches.size();
+    }
+
+    @Override
+    @Transactional
+    public Map<SampleItem, Integer> validateCollectionMatches(String sampleId, List<SampleItem> sampleItems,
+            Map<SampleItem, Integer> explicitRequestIds) {
+        if (sampleItems == null || sampleItems.isEmpty())
+            return Collections.emptyMap();
+        if (sampleId == null || sampleId.isBlank()) {
+            if (!explicitRequestIds.isEmpty())
+                throw collectionError(409, "sampleMismatch");
+            return Collections.emptyMap();
+        }
+        List<SampleTypeRequest> requests = sampleTypeRequestDAO.getRequestsBySampleIdForUpdate(sampleId);
+        Map<SampleItem, Integer> matches = matchRequests(sampleId, sampleItems, explicitRequestIds, requests);
+        // Include voided physical rows: their barcode identity must never be reused.
+        List<SampleItem> existingItems = sampleItemDAO.getSampleItemsBySampleId(sampleId);
+        if (existingItems == null) {
+            throw collectionError(409, "requestChanged");
+        }
+        Set<Integer> occupied = new HashSet<>();
+        for (SampleItem existing : existingItems) {
+            try {
+                if (existing == null || existing.getSortOrder() == null
+                        || !existing.getSortOrder().matches("[1-9][0-9]*")
+                        || !occupied.add(Integer.valueOf(existing.getSortOrder()))) {
+                    throw collectionError(409, "requestChanged");
+                }
+            } catch (NumberFormatException failure) {
+                throw collectionError(409, "requestChanged");
+            }
+        }
+        List<SampleTypeRequest> ordered = requests.stream()
+                .sorted(Comparator.comparing(SampleTypeRequest::getSortOrder, Comparator.nullsLast(Integer::compareTo))
+                        .thenComparing(SampleTypeRequest::getId)).toList();
+        // Visit the submitted list, not IdentityHashMap's unstable iteration order.
+        for (SampleItem item : sampleItems) {
+            if (!matches.containsKey(item)) {
+                continue;
+            }
+            if (item.getId() != null)
+                continue; // Never renumber an existing physical tube.
+            SampleTypeRequest request = ordered.stream().filter(r -> matches.get(item).equals(r.getId())).findFirst()
+                    .orElseThrow();
+            int number = ordered.indexOf(request) + 1;
+            if (occupied.contains(number)) {
+                long next = Math.max((long) ordered.size(), occupied.stream().mapToInt(Integer::intValue).max().orElse(0)) + 1;
+                if (next > Integer.MAX_VALUE) {
+                    throw collectionError(409, "requestChanged");
+                }
+                number = (int) next;
+            }
+            occupied.add(number);
+            String tubeNumber = Integer.toString(number);
+            item.setSortOrder(tubeNumber);
+            item.setExternalId(item.getSample().getAccessionNumber() + "-" + tubeNumber);
+        }
+        return matches;
+    }
+
+    private Map<SampleItem, Integer> matchRequests(String sampleId, List<SampleItem> sampleItems,
+            Map<SampleItem, Integer> explicit, List<SampleTypeRequest> allRequests) {
+        Map<SampleItem, Integer> matches = new IdentityHashMap<>();
+        Set<Integer> usedRequestIds = new HashSet<>();
+        Set<String> seenItemIds = new HashSet<>();
+        Set<String> alreadyLinkedItemIds = new HashSet<>();
+        Set<Integer> allIds = new HashSet<>();
+        for (SampleTypeRequest request : allRequests) {
+            if (request == null || request.getId() == null || !allIds.add(request.getId())) {
+                throw collectionError(409, "requestChanged");
+            }
+            if (request.getSampleItem() != null && (request.getSampleItem().getId() == null
+                    || !alreadyLinkedItemIds.add(request.getSampleItem().getId()))) {
+                throw collectionError(409, "requestChanged");
+            }
+        }
+        List<SampleItem> legacy = new ArrayList<>();
+        for (SampleItem item : sampleItems) {
+            if (item == null || item.getSample() == null || !sampleId.equals(item.getSample().getId())) {
+                throw collectionError(409, "sampleMismatch");
+            }
+            if (item.getId() != null && !seenItemIds.add(item.getId()))
+                throw collectionError(400, "requestInvalid");
+            Integer requestId = explicit.get(item);
+            if (requestId != null) {
+                if (requestId <= 0 || !usedRequestIds.add(requestId))
+                    throw collectionError(400, "requestInvalid");
+                SampleTypeRequest request = allRequests.stream().filter(r -> requestId.equals(r.getId())).findFirst()
+                        .orElseThrow(() -> collectionError(409, "requestChanged"));
+                if (request.getSample() == null || !sampleId.equals(request.getSample().getId())
+                        || request.getTypeOfSample() == null || item.getTypeOfSample() == null
+                        || !request.getTypeOfSample().getId().equals(item.getTypeOfSample().getId())) {
+                    throw collectionError(409, "sampleMismatch");
+                }
+                requireCollectedItem(item);
+                if (request.getStatus() == SampleTypeRequest.Status.COLLECTED && request.getSampleItem() != null) {
+                    SampleItem original = request.getSampleItem();
+                    requireCollectedItem(original);
+                    if (original.getSample() == null || !sampleId.equals(original.getSample().getId())
+                            || original.getTypeOfSample() == null
+                            || !request.getTypeOfSample().getId().equals(original.getTypeOfSample().getId())
+                            || (item.getId() != null && !item.getId().equals(original.getId()))
+                            || original.getCollectionDate().getTime() / 60000 != item.getCollectionDate().getTime() / 60000) {
+                        throw collectionError(409, "requestChanged");
+                    }
+                    // Resolve a lost response by the original request identity, not a
+                    // fresh physical row. Preserve every committed collection field.
+                    item.setId(original.getId()); item.setSortOrder(original.getSortOrder());
+                    item.setCollectionDate(original.getCollectionDate()); item.setCollector(original.getCollector());
+                    item.setReceivedDate(original.getReceivedDate()); item.setQuantity(original.getQuantity());
+                    item.setUnitOfMeasure(original.getUnitOfMeasure()); item.setCollectionConditions(original.getCollectionConditions());
+                    matches.put(item, requestId);
+                    continue;
+                }
+                if (request.getStatus() != SampleTypeRequest.Status.REQUESTED || request.getSampleItem() != null) {
+                    throw collectionError(409, "requestChanged");
+                }
+                if (alreadyLinkedItemIds.contains(item.getId()))
+                    throw collectionError(409, "requestChanged");
+                matches.put(item, requestId);
+            } else if (!alreadyLinkedItemIds.contains(item.getId()) && item.getCollectionDate() != null
+                    && !item.isVoided() && !item.isRejected()) {
+                legacy.add(item);
+            }
+        }
+        for (SampleItem item : legacy) {
+            if (item.getTypeOfSample() == null)
+                continue;
+            List<SampleTypeRequest> candidates = allRequests.stream()
+                    .filter(r -> r.getStatus() == SampleTypeRequest.Status.REQUESTED && r.getSampleItem() == null)
+                    .filter(r -> !usedRequestIds.contains(r.getId()) && r.getTypeOfSample() != null)
+                    .filter(r -> item.getTypeOfSample().getId().equals(r.getTypeOfSample().getId())).toList();
+            if (candidates.isEmpty())
+                continue;
+            long matchingItems = legacy.stream().filter(i -> i.getTypeOfSample() != null
+                    && item.getTypeOfSample().getId().equals(i.getTypeOfSample().getId())).count();
+            if (candidates.size() != 1 || matchingItems != 1)
+                throw collectionError(409, "ambiguousRequest");
+            requireCollectedItem(item);
+            matches.put(item, candidates.getFirst().getId());
+            usedRequestIds.add(candidates.getFirst().getId());
+        }
+        return matches;
+    }
+
+    private void requireCollectedItem(SampleItem item) {
+        if (item.getCollectionDate() == null || item.getCollectionDate().getTime() > System.currentTimeMillis()) {
+            throw collectionError(400, "dateTimeInvalid");
+        }
+        if (item.isVoided() || item.isRejected() || !statusService.matches(item.getStatusId(), SampleStatus.Entered)) {
+            throw collectionError(409, "requestChanged");
+        }
+    }
+
+    private SampleCollectionValidationException collectionError(int status, String key) {
+        return new SampleCollectionValidationException(status, "collection." + key);
     }
 
     @Override
