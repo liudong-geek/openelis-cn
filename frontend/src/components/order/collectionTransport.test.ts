@@ -5,6 +5,28 @@ afterEach(() => {
   vi.unstubAllGlobals();
   localStorage.removeItem("CSRF");
 });
+it.each([400, 409])(
+  "保留拒绝应答正文供命令层核对，不能只凭HTTP状态解锁：%s",
+  async (status) => {
+    const payload = {
+      success: false,
+      code: "COLLECTION_NOT_SAVED",
+      version: 1,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(payload), {
+          status,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    await expect(
+      postRecoveredCollection("SIM-BODY", new AbortController().signal),
+    ).resolves.toMatchObject({ status, data: payload });
+  },
+);
 it("真实适配器只发送一次，不重定向、不传伪幂等头，保留取消信号", async () => {
   const payload = {
     success: true,
@@ -33,6 +55,27 @@ it("真实适配器只发送一次，不重定向、不传伪幂等头，保留�
   });
   expect(options.headers["X-CSRF-Token"]).toBe("SIM-CSRF");
   expect(options.headers).not.toHaveProperty("Idempotency-Key");
+});
+it("采集相关标识单独传递，摘要由后台计算而非客户端声明", async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValue(
+      new Response("{}", { headers: { "content-type": "application/json" } }),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  await postRecoveredCollection("SIM-BODY", new AbortController().signal, {
+    attemptId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    fingerprint: "a".repeat(64),
+  });
+  expect(fetcher.mock.calls[0][1].headers["X-LIS-Collection-Attempt"]).toBe(
+    "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  );
+  expect(JSON.stringify(fetcher.mock.calls[0][1].headers)).not.toContain(
+    "a".repeat(64),
+  );
+  expect(fetcher.mock.calls[0][1].headers).not.toHaveProperty(
+    "Idempotency-Key",
+  );
 });
 it.each(["redirect", "html", "empty", "oversize", "broken"])(
   "异常正文拒绝且不重试：%s",

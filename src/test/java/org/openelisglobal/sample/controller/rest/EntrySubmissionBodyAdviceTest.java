@@ -34,6 +34,7 @@ public class EntrySubmissionBodyAdviceTest {
     private EntrySubmissionBodyAdvice advice;
     private MockHttpServletRequest request;
     private EntrySubmissionService service;
+    private org.openelisglobal.sample.service.SamplePatientEntryService collections;
     private MockMvc mvc;
 
     @Before public void before() throws Exception {
@@ -42,6 +43,8 @@ public class EntrySubmissionBodyAdviceTest {
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
         var controller = new SamplePatientEntryRestController(); service = mock(EntrySubmissionService.class);
         ReflectionTestUtils.setField(controller, "entrySubmissions", service);
+        collections = mock(org.openelisglobal.sample.service.SamplePatientEntryService.class);
+        ReflectionTestUtils.setField(controller, "samplePatientService", collections);
         when(service.submit(any(), any(), any(), any())).thenAnswer(call -> {
             var command = (EntrySubmissionCommand) call.getArgument(0);
             assertSame(call.getArgument(1), command.form());
@@ -59,7 +62,10 @@ public class EntrySubmissionBodyAdviceTest {
                     @Override public void validate(Object target, Errors errors) { errors.rejectValue("currentDate", "SIM-old-date"); }
                 }).build();
     }
-    @After public void after() { RequestContextHolder.resetRequestAttributes(); }
+    @After public void after() {
+        RequestContextHolder.resetRequestAttributes();
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
     private MockHttpInputMessage input(byte[] bytes) {
         var input = new MockHttpInputMessage(bytes); input.getHeaders().setContentType(MediaType.APPLICATION_JSON); return input;
     }
@@ -73,6 +79,37 @@ public class EntrySubmissionBodyAdviceTest {
         var command = org.mockito.ArgumentCaptor.forClass(EntrySubmissionCommand.class);
         verify(service).submit(command.capture(), any(), any(), any());
         assertEquals(EntrySubmissionCommand.fingerprint(body.getBytes(StandardCharsets.UTF_8)), command.getValue().fingerprint());
+    }
+    @Test public void collectionAttemptCapturesRealWireBodyWithoutClaimingIdempotency() throws Exception {
+        String body = "{\"collectionOnly\":true,\"sampleOrderItems\":{\"sampleId\":\"1\",\"labNo\":\"SIM-COLLECTION\"},\"sampleXML\":\"<samples />\",\"SIM-ignored\":\"尾部\"}  \n";
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken("SIM-user", "SIM-unused"));
+        when(collections.persistCollection(eq("1"), eq("SIM-COLLECTION"), eq("<samples />"), any())).thenAnswer(call -> {
+            var http = (jakarta.servlet.http.HttpServletRequest) call.getArgument(3);
+            Object attempt = http.getAttribute(org.openelisglobal.sample.service.CollectionSaveAttempt.ATTRIBUTE);
+            assertNotNull(attempt);
+            assertEquals(EntrySubmissionCommand.fingerprint(body.getBytes(StandardCharsets.UTF_8)),
+                    ReflectionTestUtils.getField(attempt, "fingerprint"));
+            assertNull(http.getAttribute(EntrySubmissionCommand.ATTRIBUTE));
+            return java.util.Map.of("sampleId", "1", "labNo", "SIM-COLLECTION");
+        });
+        mvc.perform(post("/rest/SamplePatientEntry").session(new org.springframework.mock.web.MockHttpSession())
+                .header(org.openelisglobal.sample.service.CollectionSaveAttempt.HEADER, KEY)
+                .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk());
+        verify(collections).persistCollection(eq("1"), eq("SIM-COLLECTION"), eq("<samples />"), any());
+        verifyZeroInteractions(service);
+    }
+    @Test public void ambiguousAndMalformedCollectionHeadersCannotReachSave() throws Exception {
+        String header = org.openelisglobal.sample.service.CollectionSaveAttempt.HEADER;
+        mvc.perform(post("/rest/SamplePatientEntry").header(header, KEY, KEY)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"collectionOnly\":true}")).andExpect(status().isBadRequest());
+        mvc.perform(post("/rest/SamplePatientEntry").header(header, KEY).header(EntrySubmissionCommand.HEADER, KEY)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"collectionOnly\":true}")).andExpect(status().isBadRequest());
+        for (String body : new String[]{"", "{}", "{\"collectionOnly\":true,\"x\":1,\"x\":2}", "{\"collectionOnly\":true,\"requestedSpecimens\":[]}"}) {
+            mvc.perform(post("/rest/SamplePatientEntry").header(header, KEY)
+                    .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isBadRequest());
+        }
+        verifyZeroInteractions(service, collections);
     }
     @Test public void realMvcRejectsDuplicateHeaderWithoutInvokingService() throws Exception {
         mvc.perform(post("/rest/SamplePatientEntry").header(EntrySubmissionCommand.HEADER, KEY, KEY)

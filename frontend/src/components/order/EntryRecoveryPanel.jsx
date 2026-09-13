@@ -30,6 +30,7 @@ export default function EntryRecoveryPanel() {
   const [receipt, setReceipt] = useState(null);
   const [error, setError] = useState(null);
   const [collectionSaved, setCollectionSaved] = useState(false);
+  const [collectionDraft, setCollectionDraft] = useState(null);
   const active = useRef(null);
   useEffect(() => () => active.current?.abort(), []);
   const t = (id) => intl.formatMessage({ id });
@@ -37,7 +38,7 @@ export default function EntryRecoveryPanel() {
   const pending = entryRecovery?.checkpoint || collectionRecovery?.checkpoint;
   const visibleReceipt = receipt && isRecoveryCurrent?.() ? receipt : null;
   const lookupCode = pending?.submissionId || code.trim();
-  const query = async () => {
+  const query = async (draft = null) => {
     if (busy || isSubmitting) return;
     const controller = new AbortController();
     active.current?.abort();
@@ -46,6 +47,9 @@ export default function EntryRecoveryPanel() {
     setError(null);
     setReceipt(null);
     setCollectionSaved(false);
+    setCollectionDraft(
+      draft?.rows && Array.isArray(draft?.current) ? draft : null,
+    );
     try {
       const result = await queryCurrentEntryRecovery(
         lookupCode,
@@ -125,6 +129,8 @@ export default function EntryRecoveryPanel() {
           ) : (
             <RecoveredCollectionEditor
               result={visibleReceipt}
+              initialDraft={collectionDraft}
+              onReview={query}
               onSaved={(next) => {
                 setReceipt(next);
                 setCollectionSaved(true);

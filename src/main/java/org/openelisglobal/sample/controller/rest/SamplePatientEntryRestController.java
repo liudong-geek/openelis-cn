@@ -276,13 +276,20 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
                         401, "collection.authRequired"));
             }
             SampleOrderItem identity = form.getSampleOrderItems();
+            org.openelisglobal.sample.service.CollectionSaveAttempt attempt = null;
             try {
+                attempt = org.openelisglobal.sample.service.CollectionSaveAttempt.fromRequest(request, form);
                 Map<String, String> receipt = samplePatientService.persistCollection(
                         identity == null ? null : identity.getSampleId(), identity == null ? null : identity.getLabNo(),
                         form.getSampleXML(), request);
                 return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
                         .body(Map.of("success", true, "sampleOrderItems", receipt));
             } catch (org.openelisglobal.sample.exception.SampleCollectionValidationException failure) {
+                Map<String, Object> rejected = attempt == null ? null : attempt.rejection(failure);
+                if (rejected != null) {
+                    return ResponseEntity.status(failure.getStatus())
+                            .cacheControl(org.springframework.http.CacheControl.noStore()).body(rejected);
+                }
                 return collectionFailure(failure);
             } catch (org.springframework.security.access.AccessDeniedException failure) {
                 return ResponseEntity.status(403).cacheControl(org.springframework.http.CacheControl.noStore())

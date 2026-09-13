@@ -7,6 +7,7 @@ import java.lang.reflect.Type;
 import org.openelisglobal.sample.exception.EntrySubmissionException;
 import org.openelisglobal.sample.form.SamplePatientEntryForm;
 import org.openelisglobal.sample.service.EntrySubmissionCommand;
+import org.openelisglobal.sample.service.CollectionSaveAttempt;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpInputMessage;
@@ -34,14 +35,17 @@ public class EntrySubmissionBodyAdvice extends RequestBodyAdviceAdapter {
     public HttpInputMessage beforeBodyRead(HttpInputMessage input, MethodParameter parameter, Type type,
             Class<? extends HttpMessageConverter<?>> converter) throws IOException {
         var request = request();
-        String key = request.getHeader(EntrySubmissionCommand.HEADER);
+        String collectionKey = request.getHeader(CollectionSaveAttempt.HEADER);
+        if (collectionKey != null && request.getHeader(EntrySubmissionCommand.HEADER) != null) { throw invalid(); }
+        String header = collectionKey == null ? EntrySubmissionCommand.HEADER : CollectionSaveAttempt.HEADER;
+        String key = request.getHeader(header);
         if (key == null) { return input; }
         var media = input.getHeaders().getContentType();
         if (media == null || !org.springframework.http.MediaType.APPLICATION_JSON.isCompatibleWith(media)
                 || (media.getCharset() != null && !java.nio.charset.StandardCharsets.UTF_8.equals(media.getCharset()))) {
             throw invalid();
         }
-        var keys = request.getHeaders(EntrySubmissionCommand.HEADER);
+        var keys = request.getHeaders(header);
         if (keys == null || !keys.hasMoreElements()) { throw invalid(); }
         keys.nextElement();
         if (keys.hasMoreElements()) { throw invalid(); }
@@ -69,11 +73,18 @@ public class EntrySubmissionBodyAdvice extends RequestBodyAdviceAdapter {
     public Object afterBodyRead(Object body, HttpInputMessage input, MethodParameter parameter, Type type,
             Class<? extends HttpMessageConverter<?>> converter) {
         var request = request();
-        if (request.getHeader(EntrySubmissionCommand.HEADER) != null) {
+        if (request.getHeader(EntrySubmissionCommand.HEADER) != null
+                || request.getHeader(CollectionSaveAttempt.HEADER) != null) {
             if (!(body instanceof SamplePatientEntryForm form)
                     || !(request.getAttribute(CAPTURE) instanceof Capture capture)) { throw invalid(); }
-            request.setAttribute(EntrySubmissionCommand.ATTRIBUTE,
-                    new EntrySubmissionCommand(capture.key(), capture.hash(), form));
+            if (request.getHeader(CollectionSaveAttempt.HEADER) != null) {
+                if (!form.isCollectionOnly() || form.getRequestedSpecimens() != null) { throw invalid(); }
+                request.setAttribute(CollectionSaveAttempt.ATTRIBUTE,
+                        new CollectionSaveAttempt(capture.key(), capture.hash(), form));
+            } else {
+                request.setAttribute(EntrySubmissionCommand.ATTRIBUTE,
+                        new EntrySubmissionCommand(capture.key(), capture.hash(), form));
+            }
             request.removeAttribute(CAPTURE);
         }
         return body;
@@ -82,7 +93,8 @@ public class EntrySubmissionBodyAdvice extends RequestBodyAdviceAdapter {
     @Override
     public Object handleEmptyBody(Object body, HttpInputMessage input, MethodParameter parameter, Type type,
             Class<? extends HttpMessageConverter<?>> converter) {
-        if (request().getHeader(EntrySubmissionCommand.HEADER) != null) { throw invalid(); }
+        if (request().getHeader(EntrySubmissionCommand.HEADER) != null
+                || request().getHeader(CollectionSaveAttempt.HEADER) != null) { throw invalid(); }
         return body;
     }
 

@@ -1,4 +1,6 @@
 {
+  "order.collectionRecovery.rejected": "本次采集已被拒绝，未保存。请重新核对当前申请后修正并再次登记。",
+  "order.collectionRecovery.reviewAgain": "重新核对，保留填写内容",
   "order.collectionRecovery.dateFormat": "年-月-日，例如：2026-09-13",
   "order.collectionRecovery.timeFormat": "24小时制，例如：14:20",
   "order.collectionRecovery.title": "登记本次标本采集",

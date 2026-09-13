@@ -4,11 +4,87 @@ import {
 } from "./collectionRecovery.fixtures";
 import { verifyCurrentEntry } from "./orderEntryCurrent";
 import {
+  freezeCollectionAttempt,
   collectionRecoveryOptions,
   buildRecoveredCollection,
   verifyRecoveredCollection,
   submitRecoveredCollection,
 } from "./collectionRecovery";
+
+const attempt = {
+  attemptId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  fingerprint: "a".repeat(64),
+};
+const rejection = () => ({
+  status: 409,
+  redirected: false,
+  data: {
+    success: false,
+    code: "COLLECTION_NOT_SAVED",
+    version: 1,
+    ...attempt,
+    errorKey: "collection.requestChanged",
+  },
+});
+it("仅原命令对应的回滚应答可认定未保存，且不自动重试", async () => {
+  const command = {
+    ...buildRecoveredCollection(verified(), selection()),
+    attempt,
+  };
+  const post = vi.fn().mockResolvedValue(rejection());
+  await expect(
+    submitRecoveredCollection({ command, post, isCurrent: () => true }),
+  ).rejects.toMatchObject({ errorKey: "order.collectionRecovery.rejected" });
+  expect(post).toHaveBeenCalledTimes(1);
+  expect(post.mock.calls[0][2]).toBe(attempt);
+});
+it.each([
+  "nonce",
+  "hash",
+  "version",
+  "reason",
+  "status",
+  "extra",
+  "redirect",
+  "oldCode",
+])("不可信拒绝保持未知：%s", async (kind) => {
+  const response = rejection();
+  if (kind === "nonce")
+    response.data.attemptId = "bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  if (kind === "hash") response.data.fingerprint = "b".repeat(64);
+  if (kind === "version") response.data.version = 2;
+  if (kind === "reason") response.data.errorKey = "collection.dateTimeInvalid";
+  if (kind === "status") response.status = 200;
+  if (kind === "extra") response.data.patient = "SIM-PRIVATE";
+  if (kind === "redirect") response.redirected = true;
+  if (kind === "oldCode") response.data.code = "COLLECTION_VALIDATION_FAILED";
+  const command = {
+    ...buildRecoveredCollection(verified(), selection()),
+    attempt,
+  };
+  await expect(
+    submitRecoveredCollection({
+      command,
+      post: vi.fn().mockResolvedValue(response),
+      isCurrent: () => true,
+    }),
+  ).rejects.toMatchObject({ errorKey: "order.collectionRecovery.unknown" });
+});
+it("真实摘要绑定完整正文；每个显式新尝试更换标识", async () => {
+  const { webcrypto } = await import("node:crypto");
+  vi.stubGlobal("crypto", webcrypto);
+  try {
+    const one = await freezeCollectionAttempt('{"SIM":1}'),
+      two = await freezeCollectionAttempt('{"SIM":1}');
+    expect(one.attemptId).not.toBe(two.attemptId);
+    expect(one.fingerprint).toBe(two.fingerprint);
+    expect((await freezeCollectionAttempt('{"SIM":1} ')).fingerprint).not.toBe(
+      one.fingerprint,
+    );
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
 const verified = () =>
   verifyCurrentEntry(collectionRecoveryResult(), recoveryReference);
 const selection = () => [
@@ -181,6 +257,40 @@ it("超时中止请求且迟到应答不能恢复成功或重发", async () => {
     expect(post.mock.calls[0][1].aborted).toBe(true);
     resolve({ status: 200, data: { success: true } });
     await Promise.resolve();
+    expect(post).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("超时之后到达的匹配拒绝不能把未知改为可重试", async () => {
+  vi.useFakeTimers();
+  try {
+    let resolve;
+    const post = vi.fn(
+      () =>
+        new Promise((r) => {
+          resolve = r;
+        }),
+    );
+    const promise = submitRecoveredCollection({
+      command: {
+        ...buildRecoveredCollection(verified(), selection()),
+        attempt,
+      },
+      post,
+      isCurrent: () => true,
+    });
+    const rejected = expect(promise).rejects.toMatchObject({
+      errorKey: "order.collectionRecovery.unknown",
+    });
+    await vi.advanceTimersByTimeAsync(30000);
+    await rejected;
+    resolve(rejection());
+    await Promise.resolve();
+    await expect(promise).rejects.toMatchObject({
+      errorKey: "order.collectionRecovery.unknown",
+    });
     expect(post).toHaveBeenCalledTimes(1);
   } finally {
     vi.useRealTimers();

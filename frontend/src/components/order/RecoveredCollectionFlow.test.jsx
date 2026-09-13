@@ -118,6 +118,86 @@ const adopt = async () => {
     target: { value: "模拟采集员" },
   });
 };
+const rejectionReply = () => ({
+  status: 409,
+  redirected: false,
+  data: {
+    success: false,
+    code: "COLLECTION_NOT_SAVED",
+    version: 1,
+    ...postRecoveredCollection.mock.calls.at(-1)[2],
+    errorKey: "collection.requestChanged",
+  },
+});
+it("明确回滚后只清本次采集保护；保留填写内容，重新核对采用后才可显式重试", async () => {
+  render(<View />);
+  await adopt();
+  const firstEntry = sessionStorage.getItem("lis.entry.pending.v1");
+  fireEvent.click(screen.getByRole("button", { name: "保存所选标本采集" }));
+  await waitFor(() => expect(postRecoveredCollection).toHaveBeenCalledTimes(1));
+  const firstAttempt = postRecoveredCollection.mock.calls[0][2];
+  await act(async () => finish(rejectionReply()));
+  await screen.findByText(messages["order.collectionRecovery.rejected"]);
+  expect(sessionStorage.getItem("lis.collection.pending.v1")).toBeNull();
+  expect(sessionStorage.getItem("lis.entry.pending.v1")).toBe(firstEntry);
+  expect(screen.getByLabelText("采集人员")).toHaveValue("模拟采集员");
+  expect(
+    screen.getByRole("button", { name: "保存所选标本采集" }),
+  ).toBeDisabled();
+  fireEvent.click(
+    screen.getByRole("button", { name: "重新核对，保留填写内容" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "确认本次申请，登记采集" }),
+  );
+  expect(screen.getByLabelText("采集人员")).toHaveValue("模拟采集员");
+  expect(
+    screen.getByRole("checkbox", { name: "本次采集第 2 管" }),
+  ).not.toBeChecked();
+  expect(postRecoveredCollection).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole("checkbox", { name: "本次采集第 2 管" }));
+  fireEvent.click(screen.getByRole("button", { name: "保存所选标本采集" }));
+  await waitFor(() => expect(postRecoveredCollection).toHaveBeenCalledTimes(2));
+  expect(postRecoveredCollection.mock.calls[1][2].attemptId).not.toBe(
+    firstAttempt.attemptId,
+  );
+  readOpenElisResponse.mockResolvedValue(response(afterCollection()));
+  await act(async () =>
+    finish({
+      status: 200,
+      data: {
+        success: true,
+        sampleOrderItems: { sampleId: "701", labNo: "SIM-COLLECTION-701" },
+      },
+    }),
+  );
+  await screen.findByText(messages["order.collectionRecovery.saved"]);
+  expect(postToOpenElisServerFullResponse).not.toHaveBeenCalled();
+});
+it.each(["wrongAttempt", "wrongHash", "oldCode"])(
+  "错误拒绝证明不清保护或开放重试：%s",
+  async (kind) => {
+    render(<View />);
+    await adopt();
+    fireEvent.click(screen.getByRole("button", { name: "保存所选标本采集" }));
+    await waitFor(() =>
+      expect(postRecoveredCollection).toHaveBeenCalledTimes(1),
+    );
+    const marker = sessionStorage.getItem("lis.collection.pending.v1"),
+      reply = rejectionReply();
+    if (kind === "wrongAttempt")
+      reply.data.attemptId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+    if (kind === "wrongHash") reply.data.fingerprint = "f".repeat(64);
+    if (kind === "oldCode") reply.data.code = "COLLECTION_VALIDATION_FAILED";
+    await act(async () => finish(reply));
+    await screen.findByText(messages["order.collectionRecovery.unknown"]);
+    expect(sessionStorage.getItem("lis.collection.pending.v1")).toBe(marker);
+    expect(
+      screen.queryByRole("button", { name: "重新核对，保留填写内容" }),
+    ).not.toBeInTheDocument();
+    expect(postRecoveredCollection).toHaveBeenCalledTimes(1);
+  },
+);
 it("查询与明确采用不改原表单，只提交所选剩余管并核对当前事实", async () => {
   render(<View />);
   const before = JSON.stringify(context.orderData),
@@ -204,6 +284,46 @@ it("发送后切换会话不展示成功、不继续回读或开放旧保存", a
   ).not.toBeInTheDocument();
   expect(readOpenElisResponse).toHaveBeenCalledTimes(1);
   expect(sessionStorage.getItem("lis.entry.pending.v1")).not.toBeNull();
+});
+
+it("会话失效后完全匹配的拒绝证明也不能清本次保护", async () => {
+  const view = render(<View />);
+  await adopt();
+  fireEvent.click(screen.getByRole("button", { name: "保存所选标本采集" }));
+  await waitFor(() => expect(postRecoveredCollection).toHaveBeenCalledTimes(1));
+  const marker = sessionStorage.getItem("lis.collection.pending.v1"),
+    reply = rejectionReply();
+  view.rerender(<View authenticated={false} />);
+  await act(async () => finish(reply));
+  expect(sessionStorage.getItem("lis.collection.pending.v1")).toBe(marker);
+  expect(
+    screen.queryByText(messages["order.collectionRecovery.rejected"]),
+  ).not.toBeInTheDocument();
+  expect(postRecoveredCollection).toHaveBeenCalledTimes(1);
+  expect(readOpenElisResponse).toHaveBeenCalledTimes(1);
+});
+
+it("拒绝后重新核对发现原申请计划变化，不沿用旧管填写内容", async () => {
+  render(<View />);
+  await adopt();
+  fireEvent.click(screen.getByRole("button", { name: "保存所选标本采集" }));
+  await waitFor(() => expect(postRecoveredCollection).toHaveBeenCalledTimes(1));
+  await act(async () => finish(rejectionReply()));
+  await screen.findByText(messages["order.collectionRecovery.rejected"]);
+  const changed = collectionRecoveryResult();
+  changed.current.requestedSpecimens[1].requestedQuantity = 2;
+  readOpenElisResponse.mockResolvedValue(response(changed));
+  fireEvent.click(
+    screen.getByRole("button", { name: "重新核对，保留填写内容" }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: "确认本次申请，登记采集" }),
+  );
+  expect(screen.getByLabelText("采集人员")).toHaveValue("");
+  expect(
+    screen.getByRole("checkbox", { name: "本次采集第 2 管" }),
+  ).not.toBeChecked();
+  expect(postRecoveredCollection).toHaveBeenCalledTimes(1);
 });
 
 it("未知保存后同页及刷新读到旧待采集状态均禁止第二次POST；真实匹配读回才能解除", async () => {

@@ -196,6 +196,64 @@ public class SampleCollectionTransactionTest {
         verify(samples, never()).update(any(Sample.class)); assertEquals(3, tx.committed.size());
     }
 
+    @Test public void actualRollbackBeforeWriteProducesBoundRejection() throws Exception {
+        var response = invokeWithProof(xml(102).replace("quantity='1'", "quantity='0'"), service);
+        assertEquals(400, response.getStatusCode().value()); assertNoWrites();
+        assertEquals("COLLECTION_NOT_SAVED", ((Map<?, ?>) response.getBody()).get("code"));
+        assertEquals("a".repeat(64), ((Map<?, ?>) response.getBody()).get("fingerprint"));
+        assertEquals("11111111-2222-4333-8444-555555555555", ((Map<?, ?>) response.getBody()).get("attemptId"));
+    }
+
+    @Test public void secondTubeValidationMustRollbackAllWritesBeforeRejection() throws Exception {
+        duringAnalysis = () -> { if (analyses.size() == 2) throw new SampleCollectionValidationException(409, "collection.requestChanged"); };
+        var response = invokeWithProof(xml(101) + xml(102), service);
+        assertEquals(409, response.getStatusCode().value()); assertRolledBack();
+        assertEquals("COLLECTION_NOT_SAVED", ((Map<?, ?>) response.getBody()).get("code"));
+    }
+
+    @Test public void outerTransactionStillPendingCannotProduceRejectionProof() {
+        new TransactionTemplate(tx).execute(status -> {
+            try {
+                var response = invokeWithProof(xml(102).replace("quantity='1'", "quantity='0'"), service);
+                assertEquals(400, response.getStatusCode().value());
+                assertNotEquals("COLLECTION_NOT_SAVED", ((Map<?, ?>) response.getBody()).get("code"));
+            } catch (Exception unexpected) { throw new AssertionError(unexpected); }
+            status.setRollbackOnly(); return null;
+        });
+        assertRolledBack();
+    }
+
+    @Test public void rollbackFailureCommitFailureAndMissingProxyNeverProveRejection() throws Exception {
+        tx.failRollback = true;
+        var rollback = invokeWithProof(xml(102).replace("quantity='1'", "quantity='0'"), service);
+        assertEquals(503, rollback.getStatusCode().value());
+        assertFalse(((Map<?, ?>) rollback.getBody()).containsKey("attemptId"));
+        tx.failRollback = false; tx.failCommit = true;
+        var commit = invokeWithProof(xml(102), service);
+        assertEquals(503, commit.getStatusCode().value());
+        assertFalse(((Map<?, ?>) commit.getBody()).containsKey("attemptId"));
+        tx.failCommit = false;
+        var noProxy = invokeWithProof(xml(102), target);
+        assertEquals(503, noProxy.getStatusCode().value());
+        assertFalse(((Map<?, ?>) noProxy.getBody()).containsKey("attemptId"));
+    }
+
+    private org.springframework.http.ResponseEntity<?> invokeWithProof(String xml, SamplePatientEntryService writer) throws Exception {
+        var form = new org.openelisglobal.sample.form.SamplePatientEntryForm(); form.setCollectionOnly(true);
+        var identity = new org.openelisglobal.sample.bean.SampleOrderItem(); identity.setSampleId("1"); identity.setLabNo("SIM-COLLECTION");
+        form.setSampleOrderItems(identity); form.setSampleXML("<samples>" + xml + "</samples>");
+        httpRequest.removeHeader(CollectionSaveAttempt.HEADER);
+        httpRequest.addHeader(CollectionSaveAttempt.HEADER, "11111111-2222-4333-8444-555555555555");
+        // Wire capture is exercised by the MVC/body-advice suite. This suite exercises actual transaction completion.
+        httpRequest.setAttribute(CollectionSaveAttempt.ATTRIBUTE, new CollectionSaveAttempt(
+                httpRequest.getHeader(CollectionSaveAttempt.HEADER), "a".repeat(64), form));
+        var controller = new org.openelisglobal.sample.controller.rest.SamplePatientEntryRestController();
+        set(controller, "samplePatientService", writer);
+        return controller.samplePatientEntrySave(httpRequest, form,
+                new org.springframework.validation.BeanPropertyBindingResult(form, "form"),
+                new org.springframework.web.servlet.mvc.support.RedirectAttributesModelMap());
+    }
+
     @Test public void emptyOrPanelOnlySavedPlanCannotBeReconstructed() {
         panel(test); requests.get(1).setRequestedTests(""); requests.get(1).setRequestedPanels("5");
         assertThrows(SampleCollectionValidationException.class, () -> save(xml(102))); assertNoWrites();
@@ -409,7 +467,7 @@ public class SampleCollectionTransactionTest {
         private final List<Analysis> oldAnalyses = new ArrayList<>();
         private final Map<SampleTypeRequest, SampleTypeRequest.Status> oldStatus = new IdentityHashMap<>();
         private final Map<SampleTypeRequest, SampleItem> oldBindings = new IdentityHashMap<>();
-        private boolean active, rollbackOnly; private int rollbacks;
+        private boolean active, rollbackOnly, failRollback, failCommit; private int rollbacks;
         protected void doSetRollbackOnly(DefaultTransactionStatus status) { rollbackOnly = true; }
         public boolean isRollbackOnly() { return rollbackOnly; }
         protected Object doGetTransaction() { return this; }
@@ -419,10 +477,14 @@ public class SampleCollectionTransactionTest {
             requests.forEach(r -> { oldStatus.put(r, r.getStatus()); oldBindings.put(r, r.getSampleItem()); });
         }
         void write(String event) { assertTrue("SIM write outside transaction", active); pending.add(event); }
-        protected void doCommit(DefaultTransactionStatus status) { committed.addAll(pending); }
+        protected void doCommit(DefaultTransactionStatus status) {
+            if (failCommit) throw new org.springframework.transaction.TransactionSystemException("SIM commit unknown");
+            committed.addAll(pending);
+        }
         protected void doRollback(DefaultTransactionStatus status) {
             rollbacks++; tubes.clear(); tubes.putAll(oldTubes); analyses.clear(); analyses.addAll(oldAnalyses);
             requests.forEach(r -> { r.setStatus(oldStatus.get(r)); r.setSampleItem(oldBindings.get(r)); }); pending.clear();
+            if (failRollback) throw new org.springframework.transaction.TransactionSystemException("SIM rollback unknown");
         }
         protected void doCleanupAfterCompletion(Object ignored) { active = false; }
     }

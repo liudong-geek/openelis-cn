@@ -6,6 +6,7 @@ import { getRequestLocale } from "../utils/LocaleUtils";
 export async function postRecoveredCollection(
   body: string,
   signal: AbortSignal,
+  attempt?: { attemptId: string; fingerprint: string },
 ) {
   const response = await fetch(
     config.serverBaseUrl + "/rest/SamplePatientEntry",
@@ -21,11 +22,12 @@ export async function postRecoveredCollection(
         Accept: "application/json",
         "Accept-Language": getRequestLocale(),
         "X-CSRF-Token": localStorage.getItem("CSRF") || "",
+        ...(attempt ? { "X-LIS-Collection-Attempt": attempt.attemptId } : {}),
       },
     },
   );
   if (
-    response.status !== 200 ||
+    ![200, 400, 409].includes(response.status) ||
     response.redirected ||
     !response.headers.get("content-type")?.includes("application/json")
   )

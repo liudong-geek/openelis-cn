@@ -463,6 +463,7 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
     @Transactional(timeout = 45, rollbackFor = Exception.class)
     public Map<String, String> persistCollection(String sampleId, String labNo, String sampleXML,
             HttpServletRequest httpRequest) {
+        CollectionSaveAttempt.observe(httpRequest, sampleId, labNo, sampleXML);
         OrderEntryActorGuard.BoundActor actor = orderEntryActorGuard.bind(httpRequest);
         String currentUserId = actor.userId();
         if (sampleId == null || !sampleId.matches("[1-9][0-9]*")) {

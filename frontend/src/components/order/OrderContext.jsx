@@ -32,7 +32,7 @@ import {
 } from "./orderEntryRecovery";
 import { isEntryInputRejection } from "./orderEntryReceipt";
 import { recoverCurrentEntrySubmission } from "./orderEntryCurrent";
-import { buildRecoveredCollection, collectionRecoveryOptions, submitRecoveredCollection, verifyRecoveredCollection } from "./collectionRecovery";
+import { buildRecoveredCollection, collectionRecoveryOptions, submitRecoveredCollection, verifyRecoveredCollection, freezeCollectionAttempt } from "./collectionRecovery";
 import { postRecoveredCollection } from "./collectionTransport";
 import { readCollectionCheckpoint, rememberCollectionCheckpoint, reconcileCollectionCheckpoint, forgetCollectionCheckpoint } from "./collectionCheckpoint";
 
@@ -792,7 +792,11 @@ export const OrderProvider = ({ children }) => {
     let checkpoint, preparationTimer, dispatched = false;
     try {
       checkpoint = await Promise.race([
-        rememberCollectionCheckpoint(record.result.receipt.submissionId, command, isCurrent),
+        (async () => {
+          command.attempt = await freezeCollectionAttempt(command.body);
+          if (!isCurrent()) throw entrySubmissionError("order.progress.requestChanged");
+          return rememberCollectionCheckpoint(record.result.receipt.submissionId, command, isCurrent);
+        })(),
         new Promise((_, reject) => { preparationTimer = setTimeout(() => reject(entrySubmissionError("order.collectionRecovery.unknown")), 10000); }),
       ]);
       clearTimeout(preparationTimer);
@@ -808,6 +812,13 @@ export const OrderProvider = ({ children }) => {
       record.result = JSON.parse(JSON.stringify(next));
       return JSON.parse(JSON.stringify(next));
     } catch (failure) {
+      if (dispatched && failure.errorKey === "order.collectionRecovery.rejected" && isCurrent()) {
+        // Only the exact active command's observed rollback can release its marker.
+        // The private snapshot stays used: a fresh explicit read/adoption is required.
+        forgetCollectionCheckpoint(checkpoint);
+        pendingRecoveredCollection.current = null;
+        throw entrySubmissionError("order.collectionRecovery.rejected");
+      }
       if (!dispatched) {
         pendingRecoveredCollection.current = null;
         if (checkpoint) forgetCollectionCheckpoint(checkpoint);

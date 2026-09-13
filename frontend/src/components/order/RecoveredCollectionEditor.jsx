@@ -1,5 +1,11 @@
 import React, { useRef, useState } from "react";
-import { Button, Checkbox, InlineNotification, TextInput } from "@carbon/react";
+import {
+  Button,
+  Checkbox,
+  InlineNotification,
+  Stack,
+  TextInput,
+} from "@carbon/react";
 import { useIntl } from "react-intl";
 import { useOrderContext } from "./OrderContext";
 import {
@@ -8,7 +14,12 @@ import {
 } from "./collectionRecovery";
 import { localizeSampleType } from "./sampleTypeIntl";
 
-export default function RecoveredCollectionEditor({ result, onSaved }) {
+export default function RecoveredCollectionEditor({
+  result,
+  onSaved,
+  onReview,
+  initialDraft,
+}) {
   const intl = useIntl();
   const t = (name, values) =>
     intl.formatMessage({ id: `order.collectionRecovery.${name}` }, values);
@@ -42,6 +53,16 @@ export default function RecoveredCollectionEditor({ result, onSaved }) {
               time: clock.slice(11),
               quantity: String(row.requestedQuantity),
               collector: "",
+              ...(JSON.stringify(
+                initialDraft?.current?.find((r) => r.id === row.id),
+              ) === JSON.stringify(row)
+                ? Object.fromEntries(
+                    ["date", "time", "quantity", "collector"].map((k) => [
+                      k,
+                      initialDraft.rows[row.id]?.[k] || "",
+                    ]),
+                  )
+                : {}),
             },
           ]),
         ),
@@ -83,11 +104,25 @@ export default function RecoveredCollectionEditor({ result, onSaved }) {
       <h4>{t("title")}</h4>
       <p>{t("scope")}</p>
       {error && (
-        <InlineNotification
-          hideCloseButton
-          kind="warning"
-          title={intl.formatMessage({ id: error })}
-        />
+        <Stack gap={3}>
+          <InlineNotification
+            hideCloseButton
+            lowContrast
+            kind="warning"
+            title={intl.formatMessage({ id: error })}
+          />
+          {error === "order.collectionRecovery.rejected" && onReview && (
+            <Button
+              size="md"
+              disabled={isSubmitting}
+              onClick={() =>
+                onReview({ rows, current: adopted.current.requestedSpecimens })
+              }
+            >
+              {t("reviewAgain")}
+            </Button>
+          )}
+        </Stack>
       )}
       {!adopted ? (
         <>

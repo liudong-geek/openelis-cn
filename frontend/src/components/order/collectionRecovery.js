@@ -299,11 +299,20 @@ export const submitRecoveredCollection = ({
         return;
       }
       onDispatch();
-      Promise.resolve(post(command.body, controller.signal)).then(
+      Promise.resolve(
+        post(command.body, controller.signal, command.attempt),
+      ).then(
         (response) => {
           if (done) return;
           if (!isCurrent()) {
             finish("order.progress.requestChanged");
+            return;
+          }
+          if (
+            !response?.redirected &&
+            isCollectionRejection(response, command.attempt)
+          ) {
+            finish("order.collectionRecovery.rejected");
             return;
           }
           if (response?.status !== 200 || response.redirected) {
@@ -327,3 +336,43 @@ export const submitRecoveredCollection = ({
       finish("order.collectionRecovery.unknown");
     }
   });
+
+// A fresh correlation token, not permission to replay a timed-out write.
+export const freezeCollectionAttempt = async (body) => {
+  const attemptId = crypto.randomUUID();
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode("raw-json-v1\n" + body),
+  );
+  return Object.freeze({
+    attemptId,
+    fingerprint: [...new Uint8Array(digest)]
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join(""),
+  });
+};
+const isCollectionRejection = (response, attempt) => {
+  const value = response.data;
+  const statuses = {
+    "collection.requestInvalid": 400,
+    "collection.confirmationRequired": 400,
+    "collection.dateTimeInvalid": 400,
+    "collection.sampleMismatch": 409,
+    "collection.requestChanged": 409,
+  };
+  return Boolean(
+    attempt &&
+    /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(attempt.attemptId) &&
+    /^[a-f0-9]{64}$/.test(attempt.fingerprint) &&
+    value &&
+    Object.keys(value).sort().join(",") ===
+      "attemptId,code,errorKey,fingerprint,success,version" &&
+    value.success === false &&
+    value.code === "COLLECTION_NOT_SAVED" &&
+    value.version === 1 &&
+    value.attemptId === attempt.attemptId &&
+    value.fingerprint === attempt.fingerprint &&
+    Object.prototype.hasOwnProperty.call(statuses, value.errorKey) &&
+    statuses[value.errorKey] === response.status,
+  );
+};
