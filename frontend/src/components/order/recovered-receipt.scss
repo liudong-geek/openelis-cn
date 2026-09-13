@@ -1,0 +1,72 @@
+.recovered-receipt {
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  padding: 20px;
+  background: #fff;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  > p {
+    color: #526077;
+    line-height: 1.6;
+  }
+  &__tubes {
+    display: grid;
+    gap: 12px;
+  }
+  &__tube {
+    border: 1px solid #dbe3ee;
+    border-radius: 6px;
+    padding: 16px;
+    min-width: 0;
+  }
+  &__tube .cds--checkbox-label-text {
+    overflow-wrap: anywhere;
+  }
+  &__tube > strong {
+    color: #172033;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+  }
+  &__tube dl {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 12px;
+  }
+  &__tube dt {
+    color: #526077;
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+  &__tube dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+  }
+  &__confirmation {
+    padding: 16px;
+    background: #f1f6ff;
+    border-radius: 6px;
+    display: grid;
+    gap: 8px;
+    line-height: 1.5;
+  }
+  &__actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .cds--btn {
+    max-width: 100%;
+    height: auto;
+    min-height: 40px;
+    white-space: normal;
+  }
+  @media (max-width: 900px) {
+    &__tube dl {
+      grid-template-columns: 1fr;
+    }
+    padding: 16px;
+  }
+}

@@ -160,6 +160,30 @@ export default function EntryCurrentSummary({ result }) {
                               })}
                         </div>
                         {item.voided && <Tag type="red">{t("voided")}</Tag>}
+                        {current.collectionContext && (
+                          <div className="entry-current-summary__secondary">
+                            {intl.formatMessage(
+                              { id: "order.receiving.currentTime" },
+                              {
+                                time: item.receivedDate
+                                  ? intl.formatDate(item.receivedDate, {
+                                      year: "numeric",
+                                      month: "2-digit",
+                                      day: "2-digit",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                      second: "2-digit",
+                                      hour12: false,
+                                      timeZone:
+                                        current.collectionContext.timeZone,
+                                    })
+                                  : intl.formatMessage({
+                                      id: "order.receiving.notReceived",
+                                    }),
+                              },
+                            )}
+                          </div>
+                        )}
                         {item.rejected && <Tag type="red">{t("rejected")}</Tag>}
                       </>
                     ) : (
@@ -175,7 +199,7 @@ export default function EntryCurrentSummary({ result }) {
       <p className="entry-current-summary__notice">
         {current.collectionContext
           ? intl.formatMessage({
-              id: "order.collectionRecovery.snapshotNotice",
+              id: "order.receiving.snapshotNotice",
             })
           : t("currentReadOnlyNotice")}
       </p>

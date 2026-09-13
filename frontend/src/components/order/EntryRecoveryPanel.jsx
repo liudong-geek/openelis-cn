@@ -12,6 +12,7 @@ import { useOrderContext } from "./OrderContext";
 import EntryCurrentSummary from "./EntryCurrentSummary";
 import RecoveredCollectionEditor from "./RecoveredCollectionEditor";
 import OrderLabelPrintPanel from "./OrderLabelPrintPanel";
+import RecoveredReceiptEditor from "./RecoveredReceiptEditor";
 
 // Kept outside the locked clinical form: recovery is an explicit authorized
 // read, not another Save button. A receipt never silently replaces a draft.
@@ -21,6 +22,7 @@ export default function EntryRecoveryPanel() {
   const {
     entryRecovery,
     collectionRecovery,
+    receiptRecovery,
     queryCurrentEntryRecovery,
     isRecoveryCurrent,
     isSubmitting,
@@ -32,6 +34,7 @@ export default function EntryRecoveryPanel() {
   const [receipt, setReceipt] = useState(null);
   const [error, setError] = useState(null);
   const [collectionSaved, setCollectionSaved] = useState(false);
+  const [receiptSaved, setReceiptSaved] = useState(false);
   const [collectionDraft, setCollectionDraft] = useState(null);
   const [labelOperation, setLabelOperation] = useState(null);
   const [labelError, setLabelError] = useState(null);
@@ -39,7 +42,10 @@ export default function EntryRecoveryPanel() {
   useEffect(() => () => active.current?.abort(), []);
   const t = (id) => intl.formatMessage({ id });
   if (!queryCurrentEntryRecovery) return null;
-  const pending = entryRecovery?.checkpoint || collectionRecovery?.checkpoint;
+  const pending =
+    entryRecovery?.checkpoint ||
+    collectionRecovery?.checkpoint ||
+    receiptRecovery?.checkpoint;
   const visibleReceipt = receipt && isRecoveryCurrent?.() ? receipt : null;
   const lookupCode = pending?.submissionId || code.trim();
   const query = async (draft = null) => {
@@ -53,6 +59,7 @@ export default function EntryRecoveryPanel() {
     setLabelOperation(null);
     setLabelError(null);
     setCollectionSaved(false);
+    setReceiptSaved(false);
     setCollectionDraft(
       draft?.rows && Array.isArray(draft?.current) ? draft : null,
     );
@@ -73,7 +80,8 @@ export default function EntryRecoveryPanel() {
     !pending &&
     !expanded &&
     !entryRecovery?.error &&
-    !collectionRecovery?.error
+    !collectionRecovery?.error &&
+    !receiptRecovery?.error
   )
     return (
       <Button kind="ghost" size="sm" onClick={() => setExpanded(true)}>
@@ -85,6 +93,13 @@ export default function EntryRecoveryPanel() {
       <Stack gap={4}>
         <h4>{t("order.recovery.currentTitle")}</h4>
         <p>{t("order.recovery.help")}</p>
+        {(receiptRecovery?.checkpoint || receiptRecovery?.error) && (
+          <InlineNotification
+            kind="warning"
+            hideCloseButton
+            title={t("order.receiving.unknown")}
+          />
+        )}
         {entryRecovery?.error && (
           <InlineNotification
             kind="error"
@@ -126,6 +141,23 @@ export default function EntryRecoveryPanel() {
           <InlineNotification kind="warning" hideCloseButton title={t(error)} />
         )}
         {visibleReceipt && <EntryCurrentSummary result={visibleReceipt} />}
+        {visibleReceipt &&
+          (receiptSaved ? (
+            <InlineNotification
+              kind="success"
+              hideCloseButton
+              title={t("order.receiving.saved")}
+            />
+          ) : (
+            <RecoveredReceiptEditor
+              result={visibleReceipt}
+              onSaved={(next) => {
+                setReceipt(next);
+                setReceiptSaved(true);
+                setLabelOperation(null);
+              }}
+            />
+          ))}
         {visibleReceipt &&
           (collectionSaved ? (
             <InlineNotification

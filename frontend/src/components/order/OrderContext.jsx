@@ -38,6 +38,9 @@ import { hasPendingLabels, labelFailure } from "./labelCheckpoint";
 import { buildRecoveredCollection, collectionRecoveryOptions, submitRecoveredCollection, verifyRecoveredCollection, freezeCollectionAttempt } from "./collectionRecovery";
 import { postRecoveredCollection } from "./collectionTransport";
 import { readCollectionCheckpoint, rememberCollectionCheckpoint, reconcileCollectionCheckpoint, forgetCollectionCheckpoint } from "./collectionCheckpoint";
+import { buildReceipt, receiptFailure, receiptOptions, verifyReceiptResponse, verifyCurrentReceipt } from "./specimenReceipt";
+import { readReceiptCheckpoint, rememberReceiptCheckpoint, forgetReceiptCheckpoint, reconcileReceiptCheckpoint } from "./receiptCheckpoint";
+import { postSpecimenReceipt } from "./receiptTransport";
 
 /**
  * OrderContext - Shared state for the decoupled sample collection workflow.
@@ -325,9 +328,13 @@ export const OrderProvider = ({ children }) => {
   const activeRecoveredCollection = useRef(null);
   const activeRecoveredLabels = useRef(null);
   const recoveredLabelOperation = useRef(null);
+  const activeRecoveredReceipt = useRef(null);
+  const recoveredReceiptOperation = useRef(null);
+  const [, setRecoveryRevision] = useState(0);
   // Latch interruption during rendering too: a later return to the same account
   // must not revive a PDF or operation from before a failed session check.
   recoveredLabelOperation.current?.isCurrent();
+  recoveredReceiptOperation.current?.isCurrent();
   const pendingRecoveredCollection = useRef(null);
   const recoverySequence = useRef(0);
   const [labNumber, setLabNumber] = useState(null);
@@ -401,7 +408,8 @@ export const OrderProvider = ({ children }) => {
       ) {
         throw new Error("order.progress.requestChanged");
       }
-      if (activeSave.current || activeRecoveredCollection.current || activeRecoveredLabels.current) throw new Error("order.progress.saveInProgress");
+      if (activeSave.current || activeRecoveredCollection.current || activeRecoveredLabels.current || activeRecoveredReceipt.current) throw new Error("order.progress.saveInProgress");
+      if (readReceiptCheckpoint()) throw receiptFailure();
       if (readCollectionCheckpoint()) throw entrySubmissionError("order.collectionRecovery.unknown");
       const recovery = readEntryCheckpoint();
       if (recovery.error) throw entrySubmissionError(recovery.error);
@@ -586,6 +594,8 @@ export const OrderProvider = ({ children }) => {
    */
   const loadOrder = useCallback(
     async (searchLabNumber, readOnly = true) => {
+      if (activeRecoveredReceipt.current) throw receiptFailure("busy");
+      if (readReceiptCheckpoint()) throw receiptFailure();
       if (!isMounted.current)
         throw entrySubmissionError("order.progress.requestChanged");
       interruptEntrySave();
@@ -702,8 +712,10 @@ export const OrderProvider = ({ children }) => {
   );
   const queryEntryRecovery = useCallback(
     async (code, signal, currentState = false) => {
-      if (activeSave.current || activeLoad.current || activeRecoveredCollection.current || activeRecoveredLabels.current)
+      if (activeSave.current || activeLoad.current || activeRecoveredCollection.current || activeRecoveredLabels.current || activeRecoveredReceipt.current)
         throw entrySubmissionError("order.progress.saveInProgress");
+      const receiptPending = readReceiptCheckpoint();
+      if (receiptPending && receiptPending.submissionId !== code) throw receiptFailure();
       const identity = readSessionIdentity(latestSessionContext.current);
       const generation = readSessionCheckGeneration(
         latestSessionContext.current,
@@ -759,9 +771,11 @@ export const OrderProvider = ({ children }) => {
         pendingRecoveredCollection.current = null;
       }
       if (currentState) await reconcileCollectionCheckpoint(receipt, isCurrent);
+      if (currentState) await reconcileReceiptCheckpoint(receipt, isCurrent);
       if (!isCurrent()) throw entrySubmissionError("order.progress.requestChanged");
       // Private authoritative snapshot; callers cannot authorize an arbitrary ID.
       recoveredEntry.current = { isCurrent, result: currentState ? JSON.parse(JSON.stringify(receipt)) : null, adopted: false, used: false };
+      setRecoveryRevision(value => value + 1);
       return JSON.parse(JSON.stringify(receipt));
     },
     [assertSessionWrite, canWriteForSession],
@@ -775,6 +789,7 @@ export const OrderProvider = ({ children }) => {
   // Explicit adoption authorizes only this private current snapshot's collection
   // command. It never fills or unlocks the legacy editable order form.
   const adoptRecoveredCollection = useCallback((visible) => {
+    if (activeRecoveredReceipt.current || readReceiptCheckpoint()) throw receiptFailure();
     const record = recoveredEntry.current;
     if (!record?.result || !record.isCurrent() || record.used || activeRecoveredCollection.current || activeRecoveredLabels.current || readCollectionCheckpoint() ||
         JSON.stringify(visible) !== JSON.stringify(record.result) || !collectionRecoveryOptions(record.result).length)
@@ -784,6 +799,7 @@ export const OrderProvider = ({ children }) => {
   }, []);
 
   const saveRecoveredCollection = useCallback(async (visible, selections) => {
+    if (activeRecoveredReceipt.current || readReceiptCheckpoint()) throw receiptFailure();
     const record = recoveredEntry.current;
     if (!record?.adopted || record.used || !record.isCurrent() || activeRecoveredCollection.current || activeRecoveredLabels.current || readCollectionCheckpoint() ||
         JSON.stringify(visible) !== JSON.stringify(record.result))
@@ -844,6 +860,7 @@ export const OrderProvider = ({ children }) => {
   }, []);
 
   const prepareRecoveredLabels = useCallback((visible) => {
+    if (activeRecoveredReceipt.current || readReceiptCheckpoint()) throw receiptFailure();
     const record = recoveredEntry.current;
     if (!record?.result || !record.isCurrent() || activeRecoveredCollection.current || activeRecoveredLabels.current ||
         readCollectionCheckpoint() || !labelSessionReady(latestSessionContext.current) ||
@@ -859,11 +876,12 @@ export const OrderProvider = ({ children }) => {
       invalidate: () => { valid = false; },
       isCurrent: () => {
         valid = valid && recoveredLabelOperation.current === capability && recoveredEntry.current === record && record.isCurrent() &&
-          JSON.stringify(record.result) === snapshot && !activeRecoveredCollection.current &&
+          JSON.stringify(record.result) === snapshot && !activeRecoveredCollection.current && !activeRecoveredReceipt.current &&
           labelSessionReady(latestSessionContext.current);
         return valid;
       },
       generate: async (request) => {
+        if (activeRecoveredReceipt.current || readReceiptCheckpoint()) throw receiptFailure();
         if (!capability.isCurrent() || recoveredLabelOperation.current !== capability || activeRecoveredLabels.current ||
             hasPendingLabels() || request?.orderId !== identity.orderId || request?.labNumber !== identity.labNumber)
           throw labelFailure(hasPendingLabels() ? "UNCONFIRMED" : "STALE");
@@ -885,6 +903,79 @@ export const OrderProvider = ({ children }) => {
       },
     };
     recoveredLabelOperation.current = capability;
+    return capability;
+  }, []);
+
+  // One private, session-bound receiving capability. UI copies cannot substitute
+  // patient/tube identities, timestamps or a command from another confirmation.
+  const prepareRecoveredReceipt = useCallback((visible) => {
+    const record = recoveredEntry.current;
+    if (!record?.result || !record.isCurrent() || !labelSessionReady(latestSessionContext.current) ||
+        activeSave.current || activeLoad.current || activeRecoveredCollection.current || activeRecoveredLabels.current || activeRecoveredReceipt.current ||
+        readReceiptCheckpoint() || readCollectionCheckpoint() || hasPendingLabels() ||
+        JSON.stringify(visible) !== JSON.stringify(record.result) || !receiptOptions(record.result).length) throw receiptFailure("requery");
+    let snapshot = JSON.stringify(record.result), valid = true, command = null, used = false;
+    const capability = {
+      invalidate: () => { valid = false; command = null; },
+      isCurrent: () => {
+        valid = valid && recoveredReceiptOperation.current === capability && recoveredEntry.current === record && record.isCurrent() &&
+          JSON.stringify(record.result) === snapshot && labelSessionReady(latestSessionContext.current) &&
+          !activeSave.current && !activeLoad.current && !activeRecoveredCollection.current && !activeRecoveredLabels.current;
+        return valid;
+      },
+      preview: (ids) => {
+        if (!capability.isCurrent() || used || activeRecoveredReceipt.current || readReceiptCheckpoint()) throw receiptFailure("requery");
+        command = buildReceipt(record.result, ids);
+        return JSON.parse(JSON.stringify(command));
+      },
+      cancelPreview: () => { if (!used) command = null; },
+      confirm: async () => {
+        if (!capability.isCurrent() || used || !command || activeRecoveredReceipt.current || readReceiptCheckpoint() ||
+            readCollectionCheckpoint() || hasPendingLabels()) throw receiptFailure("requery");
+        const csrf = latestSessionContext.current.userSessionDetails?.csrf;
+        if (typeof csrf !== "string" || !csrf.trim()) throw receiptFailure("requery");
+        const frozen = JSON.parse(JSON.stringify(command)), operation = {};
+        const reference = {...record.result.receipt};
+        used = true; record.used = true; record.adopted = false;
+        recoveredLabelOperation.current?.invalidate();
+        activeRecoveredReceipt.current = operation;
+        setIsSubmitting(true);
+        const controller = new AbortController();
+        let alive = true, checkpoint, dispatched = false, timer;
+        const isCurrent = () => alive && activeRecoveredReceipt.current === operation && capability.isCurrent();
+        try {
+          return await Promise.race([
+            (async () => {
+              checkpoint = await rememberReceiptCheckpoint(reference.submissionId, frozen, isCurrent);
+              if (!isCurrent()) throw receiptFailure("requery");
+              dispatched = true;
+              const data = await postSpecimenReceipt(JSON.stringify(frozen), controller.signal, csrf);
+              if (!isCurrent()) throw receiptFailure("requery");
+              verifyReceiptResponse(data, frozen);
+              const next = await recoverCurrentEntrySubmission({reference, read: readOpenElisResponse, isCurrent, signal: controller.signal});
+              verifyCurrentReceipt(next, frozen);
+              if (!isCurrent()) throw receiptFailure("requery");
+              await reconcileReceiptCheckpoint(next, isCurrent);
+              if (!isCurrent()) throw receiptFailure("requery");
+              record.result = JSON.parse(JSON.stringify(next));
+              snapshot = JSON.stringify(record.result);
+              return JSON.parse(JSON.stringify(next));
+            })(),
+            new Promise((_, reject) => { timer = setTimeout(() => { alive = false; controller.abort(); reject(receiptFailure()); }, 15000); }),
+          ]);
+        } catch {
+          if (!dispatched && checkpoint) forgetReceiptCheckpoint(checkpoint);
+          throw receiptFailure();
+        } finally {
+          alive = false; clearTimeout(timer); controller.abort();
+          if (activeRecoveredReceipt.current === operation) {
+            activeRecoveredReceipt.current = null;
+            if (isMounted.current) setIsSubmitting(false);
+          }
+        }
+      },
+    };
+    recoveredReceiptOperation.current = capability;
     return capability;
   }, []);
 
@@ -1027,6 +1118,8 @@ export const OrderProvider = ({ children }) => {
    */
   const saveOrder = useCallback(
     async (silent = false, orderEntryOnly = false) => {
+      if (activeRecoveredReceipt.current) throw receiptFailure("busy");
+      if (readReceiptCheckpoint()) throw receiptFailure();
       if (activeRecoveredLabels.current) throw entrySubmissionError("order.progress.saveInProgress");
       if (isReadOnly && !isEditMode) {
         return Promise.reject(new Error("Cannot save in read-only mode"));
@@ -1223,6 +1316,8 @@ export const OrderProvider = ({ children }) => {
    */
   const saveOrderEntry = useCallback(
     async (silent = false, labNumberOverride = null) => {
+      if (activeRecoveredReceipt.current) throw receiptFailure("busy");
+      if (readReceiptCheckpoint()) throw receiptFailure();
       if (activeRecoveredLabels.current) throw entrySubmissionError("order.progress.saveInProgress");
       assertSessionWrite(draftSessionIdentity.current);
       if (isReadOnly && !isEditMode) {
@@ -1751,6 +1846,11 @@ export const OrderProvider = ({ children }) => {
   } catch (failure) {
     collectionRecovery = { checkpoint: null, error: failure.errorKey || "order.collectionRecovery.unknown" };
   }
+  let receiptRecovery;
+  try {
+    const checkpoint = readReceiptCheckpoint();
+    receiptRecovery = {checkpoint: checkpoint ? {submissionId: checkpoint.submissionId} : null, error: null};
+  } catch { receiptRecovery = {checkpoint: null, error: "order.receiving.unknown"}; }
   const value = {
     // State
     orderId,
@@ -1773,6 +1873,8 @@ export const OrderProvider = ({ children }) => {
         : "",
     entryRecovery,
     collectionRecovery,
+    receiptRecovery,
+    prepareRecoveredReceipt,
     queryEntryRecovery,
     queryCurrentEntryRecovery,
     adoptRecoveredCollection,
