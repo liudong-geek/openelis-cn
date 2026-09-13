@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.openelisglobal.common.constants.Constants;
+import org.openelisglobal.config.EntryRecoveryTransactionManager;
 import org.openelisglobal.labelpreset.dao.OrderLabelRequestDAO;
 import org.openelisglobal.patient.action.IPatientUpdate.PatientUpdateStatus;
 import org.openelisglobal.patient.service.PatientService;
@@ -26,6 +27,8 @@ import org.openelisglobal.systemuser.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -87,7 +90,9 @@ public class EntrySubmissionService {
         return new Result(true, false, snapshot.deepCopy());
     }
 
-    @Transactional(readOnly = true, timeout = 20)
+    @Transactional(transactionManager = EntryRecoveryTransactionManager.BEAN_NAME,
+            propagation = Propagation.REQUIRES_NEW, isolation = Isolation.REPEATABLE_READ,
+            readOnly = true, rollbackFor = Exception.class, timeout = 20)
     public Result recover(String key, HttpServletRequest request) throws Exception {
         var actor = actors.bind(request);
         var receipt = receipts.find(EntrySubmissionCommand.validateKey(key));

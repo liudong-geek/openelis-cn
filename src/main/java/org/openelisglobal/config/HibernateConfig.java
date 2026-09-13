@@ -45,4 +45,9 @@ public class HibernateConfig {
         }
         return transactionManager;
     }
+
+    @Bean(EntryRecoveryTransactionManager.BEAN_NAME)
+    public EntryRecoveryTransactionManager entryRecoveryTransactionManager(EntityManagerFactory entityManagerFactory) {
+        return new EntryRecoveryTransactionManager(entityManagerFactory, dataSource);
+    }
 }
