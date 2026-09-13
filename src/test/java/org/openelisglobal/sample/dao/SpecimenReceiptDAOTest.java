@@ -142,4 +142,39 @@ public class SpecimenReceiptDAOTest {
         verify(query).setParameter("type", "SAMPLE");
         verify(query).setParameter("id", "2");
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    public void currentMembershipUsesScalarQueriesWithoutRefreshOrClear() {
+        Query<Integer> requests = mock(Query.class, RETURNS_SELF);
+        Query<String> items = mock(Query.class, RETURNS_SELF), analyses = mock(Query.class, RETURNS_SELF);
+        when(session.createQuery("select r.id from SampleTypeRequest r where r.sample.id = :id order by r.id",
+                Integer.class)).thenReturn(requests);
+        when(session.createQuery("select si.id from SampleItem si where si.sample.id = :id order by si.id",
+                String.class)).thenReturn(items);
+        when(session.createQuery("select a.id from Analysis a where a.sampleItem.sample.id = :id order by a.id",
+                String.class)).thenReturn(analyses);
+        when(requests.list()).thenReturn(List.of(901, 902));
+        when(items.list()).thenReturn(List.of("1001", "1002"));
+        when(analyses.list()).thenReturn(List.of("1101", "1102"));
+        assertEquals(
+                new SpecimenReceiptDAO.Membership(List.of(901, 902), List.of("1001", "1002"), List.of("1101", "1102")),
+                dao.currentMembership("701"));
+        for (Query<?> query : List.of(requests, items, analyses)) {
+            verify(query).setParameter("id", "701");
+            verify(query).setTimeout(15);
+        }
+        verify(em, never()).clear();
+        verify(em, never()).refresh(any(), any(), anyMap());
+        verify(session, never()).flush();
+    }
+
+    @Test
+    public void membershipSnapshotCannotAliasMutableLists() {
+        var ids = new java.util.ArrayList<>(List.of(901));
+        var snapshot = new SpecimenReceiptDAO.Membership(ids, List.of("1001"), List.of("1101"));
+        ids.add(902);
+        assertEquals(List.of(901), snapshot.requestIds());
+        assertThrows(UnsupportedOperationException.class, () -> snapshot.requestIds().add(902));
+    }
 }

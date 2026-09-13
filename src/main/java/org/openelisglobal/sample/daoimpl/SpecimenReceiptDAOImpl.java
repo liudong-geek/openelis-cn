@@ -91,4 +91,22 @@ public class SpecimenReceiptDAOImpl implements SpecimenReceiptDAO {
     public void flush() {
         session().flush();
     }
+
+    @Override
+    public Membership currentMembership(String sampleId) {
+        // Scalar reads detect additions in an enclosing transaction without
+        // refreshing or discarding its pending managed state.
+        var requests = session()
+                .createQuery("select r.id from SampleTypeRequest r where r.sample.id = :id order by r.id",
+                        Integer.class)
+                .setParameter("id", sampleId).setTimeout(15).list();
+        var items = session()
+                .createQuery("select si.id from SampleItem si where si.sample.id = :id order by si.id", String.class)
+                .setParameter("id", sampleId).setTimeout(15).list();
+        var analyses = session()
+                .createQuery("select a.id from Analysis a where a.sampleItem.sample.id = :id order by a.id",
+                        String.class)
+                .setParameter("id", sampleId).setTimeout(15).list();
+        return new Membership(requests, items, analyses);
+    }
 }

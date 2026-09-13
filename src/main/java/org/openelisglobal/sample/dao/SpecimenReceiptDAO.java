@@ -21,5 +21,15 @@ public interface SpecimenReceiptDAO {
 
     String statusName(String id, String type);
 
+    record Membership(List<Integer> requestIds, List<String> itemIds, List<String> analysisIds) {
+        public Membership {
+            requestIds = List.copyOf(requestIds);
+            itemIds = List.copyOf(itemIds);
+            analysisIds = List.copyOf(analysisIds);
+        }
+    }
+
+    Membership currentMembership(String sampleId);
+
     void flush();
 }

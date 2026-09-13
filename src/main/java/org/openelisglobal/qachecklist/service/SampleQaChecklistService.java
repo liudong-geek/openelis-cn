@@ -47,6 +47,13 @@ public interface SampleQaChecklistService extends BaseObjectService<SampleQaChec
     SampleQaChecklist saveOrUpdateChecklist(Integer sampleId, Map<String, Boolean> verifiedItems, Integer userId);
 
     /**
+     * HTTP entry: resolve identifiers only after binding the actual request and
+     * transaction.
+     */
+    SampleQaChecklist saveFromRequest(Integer sampleId, String labNumber, Map<String, Boolean> verifiedItems,
+            Integer userId, jakarta.servlet.http.HttpServletRequest request);
+
+    /**
      * Check if all active checklist items are verified for a sample.
      *
      * @param sampleId the sample ID

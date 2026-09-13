@@ -1,12 +1,15 @@
 package org.openelisglobal.qachecklist.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.openelisglobal.common.rest.BaseRestController;
 import org.openelisglobal.dictionary.valueholder.Dictionary;
+import org.openelisglobal.qachecklist.exception.QaChecklistValidationException;
+import org.openelisglobal.qachecklist.service.QaChecklistSnapshot;
 import org.openelisglobal.qachecklist.service.SampleQaChecklistService;
 import org.openelisglobal.qachecklist.valueholder.SampleQaChecklist;
 import org.openelisglobal.sample.service.SampleService;
@@ -14,8 +17,9 @@ import org.openelisglobal.sample.valueholder.Sample;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -39,9 +43,6 @@ public class SampleQaChecklistRestController extends BaseRestController {
 
     @Autowired
     private SampleService sampleService;
-
-    @Autowired
-    private HttpServletRequest httpRequest;
 
     /**
      * Get all active checklist item configurations from the Dictionary. GET
@@ -71,9 +72,7 @@ public class SampleQaChecklistRestController extends BaseRestController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             logger.error("Error getting QA checklist config", e);
-            Map<String, String> error = new HashMap<>();
-            error.put("error", "Failed to get checklist config: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+            return failure(500, "QA_LOAD_FAILED", "qa.checklist.loadFailed", null);
         }
     }
 
@@ -86,14 +85,7 @@ public class SampleQaChecklistRestController extends BaseRestController {
     @GetMapping("/{sampleId}")
     public ResponseEntity<?> getQaChecklist(@PathVariable String sampleId) {
         try {
-            // Validate that sampleId is numeric
-            try {
-                Integer.parseInt(sampleId.trim());
-            } catch (NumberFormatException e) {
-                Map<String, String> error = new HashMap<>();
-                error.put("error", "Invalid sampleId: must be a numeric value");
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
-            }
+            sampleId = positiveInteger(sampleId, "QA_SAMPLE_ID_INVALID", "qa.checklist.sampleIdInvalid").toString();
 
             logger.info("Getting QA checklist for sample: {}", sampleId);
 
@@ -106,7 +98,7 @@ public class SampleQaChecklistRestController extends BaseRestController {
             // Build verified items map with all active items
             Map<String, Boolean> verifiedItems = new HashMap<>();
             if (checklist != null) {
-                verifiedItems = checklist.getVerifiedItems();
+                verifiedItems.putAll(checklist.getVerifiedItems());
                 response.put("id", checklist.getId());
                 response.put("allRequiredVerified", checklist.getAllRequiredVerified());
                 response.put("verifiedByUserId", checklist.getVerifiedByUserId());
@@ -134,13 +126,14 @@ public class SampleQaChecklistRestController extends BaseRestController {
                 configItems.add(itemMap);
             }
             response.put("checklistItems", configItems);
+            response.putAll(QaChecklistSnapshot.project(checklist, activeItems));
 
             return ResponseEntity.ok(response);
+        } catch (QaChecklistValidationException e) {
+            return failure(e.getStatus(), e.getCode(), e.getErrorKey(), e.getBlockedStep());
         } catch (Exception e) {
             logger.error("Error getting QA checklist for sample: {}", sampleId, e);
-            Map<String, String> error = new HashMap<>();
-            error.put("error", "Failed to get QA checklist: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+            return failure(500, "QA_LOAD_FAILED", "qa.checklist.loadFailed", null);
         }
     }
 
@@ -154,22 +147,21 @@ public class SampleQaChecklistRestController extends BaseRestController {
     @GetMapping("/by-lab-number/{labNumber}")
     public ResponseEntity<?> getQaChecklistByLabNumber(@PathVariable String labNumber) {
         try {
+            labNumber = labNumber(labNumber);
             logger.info("Getting QA checklist for lab number: {}", labNumber);
 
             // Find sample by accession number
             Sample sample = sampleService.getSampleByAccessionNumber(labNumber);
             if (sample == null) {
-                Map<String, String> error = new HashMap<>();
-                error.put("error", "Sample not found for lab number: " + labNumber);
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+                return failure(404, "QA_SAMPLE_NOT_FOUND", "qa.checklist.sampleNotFound", null);
             }
 
             return getQaChecklist(sample.getId());
+        } catch (QaChecklistValidationException e) {
+            return failure(e.getStatus(), e.getCode(), e.getErrorKey(), e.getBlockedStep());
         } catch (Exception e) {
             logger.error("Error getting QA checklist for lab number: {}", labNumber, e);
-            Map<String, String> error = new HashMap<>();
-            error.put("error", "Failed to get QA checklist: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+            return failure(500, "QA_LOAD_FAILED", "qa.checklist.loadFailed", null);
         }
     }
 
@@ -186,79 +178,21 @@ public class SampleQaChecklistRestController extends BaseRestController {
      * @return the saved checklist
      */
     @PostMapping("")
-    @SuppressWarnings("unchecked")
-    public ResponseEntity<?> saveQaChecklist(@RequestBody Map<String, Object> requestBody) {
+    public ResponseEntity<?> saveQaChecklist(@RequestBody(required = false) Map<String, Object> requestBody,
+            HttpServletRequest request) {
         try {
-            if (sampleQaChecklistService.getActiveChecklistItems().isEmpty()) {
-                return ResponseEntity.status(HttpStatus.CONFLICT)
-                        .body(Map.of("error", "QA checklist is not configured", "code",
-                                "QA_CHECKLIST_NOT_CONFIGURED", "errorKey", "qa.checklist.notConfigured"));
+            Integer userId = authenticatedUserId(request);
+            org.openelisglobal.qachecklist.service.QaChecklistWriteGuard.requireRequestContext(request);
+            if (requestBody == null) {
+                return failure(400, "QA_REQUEST_INVALID", "qa.checklist.invalidRequest", null);
             }
-
-            Integer sampleId = null;
-
-            // Support both sampleId and labNumber in the request
-            if (requestBody.containsKey("sampleId")) {
-                Object sampleIdObj = requestBody.get("sampleId");
-                if (sampleIdObj instanceof Number) {
-                    sampleId = ((Number) sampleIdObj).intValue();
-                } else if (sampleIdObj instanceof String) {
-                    try {
-                        sampleId = Integer.parseInt(((String) sampleIdObj).trim());
-                    } catch (NumberFormatException e) {
-                        Map<String, String> error = new HashMap<>();
-                        error.put("error", "Invalid sampleId: must be a numeric value");
-                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
-                    }
-                }
-            } else if (requestBody.containsKey("labNumber")) {
-                String labNumber = (String) requestBody.get("labNumber");
-                Sample sample = sampleService.getSampleByAccessionNumber(labNumber);
-                if (sample == null) {
-                    Map<String, String> error = new HashMap<>();
-                    error.put("error", "Sample not found for lab number: " + labNumber);
-                    return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
-                }
-                try {
-                    sampleId = Integer.parseInt(sample.getId());
-                } catch (NumberFormatException e) {
-                    Map<String, String> error = new HashMap<>();
-                    error.put("error", "Invalid sample data");
-                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
-                }
-            }
-
-            if (sampleId == null) {
-                Map<String, String> error = new HashMap<>();
-                error.put("error", "Either sampleId or labNumber is required");
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
-            }
-
-            logger.info("Saving QA checklist for sample: {}", sampleId);
-
-            // Parse verified items
-            Map<String, Boolean> verifiedItems = new HashMap<>();
-            Object verifiedItemsObj = requestBody.get("verifiedItems");
-            if (verifiedItemsObj instanceof Map) {
-                Map<String, Object> itemsMap = (Map<String, Object>) verifiedItemsObj;
-                for (Map.Entry<String, Object> entry : itemsMap.entrySet()) {
-                    verifiedItems.put(entry.getKey(), getBooleanValue(entry.getValue()));
-                }
-            }
-
-            // Get current user ID
-            Integer userId = null;
-            try {
-                String sysUserId = getSysUserId(httpRequest);
-                if (sysUserId != null) {
-                    userId = Integer.parseInt(sysUserId);
-                }
-            } catch (Exception e) {
-                logger.warn("Could not get user ID: {}", e.getMessage());
-            }
-
-            SampleQaChecklist checklist = sampleQaChecklistService.saveOrUpdateChecklist(sampleId, verifiedItems,
-                    userId);
+            // Validate the complete payload before looking up the target or invoking
+            // the write service. Booleans and identifiers must never be coerced.
+            Map<String, Boolean> verifiedItems = verifiedItems(requestBody.get("verifiedItems"));
+            Integer sampleId = resolveSampleId(requestBody);
+            String accession = requestBody.containsKey("labNumber") ? labNumber(requestBody.get("labNumber")) : null;
+            SampleQaChecklist checklist = sampleQaChecklistService.saveFromRequest(sampleId, accession, verifiedItems,
+                    userId, request);
 
             Map<String, Object> response = new HashMap<>();
             response.put("id", checklist.getId());
@@ -268,29 +202,94 @@ public class SampleQaChecklistRestController extends BaseRestController {
             response.put("verifiedByUserId", checklist.getVerifiedByUserId());
             response.put("verifiedDate", checklist.getVerifiedDate());
             response.put("success", true);
+            response.putAll(QaChecklistSnapshot.project(checklist, sampleQaChecklistService.getActiveChecklistItems()));
 
             return ResponseEntity.ok(response);
+        } catch (QaChecklistValidationException e) {
+            return failure(e.getStatus(), e.getCode(), e.getErrorKey(), e.getBlockedStep());
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return failure(403, "QA_PERMISSION_DENIED", "qa.checklist.permissionDenied", null);
         } catch (Exception e) {
             logger.error("Error saving QA checklist", e);
-            Map<String, String> error = new HashMap<>();
-            error.put("error", "Failed to save QA checklist");
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+            return failure(500, "QA_SAVE_FAILED", "qa.checklist.saveFailed", null);
         }
     }
 
-    /**
-     * Helper to convert various types to Boolean.
-     */
-    private Boolean getBooleanValue(Object value) {
-        if (value == null) {
-            return false;
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<?> invalidRequestBody(HttpMessageNotReadableException exception) {
+        return failure(400, "QA_REQUEST_INVALID", "qa.checklist.invalidRequest", null);
+    }
+
+    private Integer authenticatedUserId(HttpServletRequest request) {
+        try {
+            return positiveInteger(getSysUserId(request), "QA_AUTH_REQUIRED", "qa.checklist.authRequired");
+        } catch (RuntimeException e) {
+            throw new QaChecklistValidationException(401, "QA_AUTH_REQUIRED", "qa.checklist.authRequired");
         }
-        if (value instanceof Boolean) {
-            return (Boolean) value;
+    }
+
+    private Integer resolveSampleId(Map<String, Object> body) {
+        boolean hasId = body.containsKey("sampleId");
+        boolean hasLabNumber = body.containsKey("labNumber");
+        if (!hasId && !hasLabNumber) {
+            throw new QaChecklistValidationException(400, "QA_IDENTIFIER_REQUIRED", "qa.checklist.identifierRequired");
         }
-        if (value instanceof String) {
-            return "true".equalsIgnoreCase((String) value);
+        Integer sampleId = hasId
+                ? positiveInteger(body.get("sampleId"), "QA_SAMPLE_ID_INVALID", "qa.checklist.sampleIdInvalid")
+                : null;
+        if (hasLabNumber) {
+            labNumber(body.get("labNumber"));
         }
-        return false;
+        return sampleId;
+    }
+
+    private static String labNumber(Object value) {
+        if (!(value instanceof String text) || text.isBlank()) {
+            throw new QaChecklistValidationException(400, "QA_LAB_NUMBER_INVALID", "qa.checklist.labNumberInvalid");
+        }
+        return text.trim();
+    }
+
+    private static Integer positiveInteger(Object value, String code, String errorKey) {
+        String text = value instanceof String string ? string.trim()
+                : value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long
+                        || value instanceof BigInteger ? value.toString() : null;
+        if (text != null && text.matches("[0-9]+")) {
+            try {
+                int parsed = Integer.parseInt(text);
+                if (parsed > 0) {
+                    return parsed;
+                }
+            } catch (NumberFormatException ignored) {
+                // Overflow must be rejected, never truncated with Number.intValue().
+            }
+        }
+        throw new QaChecklistValidationException(400, code, errorKey);
+    }
+
+    private static Map<String, Boolean> verifiedItems(Object value) {
+        if (!(value instanceof Map<?, ?> items)) {
+            throw new QaChecklistValidationException(400, "QA_ITEMS_INVALID", "qa.checklist.itemsInvalid");
+        }
+        Map<String, Boolean> result = new HashMap<>();
+        for (Map.Entry<?, ?> item : items.entrySet()) {
+            if (!(item.getKey() instanceof String key) || key.isBlank() || !(item.getValue() instanceof Boolean flag)) {
+                throw new QaChecklistValidationException(400, "QA_ITEMS_INVALID", "qa.checklist.itemsInvalid");
+            }
+            result.put(key, flag);
+        }
+        return result;
+    }
+
+    private static ResponseEntity<Map<String, Object>> failure(int status, String code, String errorKey,
+            String blockedStep) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("success", false);
+        body.put("code", code);
+        body.put("errorKey", errorKey);
+        if (blockedStep != null) {
+            body.put("blockedStep", blockedStep);
+        }
+        return ResponseEntity.status(status).body(body);
     }
 }
