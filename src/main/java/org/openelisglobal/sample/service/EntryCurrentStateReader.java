@@ -95,7 +95,17 @@ public class EntryCurrentStateReader {
             String orderStatusId, String lastUpdated, PatientView patient, List<RequestView> requestedSpecimens,
             List<SpecimenView> physicalSpecimens, CollectionContext collectionContext,
             org.openelisglobal.qachecklist.service.QaChecklistReviewReader.Review qaReview,
-            List<SpecimenIntakeDecisionReader.Tube> specimenDecisions) {
+            List<SpecimenIntakeDecisionReader.Tube> specimenDecisions,
+            SpecimenIntakeDecisionReader.Reasons intakeReasons) {
+        public Snapshot(int version, boolean readOnly, String sampleId, String labNo, String workflowType,
+                String orderStatusId, String lastUpdated, PatientView patient, List<RequestView> requestedSpecimens,
+                List<SpecimenView> physicalSpecimens, CollectionContext collectionContext,
+                org.openelisglobal.qachecklist.service.QaChecklistReviewReader.Review qaReview,
+                List<SpecimenIntakeDecisionReader.Tube> specimenDecisions) {
+            this(version, readOnly, sampleId, labNo, workflowType, orderStatusId, lastUpdated, patient,
+                    requestedSpecimens, physicalSpecimens, collectionContext, qaReview, specimenDecisions, null);
+        }
+
         public Snapshot(int version, boolean readOnly, String sampleId, String labNo, String workflowType,
                 String orderStatusId, String lastUpdated, PatientView patient, List<RequestView> requestedSpecimens,
                 List<SpecimenView> physicalSpecimens, CollectionContext collectionContext,
@@ -267,7 +277,8 @@ public class EntryCurrentStateReader {
                 collectionContext(sample, ordered, specimens),
                 qaReviews.read(sample, patient == null ? null : patient.id(), rows, physicalRows, qaAnalyses),
                 intakeDecisions.read(sampleId, sample.getAccessionNumber(), patient == null ? null : patient.id(),
-                        specimens));
+                        specimens),
+                patient == null ? null : intakeDecisions.reasons());
     }
 
     // Facts from the same read transaction, not a capability token. Historical

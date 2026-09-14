@@ -1,6 +1,7 @@
 import { entrySubmissionError, validOrderId } from "./orderEntryReceipt";
 import { verifyCollectionContext } from "./collectionRecovery";
 import { verifyQaReview } from "./qaConfirmation";
+import { verifyIntakeDecisions, verifyIntakeReasons } from "./intakeDecision";
 import {
   recoverEntrySubmission,
   verifyRecoveredEntryReceipt,
@@ -222,6 +223,11 @@ export const verifyCurrentEntry = (data, reference, command) => {
   };
   const qaReview = verifyQaReview(c.qaReview, facts);
   if (qaReview !== undefined) facts.qaReview = qaReview;
+  const specimenDecisions = verifyIntakeDecisions(c.specimenDecisions, facts);
+  if (specimenDecisions !== undefined)
+    facts.specimenDecisions = specimenDecisions;
+  if (c.intakeReasons !== undefined)
+    facts.intakeReasons = verifyIntakeReasons(c.intakeReasons);
   return JSON.parse(JSON.stringify({ receipt, current: facts }));
 };
 

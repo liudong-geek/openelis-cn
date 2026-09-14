@@ -1,0 +1,88 @@
+@use "@carbon/styles/scss/spacing" as spacing;
+@use "@carbon/styles/scss/theme" as theme;
+
+.recovered-specimen-decision {
+  display: grid;
+  gap: spacing.$spacing-05;
+  min-width: 0;
+  padding: spacing.$spacing-06;
+  border: 1px solid theme.$border-subtle;
+  background: theme.$background;
+  border-radius: spacing.$spacing-03;
+  color: theme.$text-primary;
+  line-height: 1.6;
+  header,
+  &__actions {
+    display: flex;
+    gap: spacing.$spacing-05;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+  header p,
+  &__boundary,
+  &__signature {
+    color: theme.$text-secondary;
+    font-size: 14px;
+  }
+  &__table {
+    min-width: 0;
+    overflow-x: auto;
+  }
+  .cds--data-table {
+    min-width: 760px;
+  }
+  .cds--data-table td {
+    height: auto;
+    padding-block: spacing.$spacing-04;
+    overflow-wrap: anywhere;
+  }
+  .cds--data-table td:first-child,
+  .cds--data-table td:nth-child(3) {
+    white-space: nowrap;
+  }
+  &__editor {
+    display: grid;
+    gap: spacing.$spacing-05;
+    border-top: 1px solid theme.$border-subtle;
+    padding-top: spacing.$spacing-05;
+  }
+  &__facts,
+  &__fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: spacing.$spacing-05;
+    min-width: 0;
+  }
+  &__facts dt {
+    color: theme.$text-secondary;
+    font-size: 14px;
+  }
+  &__facts dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    font-weight: 600;
+  }
+  &__preview {
+    background: theme.$highlight;
+    padding: spacing.$spacing-05;
+    border-radius: spacing.$spacing-02;
+  }
+  &__actions {
+    justify-content: flex-end;
+  }
+  &__boundary {
+    border-top: 1px solid theme.$border-subtle;
+    padding-top: spacing.$spacing-05;
+  }
+  .cds--btn {
+    max-width: 100%;
+    white-space: normal;
+    height: auto;
+  }
+  .cds--inline-notification {
+    max-width: 100%;
+  }
+  @media (max-width: 600px) {
+    padding: spacing.$spacing-04;
+  }
+}

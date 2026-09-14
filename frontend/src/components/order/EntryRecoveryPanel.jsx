@@ -14,6 +14,7 @@ import RecoveredCollectionEditor from "./RecoveredCollectionEditor";
 import OrderLabelPrintPanel from "./OrderLabelPrintPanel";
 import RecoveredReceiptEditor from "./RecoveredReceiptEditor";
 import RecoveredQaReview from "./RecoveredQaReview";
+import RecoveredSpecimenDecision from "./RecoveredSpecimenDecision";
 
 // Kept outside the locked clinical form: recovery is an explicit authorized
 // read, not another Save button. A receipt never silently replaces a draft.
@@ -25,6 +26,7 @@ export default function EntryRecoveryPanel() {
     collectionRecovery,
     receiptRecovery,
     qaRecovery,
+    intakeRecovery,
     queryCurrentEntryRecovery,
     isRecoveryCurrent,
     isSubmitting,
@@ -48,7 +50,8 @@ export default function EntryRecoveryPanel() {
     entryRecovery?.checkpoint ||
     collectionRecovery?.checkpoint ||
     receiptRecovery?.checkpoint ||
-    qaRecovery?.checkpoint;
+    qaRecovery?.checkpoint ||
+    intakeRecovery?.checkpoint;
   const visibleReceipt = receipt && isRecoveryCurrent?.() ? receipt : null;
   const lookupCode = pending?.submissionId || code.trim();
   const query = async (draft = null) => {
@@ -85,7 +88,8 @@ export default function EntryRecoveryPanel() {
     !entryRecovery?.error &&
     !collectionRecovery?.error &&
     !receiptRecovery?.error &&
-    !qaRecovery?.error
+    !qaRecovery?.error &&
+    !intakeRecovery?.error
   )
     return (
       <Button kind="ghost" size="sm" onClick={() => setExpanded(true)}>
@@ -97,6 +101,13 @@ export default function EntryRecoveryPanel() {
       <Stack gap={4}>
         <h4>{t("order.recovery.currentTitle")}</h4>
         <p>{t("order.recovery.help")}</p>
+        {(intakeRecovery?.checkpoint || intakeRecovery?.error) && (
+          <InlineNotification
+            kind="warning"
+            hideCloseButton
+            title={t("order.intakeDecision.unknown")}
+          />
+        )}
         {(qaRecovery?.checkpoint || qaRecovery?.error) && (
           <InlineNotification
             kind="warning"
@@ -152,6 +163,15 @@ export default function EntryRecoveryPanel() {
           <InlineNotification kind="warning" hideCloseButton title={t(error)} />
         )}
         {visibleReceipt && <EntryCurrentSummary result={visibleReceipt} />}
+        {visibleReceipt && (
+          <RecoveredSpecimenDecision
+            result={visibleReceipt}
+            onSaved={(next) => {
+              setReceipt(next);
+              setLabelOperation(null);
+            }}
+          />
+        )}
         {visibleReceipt && (
           <RecoveredQaReview
             result={visibleReceipt}

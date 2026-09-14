@@ -75,6 +75,7 @@ public class SpecimenIntakeDecisionReaderTest {
         assertEquals("模拟：容器不符", result.get(0).reason().label());
         assertEquals("NOT_RECORDED", result.get(1).state());
         assertFalse(result.get(0).currentAcceptanceVerified());
+        assertEquals(SpecimenIntakeDecisionTest.row("801", Decision.REJECTED).getEvidenceDigest(), result.get(0).evidenceDigest());
         verify(dao, times(1)).findForTubes(List.of("801", "802"));
     }
 
@@ -100,6 +101,7 @@ public class SpecimenIntakeDecisionReaderTest {
             assertNull(result.operationId());
             assertNull(result.reason());
             assertNull(result.decidedBy());
+            assertNull(result.evidenceDigest());
         }
     }
 
@@ -136,5 +138,63 @@ public class SpecimenIntakeDecisionReaderTest {
         TransactionSynchronizationManager.setActualTransactionActive(false);
         assertThrows(IllegalStateException.class, this::read);
         verifyZeroInteractions(dao);
+    }
+
+    private org.openelisglobal.dictionary.valueholder.Dictionary reason() {
+        var row = new org.openelisglobal.dictionary.valueholder.Dictionary();
+        row.setId("41");
+        row.setIsActive("Y");
+        row.setDictEntry("模拟：容器不符");
+        row.setLastupdated(java.sql.Timestamp.from(java.time.Instant.parse("2026-09-13T06:00:00.123456Z")));
+        var category = new org.openelisglobal.dictionarycategory.valueholder.DictionaryCategory();
+        category.setId("51");
+        category.setCategoryName("resultRejectionReasons");
+        category.setLastupdated(row.getLastupdated());
+        row.setDictionaryCategory(category);
+        return row;
+    }
+
+    @Test public void reasonCatalogUsesExactWriterNamespaceAndVersionWithoutLocalNameSubstitution() {
+        when(dao.activeRejectionReasons()).thenReturn(List.of(reason()));
+        var catalog = reader.reasons(); assertEquals("READY", catalog.state());
+        assertEquals("DICTIONARY:resultRejectionReasons", catalog.items().get(0).namespace());
+        assertEquals("2026-09-13T06:00:00.123456Z", catalog.items().get(0).version());
+        assertEquals("模拟：容器不符", catalog.items().get(0).label());
+    }
+
+    @Test public void absentDuplicateInactiveAndWrongCategoryAreNotUsableReasons() {
+        when(dao.activeRejectionReasons()).thenReturn(List.of()); assertEquals("EMPTY", reader.reasons().state());
+        when(dao.activeRejectionReasons()).thenReturn(null); assertEquals("UNAVAILABLE", reader.reasons().state());
+        var row = reason(); when(dao.activeRejectionReasons()).thenReturn(List.of(row, row));
+        assertEquals("UNAVAILABLE", reader.reasons().state());
+        when(dao.activeRejectionReasons()).thenReturn(List.of(row)); row.setIsActive("N");
+        assertEquals("UNAVAILABLE", reader.reasons().state()); row.setIsActive("Y"); row.getDictionaryCategory().setCategoryName("other");
+        assertEquals("UNAVAILABLE", reader.reasons().state());
+    }
+
+    @Test
+    public void staleOrMalformedDirectoryDoesNotBecomeFreeTextReason() {
+        var row = reason();
+        when(dao.activeRejectionReasons()).thenReturn(List.of(row));
+        row.setLastupdated(null);
+        assertEquals("UNAVAILABLE", reader.reasons().state());
+        row = reason();
+        row.setDictEntry("模拟\u0085原因");
+        when(dao.activeRejectionReasons()).thenReturn(List.of(row));
+        assertEquals("UNAVAILABLE", reader.reasons().state());
+        row = reason();
+        row.getDictionaryCategory().setLastupdated(null);
+        when(dao.activeRejectionReasons()).thenReturn(List.of(row));
+        assertEquals("UNAVAILABLE", reader.reasons().state());
+    }
+
+    @Test
+    public void catalogReadRequiresAuthorizedRepeatableReadAndPropagatesDatabaseFailure() {
+        TransactionSynchronizationManager.setCurrentTransactionReadOnly(false);
+        assertThrows(IllegalStateException.class, () -> reader.reasons());
+        verifyZeroInteractions(dao);
+        TransactionSynchronizationManager.setCurrentTransactionReadOnly(true);
+        when(dao.activeRejectionReasons()).thenThrow(new IllegalStateException("SIM unavailable"));
+        assertThrows(IllegalStateException.class, () -> reader.reasons());
     }
 }

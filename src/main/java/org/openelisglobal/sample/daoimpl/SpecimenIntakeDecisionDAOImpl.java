@@ -17,6 +17,14 @@ public class SpecimenIntakeDecisionDAOImpl implements SpecimenIntakeDecisionDAO 
     private EntityManager entityManager;
 
     @Override
+    public List<org.openelisglobal.dictionary.valueholder.Dictionary> activeRejectionReasons() {
+        return entityManager.createQuery(
+                "FROM Dictionary d JOIN FETCH d.dictionaryCategory c WHERE d.isActive = :active AND c.categoryName = :category ORDER BY d.id",
+                org.openelisglobal.dictionary.valueholder.Dictionary.class).setParameter("active", "Y")
+                .setParameter("category", "resultRejectionReasons").setMaxResults(1001).getResultList();
+    }
+
+    @Override
     public List<SpecimenIntakeDecision> findForTubes(List<String> sampleItemIds) {
         if (sampleItemIds == null || sampleItemIds.size() > 5000) {
             throw SpecimenIntakeEvidence.invalid();

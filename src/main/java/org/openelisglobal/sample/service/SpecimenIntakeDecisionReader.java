@@ -27,18 +27,50 @@ public class SpecimenIntakeDecisionReader {
     }
 
     public record Tube(String sampleItemId, String state, String recordedDecision, String operationId,
-            SpecimenIntakeDecision.Reason reason, String decidedBy, String decidedAt,
-            boolean currentAcceptanceVerified) {
+            SpecimenIntakeDecision.Reason reason, String decidedBy, String decidedAt, boolean currentAcceptanceVerified,
+            String evidenceDigest) {
+    }
+
+    public record Reasons(int schema, String state, List<SpecimenIntakeDecision.Reason> items) {
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+    public Reasons reasons() {
+        requireReadTransaction();
+        var rows = dao.activeRejectionReasons();
+        if (rows == null || rows.size() > 1000) {
+            return new Reasons(1, "UNAVAILABLE", List.of());
+        }
+        var ids = new HashSet<String>();
+        var values = new ArrayList<SpecimenIntakeDecision.Reason>();
+        try {
+            for (var row : rows) {
+                if (row == null || !ids.add(row.getId()) || !"Y".equals(row.getIsActive())
+                        || row.getLastupdated() == null || row.getDictionaryCategory() == null
+                        || row.getDictionaryCategory().getLastupdated() == null
+                        || !"resultRejectionReasons".equals(row.getDictionaryCategory().getCategoryName())) {
+                    throw new IllegalArgumentException();
+                }
+                var reason = new SpecimenIntakeDecision.Reason("DICTIONARY:resultRejectionReasons", row.getId(),
+                        row.getLastupdated().toInstant().toString(), row.getDictEntry());
+                org.openelisglobal.sample.form.SpecimenIntakeEvidence.requireId(row.getDictionaryCategory().getId());
+                var categoryTime = org.openelisglobal.sample.form.SpecimenIntakeEvidence
+                        .time(row.getDictionaryCategory().getLastupdated().toInstant().toString());
+                if (row.getLastupdated().toInstant().isAfter(java.time.Instant.now())
+                        || categoryTime.isAfter(java.time.Instant.now())) {
+                    throw new IllegalArgumentException();
+                }
+                values.add(reason);
+            }
+            return new Reasons(1, values.isEmpty() ? "EMPTY" : "READY", List.copyOf(values));
+        } catch (IllegalArgumentException invalid) {
+            return new Reasons(1, "UNAVAILABLE", List.of());
+        }
     }
 
     @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
     public List<Tube> read(String sampleId, String labNo, String patientId, List<SpecimenView> physical) {
-        if (!TransactionSynchronizationManager.isActualTransactionActive()
-                || !TransactionSynchronizationManager.isCurrentTransactionReadOnly()
-                || !Integer.valueOf(Connection.TRANSACTION_REPEATABLE_READ)
-                        .equals(TransactionSynchronizationManager.getCurrentTransactionIsolationLevel())) {
-            throw new IllegalStateException("Specimen decision read requires the authorized current transaction");
-        }
+        requireReadTransaction();
         var ids = physical.stream().map(SpecimenView::id).toList();
         var rows = dao.findForTubes(ids);
         Map<String, List<SpecimenIntakeDecision>> byTube = new HashMap<>();
@@ -67,6 +99,15 @@ public class SpecimenIntakeDecisionReader {
         return List.copyOf(result);
     }
 
+    private void requireReadTransaction() {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isCurrentTransactionReadOnly()
+                || !Integer.valueOf(Connection.TRANSACTION_REPEATABLE_READ)
+                        .equals(TransactionSynchronizationManager.getCurrentTransactionIsolationLevel())) {
+            throw new IllegalStateException("Specimen decision read requires the authorized current transaction");
+        }
+    }
+
     private Tube project(SpecimenIntakeDecision row, String sample, String lab, String patient, SpecimenView item) {
         try {
             row.validateRecord();
@@ -83,13 +124,13 @@ public class SpecimenIntakeDecisionReader {
             // First decision remains history after later result/status/version changes.
             // Current rejected/voided/status fields are separate in physicalSpecimens.
             return new Tube(item.id(), "RECORDED", row.getDecision().name(), row.getOperationId(), row.reason(),
-                    row.getCreatedBy(), row.getCreatedAt().toString(), false);
+                    row.getCreatedBy(), row.getCreatedAt().toString(), false, row.getEvidenceDigest());
         } catch (IllegalArgumentException e) {
             return unverified(item.id(), "INVALID_RECORD");
         }
     }
 
     private Tube unverified(String item, String state) {
-        return new Tube(item, state, null, null, null, null, null, false);
+        return new Tube(item, state, null, null, null, null, null, false, null);
     }
 }

@@ -66,6 +66,12 @@ import { postSpecimenReceipt } from "./receiptTransport";
 import { qaCanConfirm, qaFailure } from "./qaConfirmation";
 import { readQaCheckpoint, reconcileQaCheckpoint } from "./qaCheckpoint";
 import { createQaOperation } from "./qaOperation";
+import { intakeFailure, intakeId, intakeOptions } from "./intakeDecision";
+import {
+  readIntakeCheckpoint,
+  reconcileIntakeCheckpoint,
+} from "./intakeCheckpoint";
+import { createIntakeOperation } from "./intakeOperation";
 
 /**
  * OrderContext - Shared state for the decoupled sample collection workflow.
@@ -357,8 +363,20 @@ export const OrderProvider = ({ children }) => {
   const recoveredReceiptOperation = useRef(null);
   const activeRecoveredQa = useRef(null);
   const recoveredQaOperation = useRef(null);
+  const activeRecoveredIntake = useRef(null);
+  const recoveredIntakeOperation = useRef(null);
+  const deniedRecoveryCredential = useRef(null);
   const assertQaIdle = useCallback(() => {
+    const denied = deniedRecoveryCredential.current;
+    if (
+      denied &&
+      readSessionIdentity(latestSessionContext.current) === denied.identity &&
+      latestSessionContext.current.userSessionDetails?.csrf === denied.token
+    )
+      throw intakeFailure("denied");
     if (activeRecoveredQa.current || readQaCheckpoint()) throw qaFailure();
+    if (activeRecoveredIntake.current || readIntakeCheckpoint())
+      throw intakeFailure();
   }, []);
   const [, setRecoveryRevision] = useState(0);
   // Latch interruption during rendering too: a later return to the same account
@@ -366,6 +384,7 @@ export const OrderProvider = ({ children }) => {
   recoveredLabelOperation.current?.isCurrent();
   recoveredReceiptOperation.current?.isCurrent();
   recoveredQaOperation.current?.isCurrent();
+  recoveredIntakeOperation.current?.isCurrent();
   const pendingRecoveredCollection = useRef(null);
   const recoverySequence = useRef(0);
   const [labNumber, setLabNumber] = useState(null);
@@ -750,8 +769,28 @@ export const OrderProvider = ({ children }) => {
     },
     [interruptEntrySave],
   );
+
+  const revokeRecoveredCredential = useCallback((identity, token) => {
+    if (
+      !isMounted.current ||
+      readSessionIdentity(latestSessionContext.current) !== identity ||
+      latestSessionContext.current.userSessionDetails?.csrf !== token
+    )
+      return;
+    deniedRecoveryCredential.current = { identity, token };
+    sessionPauseGeneration.current += 1;
+    sessionAutoSaveSuspended.current = true;
+    recoverySequence.current += 1;
+    recoveredEntry.current = null;
+    setRecoveryRevision((value) => value + 1);
+  }, []);
+
   const queryEntryRecovery = useCallback(
     async (code, signal, currentState = false) => {
+      if (activeRecoveredIntake.current) throw intakeFailure("busy");
+      const intakePending = readIntakeCheckpoint();
+      if (intakePending && intakePending.submissionId !== code)
+        throw intakeFailure();
       if (activeRecoveredQa.current) throw qaFailure("busy");
       const qaPending = readQaCheckpoint();
       if (qaPending && qaPending.submissionId !== code) throw qaFailure();
@@ -767,6 +806,8 @@ export const OrderProvider = ({ children }) => {
       if (receiptPending && receiptPending.submissionId !== code)
         throw receiptFailure();
       const identity = readSessionIdentity(latestSessionContext.current);
+      const recoveryToken =
+        latestSessionContext.current.userSessionDetails?.csrf;
       const generation = readSessionCheckGeneration(
         latestSessionContext.current,
       );
@@ -784,12 +825,18 @@ export const OrderProvider = ({ children }) => {
       const sequence = ++recoverySequence.current;
       const pauseGeneration = sessionPauseGeneration.current;
       recoveredEntry.current = null;
-      const isAuthorized = () =>
-        isMounted.current &&
-        !signal?.aborted &&
-        sequence === recoverySequence.current &&
-        canWriteForSession(identity, generation) &&
-        pauseGeneration === sessionPauseGeneration.current;
+      let authorized = true;
+      const isAuthorized = () => {
+        authorized =
+          authorized &&
+          isMounted.current &&
+          !signal?.aborted &&
+          sequence === recoverySequence.current &&
+          labelSessionReady(latestSessionContext.current) &&
+          canWriteForSession(identity, generation) &&
+          pauseGeneration === sessionPauseGeneration.current;
+        return authorized;
+      };
       const isCurrent = () =>
         isAuthorized() &&
         requestEpoch.current === epoch &&
@@ -805,7 +852,14 @@ export const OrderProvider = ({ children }) => {
       const receipt = await query({
         reference,
         command: pending?.command,
-        read: readOpenElisResponse,
+        read: async (...args) => {
+          const response = await readOpenElisResponse(...args);
+          if ([401, 403].includes(response.status)) {
+            revokeRecoveredCredential(identity, recoveryToken);
+            throw intakeFailure("denied");
+          }
+          return response;
+        },
         isCurrent,
         signal,
       });
@@ -823,6 +877,7 @@ export const OrderProvider = ({ children }) => {
       if (currentState) await reconcileCollectionCheckpoint(receipt, isCurrent);
       if (currentState) await reconcileReceiptCheckpoint(receipt, isCurrent);
       if (currentState) await reconcileQaCheckpoint(receipt, isCurrent);
+      if (currentState) await reconcileIntakeCheckpoint(receipt, isCurrent);
       if (!isCurrent())
         throw entrySubmissionError("order.progress.requestChanged");
       // Private authoritative snapshot; callers cannot authorize an arbitrary ID.
@@ -1011,6 +1066,7 @@ export const OrderProvider = ({ children }) => {
           !activeRecoveredCollection.current &&
           !activeRecoveredReceipt.current &&
           !activeRecoveredQa.current &&
+          !activeRecoveredIntake.current &&
           labelSessionReady(latestSessionContext.current);
         return valid;
       },
@@ -1090,7 +1146,8 @@ export const OrderProvider = ({ children }) => {
           !activeLoad.current &&
           !activeRecoveredCollection.current &&
           !activeRecoveredLabels.current &&
-          !activeRecoveredQa.current;
+          !activeRecoveredQa.current &&
+          !activeRecoveredIntake.current;
         return valid;
       },
       preview: (ids) => {
@@ -1215,6 +1272,7 @@ export const OrderProvider = ({ children }) => {
     recoverySequence.current += 1;
     recoveredEntry.current = null;
     recoveredQaOperation.current?.invalidate();
+    recoveredIntakeOperation.current?.invalidate();
     recoveredReceiptOperation.current?.invalidate();
     recoveredLabelOperation.current?.invalidate();
     setIsSubmitting(true);
@@ -1264,10 +1322,12 @@ export const OrderProvider = ({ children }) => {
         !activeLoad.current &&
         !activeRecoveredCollection.current &&
         !activeRecoveredLabels.current &&
-        !activeRecoveredReceipt.current,
+        !activeRecoveredReceipt.current &&
+        !activeRecoveredIntake.current,
       csrf: () => latestSessionContext.current.userSessionDetails?.csrf,
       begin: (operation) => {
         activeRecoveredQa.current = operation;
+        recoveredIntakeOperation.current?.invalidate();
         recoveredLabelOperation.current?.invalidate();
         recoveredReceiptOperation.current?.invalidate();
         setIsSubmitting(true);
@@ -1284,6 +1344,80 @@ export const OrderProvider = ({ children }) => {
       read: readOpenElisResponse,
     });
     recoveredQaOperation.current = capability;
+    return capability;
+  }, []);
+
+  const prepareRecoveredIntake = useCallback((visible) => {
+    const assertIdle = () => {
+      assertQaIdle();
+      if (
+        activeSave.current ||
+        activeLoad.current ||
+        activeRecoveredCollection.current ||
+        activeRecoveredLabels.current ||
+        activeRecoveredReceipt.current ||
+        readReceiptCheckpoint() ||
+        readCollectionCheckpoint() ||
+        hasPendingLabels()
+      )
+        throw intakeFailure("busy");
+    };
+    assertIdle();
+    const record = recoveredEntry.current;
+    if (
+      !record?.result ||
+      !record.isCurrent() ||
+      !labelSessionReady(latestSessionContext.current) ||
+      JSON.stringify(visible) !== JSON.stringify(record.result) ||
+      !intakeOptions(record.result).length
+    )
+      throw intakeFailure("requery");
+    const identity = readSessionIdentity(latestSessionContext.current);
+    const token = latestSessionContext.current.userSessionDetails?.csrf;
+    const actor = latestSessionContext.current.userSessionDetails?.userId;
+    if (!intakeId(actor)) throw intakeFailure("requery");
+    const capability = createIntakeOperation({
+      record,
+      assertIdle,
+      actor,
+      isBound: (operation) =>
+        recoveredIntakeOperation.current === operation &&
+        recoveredEntry.current === record &&
+        latestSessionContext.current.userSessionDetails?.csrf === token &&
+        latestSessionContext.current.userSessionDetails?.userId === actor &&
+        labelSessionReady(latestSessionContext.current) &&
+        !activeSave.current &&
+        !activeLoad.current &&
+        !activeRecoveredCollection.current &&
+        !activeRecoveredLabels.current &&
+        !activeRecoveredReceipt.current &&
+        !activeRecoveredQa.current,
+      csrf: () => token,
+      begin: (operation) => {
+        activeRecoveredIntake.current = operation;
+        recoveredLabelOperation.current?.invalidate();
+        recoveredReceiptOperation.current?.invalidate();
+        recoveredQaOperation.current?.invalidate();
+        setIsSubmitting(true);
+      },
+      end: (operation) => {
+        if (activeRecoveredIntake.current === operation) {
+          activeRecoveredIntake.current = null;
+          if (isMounted.current) {
+            setIsSubmitting(false);
+            setRecoveryRevision((value) => value + 1);
+          }
+        }
+      },
+      denied: () => {
+        // Even a late response revokes this credential's view; an old account
+        // must never revoke a new account or a newly issued CSRF credential.
+        revokeRecoveredCredential(identity, token);
+      },
+      read: readOpenElisResponse,
+    });
+    recoveredIntakeOperation.current?.invalidate();
+    recoveredIntakeOperation.current = capability;
     return capability;
   }, []);
 
@@ -2184,6 +2318,19 @@ export const OrderProvider = ({ children }) => {
   } catch {
     qaRecovery = { checkpoint: null, error: "order.qaReview.unknown" };
   }
+  let intakeRecovery;
+  try {
+    const checkpoint = readIntakeCheckpoint();
+    intakeRecovery = {
+      checkpoint: checkpoint ? { submissionId: checkpoint.submissionId } : null,
+      error: null,
+    };
+  } catch {
+    intakeRecovery = {
+      checkpoint: null,
+      error: "order.intakeDecision.unknown",
+    };
+  }
   const value = {
     // State
     orderId,
@@ -2208,6 +2355,8 @@ export const OrderProvider = ({ children }) => {
     collectionRecovery,
     receiptRecovery,
     qaRecovery,
+    intakeRecovery,
+    prepareRecoveredIntake,
     assertQaIdle,
     prepareRecoveredQa,
     runLegacyQaWrite,

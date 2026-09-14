@@ -34,8 +34,8 @@ public class SpecimenIntakeDecisionDAOTest {
         verify(query).setParameter("ids", List.of("801", "802"));
         verify(query).getResultList();
         verifyNoMoreInteractions(em, query);
-        assertEquals(List.of("findForTubes"),
-                Arrays.stream(SpecimenIntakeDecisionDAO.class.getMethods()).map(m -> m.getName()).toList());
+        assertEquals(List.of("activeRejectionReasons", "findForTubes"),
+                Arrays.stream(SpecimenIntakeDecisionDAO.class.getMethods()).map(m -> m.getName()).sorted().toList());
     }
 
     @Test
@@ -48,5 +48,24 @@ public class SpecimenIntakeDecisionDAOTest {
         assertThrows(IllegalArgumentException.class, () -> dao.findForTubes(List.of("2147483648")));
         assertThrows(IllegalArgumentException.class, () -> dao.findForTubes(null));
         verifyZeroInteractions(em);
+    }
+
+    @Test
+    public void catalogIsBoundLimitedAndFetchesCategoryWithinTheReadTransaction() {
+        var em = mock(EntityManager.class);
+        TypedQuery<org.openelisglobal.dictionary.valueholder.Dictionary> query = mock(TypedQuery.class);
+        var dao = new SpecimenIntakeDecisionDAOImpl();
+        ReflectionTestUtils.setField(dao, "entityManager", em);
+        String hql = "FROM Dictionary d JOIN FETCH d.dictionaryCategory c WHERE d.isActive = :active AND c.categoryName = :category ORDER BY d.id";
+        when(em.createQuery(hql, org.openelisglobal.dictionary.valueholder.Dictionary.class)).thenReturn(query);
+        when(query.setParameter("active", "Y")).thenReturn(query);
+        when(query.setParameter("category", "resultRejectionReasons")).thenReturn(query);
+        when(query.setMaxResults(1001)).thenReturn(query);
+        when(query.getResultList()).thenReturn(List.of());
+        assertEquals(List.of(), dao.activeRejectionReasons());
+        verify(query).setParameter("active", "Y");
+        verify(query).setParameter("category", "resultRejectionReasons");
+        verify(query).setMaxResults(1001);
+        verify(query).getResultList();
     }
 }

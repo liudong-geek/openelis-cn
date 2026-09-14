@@ -263,8 +263,8 @@ public class EntryCurrentStateReaderTest {
     @Test
     public void currentReadsFirstDecisionsOnlyForItsAuthorizedActualTubes() {
         collect(0, "801");
-        var decisions = List
-                .of(new SpecimenIntakeDecisionReader.Tube("801", "NOT_RECORDED", null, null, null, null, null, false));
+        var decisions = List.of(new SpecimenIntakeDecisionReader.Tube("801", "NOT_RECORDED", null, null, null, null,
+                null, false, null));
         when(intakeDecisions.read(eq("301"), eq("SIM-CURRENT"), eq("601"), anyList())).thenReturn(decisions);
         var current = read();
         assertSame(decisions, current.specimenDecisions());
