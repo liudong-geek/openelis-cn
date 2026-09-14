@@ -1,5 +1,5 @@
-import React, { useState, useContext } from "react";
-import { Button } from "@carbon/react";
+import React, { useState, useContext, useRef, useLayoutEffect } from "react";
+import { Button, InlineNotification } from "@carbon/react";
 import { useIntl } from "react-intl";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import ESignatureModal from "./ESignatureModal";
@@ -56,6 +56,9 @@ const ESignatureButton = ({
   className,
   children,
   skipEsigCheck = false,
+  signatureApi = /** @type {import("../resultPage/unified/resultSignatureApi").ResultSignatureApi | undefined} */ (
+    undefined
+  ),
 }) => {
   const intl = useIntl();
   const { userSessionDetails } = useContext(UserSessionDetailsContext);
@@ -63,6 +66,62 @@ const ESignatureButton = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEsigEnabledState, setIsEsigEnabledState] = useState(null);
   const [isCheckingEsig, setIsCheckingEsig] = useState(false);
+  const [injectedError, setInjectedError] = useState(null);
+  const ceremony = useRef(null);
+  const mounted = useRef(true);
+
+  useLayoutEffect(
+    () => () => {
+      mounted.current = false;
+      ceremony.current?.api.dispose();
+      ceremony.current = null;
+    },
+    [],
+  );
+
+  // An injected capability belongs to this click, not a later parent render.
+  const handleInjectedClick = async () => {
+    if (ceremony.current || disabled) return;
+    const fixed = {
+      api: signatureApi,
+      meaning,
+      context,
+      recordType,
+      recordId,
+      onSign,
+      onCancel,
+      onBeforeSign,
+    };
+    ceremony.current = fixed;
+    setInjectedError(null);
+    setIsCheckingEsig(true);
+    try {
+      fixed.api.assertCurrent();
+      const result = await fixed.api.isEsigEnabled();
+      fixed.api.assertCurrent();
+      if (!mounted.current || ceremony.current !== fixed) return;
+      if (typeof result?.enabled !== "boolean") throw new Error();
+      if (result.enabled === false) {
+        fixed.onSign?.(null);
+        ceremony.current = null;
+        return;
+      }
+      fixed.onBeforeSign?.();
+      fixed.api.assertCurrent();
+      if (mounted.current && ceremony.current === fixed) setIsModalOpen(true);
+    } catch (error) {
+      if (mounted.current && ceremony.current === fixed) {
+        setInjectedError(
+          intl.formatMessage({
+            id: error.messageId || "esig.error.loadingStatus",
+          }),
+        );
+        ceremony.current = null;
+      }
+    } finally {
+      if (mounted.current) setIsCheckingEsig(false);
+    }
+  };
 
   // Default label based on meaning
   const getDefaultLabel = () => {
@@ -93,14 +152,18 @@ const ESignatureButton = ({
   const buttonLabel = label || getDefaultLabel();
 
   const handleClick = async () => {
+    if (signatureApi) return handleInjectedClick();
     // Check if e-signatures are enabled (only once)
     if (!skipEsigCheck && isEsigEnabledState === null) {
       setIsCheckingEsig(true);
       try {
         const result = await isEsigEnabled();
+        if (typeof result?.enabled !== "boolean") {
+          throw new Error("电子签名开关响应无效");
+        }
         setIsEsigEnabledState(result.enabled);
 
-        if (!result.enabled) {
+        if (result.enabled === false) {
           // E-signatures disabled - call onSign directly without modal
           // This allows the action to proceed without signature requirement
           if (onSign) {
@@ -137,6 +200,14 @@ const ESignatureButton = ({
   };
 
   const handleModalClose = () => {
+    if (ceremony.current) {
+      const fixed = ceremony.current;
+      ceremony.current = null;
+      fixed.api.dispose();
+      setIsModalOpen(false);
+      fixed.onCancel?.();
+      return;
+    }
     setIsModalOpen(false);
     if (onCancel) {
       onCancel();
@@ -144,6 +215,14 @@ const ESignatureButton = ({
   };
 
   const handleSignatureSuccess = (signature) => {
+    if (ceremony.current) {
+      const fixed = ceremony.current;
+      fixed.api.assertCurrent();
+      ceremony.current = null;
+      setIsModalOpen(false);
+      fixed.onSign?.(signature);
+      return;
+    }
     setIsModalOpen(false);
     if (onSign) {
       onSign(signature);
@@ -158,7 +237,12 @@ const ESignatureButton = ({
       <Button
         kind={kind}
         size={size}
-        disabled={disabled || !isLoggedIn || isCheckingEsig}
+        disabled={
+          disabled ||
+          !isLoggedIn ||
+          isCheckingEsig ||
+          (signatureApi && isModalOpen)
+        }
         onClick={handleClick}
         style={style}
         className={className}
@@ -166,14 +250,25 @@ const ESignatureButton = ({
         {children || buttonLabel}
       </Button>
 
+      {injectedError && (
+        <InlineNotification
+          kind="error"
+          title={intl.formatMessage({ id: "esig.error.title" })}
+          subtitle={injectedError}
+          lowContrast
+          hideCloseButton
+        />
+      )}
+
       <ESignatureModal
         open={isModalOpen}
         onClose={handleModalClose}
         onSuccess={handleSignatureSuccess}
-        meaning={meaning}
-        context={context}
-        recordType={recordType}
-        recordId={recordId}
+        meaning={ceremony.current?.meaning ?? meaning}
+        context={ceremony.current?.context ?? context}
+        recordType={ceremony.current?.recordType ?? recordType}
+        recordId={ceremony.current?.recordId ?? recordId}
+        signatureApi={ceremony.current?.api}
       />
     </>
   );

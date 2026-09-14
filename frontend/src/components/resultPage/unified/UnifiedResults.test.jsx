@@ -4,13 +4,21 @@ import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import { MemoryRouter } from "react-router-dom";
 import UnifiedResults from "./UnifiedResults";
+import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
 import { ConfigurationContext, NotificationContext } from "../../layout/Layout";
 import messages from "../../../languages/en.json";
 import zhMessages from "../../../languages/zh.json";
 import {
-  getFromOpenElisServer,
-  postToOpenElisServerJsonResponse,
-} from "../../utils/Utils";
+  readResultWorkbench as getFromOpenElisServer,
+  saveResultWorkbench as postToOpenElisServerJsonResponse,
+} from "./resultEntryTransport";
+vi.mock("./resultEntryTransport", () => ({
+  readResultWorkbench: vi.fn(),
+  saveResultWorkbench: vi.fn(),
+}));
+vi.mock("./useResultPresence", () => ({
+  useResultPresence: () => ({ presence: {}, unavailable: false }),
+}));
 
 vi.mock("../../utils/Utils", () => ({
   getFromOpenElisServer: vi.fn(),
@@ -83,7 +91,19 @@ const renderWorkbench = (
               addNotification: vi.fn(),
             }}
           >
-            <UnifiedResults />
+            <UserSessionDetailsContext.Provider
+              value={{
+                userSessionDetails: {
+                  authenticated: true,
+                  userId: "701",
+                  sessionId: "SIM-RESULT-SESSION",
+                  csrf: "SIM-CSRF",
+                  loginName: "SIM-USER",
+                },
+              }}
+            >
+              <UnifiedResults />
+            </UserSessionDetailsContext.Provider>
           </NotificationContext.Provider>
         </ConfigurationContext.Provider>
       </IntlProvider>
@@ -94,6 +114,7 @@ const renderWorkbench = (
 describe("UnifiedResults", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem("CSRF", "SIM-CSRF");
   });
 
   test("loads the dashboard pending queue without requiring a manual search", async () => {
@@ -149,6 +170,8 @@ describe("UnifiedResults", () => {
       (_url, _body, callback) =>
         callback({
           status: 200,
+          reflex: [],
+          calculated: [],
           analysisStatusId: "15",
           analysisLastupdated: "1755900000000",
         }),

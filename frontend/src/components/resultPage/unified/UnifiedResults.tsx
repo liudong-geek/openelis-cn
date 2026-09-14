@@ -2,6 +2,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -25,10 +26,29 @@ import {
   Tile,
 } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
+import { Prompt } from "react-router-dom";
+import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
 import {
-  getFromOpenElisServer,
-  postToOpenElisServerJsonResponse,
-} from "../../utils/Utils";
+  readResultWorkbench as getFromOpenElisServer,
+  saveResultWorkbench as postToOpenElisServerJsonResponse,
+  EntryRequestError,
+} from "./resultEntryTransport";
+import {
+  EntryDraft,
+  EntryRow,
+  EntrySession,
+  SessionStamp,
+  entryBlocked,
+  entryReason,
+  entrySession,
+  sessionReady,
+  newEntryDraft,
+  canResumeDraft,
+  restrictTubes,
+  specimenReasons,
+  entryReasons,
+} from "./resultEntryState";
+import ResultDraftReview from "./ResultDraftReview";
 import { NotificationContext } from "../../layout/Layout";
 import {
   AlertDialog,
@@ -54,7 +74,8 @@ import {
   formatDomainMessage,
   normalizeDomain,
 } from "./domainIntl";
-import { usePresence } from "./usePresence";
+import { useResultPresence } from "./useResultPresence";
+import { createResultSignatureApi } from "./resultSignatureApi";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import ProductPageHeader from "../../common/ProductPageHeader";
 import CustomDatePicker from "../../common/CustomDatePicker";
@@ -79,6 +100,7 @@ interface LabUnit {
 
 interface WorklistRow extends ResultCellRow {
   accessionNumber?: string;
+  sampleItemExternalId?: string | null;
   sequenceNumber?: string;
   testName?: string;
   patientInfo?: string;
@@ -88,6 +110,7 @@ interface WorklistRow extends ResultCellRow {
   analysisStatusId?: string;
   analysisLastupdated?: string;
   testResultComponentId?: string;
+  resultEntryBlockedReason?: string | null;
   [key: string]: unknown;
 }
 
@@ -98,6 +121,8 @@ interface StatusOption {
 
 interface SaveResponse {
   status?: number;
+  success?: boolean;
+  errorKey?: string;
   error?: string;
   modifiedBy?: string;
   modifiedAt?: string;
@@ -107,8 +132,117 @@ interface SaveResponse {
   calculated?: string[];
 }
 
+interface ConfirmedSaveResponse extends SaveResponse {
+  analysisLastupdated: string;
+  analysisStatusId: string;
+  reflex: string[];
+  calculated: string[];
+}
+
+const isConfirmedSaveResponse = (
+  response: unknown,
+): response is ConfirmedSaveResponse => {
+  if (!response || typeof response !== "object" || Array.isArray(response)) {
+    return false;
+  }
+  const receipt = response as SaveResponse;
+  const isPositiveIntegerString = (value: unknown): value is string =>
+    typeof value === "string" && /^[1-9]\d*$/.test(value);
+  return (
+    (receipt.status === undefined ||
+      (Number.isInteger(receipt.status) &&
+        receipt.status >= 200 &&
+        receipt.status < 300)) &&
+    (receipt.success === undefined || receipt.success === true) &&
+    receipt.error === undefined &&
+    receipt.errorKey === undefined &&
+    isPositiveIntegerString(receipt.analysisStatusId) &&
+    isPositiveIntegerString(receipt.analysisLastupdated) &&
+    Array.isArray(receipt.reflex) &&
+    receipt.reflex.every((value) => typeof value === "string") &&
+    Array.isArray(receipt.calculated) &&
+    receipt.calculated.every((value) => typeof value === "string")
+  );
+};
+
+// Only known, localized failures are shown. Server exception text is not UI copy.
+const SAVE_ERROR_KEYS = new Set([
+  ...entryReasons,
+  "error.results.analysisMismatch",
+  "error.results.resultMismatch",
+  "error.results.qualifiedResultMismatch",
+  "error.results.testMismatch",
+  "error.results.componentMismatch",
+  "error.results.resultDefinitionMissing",
+  "error.results.orderMismatch",
+  "error.results.reviewedResultLocked",
+  "error.results.statusConfigurationInvalid",
+  "security.authRequired",
+  "security.sessionExpired",
+  "security.accessDenied",
+  "security.csrfInvalid",
+  "common.api.networkError",
+  "common.api.invalidResponse",
+  "common.api.requestFailed",
+]);
+
+// Unknown nonempty reasons also fail closed; never render server error text.
+const isResultEntryBlocked = entryBlocked;
+
+const blockedResultDisplay = (row: EntryRow): string => {
+  if (row.resultType === "D") {
+    return (
+      row.dictionaryResults?.find((option) => option.id === row.resultValue)
+        ?.value ||
+      row.resultValue ||
+      ""
+    );
+  }
+  if (row.resultType === "M" || row.resultType === "C") {
+    try {
+      const selected: unknown = JSON.parse(row.multiSelectResultValues || "{}");
+      if (
+        selected &&
+        typeof selected === "object" &&
+        !Array.isArray(selected)
+      ) {
+        const ids = Object.values(selected).flatMap((value) =>
+          typeof value === "string" || typeof value === "number"
+            ? String(value).split(",").filter(Boolean)
+            : [],
+        );
+        if (ids.length) {
+          return ids
+            .map(
+              (id) =>
+                row.dictionaryResults?.find(
+                  (option) => String(option.id) === id,
+                )?.value || id,
+            )
+            .join(", ");
+        }
+      }
+    } catch {
+      // A missing definition must not erase an existing historical value.
+    }
+    return (
+      row.resultValue ||
+      (row.multiSelectResultValues !== "{}"
+        ? row.multiSelectResultValues || ""
+        : "")
+    );
+  }
+  return row.resultValue || "";
+};
+
 const UnifiedResults: React.FC = () => {
   const intl = useIntl();
+  const session = useContext(UserSessionDetailsContext) as EntrySession;
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const stamp = entrySession(session);
+  const worklistStamp = useRef<SessionStamp | null>(stamp);
+  const revokedSession = useRef<string | null>(null);
   const { addNotification, setNotificationVisible } =
     useContext(NotificationContext);
 
@@ -132,6 +266,44 @@ const UnifiedResults: React.FC = () => {
     initialUrlState.get("status") || "ALL",
   );
   const [rows, setRows] = useState<WorklistRow[]>([]);
+  const rowsRef = useRef<WorklistRow[]>([]);
+  const drafts = useRef(new Map<string, EntryDraft>());
+  const signatureApis = useRef(
+    new Map<
+      string,
+      { binding: string; api: ReturnType<typeof createResultSignatureApi> }
+    >(),
+  );
+  const [, renderDrafts] = useState(0);
+  const updateRows = useCallback(
+    (change: (current: WorklistRow[]) => WorklistRow[]) => {
+      rowsRef.current = change(rowsRef.current);
+      setRows(rowsRef.current);
+    },
+    [],
+  );
+  const ready = (expected = worklistStamp.current) =>
+    Boolean(
+      expected &&
+      revokedSession.current !== expected.identity &&
+      sessionReady(sessionRef.current, expected),
+    );
+  const signingName = session.userSessionDetails?.loginName;
+  const signingToken = stamp?.csrf;
+  const signingIdentityReady =
+    typeof signingName === "string" &&
+    signingName.length > 0 &&
+    signingName.length <= 255 &&
+    signingName.trim() === signingName &&
+    typeof signingToken === "string" &&
+    signingToken.length <= 4096 &&
+    !/[\r\n]/.test(signingToken);
+  const analysisUnconfirmed = (analysisId: string) =>
+    [...drafts.current.values()].some(
+      (draft) =>
+        draft.row.analysisId === analysisId &&
+        ["pending", "unknown"].includes(draft.disposition),
+    );
   const [rowStates, setRowStates] = useState<Record<string, RowEditState>>({});
   const [staleInfo, setStaleInfo] = useState<
     Record<string, { modifiedBy?: string; modifiedAt?: string }>
@@ -143,8 +315,106 @@ const UnifiedResults: React.FC = () => {
   const [pageSize, setPageSize] = useState<number>(25);
   const [loading, setLoading] = useState<boolean>(false);
   const [hasLoaded, setHasLoaded] = useState<boolean>(false);
+  const [loadErrorKey, setLoadErrorKey] = useState<string | null>(null);
+  const loadEpoch = useRef(0);
+  const worklistLoading = useRef(false);
+  const mounted = useRef(true);
+  const rowEditRevisions = useRef<Record<string, number>>({});
+  const blockedRowKeys = useRef(new Set<string>());
+  const pendingSaves = useRef(
+    new Map<string, { epoch: number; revision: number }>(),
+  );
+  const [savingRows, setSavingRows] = useState<Set<string>>(() => new Set());
   const initialLoadStarted = useRef(false);
   const initialLabUnitEffect = useRef(true);
+
+  const clearPrivateState = () => {
+    loadEpoch.current += 1;
+    for (const value of signatureApis.current.values()) value.api.dispose();
+    signatureApis.current.clear();
+    drafts.current.clear();
+    blockedRowKeys.current.clear();
+    pendingSaves.current.clear();
+    rowEditRevisions.current = {};
+    updateRows(() => []);
+    setRowStates({});
+    setStaleInfo({});
+    setEditingAnalysisId(null);
+    setSavingRows(new Set());
+    setHasLoaded(false);
+    setSearchText("");
+    setSelectedLabUnit("");
+    setCollectionDate("");
+    setStatusFilter("ALL");
+    setLabUnits([]);
+    setStatusOptions([]);
+    window.history.replaceState(null, "", "/Results");
+    worklistLoading.current = false;
+    setLoading(false);
+    renderDrafts((value) => value + 1);
+  };
+  const revokeFor = (
+    response: { status?: number } | undefined,
+    expected: SessionStamp | null,
+  ) => {
+    if (
+      ![401, 403].includes(response?.status || 0) ||
+      !mounted.current ||
+      !expected ||
+      JSON.stringify(entrySession(sessionRef.current)) !==
+        JSON.stringify(expected)
+    )
+      return false;
+    revokedSession.current = expected.identity;
+    clearPrivateState();
+    setLoadErrorKey(
+      response?.status === 401
+        ? "security.sessionExpired"
+        : "security.accessDenied",
+    );
+    return true;
+  };
+  const renderedSessionKey = JSON.stringify(stamp);
+  const sessionPhase = session.sessionPhase;
+  const lastSessionKey = useRef(renderedSessionKey);
+  useLayoutEffect(() => {
+    if (stamp?.identity !== worklistStamp.current?.identity || !stamp) {
+      clearPrivateState();
+      worklistStamp.current = stamp;
+      revokedSession.current = null;
+      setLoadErrorKey("security.sessionWriteBlocked");
+    } else if (lastSessionKey.current !== renderedSessionKey || !ready()) {
+      loadEpoch.current += 1;
+      for (const draft of drafts.current.values()) draft.held = true;
+      worklistLoading.current = false;
+      setLoading(false);
+      setLoadErrorKey("security.sessionWriteBlocked");
+      renderDrafts((value) => value + 1);
+    }
+    lastSessionKey.current = renderedSessionKey;
+  }, [renderedSessionKey, sessionPhase, session.errorLoadingSessionDetails]);
+
+  useEffect(() => {
+    const protect = (event: BeforeUnloadEvent) => {
+      if (drafts.current.size) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", protect);
+    return () => window.removeEventListener("beforeunload", protect);
+  }, []);
+
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      for (const value of signatureApis.current.values()) value.api.dispose();
+      signatureApis.current.clear();
+      // Late save responses belong to the discarded page, not a new worklist.
+      loadEpoch.current += 1;
+    };
+  }, []);
 
   const domain: ResultsDomain = useMemo(() => {
     const unit = labUnits.find((u) => u.id === selectedLabUnit);
@@ -152,20 +422,52 @@ const UnifiedResults: React.FC = () => {
   }, [labUnits, selectedLabUnit]);
 
   useEffect(() => {
-    getFromOpenElisServer("/rest/results-entry/lab-units", (list: LabUnit[]) =>
-      setLabUnits(list || []),
+    const expected = entrySession(sessionRef.current);
+    if (!ready(expected)) return;
+    getFromOpenElisServer(
+      "/rest/results-entry/lab-units",
+      (list: LabUnit[] | undefined, error?: EntryRequestError) => {
+        if (revokeFor(error, expected)) return;
+        if (mounted.current && ready(expected) && Array.isArray(list))
+          setLabUnits(
+            list.filter(
+              (item) =>
+                item &&
+                typeof item.id === "string" &&
+                typeof item.value === "string",
+            ),
+          );
+      },
     );
     getFromOpenElisServer(
       "/rest/analysis-status-types",
-      (list: StatusOption[]) =>
-        setStatusOptions((list || []).filter((s) => s.id !== "0")),
+      (list: StatusOption[] | undefined, error?: EntryRequestError) => {
+        if (revokeFor(error, expected)) return;
+        if (mounted.current && ready(expected) && Array.isArray(list))
+          setStatusOptions(
+            list.filter(
+              (s) =>
+                s &&
+                typeof s.id === "string" &&
+                typeof s.value === "string" &&
+                s.id !== "0",
+            ),
+          );
+      },
     );
-  }, []);
+  }, [renderedSessionKey, sessionPhase]);
 
   const applyLoadedRows = useCallback(
     (results: { testResult?: WorklistRow[] }) => {
-      const loaded = (results?.testResult || []).filter((r) => r.analysisId);
-      setRows(loaded);
+      const loaded = restrictTubes(
+        (results?.testResult || []).filter((r) => r.analysisId),
+      );
+      for (const draft of drafts.current.values()) draft.held = true;
+      blockedRowKeys.current = new Set(
+        loaded.filter(isResultEntryBlocked).map(worklistRowKey),
+      );
+      updateRows(() => loaded);
+      renderDrafts((value) => value + 1);
       const states: Record<string, RowEditState> = {};
       for (const row of loaded) {
         // one analysis may render N component rows (FR-A′1) — each row keeps
@@ -182,15 +484,25 @@ const UnifiedResults: React.FC = () => {
       setStaleInfo({});
       setEditingAnalysisId(null);
       setPage(1);
+      worklistLoading.current = false;
       setLoading(false);
       setHasLoaded(true);
     },
-    [],
+    [updateRows],
   );
 
   const loadWorklist = useCallback(
     (labNumberOverride?: string) => {
+      const requestedSession = entrySession(sessionRef.current);
+      if (!ready(requestedSession)) {
+        setLoadErrorKey("security.sessionWriteBlocked");
+        return;
+      }
+      worklistStamp.current = requestedSession;
+      const epoch = ++loadEpoch.current;
+      worklistLoading.current = true;
       setLoading(true);
+      setLoadErrorKey(null);
       const params = new URLSearchParams();
       // guard: when wired directly to onClick the argument is the click
       // event — only a string counts as an override
@@ -213,7 +525,50 @@ const UnifiedResults: React.FC = () => {
       const endpoint = hasSpecificFilter
         ? "/rest/LogbookResults?" + params.toString()
         : "/rest/results-entry/pending";
-      getFromOpenElisServer(endpoint, applyLoadedRows);
+      getFromOpenElisServer(
+        endpoint,
+        (
+          response: { testResult?: WorklistRow[] } | undefined,
+          error?: EntryRequestError,
+        ) => {
+          if (revokeFor(error, requestedSession)) return;
+          if (
+            epoch !== loadEpoch.current ||
+            !mounted.current ||
+            !ready(requestedSession)
+          )
+            return;
+          if (error?.status === 401 || error?.status === 403) {
+            revokedSession.current = requestedSession!.identity;
+            clearPrivateState();
+            setLoadErrorKey(error.errorKey);
+            return;
+          }
+          if (
+            error ||
+            !Array.isArray(response?.testResult) ||
+            response.testResult.some(
+              (row) =>
+                !row ||
+                typeof row.analysisId !== "string" ||
+                !/^[1-9][0-9]{0,9}$/.test(row.analysisId),
+            ) ||
+            (Array.isArray(response?.testResult) &&
+              new Set(response.testResult.map(worklistRowKey)).size !==
+                response.testResult.length)
+          ) {
+            setLoadErrorKey(
+              error && SAVE_ERROR_KEYS.has(error.errorKey)
+                ? error.errorKey
+                : "common.api.invalidResponse",
+            );
+            worklistLoading.current = false;
+            setLoading(false);
+            return;
+          }
+          applyLoadedRows(response);
+        },
+      );
       // FRS: the selected Lab Unit (and filters) are the page's primary
       // state — keep them in the URL so refresh and share links reproduce
       // the same worklist
@@ -300,19 +655,94 @@ const UnifiedResults: React.FC = () => {
     [pagedRows],
   );
 
-  const presence = usePresence(editingAnalysisId, visibleAnalysisIds);
+  const { presence, unavailable: presenceUnavailable } = useResultPresence(
+    editingAnalysisId,
+    visibleAnalysisIds,
+    renderedSessionKey,
+    () => ready() && !worklistLoading.current && mounted.current,
+    stamp?.csrf || "",
+  );
+
+  const signatureApiFor = (
+    row: WorklistRow,
+    epoch: number,
+    revision: number,
+  ) => {
+    const key = worklistRowKey(row),
+      expected = worklistStamp.current;
+    const username = sessionRef.current.userSessionDetails?.loginName || "";
+    const binding = JSON.stringify([epoch, revision, expected, username]);
+    const existing = signatureApis.current.get(key);
+    if (existing?.binding === binding && !existing.api.isInvalid())
+      return existing.api;
+    const api = createResultSignatureApi({
+      username,
+      userId: sessionRef.current.userSessionDetails?.userId || "",
+      csrf: expected?.csrf || "",
+      recordId: row.analysisId,
+      guard: () =>
+        ready(expected) &&
+        sessionRef.current.userSessionDetails?.loginName === username &&
+        mounted.current &&
+        epoch === loadEpoch.current &&
+        revision === (rowEditRevisions.current[key] || 0) &&
+        !worklistLoading.current &&
+        !drafts.current.get(key)?.held &&
+        !analysisUnconfirmed(row.analysisId) &&
+        !blockedRowKeys.current.has(key) &&
+        rowsRef.current.some(
+          (current) =>
+            worklistRowKey(current) === key && !isResultEntryBlocked(current),
+        ),
+      onUnknown: () => {
+        if (
+          !mounted.current ||
+          revokedSession.current === expected?.identity ||
+          entrySession(sessionRef.current)?.identity !== expected?.identity
+        )
+          return;
+        const draft = drafts.current.get(key) || newEntryDraft(row);
+        draft.disposition = "unknown";
+        draft.held = true;
+        draft.uncertainOperation = "signature";
+        drafts.current.set(key, draft);
+        renderDrafts((value) => value + 1);
+      },
+    });
+    signatureApis.current.set(key, { binding, api });
+    return api;
+  };
 
   const handleValueChange = useCallback(
     (
       target: WorklistRow,
       field: "resultValue" | "multiSelectResultValues",
       value: string,
+      epoch: number,
     ) => {
       // FR-A′3: a multi-component analysis renders one row per component —
       // update ONLY the edited row (keyed by analysisId + componentId), never
       // its sibling component rows
       const key = worklistRowKey(target);
-      setRows((current) =>
+      if (
+        !ready() ||
+        drafts.current.get(key)?.held ||
+        analysisUnconfirmed(target.analysisId) ||
+        isResultEntryBlocked(target) ||
+        blockedRowKeys.current.has(key) ||
+        epoch !== loadEpoch.current ||
+        worklistLoading.current ||
+        !mounted.current
+      )
+        return;
+      rowEditRevisions.current[key] = (rowEditRevisions.current[key] || 0) + 1;
+      const actual = rowsRef.current.find((row) => worklistRowKey(row) === key);
+      if (!actual) return;
+      const draft = drafts.current.get(key) || newEntryDraft(actual);
+      draft.row = { ...draft.row, [field]: value };
+      drafts.current.set(key, draft);
+      renderDrafts((value) => value + 1);
+      updateRows((current) =>
         current.map((row) =>
           worklistRowKey(row) === key ? { ...row, [field]: value } : row,
         ),
@@ -330,8 +760,19 @@ const UnifiedResults: React.FC = () => {
     [],
   );
 
-  const handleEdit = useCallback((target: WorklistRow) => {
+  const handleEdit = useCallback((target: WorklistRow, epoch: number) => {
     const key = worklistRowKey(target);
+    if (
+      !ready() ||
+      drafts.current.get(key)?.held ||
+      analysisUnconfirmed(target.analysisId) ||
+      isResultEntryBlocked(target) ||
+      blockedRowKeys.current.has(key) ||
+      epoch !== loadEpoch.current ||
+      worklistLoading.current ||
+      !mounted.current
+    )
+      return;
     setRowStates((current) => ({
       ...current,
       [key]: nextRowState(current[key] || "SAVED", {
@@ -342,18 +783,31 @@ const UnifiedResults: React.FC = () => {
   }, []);
 
   const handleSaveResponse = useCallback(
-    (target: WorklistRow, response: SaveResponse | undefined) => {
-      if (!response) {
-        return;
-      }
+    (
+      target: WorklistRow,
+      response: SaveResponse | undefined,
+      unchanged: boolean,
+    ) => {
       const key = worklistRowKey(target);
-      if (response.status === 409) {
+      const draft = drafts.current.get(key);
+      if (draft) draft.disposition = "rejected";
+      if (
+        response?.status === 409 &&
+        response.error === "error.results.staleSave"
+      ) {
+        if (draft) draft.held = true;
         // FR-O2: the stale editor loses — nothing merged, refresh offered.
         setStaleInfo((current) => ({
           ...current,
           [key]: {
-            modifiedBy: response.modifiedBy,
-            modifiedAt: response.modifiedAt,
+            modifiedBy:
+              typeof response.modifiedBy === "string"
+                ? response.modifiedBy
+                : undefined,
+            modifiedAt:
+              typeof response.modifiedAt === "string"
+                ? response.modifiedAt
+                : undefined,
           },
         }));
         setRowStates((current) => ({
@@ -364,50 +818,95 @@ const UnifiedResults: React.FC = () => {
         }));
         return;
       }
-      if (response.status && response.status >= 400) {
+      if (!isConfirmedSaveResponse(response)) {
+        const errorKey =
+          [response?.error, response?.errorKey].find(
+            (candidate) =>
+              typeof candidate === "string" && SAVE_ERROR_KEYS.has(candidate),
+          ) ||
+          (response?.success === false ||
+          (typeof response?.status === "number" && response.status >= 400)
+            ? "error.save.msg"
+            : "common.api.invalidResponse");
+        if (response?.status === 401 || response?.status === 403) {
+          revokedSession.current = worklistStamp.current?.identity || null;
+          clearPrivateState();
+          setLoadErrorKey(errorKey);
+          return;
+        }
+        const explicitRejection =
+          response?.status === 409 &&
+          typeof response.error === "string" &&
+          entryReasons.has(response.error);
+        if (draft && !explicitRejection) {
+          draft.disposition = "unknown";
+          draft.held = true;
+        }
+        if (specimenReasons.has(errorKey)) {
+          const restricted = restrictTubes(rowsRef.current, {
+            ...target,
+            resultEntryBlockedReason: errorKey,
+          });
+          for (const row of restricted)
+            if (isResultEntryBlocked(row))
+              blockedRowKeys.current.add(worklistRowKey(row));
+          updateRows(() => restricted);
+        } else if (explicitRejection) {
+          // Stop repeat callbacks immediately, before the read-only row renders.
+          blockedRowKeys.current.add(key);
+          updateRows((current) =>
+            current.map((row) =>
+              worklistRowKey(row) === key
+                ? { ...row, resultEntryBlockedReason: errorKey }
+                : row,
+            ),
+          );
+        }
         addNotification({
           title: intl.formatMessage({ id: "notification.title" }),
-          message:
-            response.error || intl.formatMessage({ id: "error.save.msg" }),
+          message: intl.formatMessage({ id: errorKey }),
           kind: NotificationKinds.error,
         });
         setNotificationVisible(true);
+        renderDrafts((value) => value + 1);
         return;
       }
-      setRowStates((current) => ({
-        ...current,
-        [key]: nextRowState(current[key] || "EDITING", {
-          type: "SAVE_SUCCEEDED",
-        }),
-      }));
-      if (response.analysisLastupdated || response.analysisStatusId) {
-        // the version token is per ANALYSIS — refresh it on every component
-        // row of this analysis so a sibling save isn't falsely rejected. The
-        // status changes to Technical Acceptance after a successful entry and
-        // must be reflected immediately instead of continuing to say
-        // "Not started" until the next page load.
-        setRows((current) =>
-          current.map((row) =>
-            row.analysisId === target.analysisId
-              ? {
-                  ...row,
-                  analysisLastupdated:
-                    response.analysisLastupdated || row.analysisLastupdated,
-                  analysisStatusId:
-                    response.analysisStatusId || row.analysisStatusId,
-                }
-              : row,
-          ),
-        );
+      if (unchanged) drafts.current.delete(key);
+      else if (draft) draft.disposition = "editing";
+      if (unchanged) {
+        setRowStates((current) => ({
+          ...current,
+          [key]: nextRowState(current[key] || "EDITING", {
+            type: "SAVE_SUCCEEDED",
+          }),
+        }));
       }
+      // the version token is per ANALYSIS — refresh it on every component
+      // row of this analysis so a sibling save isn't falsely rejected. The
+      // status changes to Technical Acceptance after a successful entry and
+      // must be reflected immediately instead of continuing to say
+      // "Not started" until the next page load.
+      updateRows((current) =>
+        current.map((row) =>
+          row.analysisId === target.analysisId
+            ? {
+                ...row,
+                analysisLastupdated: response.analysisLastupdated,
+                analysisStatusId: response.analysisStatusId,
+              }
+            : row,
+        ),
+      );
       setStaleInfo((current) => {
         const next = { ...current };
         delete next[key];
         return next;
       });
-      setEditingAnalysisId((current) =>
-        current === target.analysisId ? null : current,
-      );
+      if (unchanged) {
+        setEditingAnalysisId((current) =>
+          current === target.analysisId ? null : current,
+        );
+      }
       const triggered = [
         ...(response.reflex || []),
         ...(response.calculated || []),
@@ -415,7 +914,13 @@ const UnifiedResults: React.FC = () => {
       addNotification({
         title: intl.formatMessage({ id: "notification.title" }),
         message:
-          intl.formatMessage({ id: "success.save.msg" }) +
+          (unchanged
+            ? intl.formatMessage({ id: "success.save.msg" })
+            : intl.formatMessage({
+                id: "results.workbench.submittedValueSaved",
+                defaultMessage:
+                  "The submitted value was saved. Your later edits are still unsaved; review them before saving again.",
+              })) +
           (triggered.length
             ? " " +
               intl.formatMessage({ id: "label.results.reflexTriggered" }) +
@@ -425,12 +930,40 @@ const UnifiedResults: React.FC = () => {
         kind: NotificationKinds.success,
       });
       setNotificationVisible(true);
+      renderDrafts((value) => value + 1);
     },
     [addNotification, intl, setNotificationVisible],
   );
 
   const handleSave = useCallback(
-    (row: WorklistRow) => {
+    (row: WorklistRow, epoch: number, revision: number) => {
+      const key = worklistRowKey(row);
+      // Ref guards duplicate events before React renders the disabled button.
+      if (
+        !ready() ||
+        revision !== (rowEditRevisions.current[key] || 0) ||
+        drafts.current.get(key)?.held ||
+        analysisUnconfirmed(row.analysisId) ||
+        pendingSaves.current.has(key) ||
+        isResultEntryBlocked(row) ||
+        blockedRowKeys.current.has(key) ||
+        worklistLoading.current ||
+        epoch !== loadEpoch.current ||
+        !mounted.current
+      )
+        return;
+      const submission = {
+        epoch,
+        revision,
+      };
+      const submittedSession = worklistStamp.current;
+      const draft = drafts.current.get(key) || newEntryDraft(row);
+      draft.row = { ...row };
+      draft.disposition = "pending";
+      drafts.current.set(key, draft);
+      renderDrafts((value) => value + 1);
+      pendingSaves.current.set(key, submission);
+      setSavingRows((current) => new Set(current).add(key));
       // FR-O1: the payload names and carries exactly this analysis — never
       // the page. Untouched rows cannot be re-submitted or defaulted.
       const item: Record<string, unknown> = { ...row, isModified: true };
@@ -441,12 +974,93 @@ const UnifiedResults: React.FC = () => {
       postToOpenElisServerJsonResponse(
         `/rest/results-entry/analysis/${row.analysisId}/result`,
         JSON.stringify({ testResult: item }),
-        (response: SaveResponse | undefined) =>
-          handleSaveResponse(row, response),
+        (response: SaveResponse | undefined) => {
+          if (revokeFor(response, submittedSession)) return;
+          if (pendingSaves.current.get(key) !== submission) return;
+          pendingSaves.current.delete(key);
+          if (!mounted.current) return;
+          setSavingRows((current) => {
+            const next = new Set(current);
+            next.delete(key);
+            return next;
+          });
+          // Neither success nor failure may annotate a newer loaded row.
+          if (
+            submission.epoch !== loadEpoch.current ||
+            !ready(submittedSession)
+          )
+            return;
+          handleSaveResponse(
+            row,
+            response,
+            submission.revision === (rowEditRevisions.current[key] || 0),
+          );
+        },
+        submittedSession!.csrf,
       );
     },
     [handleSaveResponse],
   );
+
+  const resumeDraft = (key: string) => {
+    const draft = drafts.current.get(key),
+      current = rowsRef.current.find((row) => worklistRowKey(row) === key);
+    if (
+      !ready() ||
+      loading ||
+      !draft ||
+      analysisUnconfirmed(draft.row.analysisId) ||
+      !canResumeDraft(draft, current)
+    )
+      return;
+    draft.held = false;
+    draft.disposition = "editing";
+    rowEditRevisions.current[key] = (rowEditRevisions.current[key] || 0) + 1;
+    updateRows((list) =>
+      list.map((row) =>
+        worklistRowKey(row) === key
+          ? {
+              ...row,
+              resultValue: draft.row.resultValue,
+              multiSelectResultValues: draft.row.multiSelectResultValues,
+            }
+          : row,
+      ),
+    );
+    setRowStates((current) => ({ ...current, [key]: "EDITING" }));
+    renderDrafts((value) => value + 1);
+  };
+
+  const discardDraft = (key: string) => {
+    const draft = drafts.current.get(key);
+    if (
+      !ready() ||
+      worklistLoading.current ||
+      !draft?.held ||
+      !["editing", "rejected"].includes(draft.disposition)
+    )
+      return;
+    drafts.current.delete(key);
+    rowEditRevisions.current[key] = (rowEditRevisions.current[key] || 0) + 1;
+    // Discard only the separate local draft. Never delete or POST a clinical record.
+    const current = rowsRef.current.find((row) => worklistRowKey(row) === key);
+    setRowStates((states) => ({
+      ...states,
+      [key]: initialRowState(
+        Boolean(
+          current?.resultValue ||
+          (current?.multiSelectResultValues &&
+            current.multiSelectResultValues !== "{}"),
+        ),
+      ),
+    }));
+    setStaleInfo((info) => {
+      const next = { ...info };
+      delete next[key];
+      return next;
+    });
+    renderDrafts((value) => value + 1);
+  };
 
   const subjectCell = (row: WorklistRow): string => {
     const accession = row.accessionNumber || "";
@@ -474,6 +1088,10 @@ const UnifiedResults: React.FC = () => {
 
   return (
     <>
+      <Prompt
+        when={drafts.current.size > 0}
+        message={intl.formatMessage({ id: "security.loginUnsavedWarning" })}
+      />
       <AlertDialog />
       <main className="results-workbench" aria-labelledby="results-title">
         <PageBreadCrumb
@@ -524,6 +1142,9 @@ const UnifiedResults: React.FC = () => {
               </div>
               <Search
                 id="unifiedResultsSearch"
+                closeButtonLabelText={intl.formatMessage({
+                  id: "carbon.search.clear",
+                })}
                 labelText={intl.formatMessage({
                   id: "results.workbench.accession",
                 })}
@@ -599,6 +1220,38 @@ const UnifiedResults: React.FC = () => {
           </div>
         </Tile>
 
+        <ResultDraftReview
+          drafts={[...drafts.current.entries()]}
+          currentRows={rows}
+          enabled={ready() && !loading}
+          onResume={resumeDraft}
+          onDiscard={discardDraft}
+          displayValue={blockedResultDisplay}
+          rowKey={worklistRowKey}
+        />
+        {presenceUnavailable && rows.length > 0 && (
+          <InlineNotification
+            kind="info"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({
+              id: "results.workbench.presenceUnavailable",
+            })}
+            subtitle={intl.formatMessage({
+              id: "results.workbench.presenceUnavailableHint",
+            })}
+          />
+        )}
+        {!signingIdentityReady && rows.length > 0 && (
+          <InlineNotification
+            kind="error"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({
+              id: "results.workbench.signingIdentityIncomplete",
+            })}
+          />
+        )}
         <Tile className="results-workbench__list">
           <div className="results-workbench__section-heading">
             <div>
@@ -618,7 +1271,19 @@ const UnifiedResults: React.FC = () => {
             )}
           </div>
 
-          {!loading && hasLoaded && filteredRows.length === 0 ? (
+          {loadErrorKey && (
+            <InlineNotification
+              kind="error"
+              lowContrast
+              hideCloseButton
+              title={intl.formatMessage({ id: "results.workbench.loadFailed" })}
+              subtitle={intl.formatMessage({ id: loadErrorKey })}
+            />
+          )}
+          {!loading &&
+          !loadErrorKey &&
+          hasLoaded &&
+          filteredRows.length === 0 ? (
             <InlineNotification
               className="results-workbench__empty"
               kind="info"
@@ -668,7 +1333,17 @@ const UnifiedResults: React.FC = () => {
                   <TableBody>
                     {pagedRows.map((row) => {
                       const key = worklistRowKey(row);
+                      // Keep a delayed signing callback bound to the rendered
+                      // value's revision and worklist, not a later edit/reload.
+                      const renderedEpoch = loadEpoch.current;
+                      const renderedRevision =
+                        rowEditRevisions.current[key] || 0;
                       const state = rowStates[key] || "EMPTY";
+                      const draft = drafts.current.get(key);
+                      const stateHeld = Boolean(
+                        draft?.held || analysisUnconfirmed(row.analysisId),
+                      );
+                      const blocked = isResultEntryBlocked(row) || stateHeld;
                       const stale = staleInfo[key];
                       const reviewer = presence[row.analysisId];
                       return (
@@ -694,43 +1369,87 @@ const UnifiedResults: React.FC = () => {
                               {row.unitsOfMeasure ? row.unitsOfMeasure : ""}
                             </TableCell>
                             <TableCell>
-                              <PolymorphicResultCell
-                                row={row}
-                                editable={isRowEditable(state)}
-                                onValueChange={(field, value) =>
-                                  handleValueChange(row, field, value)
-                                }
-                              />
+                              {blocked ? (
+                                <span className="unifiedResultsReadOnlyValue">
+                                  {blockedResultDisplay(row)}
+                                </span>
+                              ) : (
+                                <PolymorphicResultCell
+                                  row={row}
+                                  editable={
+                                    isRowEditable(state) && ready() && !loading
+                                  }
+                                  onValueChange={(field, value) =>
+                                    handleValueChange(
+                                      row,
+                                      field,
+                                      value,
+                                      renderedEpoch,
+                                    )
+                                  }
+                                />
+                              )}
                             </TableCell>
                             <TableCell>
                               {statusName(row.analysisStatusId)}
                             </TableCell>
                             <TableCell>
-                              {showEdit(state) && (
+                              {!blocked && showEdit(state) && (
                                 <Button
                                   kind="tertiary"
                                   size="sm"
-                                  onClick={() => handleEdit(row)}
+                                  onClick={() => handleEdit(row, renderedEpoch)}
                                 >
                                   <FormattedMessage id="label.results.edit" />
                                 </Button>
                               )}
-                              {showSave(state) && (
-                                <ESignatureButton
-                                  meaning={SignatureMeaning.AUTHORED}
-                                  context={`${intl.formatMessage({
-                                    id: "label.results.save",
-                                  })} ${row.accessionNumber} - ${row.testName}`}
-                                  recordType="RESULT"
-                                  recordId={row.analysisId}
-                                  onSign={() => handleSave(row)}
-                                  size="sm"
-                                >
-                                  <FormattedMessage id="label.results.save" />
-                                </ESignatureButton>
-                              )}
+                              {!blocked &&
+                                showSave(state) &&
+                                ready() &&
+                                signingIdentityReady && (
+                                  <ESignatureButton
+                                    signatureApi={signatureApiFor(
+                                      row,
+                                      renderedEpoch,
+                                      renderedRevision,
+                                    )}
+                                    meaning={SignatureMeaning.AUTHORED}
+                                    context={`${intl.formatMessage({
+                                      id: "label.results.save",
+                                    })} ${row.accessionNumber} - ${row.testName}`}
+                                    recordType="RESULT"
+                                    recordId={row.analysisId}
+                                    onSign={() =>
+                                      handleSave(
+                                        row,
+                                        renderedEpoch,
+                                        renderedRevision,
+                                      )
+                                    }
+                                    disabled={
+                                      savingRows.has(key) || loading || !ready()
+                                    }
+                                    size="sm"
+                                  >
+                                    <FormattedMessage id="label.results.save" />
+                                  </ESignatureButton>
+                                )}
                             </TableCell>
                           </TableRow>
+                          {isResultEntryBlocked(row) && (
+                            <TableRow>
+                              <TableCell colSpan={6}>
+                                <InlineNotification
+                                  kind="warning"
+                                  hideCloseButton
+                                  lowContrast
+                                  title={intl.formatMessage({
+                                    id: entryReason(row),
+                                  })}
+                                />
+                              </TableCell>
+                            </TableRow>
+                          )}
                           {stale && (
                             <TableRow>
                               <TableCell colSpan={6}>
@@ -749,16 +1468,15 @@ const UnifiedResults: React.FC = () => {
                                       1: stale.modifiedAt || "",
                                     },
                                   )}
-                                  actions={
-                                    <Button
-                                      kind="ghost"
-                                      size="sm"
-                                      onClick={() => loadWorklist()}
-                                    >
-                                      <FormattedMessage id="label.results.refresh" />
-                                    </Button>
-                                  }
                                 />
+                                <Button
+                                  kind="ghost"
+                                  size="sm"
+                                  disabled={loading}
+                                  onClick={() => loadWorklist()}
+                                >
+                                  <FormattedMessage id="label.results.refresh" />
+                                </Button>
                               </TableCell>
                             </TableRow>
                           )}

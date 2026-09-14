@@ -1,0 +1,36 @@
+@use "@carbon/styles/scss/spacing";
+@use "@carbon/styles/scss/theme";
+@use "@carbon/styles/scss/type";
+
+.result-draft-review {
+  margin-block: spacing.$spacing-06;
+  color: theme.$text-primary;
+  > h2 {
+    @include type.type-style("heading-03");
+  }
+  > p {
+    margin-block: spacing.$spacing-03 spacing.$spacing-05;
+  }
+  &__item {
+    margin-block-end: spacing.$spacing-04;
+    h3 {
+      @include type.type-style("heading-compact-01");
+      overflow-wrap: anywhere;
+    }
+    dl {
+      margin-block: spacing.$spacing-04;
+    }
+    dt {
+      color: theme.$text-secondary;
+      @include type.type-style("label-01");
+    }
+    dd {
+      margin-block-start: spacing.$spacing-02;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    p {
+      margin-block-start: spacing.$spacing-03;
+    }
+  }
+}

@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useContext,
+  useRef,
+} from "react";
 import {
   ComposedModal,
   ModalHeader,
@@ -23,6 +29,13 @@ import {
   DEFAULT_CERTIFICATION_TEXT,
   ESignatureError,
 } from "./api";
+
+const defaultSignatureApi = {
+  isUserCertified,
+  getSessionStatus,
+  executeSignature,
+  certifyUser,
+};
 
 /**
  * ESignatureModal - Modal component for electronic signature ceremony.
@@ -49,9 +62,15 @@ const ESignatureModal = ({
   context,
   recordType,
   recordId,
+  signatureApi = /** @type {import("../resultPage/unified/resultSignatureApi").ResultSignatureApi | undefined} */ (
+    undefined
+  ),
 }) => {
   const intl = useIntl();
   const { userSessionDetails } = useContext(UserSessionDetailsContext);
+  const api = signatureApi || defaultSignatureApi;
+  const flowEpoch = useRef(0);
+  const submitting = useRef(false);
 
   // Flow state
   const [flowStep, setFlowStep] = useState("loading"); // loading, certification, fullAuth, passwordOnly
@@ -70,13 +89,18 @@ const ESignatureModal = ({
   const [, setSessionStatus] = useState(null);
 
   // Get current username from session
-  const userName = userSessionDetails?.loginName || "";
+  const userName =
+    signatureApi?.username || userSessionDetails?.loginName || "";
 
   // Determine the flow when modal opens
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const epoch = ++flowEpoch.current;
     if (open && userName) {
-      determineFlow();
+      determineFlow(epoch);
     }
+    return () => {
+      flowEpoch.current += 1;
+    };
   }, [open, userName]);
 
   // Reset state when modal closes
@@ -92,13 +116,21 @@ const ESignatureModal = ({
     }
   }, [open]);
 
-  const determineFlow = async () => {
+  const isLive = (epoch) => !signatureApi || flowEpoch.current === epoch;
+  const requireLive = (epoch) => {
+    if (!isLive(epoch)) throw new Error();
+    signatureApi?.assertCurrent();
+  };
+
+  const determineFlow = async (epoch) => {
     setIsLoading(true);
     setError(null);
 
     try {
       // Check if user is certified (using username)
-      const certStatus = await isUserCertified(userName);
+      requireLive(epoch);
+      const certStatus = await api.isUserCertified(userName);
+      requireLive(epoch);
 
       if (!certStatus.certified) {
         setFlowStep("certification");
@@ -107,7 +139,8 @@ const ESignatureModal = ({
       }
 
       // Check session status (using username)
-      const session = await getSessionStatus(userName);
+      const session = await api.getSessionStatus(userName);
+      requireLive(epoch);
       setSessionStatus(session);
 
       if (session.sessionActive && session.signingCount > 0) {
@@ -123,20 +156,27 @@ const ESignatureModal = ({
         setFlowStep("fullAuth");
       }
     } catch (err) {
+      if (!isLive(epoch)) return;
       setError(
-        err.message ||
+        (signatureApi
+          ? intl.formatMessage({
+              id: err.messageId || "esig.error.loadingStatus",
+            })
+          : err.message) ||
           intl.formatMessage({
             id: "esig.error.loadingStatus",
             defaultMessage: "Failed to load signature status",
           }),
       );
-      setFlowStep("fullAuth"); // Default to full auth on error
+      setFlowStep(signatureApi ? "failed" : "fullAuth");
     } finally {
-      setIsLoading(false);
+      if (isLive(epoch)) setIsLoading(false);
     }
   };
 
   const handleCertification = async () => {
+    if (submitting.current) return;
+    const epoch = flowEpoch.current;
     if (!certificationAcknowledged) {
       setError(
         intl.formatMessage({
@@ -157,27 +197,34 @@ const ESignatureModal = ({
       return;
     }
 
+    submitting.current = true;
     setIsLoading(true);
     setError(null);
 
     try {
-      await certifyUser({
+      requireLive(epoch);
+      await api.certifyUser({
         username: userName,
         password,
         certificationText: DEFAULT_CERTIFICATION_TEXT,
       });
+      requireLive(epoch);
 
       // After certification, proceed to signature
       setPassword("");
+      if (signatureApi) setEnteredUsername(userName);
       setFlowStep("fullAuth");
     } catch (err) {
-      handleApiError(err);
+      if (isLive(epoch)) handleApiError(err);
     } finally {
-      setIsLoading(false);
+      submitting.current = false;
+      if (isLive(epoch)) setIsLoading(false);
     }
   };
 
   const handleSignature = async () => {
+    if (submitting.current) return;
+    const epoch = flowEpoch.current;
     // Validate username is provided (required in both modes)
     if (!enteredUsername.trim()) {
       setError(
@@ -209,11 +256,13 @@ const ESignatureModal = ({
       return;
     }
 
+    submitting.current = true;
     setIsLoading(true);
     setError(null);
 
     try {
-      const signature = await executeSignature({
+      requireLive(epoch);
+      const signature = await api.executeSignature({
         username: enteredUsername.trim(),
         password,
         signatureMeaning: meaning,
@@ -222,19 +271,27 @@ const ESignatureModal = ({
         rejectionReason:
           meaning === SignatureMeaning.REJECTED ? rejectionReason : null,
       });
+      requireLive(epoch);
 
       if (onSuccess) {
         onSuccess(signature);
       }
-      onClose();
+      if (!signatureApi) onClose();
     } catch (err) {
-      handleApiError(err);
+      if (isLive(epoch)) handleApiError(err);
     } finally {
-      setIsLoading(false);
+      submitting.current = false;
+      if (isLive(epoch)) setIsLoading(false);
     }
   };
 
   const handleApiError = (err) => {
+    if (signatureApi) {
+      setError(
+        intl.formatMessage({ id: err.messageId || "esig.error.generic" }),
+      );
+      return;
+    }
     if (err instanceof ESignatureError) {
       switch (err.code) {
         case "INVALID_REQUEST":
@@ -432,6 +489,7 @@ const ESignatureModal = ({
             defaultMessage: "Enter your username",
           })}
           value={enteredUsername}
+          readOnly={!!signatureApi}
           onChange={(e) => setEnteredUsername(e.target.value)}
           invalid={!!error && !enteredUsername.trim()}
           autoFocus
@@ -563,6 +621,7 @@ const ESignatureModal = ({
           disabled={
             isLoading ||
             flowStep === "loading" ||
+            (signatureApi && flowStep === "failed") ||
             (flowStep === "certification" &&
               certificationAcknowledged === false)
           }
