@@ -273,20 +273,15 @@ public class QAService {
     private static boolean hasOrderOnlyQaEventOrSampleQaEvent(SampleItem sampleItem) {
         List<SampleQaEvent> sampleQaEvents = sampleQaEventService.getSampleQaEventsBySample(sampleItem.getSample());
 
-        boolean sampleItemLabeled = false;
         for (SampleQaEvent sampleEvent : sampleQaEvents) {
-            if (sampleEvent.getSampleItem() != null) {
-                sampleItemLabeled = true;
-                if (sampleEvent.getSampleItem().getId().equals(sampleItem.getId())) {
-                    return true;
-                }
+            // A null tube is the existing "all samples" scope. An event on
+            // another tube cannot cancel that order-wide nonconformity.
+            SampleItem eventItem = sampleEvent.getSampleItem();
+            if (eventItem == null || eventItem.getId().equals(sampleItem.getId())) {
+                return true;
             }
         }
-
-        // Return true is there was something matching in the table and
-        // there was no sampleItem tagged that was not the one
-        // we care about( in which case it would have returned before here)
-        return !sampleQaEvents.isEmpty() && !sampleItemLabeled;
+        return false;
     }
 
     public static List<SampleItem> getNonConformingSampleItems(Sample sample) {
