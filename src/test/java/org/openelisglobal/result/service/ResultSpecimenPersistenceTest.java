@@ -109,6 +109,8 @@ public class ResultSpecimenPersistenceTest {
         when(dao.findSpecimenState("101")).thenAnswer(invocation -> persisted.get());
         when(dao.lockSpecimen("201")).thenReturn(analysis.getSampleItem());
         when(dao.lockAnalysis("101")).thenReturn(analysis);
+        ResultIntakeAdmissionTest.allow(dao, "201", "101");
+        ResultIntakeAdmissionTest.allow(dao, "202", "102");
         ResultSpecimenWriteGuard guard = new ResultSpecimenWriteGuard(dao, statuses);
         notes = mock(NoteService.class);
         Note note = new Note();
@@ -165,6 +167,43 @@ public class ResultSpecimenPersistenceTest {
     }
 
     @Test
+    public void missingFirstDecisionStopsBeforeEffects() {
+        var s = ResultIntakeAdmissionTest.accepted("201", "101");
+        when(dao.findIntakeState("201")).thenReturn(
+                new OrdinaryResultSaveStateDAO.IntakeState(s.tube(), s.patients(), s.requests(), s.tests(), List.of()));
+        assertEquals(ResultIntakeAdmission.MISSING, assertThrows(ResultSaveValidationException.class,
+                () -> service.persistDataSet(data, List.of(updater), "701")).getErrorCode());
+        verifyZeroInteractions(notes, updater);
+        assertTrue(effects.isEmpty());
+        assertEquals(1, tx.rollbacks);
+    }
+
+    @Test
+    public void lateOwnershipChangeAfterFlushRollsBackEarlierEffects() {
+        var s = ResultIntakeAdmissionTest.accepted("201", "101");
+        doAnswer(call -> {
+            when(dao.findIntakeState("201")).thenReturn(new OrdinaryResultSaveStateDAO.IntakeState(s.tube(),
+                    List.of("702"), s.requests(), s.tests(), s.decisions()));
+            return null;
+        }).when(dao).flush();
+        assertEquals(ResultIntakeAdmission.CHANGED, assertThrows(ResultSaveValidationException.class,
+                () -> service.persistDataSet(data, List.of(updater), "701")).getErrorCode());
+        assertTrue(effects.isEmpty());
+        assertEquals(1, tx.rollbacks);
+        assertEquals(0, tx.commits);
+    }
+
+    @Test
+    public void sameAcceptedTubeSupportsAnotherNormalResultSave() {
+        service.persistDataSet(data, List.of(updater), "701");
+        analysis.setLastupdated(java.sql.Timestamp.valueOf("2026-09-14 09:00:00"));
+        analysis.getSampleItem().getSample().setLastupdated(java.sql.Timestamp.valueOf("2026-09-14 09:00:00"));
+        service.persistDataSet(data, List.of(updater), "701");
+        assertEquals(2, tx.commits);
+        assertEquals(0, tx.rollbacks);
+    }
+
+    @Test
     public void updaterLateRejectionRollsBackEarlierSimEffects() {
         doAnswer(invocation -> {
             persisted.set(state(true));
@@ -190,7 +229,9 @@ public class ResultSpecimenPersistenceTest {
     public void actualBeforeCommitCallbackRechecksLateState() {
         // The earlier synchronization changes the SIM resource after the method
         // returns, before the guard's synchronization runs.
-        assertThrows(ResultSaveValidationException.class, () -> new TransactionTemplate(tx).execute(status -> {
+        var template = new TransactionTemplate(tx);
+        template.setIsolationLevel(TransactionDefinition.ISOLATION_SERIALIZABLE);
+        assertThrows(ResultSaveValidationException.class, () -> template.execute(status -> {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void beforeCommit(boolean readOnly) {

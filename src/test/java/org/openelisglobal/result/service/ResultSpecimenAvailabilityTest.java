@@ -33,6 +33,7 @@ public class ResultSpecimenAvailabilityTest {
         analysis = ResultSpecimenWriteGuardTest.tube("101", "201");
         row = row("701");
         state("10", false, false);
+        ResultIntakeAdmissionTest.allow(dao, "201", "101");
     }
 
     private TestResultItem row(String component) {
@@ -59,6 +60,14 @@ public class ResultSpecimenAvailabilityTest {
         assertEquals("{\"0\":\"5,6\"}", row.getMultiSelectResultValues());
         verify(dao, never()).lockSpecimen(anyString());
         verify(dao, never()).lockAnalysis(anyString());
+    }
+
+    @Test
+    public void unacceptedTubeRemainsVisibleButCannotBeEntered() {
+        var current = ResultIntakeAdmissionTest.accepted("201", "101");
+        when(dao.findIntakeState("201")).thenReturn(new OrdinaryResultSaveStateDAO.IntakeState(current.tube(),
+                current.patients(), current.requests(), current.tests(), List.of()));
+        expectReason(ResultIntakeAdmission.MISSING);
     }
 
     @Test

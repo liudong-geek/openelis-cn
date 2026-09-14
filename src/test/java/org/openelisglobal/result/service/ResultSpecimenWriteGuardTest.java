@@ -35,6 +35,8 @@ public class ResultSpecimenWriteGuardTest {
     public void setup() {
         TransactionSynchronizationManager.initSynchronization();
         TransactionSynchronizationManager.setActualTransactionActive(true);
+        TransactionSynchronizationManager
+                .setCurrentTransactionIsolationLevel(java.sql.Connection.TRANSACTION_SERIALIZABLE);
         dao = mock(OrdinaryResultSaveStateDAO.class);
         statuses = mock(IStatusService.class);
         when(statuses.getStatusID(SampleStatus.Entered)).thenReturn("10");
@@ -46,6 +48,8 @@ public class ResultSpecimenWriteGuardTest {
         when(dao.findSpecimenState("101")).thenReturn(state("10", false, false));
         when(dao.lockSpecimen("201")).thenReturn(analysis.getSampleItem());
         when(dao.lockAnalysis("101")).thenReturn(analysis);
+        ResultIntakeAdmissionTest.allow(dao, "201", "101");
+        ResultIntakeAdmissionTest.allow(dao, "202", "102");
     }
 
     @After
@@ -91,6 +95,61 @@ public class ResultSpecimenWriteGuardTest {
         order.verify(dao).lockSpecimen("201");
         order.verify(dao).lockAnalysis("101");
         order.verify(dao, times(2)).findSpecimenState("101");
+    }
+
+    @Test
+    public void ambiguousStatusConfigurationBlocksBeforeFirstWriteAndWhenItChangesLate() {
+        Runnable recheck = guard.begin(data);
+        when(statuses.getStatusID(SampleStatus.Canceled)).thenReturn("10");
+        assertThrows(ResultSaveValidationException.class, recheck::run);
+        assertThrows(ResultSaveValidationException.class, () -> guard.begin(data));
+    }
+
+    @Test
+    public void weakerOuterTransactionsCannotWrite() {
+        for (Integer isolation : new Integer[] { null, java.sql.Connection.TRANSACTION_READ_COMMITTED,
+                java.sql.Connection.TRANSACTION_REPEATABLE_READ }) {
+            TransactionSynchronizationManager.setCurrentTransactionIsolationLevel(isolation);
+            denied();
+        }
+        verifyZeroInteractions(dao);
+    }
+
+    @Test
+    public void acceptedManagedObjectCannotHideMissingPersistedDecision() {
+        var s = ResultIntakeAdmissionTest.accepted("201", "101");
+        when(dao.findIntakeState("201")).thenReturn(
+                new OrdinaryResultSaveStateDAO.IntakeState(s.tube(), s.patients(), s.requests(), s.tests(), List.of()));
+        assertEquals(ResultIntakeAdmission.MISSING,
+                assertThrows(ResultSaveValidationException.class, () -> guard.begin(data)).getErrorCode());
+        verify(dao, never()).flush();
+    }
+
+    @Test
+    public void lateManagedOrPersistentPatientChangeCannotReuseAcceptance() {
+        var s = ResultIntakeAdmissionTest.accepted("201", "101");
+        var changed = new OrdinaryResultSaveStateDAO.IntakeState(s.tube(), List.of("702"), s.requests(), s.tests(),
+                s.decisions());
+        Runnable recheck = guard.begin(data);
+        when(dao.managedIntakeState("201")).thenReturn(changed);
+        assertEquals(ResultIntakeAdmission.CHANGED,
+                assertThrows(ResultSaveValidationException.class, recheck::run).getErrorCode());
+        when(dao.managedIntakeState("201")).thenReturn(s);
+        when(dao.findIntakeState("201")).thenReturn(changed);
+        assertEquals(ResultIntakeAdmission.CHANGED,
+                assertThrows(ResultSaveValidationException.class, recheck::run).getErrorCode());
+    }
+
+    @Test
+    public void newReflexAfterWriteDoesNotInvalidateOriginalResult() {
+        var s = ResultIntakeAdmissionTest.accepted("201", "101");
+        Runnable recheck = guard.begin(data);
+        var extended = new OrdinaryResultSaveStateDAO.IntakeState(s.tube(), s.patients(), s.requests(),
+                List.of(s.tests().get(0), new OrdinaryResultSaveStateDAO.IntakeTest("103", "403", "Y")), s.decisions());
+        when(dao.findIntakeState("201")).thenReturn(extended);
+        when(dao.managedIntakeState("201")).thenReturn(extended);
+        recheck.run();
+        verify(dao).flush();
     }
 
     @Test public void rejectedPersistedTubeCannotBeHiddenByManagedFalse() {
@@ -294,6 +353,7 @@ public class ResultSpecimenWriteGuardTest {
     @Test
     public void multipleTargetsAcquireAllTubeLocksInNumericOrderBeforeAnalysisLocks() {
         Analysis second = tube("9", "19");
+        ResultIntakeAdmissionTest.allow(dao, "19", "9");
         analyses.add(second);
         when(dao.lockSpecimen("19")).thenReturn(second.getSampleItem());
         when(dao.lockAnalysis("9")).thenReturn(second);

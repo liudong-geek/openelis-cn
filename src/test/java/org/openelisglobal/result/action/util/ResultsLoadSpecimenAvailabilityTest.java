@@ -86,6 +86,7 @@ public class ResultsLoadSpecimenAvailabilityTest {
                 .getAnalyteByName(any(org.openelisglobal.analyte.valueholder.Analyte.class), eq(false)))
                 .thenReturn(conclusion);
         dao = mock(OrdinaryResultSaveStateDAO.class);
+        org.openelisglobal.result.service.ResultIntakeAdmissionTest.allow(dao, "201", "101");
         beans.put(ResultSpecimenAvailabilityService.class, new ResultSpecimenAvailabilityService(dao, statuses));
         loader = new ResultsLoadUtility();
         for (var field : ResultsLoadUtility.class.getDeclaredFields()) {

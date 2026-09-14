@@ -19,6 +19,43 @@ const row = {
   dictionaryResults: [{ id: "1", value: "阴性" }],
 };
 test.each([
+  "error.results.specimenIntakeMissing",
+  "error.results.specimenIntakeChanged",
+])("%s 按实管阻断而非整申请", (reason) => {
+  const blocked = { ...row, resultEntryBlockedReason: reason };
+  const rows = restrictTubes([
+    blocked,
+    { ...row, analysisId: "102" },
+    { ...row, sampleItemId: "202" },
+  ]);
+  expect(entryReason(rows[0])).toBe(reason);
+  expect(entryBlocked(rows[1])).toBe(true);
+  expect(entryBlocked(rows[2])).toBe(false);
+  const draft = newEntryDraft(row);
+  draft.held = true;
+  expect(canResumeDraft(draft, rows[0])).toBe(false);
+});
+test("新增检验项目不能把已验收的原项目一起锁住", () => {
+  const blocked = {
+    ...row,
+    analysisId: "102",
+    resultEntryBlockedReason: "error.results.testIntakeChanged",
+  };
+  const rows = restrictTubes([
+    blocked,
+    row,
+    {
+      ...blocked,
+      resultEntryBlockedReason: undefined,
+      testResultComponentId: "second",
+    },
+  ]);
+  expect(entryReason(rows[0])).toBe("error.results.testIntakeChanged");
+  expect(entryBlocked(rows[0])).toBe(true);
+  expect(entryBlocked(rows[1])).toBe(false);
+  expect(entryBlocked(rows[2])).toBe(true);
+});
+test.each([
   "resultType",
   "unitsOfMeasure",
   "dictionaryResults",

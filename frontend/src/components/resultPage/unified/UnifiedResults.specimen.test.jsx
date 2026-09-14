@@ -143,6 +143,22 @@ test.each([
   expect(io.save).not.toHaveBeenCalled();
 });
 
+test.each([
+  "error.results.specimenIntakeMissing",
+  "error.results.specimenIntakeChanged",
+  "error.results.testIntakeChanged",
+])("%s 显示中文原因并保留已填结果", (reason) => {
+  open([row(), row("102", "202")]);
+  enter("0");
+  enter("8", "102");
+  act(() => sign()());
+  act(() => responses[0]({ status: 409, error: reason }));
+  expect(within(tableRow()).getByText("0")).toBeInTheDocument();
+  expect(io.notify.mock.calls.at(-1)[0].message).toContain(zh[reason]);
+  expect(within(tableRow("102")).getByRole("spinbutton")).toHaveValue(8);
+  expect(io.save).toHaveBeenCalledTimes(1);
+});
+
 test("拒绝保存后锁同管而非同申请，保留未提交的0", () => {
   open([row(), row("102", "201"), row("103", "202")]);
   enter("0");

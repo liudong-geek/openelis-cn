@@ -21,6 +21,165 @@ import org.springframework.test.util.ReflectionTestUtils;
 /** Query contract only; no database or concurrent-write claim. */
 public class OrdinaryResultSaveStateDAOTest {
     @Test
+    public void managedProjectionExposesUnflushedDomainAndRequestChangesWithoutRefresh() {
+        var dao = new OrdinaryResultSaveStateDAOImpl();
+        var em = mock(EntityManager.class);
+        var session = mock(Session.class);
+        var config = mock(org.openelisglobal.common.util.DefaultConfigurationProperties.class);
+        ReflectionTestUtils.setField(dao, "entityManager", em);
+        ReflectionTestUtils.setField(dao, "configuration", config);
+        when(config.getPropertyValue("domain.human")).thenReturn("H");
+        when(em.unwrap(Session.class)).thenReturn(session);
+        var sample = mock(org.openelisglobal.sample.valueholder.Sample.class);
+        when(sample.getId()).thenReturn("301");
+        when(sample.getAccessionNumber()).thenReturn("SIM-RESULT-301");
+        when(sample.getDomain()).thenReturn("H");
+        var time = Timestamp.from(java.time.Instant.parse("2026-09-01T01:02:03.123456Z"));
+        when(sample.getReceivedTimestamp()).thenReturn(time);
+        var type = mock(org.openelisglobal.typeofsample.valueholder.TypeOfSample.class);
+        when(type.getId()).thenReturn("601");
+        when(type.isActive()).thenReturn(true);
+        var item = new SampleItem();
+        item.setId("201");
+        item.setSample(sample);
+        item.setTypeOfSample(type);
+        item.setCollectionDate(time);
+        item.setReceivedDate(time);
+        item.setLastupdated(time);
+        var request = new org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest();
+        request.setId(501);
+        request.setSample(sample);
+        request.setSampleItem(item);
+        request.setTypeOfSample(type);
+        request.setStatus(org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest.Status.COLLECTED);
+        request.setRequestedTests("401");
+        request.setLastupdated(time);
+        var test = new org.openelisglobal.test.valueholder.Test();
+        test.setId("401");
+        test.setIsActive("Y");
+        var analysis = new Analysis();
+        analysis.setId("101");
+        analysis.setTest(test);
+        analysis.setSampleItem(item);
+        var accepted = org.openelisglobal.result.service.ResultIntakeAdmissionTest.accepted("201", "101");
+        java.util.List<Query<?>> queries = new java.util.ArrayList<>();
+        when(session.createQuery(anyString(), any(Class.class))).thenAnswer(call -> {
+            String hql = call.getArgument(0);
+            Query<?> q = mock(Query.class, RETURNS_SELF);
+            queries.add(q);
+            if (hql.startsWith("from SampleItem"))
+                doReturn(item).when(q).uniqueResult();
+            else if (hql.startsWith("from SampleTypeRequest"))
+                doReturn(java.util.List.of(request)).when(q).list();
+            else if (hql.startsWith("from Analysis"))
+                doReturn(java.util.List.of(analysis)).when(q).list();
+            else if (hql.startsWith("select p.id"))
+                doReturn(java.util.List.of("701")).when(q).list();
+            else if (hql.startsWith("from SpecimenIntakeDecision"))
+                doReturn(accepted.decisions()).when(q).list();
+            else
+                throw new AssertionError(hql);
+            return q;
+        });
+        var current = dao.managedIntakeState("201");
+        assertEquals(accepted, current);
+        when(sample.getDomain()).thenReturn("E");
+        assertEquals(org.openelisglobal.result.service.ResultIntakeAdmission.CHANGED,
+                org.openelisglobal.result.service.ResultIntakeAdmission.reason(dao.managedIntakeState("201"), "301",
+                        "201", "101", "401"));
+        when(sample.getDomain()).thenReturn("H");
+        request.setRequestedTests("402");
+        assertEquals(org.openelisglobal.result.service.ResultIntakeAdmission.CHANGED,
+                org.openelisglobal.result.service.ResultIntakeAdmission.reason(dao.managedIntakeState("201"), "301",
+                        "201", "101", "401"));
+        verify(em, never()).flush();
+        verify(em, never()).refresh(item);
+        queries.forEach(q -> {
+            verify(q).setHibernateFlushMode(FlushMode.MANUAL);
+            verify(q).setTimeout(15);
+        });
+    }
+
+    @Test
+    public void intakeProjectionBindsActualTubeAndKeepsDomainMicrosecondsAndReflexScope() {
+        var dao = new OrdinaryResultSaveStateDAOImpl();
+        var em = mock(EntityManager.class);
+        var session = mock(Session.class);
+        var config = mock(org.openelisglobal.common.util.DefaultConfigurationProperties.class);
+        ReflectionTestUtils.setField(dao, "entityManager", em);
+        ReflectionTestUtils.setField(dao, "configuration", config);
+        when(config.getPropertyValue("domain.human")).thenReturn("H");
+        when(em.unwrap(Session.class)).thenReturn(session);
+        java.util.Map<String, Query<?>> queries = new java.util.LinkedHashMap<>();
+        var stamp = Timestamp.from(java.time.Instant.parse("2026-09-01T01:02:03.123456Z"));
+        var accepted = org.openelisglobal.result.service.ResultIntakeAdmissionTest.accepted("201", "101");
+        // Dispatch only known query shapes; every query is subsequently checked for
+        // its exact bound ID, explicit MANUAL flush policy and retrieval bounds.
+        when(session.createQuery(anyString(), any(Class.class))).thenAnswer(call -> {
+            String hql = call.getArgument(0);
+            Query<?> q = mock(Query.class, RETURNS_SELF);
+            queries.put(hql, q);
+            if (hql.startsWith("select si.id"))
+                doReturn(new Object[] { "201", "301", "SIM-RESULT-301", stamp, "601", true, stamp, stamp, stamp, null,
+                        null, "H" }).when(q).uniqueResult();
+            else if (hql.startsWith("select r.id"))
+                doReturn(java.util.Collections.singletonList(new Object[] { 501, "301", "201", "601",
+                        org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest.Status.COLLECTED, "401",
+                        stamp })).when(q).list();
+            else if (hql.startsWith("select a.id"))
+                doReturn(java.util.List.of(new Object[] { "101", "401", "Y" }, new Object[] { "102", "402", "Y" }))
+                        .when(q).list();
+            else if (hql.startsWith("select p.id"))
+                doReturn(java.util.List.of("701")).when(q).list();
+            else if (hql.startsWith("from SpecimenIntakeDecision"))
+                doReturn(accepted.decisions()).when(q).list();
+            else
+                throw new AssertionError("Unexpected query: " + hql);
+            return q;
+        });
+        var state = dao.findIntakeState("201");
+        assertEquals(accepted.tube(), state.tube());
+        assertEquals(accepted.requests(), state.requests());
+        assertEquals(java.util.List.of("701"), state.patients());
+        assertEquals(2, state.tests().size());
+        assertNull(org.openelisglobal.result.service.ResultIntakeAdmission.reason(state, "301", "201", "101", "401"));
+        assertEquals(org.openelisglobal.result.service.ResultIntakeAdmission.TEST_CHANGED,
+                org.openelisglobal.result.service.ResultIntakeAdmission.reason(state, "301", "201", "102", "402"));
+        assertEquals(5, queries.size());
+        queries.forEach((hql, q) -> {
+            verify(q).setParameter("id", hql.startsWith("select p.id") ? "301" : "201");
+            verify(q).setHibernateFlushMode(FlushMode.MANUAL);
+            verify(q).setTimeout(15);
+            assertTrue(hql.contains(":id"));
+            assertFalse(hql.contains("201"));
+            if (hql.startsWith("select a.id"))
+                verify(q).setMaxResults(5001);
+            else if (!hql.startsWith("select si.id"))
+                verify(q).setMaxResults(2);
+        });
+        String patients = queries.keySet().stream().filter(q -> q.startsWith("select p.id")).findFirst().orElseThrow();
+        assertTrue(patients.contains("left join Patient p on p.id = sh.patientId"));
+        assertTrue(patients.contains("envWorkflowType"));
+        verify(em, never()).flush();
+    }
+
+    @Test
+    public void missingTubeProjectionStopsWithoutQueryingOtherPatientFacts() {
+        var dao = new OrdinaryResultSaveStateDAOImpl();
+        var em = mock(EntityManager.class);
+        var session = mock(Session.class);
+        Query<?> q = mock(Query.class, RETURNS_SELF);
+        ReflectionTestUtils.setField(dao, "entityManager", em);
+        when(em.unwrap(Session.class)).thenReturn(session);
+        doReturn(q).when(session).createQuery(anyString(), eq(Object[].class));
+        doReturn(null).when(q).uniqueResult();
+        assertNull(dao.findIntakeState("999"));
+        verify(q).setParameter("id", "999");
+        verify(session, times(1)).createQuery(anyString(), eq(Object[].class));
+        verify(em, never()).flush();
+    }
+
+    @Test
     public void scalarStateReadDoesNotFlushPreviouslyChangedManagedEntities() {
         OrdinaryResultSaveStateDAOImpl dao = new OrdinaryResultSaveStateDAOImpl();
         EntityManager entityManager = mock(EntityManager.class);

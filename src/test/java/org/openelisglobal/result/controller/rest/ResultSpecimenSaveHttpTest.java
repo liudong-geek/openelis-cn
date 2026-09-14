@@ -137,6 +137,7 @@ public class ResultSpecimenSaveHttpTest {
         analysis.setSampleItem(tube);
         when(analyses.get("101")).thenReturn(analysis);
         dao = mock(OrdinaryResultSaveStateDAO.class);
+        org.openelisglobal.result.service.ResultIntakeAdmissionTest.allow(dao, "201", "101");
         when(dao.lockSpecimen("201")).thenReturn(tube);
         when(dao.lockAnalysis("101")).thenReturn(analysis);
         when(dao.findSpecimenState("101")).thenReturn(new SpecimenState("101", "401", "201", "301", "10", true, false));
@@ -192,10 +193,22 @@ public class ResultSpecimenSaveHttpTest {
         assertEquals(Map.of("error", "error.save.msg"), response.getBody());
     }
 
+    @Test public void realSaveUrlExplainsMissingFirstDecisionWithoutWriting() throws Exception {
+        when(dao.findSpecimenState("101")).thenReturn(new SpecimenState("101","401","201","301","10",false,false));
+        var s=org.openelisglobal.result.service.ResultIntakeAdmissionTest.accepted("201","101");
+        when(dao.findIntakeState("201")).thenReturn(new OrdinaryResultSaveStateDAO.IntakeState(s.tube(),s.patients(),s.requests(),s.tests(),List.of()));
+        mvc.perform(post("/rest/results-entry/analysis/101/result").session(session)
+            .contentType(MediaType.APPLICATION_JSON).content("{\"testResult\":{\"analysisId\":\"101\",\"testId\":\"401\",\"sampleItemId\":\"201\",\"accessionNumber\":\"SIM-RESULT-301\",\"testDate\":\"\",\"resultValue\":\"\",\"isModified\":true}}"))
+            .andExpect(status().isConflict()).andExpect(content().string("{\"error\":\"error.results.specimenIntakeMissing\"}"));
+        assertEquals(1,tx.rollbacks);assertEquals(0,tx.commits);verifyZeroInteractions(fhir,alerts,notes);
+    }
+
     @Test
     public void fixedErrorContractAcceptsOnlyTheKnownBusinessCodes() {
         for (String code : List.of("error.results.specimenNotEligible", "error.results.resultMismatch",
-                "error.results.resultDefinitionMissing")) {
+                "error.results.resultDefinitionMissing", "error.results.specimenIntakeMissing",
+                "error.results.specimenIntakeChanged", "error.results.testIntakeChanged",
+                "error.results.specimenRejected")) {
             assertEquals(Map.of("error", code),
                     controller.resultSaveValidationFailure(new ResultSaveValidationException(code)).getBody());
         }

@@ -315,7 +315,9 @@ public class ResultEntryRestController extends LogbookResultsBaseController {
                 "error.results.resultMismatch", "error.results.qualifiedResultMismatch", "error.results.testMismatch",
                 "error.results.componentMismatch", "error.results.resultDefinitionMissing",
                 "error.results.orderMismatch", "error.results.reviewedResultLocked",
-                "error.results.statusConfigurationInvalid");
+                "error.results.statusConfigurationInvalid", "error.results.specimenIntakeMissing",
+                "error.results.specimenIntakeChanged", "error.results.testIntakeChanged",
+                "error.results.specimenRejected");
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(Map.of("error", code != null && known.contains(code) ? code : "error.save.msg"));
     }

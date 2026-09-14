@@ -25,6 +25,9 @@ export const specimenReasons = new Set([
   "error.results.specimenVoided",
   "error.results.specimenCanceled",
   "error.results.specimenDisposed",
+  "error.results.specimenIntakeMissing",
+  "error.results.specimenIntakeChanged",
+  "error.results.testIntakeChanged",
 ]);
 export const entryReasons = new Set([
   ...specimenReasons,
@@ -55,7 +58,7 @@ export const sameTube = (left: EntryRow, right: EntryRow) =>
     ? left.sampleItemId === right.sampleItemId
     : left.analysisId === right.analysisId;
 
-/** Carry only known specimen restrictions to other rows of the actual tube. */
+/** Tube-wide facts cover the tube; uncovered tests cover only that analysis's components. */
 export function restrictTubes<T extends EntryRow>(
   rows: T[],
   extra?: EntryRow,
@@ -64,7 +67,11 @@ export function restrictTubes<T extends EntryRow>(
     specimenReasons.has(String(row.resultEntryBlockedReason)),
   );
   return rows.map((row) => {
-    const source = locked.find((other) => sameTube(other, row));
+    const source = locked.find((other) =>
+      other.resultEntryBlockedReason === "error.results.testIntakeChanged"
+        ? other.analysisId === row.analysisId
+        : sameTube(other, row),
+    );
     return source
       ? {
           ...row,

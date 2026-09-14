@@ -36,14 +36,20 @@ public class ResultSpecimenWriteGuard {
     public Runnable begin(ResultsUpdateDataSet data) {
         if (!TransactionSynchronizationManager.isActualTransactionActive()
                 || !TransactionSynchronizationManager.isSynchronizationActive()
-                || TransactionSynchronizationManager.isCurrentTransactionReadOnly()) {
+                || TransactionSynchronizationManager.isCurrentTransactionReadOnly()
+                || !Integer.valueOf(java.sql.Connection.TRANSACTION_SERIALIZABLE)
+                        .equals(TransactionSynchronizationManager.getCurrentTransactionIsolationLevel())) {
             throw blocked();
         }
         String eligible = statuses.getStatusID(SampleStatus.Entered);
         if (!positive(eligible)) {
             throw blocked();
         }
+        requireStatusConfiguration(eligible);
         Map<String, Owner> owners = owners(data, eligible);
+        if (owners.isEmpty())
+            return () -> {
+            };
         // Stable tube order, compatible with the existing receipt lock order.
         List<String> itemIds = owners.values().stream().map(Owner::itemId).distinct()
                 .sorted(java.util.Comparator.comparing(java.math.BigInteger::new)).toList();
@@ -83,6 +89,10 @@ public class ResultSpecimenWriteGuard {
                 throw blocked();
             }
             managedCheck.run();
+            requireStatusConfiguration(eligible);
+            // Complete pending writes inside this transaction before the final scalar
+            // check, including parent/request changes made by another registered updater.
+            states.flush();
             owners.forEach((id, owner) -> {
                 if (!frozen.get(id).equals(verify(id, owner, eligible))) {
                     throw blocked();
@@ -98,6 +108,15 @@ public class ResultSpecimenWriteGuard {
                 || !eligible.equals(state.statusId()) || !Boolean.FALSE.equals(state.rejected())
                 || !Boolean.FALSE.equals(state.voided())) {
             throw blocked();
+        }
+        var persisted = states.findIntakeState(owner.itemId());
+        String reason = ResultIntakeAdmission.reason(persisted, owner.sampleId(), owner.itemId(), id, owner.testId());
+        if (reason != null)
+            throw new ResultSaveValidationException(reason);
+        var managed = states.managedIntakeState(owner.itemId());
+        reason = ResultIntakeAdmission.reason(managed, owner.sampleId(), owner.itemId(), id, owner.testId());
+        if (reason != null || !persisted.equals(managed)) {
+            throw new ResultSaveValidationException(reason == null ? ResultIntakeAdmission.CHANGED : reason);
         }
         return state;
     }
@@ -176,6 +195,16 @@ public class ResultSpecimenWriteGuard {
 
     private static boolean positive(String value) {
         return value != null && value.matches("[1-9][0-9]{0,9}");
+    }
+
+    private void requireStatusConfiguration(String eligible) {
+        var ids = new java.util.HashSet<String>();
+        ids.add(eligible);
+        for (var status : List.of(SampleStatus.SampleRejected, SampleStatus.Canceled, SampleStatus.Disposed)) {
+            String id = statuses.getStatusID(status);
+            if (positive(id) && !ids.add(id))
+                throw blocked();
+        }
     }
 
     private static ResultSaveValidationException blocked() {

@@ -23,7 +23,7 @@ public class ResultSpecimenAvailabilityService {
     }
 
     /**
-     * One persisted read per analysis, including all component/placeholder rows.
+     * Explain every component/placeholder using current lifecycle and intake facts.
      */
     @Transactional(readOnly = true)
     public void explain(Analysis analysis, List<TestResultItem> rows) {
@@ -87,7 +87,8 @@ public class ResultSpecimenAvailabilityService {
             }
         }
         if (entered.equals(state.statusId())) {
-            return null;
+            return ResultIntakeAdmission.reason(states.findIntakeState(state.sampleItemId()), state.sampleId(),
+                    state.sampleItemId(), state.analysisId(), state.testId());
         }
         if (positive(state.statusId()) && state.statusId().equals(statuses.getStatusID(SampleStatus.SampleRejected))) {
             return "error.results.specimenRejected";

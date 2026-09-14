@@ -60,7 +60,7 @@ public class LogbookPersistServiceImpl implements LogbookResultsPersistService {
     private ResultSpecimenWriteGuard specimenWriteGuard;
 
     @Override
-    @Transactional
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     public List<Analysis> persistDataSet(ResultsUpdateDataSet actionDataSet, List<IResultUpdate> updaters,
             String sysUserId) {
         Runnable verifySpecimens = specimenWriteGuard.begin(actionDataSet);
