@@ -122,6 +122,7 @@
 
         <!-- QA Checklist domain (OGC-356 step 4) -->
         <class>org.openelisglobal.qachecklist.valueholder.SampleQaChecklist</class>
+        <class>org.openelisglobal.sample.valueholder.SpecimenIntakeDecision</class>
 
         <!-- Sample Type Request (OGC-356) -->
         <class>org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest</class>

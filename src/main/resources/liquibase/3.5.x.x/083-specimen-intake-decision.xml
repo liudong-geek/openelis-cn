@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+  <!-- First explicit per-tube fact only. Never infer ACCEPTED from legacy rows. -->
+  <changeSet id="3.5.0-083-specimen-intake-decision" author="local-chinese-edition" runInTransaction="true">
+    <preConditions onFail="HALT" onError="HALT">
+      <dbms type="postgresql"/>
+      <not><tableExists schemaName="clinlims" tableName="specimen_intake_decision"/></not>
+      <not><sequenceExists schemaName="clinlims" sequenceName="specimen_intake_decision_seq"/></not>
+      <tableExists schemaName="clinlims" tableName="reference_tables"/>
+      <sequenceExists schemaName="clinlims" sequenceName="reference_tables_seq"/>
+    </preConditions>
+    <!-- Legacy audit reference IDs use Integer.parseInt, even for numeric strings. -->
+    <createSequence schemaName="clinlims" sequenceName="specimen_intake_decision_seq"
+        startValue="1" incrementBy="1" maxValue="2147483647"/>
+    <createTable schemaName="clinlims" tableName="specimen_intake_decision">
+      <column name="id" type="NUMERIC(10)"><constraints nullable="false" primaryKey="true" primaryKeyName="pk_specimen_intake_decision"/></column>
+      <column name="operation_id" type="VARCHAR(36)"><constraints nullable="false"/></column>
+      <column name="sample_id" type="NUMERIC(10)"><constraints nullable="false"/></column>
+      <column name="lab_no" type="VARCHAR(25)"><constraints nullable="false"/></column>
+      <column name="patient_id" type="NUMERIC(10)"><constraints nullable="false"/></column>
+      <column name="request_id" type="NUMERIC(10)"><constraints nullable="false"/></column>
+      <column name="sample_item_id" type="NUMERIC(10)"><constraints nullable="false"/></column>
+      <column name="decision" type="VARCHAR(8)"><constraints nullable="false"/></column>
+      <column name="reason_namespace" type="VARCHAR(48)"/>
+      <column name="reason_id" type="NUMERIC(10)"/>
+      <column name="reason_version" type="VARCHAR(32)"/>
+      <column name="reason_label" type="VARCHAR(500)"/>
+      <column name="evidence_json" type="TEXT"><constraints nullable="false"/></column>
+      <column name="evidence_digest" type="VARCHAR(64)"><constraints nullable="false"/></column>
+      <column name="created_by" type="NUMERIC(10)"><constraints nullable="false"/></column>
+      <column name="created_at" type="TIMESTAMP WITH TIME ZONE"><constraints nullable="false"/></column>
+      <column name="last_updated" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
+    </createTable>
+    <addUniqueConstraint schemaName="clinlims" tableName="specimen_intake_decision"
+        columnNames="sample_item_id" constraintName="uq_specimen_intake_tube"/>
+    <addUniqueConstraint schemaName="clinlims" tableName="specimen_intake_decision"
+        columnNames="operation_id" constraintName="uq_specimen_intake_operation"/>
+    <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="specimen_intake_decision"
+        baseColumnNames="sample_id" constraintName="fk_specimen_intake_sample" referencedTableSchemaName="clinlims"
+        referencedTableName="sample" referencedColumnNames="id" onDelete="RESTRICT" onUpdate="RESTRICT"/>
+    <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="specimen_intake_decision"
+        baseColumnNames="patient_id" constraintName="fk_specimen_intake_patient" referencedTableSchemaName="clinlims"
+        referencedTableName="patient" referencedColumnNames="id" onDelete="RESTRICT" onUpdate="RESTRICT"/>
+    <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="specimen_intake_decision"
+        baseColumnNames="request_id" constraintName="fk_specimen_intake_request" referencedTableSchemaName="clinlims"
+        referencedTableName="sample_type_request" referencedColumnNames="id" onDelete="RESTRICT" onUpdate="RESTRICT"/>
+    <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="specimen_intake_decision"
+        baseColumnNames="sample_item_id" constraintName="fk_specimen_intake_item" referencedTableSchemaName="clinlims"
+        referencedTableName="sample_item" referencedColumnNames="id" onDelete="RESTRICT" onUpdate="RESTRICT"/>
+    <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="specimen_intake_decision"
+        baseColumnNames="created_by" constraintName="fk_specimen_intake_actor" referencedTableSchemaName="clinlims"
+        referencedTableName="system_user" referencedColumnNames="id" onDelete="RESTRICT" onUpdate="RESTRICT"/>
+    <!-- CHECK and triggers use PostgreSQL SQL only inside the managed migration. -->
+    <sql splitStatements="false"><![CDATA[
+      ALTER TABLE clinlims.specimen_intake_decision
+      ADD CONSTRAINT ck_specimen_intake_ids CHECK (
+        id BETWEEN 1 AND 2147483647 AND sample_id BETWEEN 1 AND 2147483647
+        AND patient_id BETWEEN 1 AND 2147483647 AND request_id BETWEEN 1 AND 2147483647
+        AND sample_item_id BETWEEN 1 AND 2147483647 AND created_by BETWEEN 1 AND 2147483647),
+      ADD CONSTRAINT ck_specimen_intake_operation CHECK (operation_id ~ '^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$'),
+      ADD CONSTRAINT ck_specimen_intake_reason CHECK (
+        (decision = 'ACCEPTED' AND reason_namespace IS NULL AND reason_id IS NULL
+          AND reason_version IS NULL AND reason_label IS NULL)
+        OR (decision = 'REJECTED' AND reason_namespace IS NOT NULL
+          AND reason_namespace IN ('DICTIONARY:resultRejectionReasons', 'QA_EVENT')
+          AND reason_id IS NOT NULL AND reason_id BETWEEN 1 AND 2147483647
+          AND reason_version IS NOT NULL AND length(trim(reason_version)) > 0
+          AND reason_label IS NOT NULL AND length(trim(reason_label)) > 0)),
+      ADD CONSTRAINT ck_specimen_intake_evidence CHECK (
+        length(evidence_json) BETWEEN 1 AND 1048576 AND evidence_digest ~ '^[a-f0-9]{64}$');
+    ]]></sql>
+    <sql splitStatements="false"><![CDATA[
+      CREATE FUNCTION clinlims.guard_specimen_intake_decision() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        RAISE EXCEPTION 'First specimen decision evidence cannot be updated, deleted or truncated' USING ERRCODE = '55000';
+      END $$;
+    ]]></sql>
+    <sql>
+      CREATE TRIGGER specimen_intake_no_mutation BEFORE UPDATE OR DELETE ON clinlims.specimen_intake_decision
+        FOR EACH ROW EXECUTE FUNCTION clinlims.guard_specimen_intake_decision();
+      CREATE TRIGGER specimen_intake_no_truncate BEFORE TRUNCATE ON clinlims.specimen_intake_decision
+        FOR EACH STATEMENT EXECUTE FUNCTION clinlims.guard_specimen_intake_decision();
+    </sql>
+    <!-- Do not silently enable an existing disabled/ambiguous audit registration. -->
+    <sql splitStatements="false"><![CDATA[
+      DO $$ BEGIN
+        LOCK TABLE clinlims.reference_tables IN SHARE ROW EXCLUSIVE MODE;
+        IF (SELECT count(*) FROM clinlims.reference_tables WHERE trim(lower(name)) = 'specimen_intake_decision') > 1
+          OR EXISTS (SELECT 1 FROM clinlims.reference_tables WHERE trim(lower(name)) = 'specimen_intake_decision'
+            AND (keep_history IS DISTINCT FROM 'Y' OR is_hl7_encoded IS DISTINCT FROM 'N')) THEN
+          RAISE EXCEPTION 'Specimen intake audit registration requires explicit reconciliation';
+        END IF;
+        INSERT INTO clinlims.reference_tables (id, name, keep_history, is_hl7_encoded, lastupdated)
+          SELECT nextval('clinlims.reference_tables_seq'), 'specimen_intake_decision', 'Y', 'N', CURRENT_TIMESTAMP
+          WHERE NOT EXISTS (SELECT 1 FROM clinlims.reference_tables WHERE trim(lower(name)) = 'specimen_intake_decision');
+      END $$;
+    ]]></sql>
+    <!-- No automatic evidence deletion; service downgrade retains this table. -->
+    <rollback><sql splitStatements="false">DO $$ BEGIN RAISE EXCEPTION 'Specimen decision downgrade requires an authorized evidence-preserving migration'; END $$;</sql></rollback>
+  </changeSet>
+</databaseChangeLog>

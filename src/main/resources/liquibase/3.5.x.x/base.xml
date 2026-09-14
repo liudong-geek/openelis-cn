@@ -206,4 +206,5 @@
 
   <include relativeToChangelogFile="true" file="081-entry-submission-receipt.xml"/>
   <include relativeToChangelogFile="true" file="082-qa-checklist-confirmed-context.xml"/>
+  <include relativeToChangelogFile="true" file="083-specimen-intake-decision.xml"/>
 </databaseChangeLog>

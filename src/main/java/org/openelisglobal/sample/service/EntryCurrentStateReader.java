@@ -63,6 +63,8 @@ public class EntryCurrentStateReader {
     private org.openelisglobal.unitofmeasure.service.UnitOfMeasureService units;
     @Autowired
     private org.openelisglobal.qachecklist.service.QaChecklistReviewReader qaReviews;
+    @Autowired
+    private SpecimenIntakeDecisionReader intakeDecisions;
 
     public record PatientView(String id, String nationalId, String firstName, String lastName, String gender,
             String birthDate) {
@@ -92,7 +94,16 @@ public class EntryCurrentStateReader {
     public record Snapshot(int version, boolean readOnly, String sampleId, String labNo, String workflowType,
             String orderStatusId, String lastUpdated, PatientView patient, List<RequestView> requestedSpecimens,
             List<SpecimenView> physicalSpecimens, CollectionContext collectionContext,
-            org.openelisglobal.qachecklist.service.QaChecklistReviewReader.Review qaReview) {
+            org.openelisglobal.qachecklist.service.QaChecklistReviewReader.Review qaReview,
+            List<SpecimenIntakeDecisionReader.Tube> specimenDecisions) {
+        public Snapshot(int version, boolean readOnly, String sampleId, String labNo, String workflowType,
+                String orderStatusId, String lastUpdated, PatientView patient, List<RequestView> requestedSpecimens,
+                List<SpecimenView> physicalSpecimens, CollectionContext collectionContext,
+                org.openelisglobal.qachecklist.service.QaChecklistReviewReader.Review qaReview) {
+            this(version, readOnly, sampleId, labNo, workflowType, orderStatusId, lastUpdated, patient,
+                    requestedSpecimens, physicalSpecimens, collectionContext, qaReview, List.of());
+        }
+
         public Snapshot(int version, boolean readOnly, String sampleId, String labNo, String workflowType,
                 String orderStatusId, String lastUpdated, PatientView patient, List<RequestView> requestedSpecimens,
                 List<SpecimenView> physicalSpecimens, CollectionContext collectionContext) {
@@ -254,7 +265,9 @@ public class EntryCurrentStateReader {
         return new Snapshot(1, true, sampleId, sample.getAccessionNumber(), workflow, orderStatus,
                 time(sample.getLastupdated()), patient, ordered, List.copyOf(specimens),
                 collectionContext(sample, ordered, specimens),
-                qaReviews.read(sample, patient == null ? null : patient.id(), rows, physicalRows, qaAnalyses));
+                qaReviews.read(sample, patient == null ? null : patient.id(), rows, physicalRows, qaAnalyses),
+                intakeDecisions.read(sampleId, sample.getAccessionNumber(), patient == null ? null : patient.id(),
+                        specimens));
     }
 
     // Facts from the same read transaction, not a capability token. Historical

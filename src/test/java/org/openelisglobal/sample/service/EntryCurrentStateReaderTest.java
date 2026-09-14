@@ -51,6 +51,7 @@ public class EntryCurrentStateReaderTest {
     private AnalysisDAO analyses;
     private StatusOfSampleService statuses;
     private UserService users;
+    private SpecimenIntakeDecisionReader intakeDecisions;
     private ObjectNode original;
     private Sample sample;
     private Patient patient;
@@ -63,6 +64,8 @@ public class EntryCurrentStateReaderTest {
     @Before
     public void setUp() {
         reader = new EntryCurrentStateReader();
+        intakeDecisions = mock(SpecimenIntakeDecisionReader.class);
+        set("intakeDecisions", intakeDecisions);
         set("qaReviews", mock(org.openelisglobal.qachecklist.service.QaChecklistReviewReader.class));
         samples = mock(SampleService.class);
         links = mock(SampleHumanDAO.class);
@@ -254,6 +257,21 @@ public class EntryCurrentStateReaderTest {
         when(users.getAllDisplayUserTestsByLabUnit("7", Constants.ROLE_RECEPTION)).thenReturn(List.of());
         assertThrows(org.springframework.security.access.AccessDeniedException.class, this::read);
         verifyZeroInteractions(qa);
+        verifyZeroInteractions(intakeDecisions);
+    }
+
+    @Test
+    public void currentReadsFirstDecisionsOnlyForItsAuthorizedActualTubes() {
+        collect(0, "801");
+        var decisions = List
+                .of(new SpecimenIntakeDecisionReader.Tube("801", "NOT_RECORDED", null, null, null, null, null, false));
+        when(intakeDecisions.read(eq("301"), eq("SIM-CURRENT"), eq("601"), anyList())).thenReturn(decisions);
+        var current = read();
+        assertSame(decisions, current.specimenDecisions());
+        verify(intakeDecisions).read("301", "SIM-CURRENT", "601", current.physicalSpecimens());
+        var json = new ObjectMapper().valueToTree(current);
+        assertFalse(json.path("specimenDecisions").get(0).path("currentAcceptanceVerified").asBoolean());
+        assertFalse(json.path("specimenDecisions").get(0).has("evidenceJson"));
     }
 
     @Test
