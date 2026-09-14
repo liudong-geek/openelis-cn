@@ -32,6 +32,8 @@ import org.openelisglobal.testreflex.action.util.TestReflexUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class LogbookPersistServiceImpl implements LogbookResultsPersistService {
@@ -54,11 +56,14 @@ public class LogbookPersistServiceImpl implements LogbookResultsPersistService {
     private ReferralResultService referralResultService;
     @Autowired
     private ReferralSetService referralSetService;
+    @Autowired
+    private ResultSpecimenWriteGuard specimenWriteGuard;
 
     @Override
     @Transactional
     public List<Analysis> persistDataSet(ResultsUpdateDataSet actionDataSet, List<IResultUpdate> updaters,
             String sysUserId) {
+        Runnable verifySpecimens = specimenWriteGuard.begin(actionDataSet);
         for (Note note : actionDataSet.getNoteList()) {
             noteService.insert(note);
         }
@@ -131,6 +136,13 @@ public class LogbookPersistServiceImpl implements LogbookResultsPersistService {
         for (IResultUpdate updater : updaters) {
             updater.transactionalUpdate(actionDataSet);
         }
+        verifySpecimens.run();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void beforeCommit(boolean readOnly) {
+                verifySpecimens.run();
+            }
+        });
         return reflexAnalysises;
     }
 
