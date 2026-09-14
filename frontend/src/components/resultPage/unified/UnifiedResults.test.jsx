@@ -24,7 +24,8 @@ vi.mock("./useResultPresence", () => ({
 
 const signatureControls = vi.hoisted(() => ({ delayed: false, callbacks: [] }));
 
-vi.mock("../../utils/Utils", () => ({
+vi.mock("../../utils/Utils", async () => ({
+  ...(await vi.importActual("../../utils/Utils")),
   getFromOpenElisServer: vi.fn(),
   postToOpenElisServerJsonResponse: vi.fn(),
   postToOpenElisServer: vi.fn(),

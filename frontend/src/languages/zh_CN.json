@@ -8911,5 +8911,7 @@
   "results.workbench.queue.count": "当前队列 {count} 项",
   "results.workbench.queue.tests": "{count} 个检验项目",
   "results.workbench.workspace.saveHint": "保存仅完成结果录入，审核与报告签发请在对应工作台完成。",
-  "results.workbench.workspace.draftCount": "{count} 项本页输入未完成"
+  "results.workbench.workspace.draftCount": "{count} 项本页输入未完成",
+  "results.workbench.review.open": "进入审核",
+  "results.workbench.review.finishDrafts": "请先处理本页未完成的结果，再进入审核。"
 }

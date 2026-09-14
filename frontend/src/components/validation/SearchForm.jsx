@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useRef } from "react";
 import {
   Button,
   Column,
@@ -15,7 +15,7 @@ import { FormattedMessage, useIntl } from "react-intl";
 import { Formik, Field } from "formik";
 import ValidationSearchFormValues from "../formModel/innitialValues/ValidationSearchFormValues";
 import { getFromOpenElisServer, Roles } from "../utils/Utils";
-import { NotificationContext } from "../layout/Layout";
+import { ConfigurationContext, NotificationContext } from "../layout/Layout";
 import { NotificationKinds } from "../common/CustomNotification";
 import CustomDatePicker from "../common/CustomDatePicker";
 import { ArrowLeft, ArrowRight } from "@carbon/react/icons";
@@ -25,6 +25,8 @@ const SearchForm = (props) => {
     useContext(NotificationContext);
 
   const intl = useIntl();
+  const { configurationProperties } = useContext(ConfigurationContext);
+  const exactAccessionFromLink = useRef(null);
 
   const [searchResults, setSearchResults] = useState();
   const [searchBy, setSearchBy] = useState();
@@ -124,14 +126,25 @@ const SearchForm = (props) => {
     values,
     requestedSearchBy = searchBy,
     requestedDoRange = doRange,
+    exactAccessionNumber,
   ) => {
     setNextPage(null);
     setPreviousPage(null);
     setPagination(false);
     setIsLoading(true);
-    var accessionNumber = values.accessionNumber
-      ? values.accessionNumber.split("-")[0]
-      : "";
+    // Deep links carry a complete server-owned order identity. Manual ALPHANUM
+    // input may carry the legacy analysis suffix after the normalized lab number.
+    const inputAccession = values.accessionNumber || "";
+    const accessionNumber =
+      exactAccessionNumber !== undefined
+        ? exactAccessionNumber
+        : exactAccessionFromLink.current === inputAccession
+          ? inputAccession
+          : configurationProperties.AccessionFormat === "ALPHANUM"
+            ? // Match CustomLabNumberInput's existing normalized suffix contract:
+              // one separator, a base longer than 7 characters and at most 2 suffix characters.
+              inputAccession.replace(/^([^-]{8,})-[^-]{0,2}$/, "$1")
+            : inputAccession;
     var unitType = values.unitType ? values.unitType : "";
     var defaultDate = values.defaultDate ? values.defaultDate : "";
     var date = testDate ? testDate : defaultDate;
@@ -258,11 +271,12 @@ const SearchForm = (props) => {
           "accessionNumber",
         );
         if (accessionNumber) {
+          exactAccessionFromLink.current = accessionNumber;
           let searchValues = {
             ...searchFormValues,
             accessionNumber: accessionNumber,
           };
-          handleSubmit(searchValues, param, rangeSearch);
+          handleSubmit(searchValues, param, rangeSearch, accessionNumber);
           setSearchFormValues(searchValues);
         }
         break;
@@ -288,7 +302,7 @@ const SearchForm = (props) => {
         initialValues={searchFormValues}
         enableReinitialize={true}
         //validationSchema={}
-        onSubmit={handleSubmit}
+        onSubmit={(values) => handleSubmit(values)}
         onChange
       >
         {({
@@ -326,7 +340,11 @@ const SearchForm = (props) => {
                             id={field.name}
                             value={values[field.name]}
                             onChange={(e, rawValue) => {
-                              setFieldValue(field.name, rawValue);
+                              exactAccessionFromLink.current = null;
+                              setFieldValue(
+                                field.name,
+                                rawValue ?? e.target.value,
+                              );
                             }}
                             labelText={
                               searchBy == "order" ? (

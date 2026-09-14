@@ -14,7 +14,8 @@ const io = vi.hoisted(() => ({
   signatures: [],
   notify: vi.fn(),
 }));
-vi.mock("../../utils/Utils", () => ({
+vi.mock("../../utils/Utils", async () => ({
+  ...(await vi.importActual("../../utils/Utils")),
   getFromOpenElisServer: (...a) => io.read(...a),
   postToOpenElisServerJsonResponse: (...a) => io.save(...a),
   postToOpenElisServer: vi.fn(),

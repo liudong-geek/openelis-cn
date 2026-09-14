@@ -26,7 +26,7 @@ import {
   Tile,
 } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
-import { Prompt } from "react-router-dom";
+import { Prompt, useHistory } from "react-router-dom";
 import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
 import {
   readResultWorkbench as getFromOpenElisServer,
@@ -89,6 +89,8 @@ import ResultSpecimenQueue, {
   specimenSubject,
 } from "./ResultSpecimenQueue";
 import "./result-specimen-workspace.scss";
+import { hasRole, Roles } from "../../utils/Utils";
+import { resultReviewHandoffPath } from "./resultReviewHandoff";
 
 /**
  * OGC-1020 (R1 of OGC-811) — unified /Results worklist.
@@ -248,7 +250,10 @@ const blockedResultDisplay = (row: EntryRow): string => {
 
 const UnifiedResults: React.FC = () => {
   const intl = useIntl();
-  const session = useContext(UserSessionDetailsContext) as EntrySession;
+  const history = useHistory();
+  const session = useContext(UserSessionDetailsContext) as EntrySession & {
+    userSessionDetails?: { roles?: string[] };
+  };
   const sessionRef = useRef(session);
   sessionRef.current = session;
   const stamp = entrySession(session);
@@ -279,6 +284,7 @@ const UnifiedResults: React.FC = () => {
   const [rows, setRows] = useState<WorklistRow[]>([]);
   const rowsRef = useRef<WorklistRow[]>([]);
   const drafts = useRef(new Map<string, EntryDraft>());
+  const reviewConfirmations = useRef(new Map<string, WorklistRow>());
   const signatureApis = useRef(
     new Map<
       string,
@@ -347,6 +353,7 @@ const UnifiedResults: React.FC = () => {
     for (const value of signatureApis.current.values()) value.api.dispose();
     signatureApis.current.clear();
     drafts.current.clear();
+    reviewConfirmations.current.clear();
     blockedRowKeys.current.clear();
     pendingSaves.current.clear();
     rowEditRevisions.current = {};
@@ -783,6 +790,7 @@ const UnifiedResults: React.FC = () => {
       )
         return;
       rowEditRevisions.current[key] = (rowEditRevisions.current[key] || 0) + 1;
+      reviewConfirmations.current.delete(key);
       const actual = rowsRef.current.find((row) => worklistRowKey(row) === key);
       if (!actual) return;
       const draft = drafts.current.get(key) || newEntryDraft(actual);
@@ -820,6 +828,7 @@ const UnifiedResults: React.FC = () => {
       !mounted.current
     )
       return;
+    reviewConfirmations.current.delete(key);
     // Editing must start from the stored value, not a rounded/truncated label.
     if (
       target.resultType !== "M" &&
@@ -940,6 +949,10 @@ const UnifiedResults: React.FC = () => {
         if (sibling.row.analysisId === target.analysisId) sibling.held = true;
       }
       if (unchanged) {
+        const confirmed = confirmedRows!.find(
+          (saved) => worklistRowKey(saved) === key,
+        );
+        if (confirmed) reviewConfirmations.current.set(key, { ...confirmed });
         setRowStates((current) => ({
           ...current,
           [key]: nextRowState(current[key] || "EDITING", {
@@ -1231,6 +1244,30 @@ const UnifiedResults: React.FC = () => {
       },
       {},
     );
+  };
+
+  const openReview = (row: WorklistRow) => {
+    if (
+      !ready() ||
+      !mounted.current ||
+      !hasRole(sessionRef.current.userSessionDetails, Roles.VALIDATION) ||
+      worklistLoading.current ||
+      pendingSaves.current.size > 0 ||
+      drafts.current.size > 0
+    )
+      return;
+    const key = worklistRowKey(row);
+    const current = rowsRef.current.find(
+      (entry) => worklistRowKey(entry) === key,
+    );
+    const path = current
+      ? resultReviewHandoffPath(current, reviewConfirmations.current.get(key))
+      : null;
+    const displayedPath = resultReviewHandoffPath(
+      row,
+      reviewConfirmations.current.get(key),
+    );
+    if (path && path === displayedPath) history.push(path);
   };
 
   return (
@@ -1547,6 +1584,15 @@ const UnifiedResults: React.FC = () => {
                         const blocked = isResultEntryBlocked(row) || stateHeld;
                         const stale = staleInfo[key];
                         const reviewer = presence[row.analysisId];
+                        const reviewPath = hasRole(
+                          session.userSessionDetails,
+                          Roles.VALIDATION,
+                        )
+                          ? resultReviewHandoffPath(
+                              row,
+                              reviewConfirmations.current.get(key),
+                            )
+                          : null;
                         return (
                           <React.Fragment key={key}>
                             <TableRow>
@@ -1612,6 +1658,24 @@ const UnifiedResults: React.FC = () => {
                                 {statusName(row.analysisStatusId)}
                               </TableCell>
                               <TableCell className="results-workbench__cell--actions">
+                                {reviewPath && (
+                                  <Button
+                                    kind="ghost"
+                                    size="sm"
+                                    disabled={
+                                      !ready() ||
+                                      loading ||
+                                      savingRows.size > 0 ||
+                                      drafts.current.size > 0
+                                    }
+                                    onClick={() => openReview(row)}
+                                  >
+                                    <FormattedMessage
+                                      id="results.workbench.review.open"
+                                      defaultMessage="Open review"
+                                    />
+                                  </Button>
+                                )}
                                 {!blocked && showEdit(state) && (
                                   <Button
                                     kind="tertiary"
@@ -1760,6 +1824,16 @@ const UnifiedResults: React.FC = () => {
               />
             )}
             <div className="result-specimen-detail__footer">
+              {hasRole(session.userSessionDetails, Roles.VALIDATION) &&
+                reviewConfirmations.current.size > 0 &&
+                drafts.current.size > 0 && (
+                  <p>
+                    <FormattedMessage
+                      id="results.workbench.review.finishDrafts"
+                      defaultMessage="Resolve unfinished result entries on this page before opening review."
+                    />
+                  </p>
+                )}
               <p>
                 <FormattedMessage
                   id="results.workbench.workspace.saveHint"

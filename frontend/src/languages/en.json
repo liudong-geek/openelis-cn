@@ -8710,5 +8710,7 @@
   "results.workbench.queue.count": "{count} items in this queue",
   "results.workbench.queue.tests": "{count} tests",
   "results.workbench.workspace.saveHint": "Saving records result entry. Review and report issuance remain separate tasks.",
-  "results.workbench.workspace.draftCount": "{count} unfinished entries on this page"
+  "results.workbench.workspace.draftCount": "{count} unfinished entries on this page",
+  "results.workbench.review.open": "Open review",
+  "results.workbench.review.finishDrafts": "Resolve unfinished result entries on this page before opening review."
 }
