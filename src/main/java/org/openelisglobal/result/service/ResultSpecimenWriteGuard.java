@@ -33,7 +33,7 @@ public class ResultSpecimenWriteGuard {
     private record Owner(String testId, String itemId, String sampleId) {
     }
 
-    public Runnable begin(ResultsUpdateDataSet data) {
+    private static void requireTransaction() {
         if (!TransactionSynchronizationManager.isActualTransactionActive()
                 || !TransactionSynchronizationManager.isSynchronizationActive()
                 || TransactionSynchronizationManager.isCurrentTransactionReadOnly()
@@ -41,6 +41,24 @@ public class ResultSpecimenWriteGuard {
                         .equals(TransactionSynchronizationManager.getCurrentTransactionIsolationLevel())) {
             throw blocked();
         }
+    }
+
+    /** Discover and lock the original graph without flushing any entity changes. */
+    Analysis lockForEntry(String analysisId) {
+        requireTransaction();
+        if (!positive(analysisId))
+            throw new ResultSaveValidationException("error.results.analysisMismatch");
+        var original = states.findSpecimenState(analysisId);
+        if (original == null)
+            return null;
+        if (!analysisId.equals(original.analysisId()) || !positive(original.sampleItemId()))
+            throw blocked();
+        states.lockSpecimen(original.sampleItemId());
+        return states.lockAnalysis(analysisId);
+    }
+
+    public Runnable begin(ResultsUpdateDataSet data) {
+        requireTransaction();
         String eligible = statuses.getStatusID(SampleStatus.Entered);
         if (!positive(eligible)) {
             throw blocked();

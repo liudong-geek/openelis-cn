@@ -25,12 +25,12 @@ import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 import org.openelisglobal.analysis.valueholder.Analysis;
-import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.services.serviceBeans.ResultSaveBean;
 import org.openelisglobal.common.util.StringUtil;
 import org.openelisglobal.referral.service.ReferralResultService;
 import org.openelisglobal.referral.valueholder.ReferralResult;
 import org.openelisglobal.result.action.util.ResultUtil;
+import org.openelisglobal.result.exception.ResultSaveValidationException;
 import org.openelisglobal.result.service.ResultService;
 import org.openelisglobal.result.service.ResultSignatureService;
 import org.openelisglobal.result.valueholder.Result;
@@ -39,6 +39,7 @@ import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.testanalyte.valueholder.TestAnalyte;
 import org.openelisglobal.testresult.service.TestResultService;
 import org.openelisglobal.testresult.valueholder.TestResult;
+import org.openelisglobal.testresultcomponent.service.TestResultComponentService;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Scope;
@@ -74,67 +75,58 @@ public class ResultSaveService {
     }
 
     public List<Result> createResultsFromTestResultItem(ResultSaveBean serviceBean, List<Result> deletableResults) {
+        // Validate every supplied record ID before any loaded Result is changed.
+        // Keeping this at the shared boundary also protects legacy and review callers.
+        ResultSaveIdentityGuard.LoadedResults loaded = ResultSaveIdentityGuard.validate(analysis, serviceBean,
+                resultService, SpringContext.getBean(TestResultComponentService.class));
+        ResultEntryDefinition.requireType(loaded.componentScope(),
+                testResultService.getActiveTestResultsByTest(serviceBean.getTestId()), serviceBean.getResultType());
+        requireExistingType(loaded, serviceBean);
+        JSONObject multiSelection = validatedMultiSelection(serviceBean, loaded.componentScope());
         List<Result> results = new ArrayList<>();
         boolean isQualifiedResult = serviceBean.isHasQualifiedResult();
 
         if (TypeOfTestResultServiceImpl.ResultType.MULTISELECT.matches(serviceBean.getResultType())
                 || TypeOfTestResultServiceImpl.ResultType.CASCADING_MULTISELECT.matches(serviceBean.getResultType())) {
 
-            if (!GenericValidator.isBlankOrNull(serviceBean.getMultiSelectResultValues())) {
-                JSONParser parser = new JSONParser();
-                try {
-                    JSONObject jsonResult = (JSONObject) parser.parse(serviceBean.getMultiSelectResultValues());
-
-                    // Only this item's own multiselect selections may be reconciled
-                    // (and leftovers deleted). A multi-component analysis also holds
-                    // the other components' results — deleting those here orphans
-                    // their rows mid-save and their own update then fails.
-                    List<Result> existingResults = new ArrayList<>();
-                    for (Result existingResult : resultService.getResultsByAnalysis(analysis)) {
-                        if (!TypeOfTestResultServiceImpl.ResultType
-                                .isMultiSelectVariant(existingResult.getResultType())) {
-                            continue;
-                        }
-                        String existingComponentId = existingResult.getTestResult() == null ? null
-                                : existingResult.getTestResult().getComponentId();
-                        if (serviceBean.getTestResultComponentId() != null && existingComponentId != null
-                                && !serviceBean.getTestResultComponentId().equals(existingComponentId)) {
-                            continue;
-                        }
-                        existingResults.add(existingResult);
+            if (multiSelection != null) {
+                // Only this item's own multiselect selections may be reconciled
+                // (and leftovers deleted). A multi-component analysis also holds
+                // the other components' results — deleting those here orphans
+                // their rows mid-save and their own update then fails.
+                List<Result> existingResults = new ArrayList<>();
+                for (Result existingResult : resultService.getResultsByAnalysis(analysis)) {
+                    if (!TypeOfTestResultServiceImpl.ResultType.isMultiSelectVariant(existingResult.getResultType())) {
+                        continue;
                     }
-                    for (Object key : jsonResult.keySet()) {
-                        getResultsForMultiSelect(results, existingResults, serviceBean, (String) key,
-                                (String) jsonResult.get(key), isQualifiedResult);
+                    if (!loaded.componentScope().contains(existingResult)) {
+                        continue;
                     }
-                    deletableResults.addAll(existingResults);
-                } catch (ParseException e) {
-                    LogEvent.logDebug(e);
+                    existingResults.add(existingResult);
                 }
+                for (Object key : multiSelection.keySet()) {
+                    getResultsForMultiSelect(results, existingResults, serviceBean, (String) key,
+                            (String) multiSelection.get(key), isQualifiedResult, loaded.componentScope());
+                }
+                deletableResults.addAll(existingResults);
             }
 
         } else {
-            Result result = new Result();
-            Result qualifiedResult = null;
+            Result result = loaded.result() == null ? new Result() : loaded.result();
+            Result qualifiedResult = loaded.qualifiedResult();
 
             boolean newResult = GenericValidator.isBlankOrNull(serviceBean.getResultId());
 
             if (!newResult) {
-                result.setId(serviceBean.getResultId());
-                resultService.getData(result);
-
-                if (!GenericValidator.isBlankOrNull(serviceBean.getQualifiedResultId())) {
-                    qualifiedResult = new Result();
-                    qualifiedResult.setId(serviceBean.getQualifiedResultId());
-                    resultService.getData(qualifiedResult);
-                } else if (isQualifiedResult) {
+                if (qualifiedResult == null && isQualifiedResult) {
                     qualifiedResult = getQuantifiedResult(serviceBean, result);
                 }
             }
 
             if (TypeOfTestResultServiceImpl.ResultType.DICTIONARY.matches(serviceBean.getResultType())
                     || isQualifiedResult) {
-                setTestResultsForDictionaryResult(serviceBean.getTestId(), serviceBean.getResultValue(), result); // support
+                setTestResultsForDictionaryResult(serviceBean.getTestId(), serviceBean.getResultValue(), result,
+                        loaded.componentScope()); // support
                 // qualified
                 // result
             } else {
@@ -144,18 +136,17 @@ public class ResultSaveService {
                 // its component. Single-component tests keep the historic
                 // first-row assumption.
                 TestResult boundTestResult = null;
-                if (!GenericValidator.isBlankOrNull(serviceBean.getTestResultComponentId())) {
-                    for (TestResult testResult : testResultList) {
-                        if (serviceBean.getTestResultComponentId().equals(testResult.getComponentId())) {
-                            boundTestResult = testResult;
-                            break;
-                        }
+                for (TestResult testResult : ResultEntryDefinition.scopedDefinitions(loaded.componentScope(),
+                        testResultList)) {
+                    if (loaded.componentScope().contains(testResult)) {
+                        boundTestResult = testResult;
+                        break;
                     }
                 }
                 if (boundTestResult != null) {
                     result.setTestResult(boundTestResult);
-                } else if (result.getTestResult() == null && !testResultList.isEmpty()) {
-                    result.setTestResult(testResultList.get(0));
+                } else if (newResult && loaded.componentScope().hasComponents()) {
+                    throw new ResultSaveValidationException(ResultEntryDefinition.MISSING);
                 }
             }
 
@@ -194,8 +185,69 @@ public class ResultSaveService {
         return results;
     }
 
+    /** Batch preflight: performs no result setters and no persistence. */
+    public void validateResultIdentity(ResultSaveBean serviceBean) {
+        ResultSaveIdentityGuard.validate(analysis, serviceBean, resultService,
+                SpringContext.getBean(TestResultComponentService.class));
+    }
+
+    /**
+     * Definition readiness applies to result writes, not date/method-only updates.
+     * Returns false for an empty multiselect; shared legacy construction still
+     * supports explicit reconciliation, but ordinary entry must not mark it
+     * complete.
+     */
+    public boolean validateResultEntry(ResultSaveBean serviceBean) {
+        ResultSaveIdentityGuard.LoadedResults loaded = ResultSaveIdentityGuard.validate(analysis, serviceBean,
+                resultService, SpringContext.getBean(TestResultComponentService.class));
+        ResultEntryDefinition.requireType(loaded.componentScope(),
+                testResultService.getActiveTestResultsByTest(serviceBean.getTestId()), serviceBean.getResultType());
+        requireExistingType(loaded, serviceBean);
+        JSONObject selection = validatedMultiSelection(serviceBean, loaded.componentScope());
+        return !TypeOfTestResultServiceImpl.ResultType.isMultiSelectVariant(serviceBean.getResultType())
+                || selection != null && !selection.isEmpty();
+    }
+
+    /**
+     * Reject invalid selections before analysis/result setters or reconciliation.
+     */
+    private JSONObject validatedMultiSelection(ResultSaveBean bean, ResultSaveComponentScope scope) {
+        if (!TypeOfTestResultServiceImpl.ResultType.isMultiSelectVariant(bean.getResultType())
+                || GenericValidator.isBlankOrNull(bean.getMultiSelectResultValues()))
+            return null;
+        try {
+            Object parsed = new JSONParser().parse(bean.getMultiSelectResultValues());
+            if (!(parsed instanceof JSONObject selection))
+                throw new ResultSaveValidationException("error.results.componentMismatch");
+            List<TestResult> choices = ResultEntryDefinition.scopedDefinitions(scope,
+                    testResultService.getActiveTestResultsByTest(bean.getTestId()));
+            for (Object rawKey : selection.keySet()) {
+                if (!(rawKey instanceof String key) || !key.matches("0|[1-9][0-9]{0,9}") || Integer.parseInt(key) < 0
+                        || !(selection.get(key) instanceof String value))
+                    throw new ResultSaveValidationException("error.results.componentMismatch");
+                for (String selected : value.split(",", -1)) {
+                    if (selected.isBlank() || choices.stream().noneMatch(choice -> selected.equals(choice.getValue())))
+                        throw new ResultSaveValidationException("error.results.componentMismatch");
+                }
+            }
+            // An explicit empty object is retained for legacy reconciliation/clearing.
+            return selection;
+        } catch (ParseException | NumberFormatException e) {
+            throw new ResultSaveValidationException("error.results.componentMismatch");
+        }
+    }
+
+    private void requireExistingType(ResultSaveIdentityGuard.LoadedResults loaded, ResultSaveBean bean) {
+        Result original = loaded.result();
+        if (original != null && (!java.util.Objects.equals(original.getResultType(), bean.getResultType())
+                || original.getTestResult() != null && !java.util.Objects
+                        .equals(original.getTestResult().getTestResultType(), bean.getResultType())))
+            throw new ResultSaveValidationException(ResultEntryDefinition.MISSING);
+    }
+
     private void getResultsForMultiSelect(List<Result> results, List<Result> existingResults,
-            ResultSaveBean serviceBean, String key, String value, boolean isQualifiedResult) {
+            ResultSaveBean serviceBean, String key, String value, boolean isQualifiedResult,
+            ResultSaveComponentScope componentScope) {
         int groupingKey = Integer.parseInt(key);
         String[] multiResults = value.split(",");
 
@@ -221,11 +273,11 @@ public class ResultSaveService {
 
             Result result = new Result();
 
-            setTestResultsForDictionaryResult(serviceBean.getTestId(), resultAsString, result);
+            setTestResultsForDictionaryResult(serviceBean.getTestId(), resultAsString, result, componentScope);
             setNewResultValues(serviceBean, result);
             setAnalyteForResult(result);
             setStandardResultValues(resultAsString, result);
-            result.setSortOrder(getResultSortOrder(result.getValue()));
+            result.setSortOrder(result.getTestResult() == null ? "0" : result.getTestResult().getSortOrder());
             result.setGrouping(groupingKey);
 
             results.add(result);
@@ -268,15 +320,21 @@ public class ResultSaveService {
         }
     }
 
-    private TestResult setTestResultsForDictionaryResult(String testId, String dictValue, Result result) {
-        TestResult testResult;
-        testResult = testResultService.getTestResultsByTestAndDictonaryResult(testId, dictValue);
-
-        if (testResult != null) {
-            result.setTestResult(testResult);
+    private TestResult setTestResultsForDictionaryResult(String testId, String dictValue, Result result,
+            ResultSaveComponentScope scope) {
+        for (TestResult option : ResultEntryDefinition.scopedDefinitions(scope,
+                testResultService.getActiveTestResultsByTest(testId))) {
+            if (java.util.Objects.equals(dictValue, option.getValue()) && scope.contains(option)
+                    && (TypeOfTestResultServiceImpl.ResultType.isDictionaryVariant(option.getTestResultType())
+                            || "Q".equals(option.getTestResultType()))) {
+                result.setTestResult(option);
+                return option;
+            }
         }
-
-        return testResult;
+        if (!GenericValidator.isBlankOrNull(dictValue)) {
+            throw new ResultSaveValidationException("error.results.componentMismatch");
+        }
+        return null;
     }
 
     private void setNewResultValues(ResultSaveBean serviceBean, Result result) {
@@ -304,12 +362,6 @@ public class ResultSaveService {
         result.setValue(value);
         result.setSysUserId(currentUserId);
         result.setSortOrder("0");
-    }
-
-    private String getResultSortOrder(String resultValue) {
-        TestResult testResult = testResultService.getTestResultsByTestAndDictonaryResult(analysis.getTest().getId(),
-                resultValue);
-        return testResult == null ? "0" : testResult.getSortOrder();
     }
 
     private Result getQuantifiedResult(ResultSaveBean serviceBean, Result parentResult) {

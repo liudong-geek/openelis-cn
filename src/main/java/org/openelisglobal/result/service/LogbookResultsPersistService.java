@@ -7,5 +7,8 @@ import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
 
 public interface LogbookResultsPersistService {
 
+    ResultEntrySaveOutcome saveSingleResult(org.openelisglobal.test.beanItems.TestResultItem item,
+            jakarta.servlet.http.HttpServletRequest request);
+
     List<Analysis> persistDataSet(ResultsUpdateDataSet actionDataSet, List<IResultUpdate> updaters, String sysUserId);
 }

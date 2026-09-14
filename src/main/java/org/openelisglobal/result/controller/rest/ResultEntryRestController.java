@@ -1,35 +1,22 @@
 package org.openelisglobal.result.controller.rest;
 
 import jakarta.servlet.http.HttpServletRequest;
-import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import org.apache.commons.validator.GenericValidator;
 import org.hibernate.StaleObjectStateException;
-import org.openelisglobal.analysis.service.AnalysisService;
-import org.openelisglobal.analysis.service.AnalysisServiceImpl;
-import org.openelisglobal.analysis.valueholder.Analysis;
-import org.openelisglobal.audittrail.dao.HistoryDAO;
-import org.openelisglobal.audittrail.valueholder.History;
 import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.exception.LIMSRuntimeException;
-import org.openelisglobal.common.formfields.FormFields.Field;
-import org.openelisglobal.common.formfields.FormFields;
 import org.openelisglobal.common.log.LogEvent;
-import org.openelisglobal.common.services.registration.ResultUpdateRegister;
 import org.openelisglobal.common.services.registration.interfaces.IResultUpdate;
-import org.openelisglobal.common.util.ConfigurationProperties.Property;
-import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.dataexchange.fhir.exception.FhirPersistanceException;
 import org.openelisglobal.dataexchange.fhir.exception.FhirTransformationException;
 import org.openelisglobal.dataexchange.fhir.service.FhirTransformService;
 import org.openelisglobal.internationalization.MessageUtil;
-import org.openelisglobal.result.action.util.ResultUtil;
 import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
 import org.openelisglobal.result.controller.LogbookResultsBaseController;
 import org.openelisglobal.result.exception.ResultSaveValidationException;
@@ -53,7 +40,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
-import org.springframework.validation.Errors;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -68,7 +54,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
  * OGC-811).
  *
  * <p>
- * Concurrency model (multi-component FRS §O — optimistic, never locking):
+ * Concurrency model (FRS §O — version checks and transactional row locks):
  * <ul>
  * <li><b>FR-O1</b> — the save payload is one analysis ({@code
  * SingleResultEntryForm}); saving a row can never write another row.</li>
@@ -89,8 +75,6 @@ import org.springframework.web.bind.annotation.ResponseBody;
 public class ResultEntryRestController extends LogbookResultsBaseController {
 
     @Autowired
-    private AnalysisService analysisService;
-    @Autowired
     private TestSectionService testSectionService;
     @Autowired
     private UserService userService;
@@ -106,8 +90,6 @@ public class ResultEntryRestController extends LogbookResultsBaseController {
     private ResultEntryPresenceService presenceService;
     @Autowired
     private ResultEntryWorklistService resultEntryWorklistService;
-    @Autowired
-    private HistoryDAO historyDAO;
     @Autowired(required = false)
     private TestAlertEvaluationService testAlertEvaluationService;
 
@@ -171,93 +153,48 @@ public class ResultEntryRestController extends LogbookResultsBaseController {
         Map<String, Object> body = new HashMap<>();
 
         if (item == null || !analysisId.equals(item.getAnalysisId())) {
-            body.put("error", "Payload analysisId does not match the path analysisId — a save may only write the"
-                    + " analysis it names (FR-O1).");
+            body.put("error", "error.results.analysisMismatch");
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
         }
 
-        Analysis analysis = analysisService.get(analysisId);
-        if (analysis == null) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
-        }
-
-        ResponseEntity<Map<String, Object>> staleResponse = rejectIfStale(item, analysis, body);
-        if (staleResponse != null) {
-            return staleResponse;
-        }
-
-        item.setModified(true);
-
-        boolean useTechnicianName = ConfigurationProperties.getInstance()
-                .isPropertyValueEqual(Property.resultTechnicianName, "true");
-        boolean alwaysValidate = ConfigurationProperties.getInstance()
-                .isPropertyValueEqual(Property.ALWAYS_VALIDATE_RESULTS, "true");
-        boolean supportReferrals = FormFields.getInstance().useField(Field.ResultsReferral);
-        String statusRuleSet = ConfigurationProperties.getInstance().getPropertyValueUpperCase(Property.StatusRules);
-
-        ResultsUpdateDataSet dataSet = new ResultsUpdateDataSet(getSysUserId(request));
-        dataSet.filterModifiedItems(Collections.singletonList(item));
-
-        Errors errors = dataSet.validateModifiedItems();
-        if (errors.hasErrors()) {
-            body.put("error", errors.getAllErrors().stream().map(e -> MessageUtil.getMessage(e.getCode()))
-                    .collect(Collectors.joining("; ")));
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
-        }
-
-        ResultUtil.createResultsFromItems(dataSet, supportReferrals, alwaysValidate, useTechnicianName, statusRuleSet,
-                request);
-        ResultUtil.createAnalysisOnlyUpdates(dataSet, request);
-
-        List<IResultUpdate> updaters = ResultUpdateRegister.getRegisteredUpdaters();
+        org.openelisglobal.result.service.ResultEntrySaveOutcome saved;
         try {
-            List<Analysis> reflexAnalyses = logbookPersistService.persistDataSet(dataSet, updaters,
-                    getSysUserId(request));
-            body.put("reflex", reflexAnalyses.stream().filter(e -> !e.getResultCalculated())
-                    .map(e -> analysisService.getOrderAccessionNumber(e)).collect(Collectors.toList()));
-            body.put("calculated", reflexAnalyses.stream().filter(e -> e.getResultCalculated())
-                    .map(e -> analysisService.getOrderAccessionNumber(e)).collect(Collectors.toList()));
-
-            try {
-                fhirTransformService.transformPersistResultsEntryFhirObjects(dataSet);
-            } catch (FhirTransformationException | FhirPersistanceException e) {
-                LogEvent.logError(e);
-            }
-            if (testAlertEvaluationService != null) {
-                String currentUser = getSysUserId(request);
-                dataSet.getNewResults().forEach(rs -> {
-                    try {
-                        testAlertEvaluationService.evaluateAndDispatch(rs.result, currentUser);
-                    } catch (RuntimeException ex) {
-                        LogEvent.logError(ex);
-                    }
-                });
-            }
+            saved = logbookPersistService.saveSingleResult(item, request);
         } catch (LIMSRuntimeException e) {
-            if (e.getCause() instanceof StaleObjectStateException) {
-                return rejectStale(analysis, body);
-            }
             LogEvent.logError(e);
-            body.put("error", "errors.UpdateException");
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
+            body.put("error", e.getCause() instanceof StaleObjectStateException ? "error.results.staleSave"
+                    : "errors.UpdateException");
+            return ResponseEntity.status(e.getCause() instanceof StaleObjectStateException ? HttpStatus.CONFLICT
+                    : HttpStatus.INTERNAL_SERVER_ERROR).body(body);
         }
+        if (saved.status() != 200)
+            return ResponseEntity.status(saved.status()).body(saved.response());
 
-        for (IResultUpdate updater : updaters) {
+        ResultsUpdateDataSet dataSet = saved.dataSet();
+        // The service owns a new transaction. These effects cannot precede its commit.
+        try {
+            fhirTransformService.transformPersistResultsEntryFhirObjects(dataSet);
+        } catch (FhirTransformationException | FhirPersistanceException e) {
+            LogEvent.logError(e);
+        }
+        if (testAlertEvaluationService != null) {
+            String currentUser = dataSet.getCurrentUserId();
+            dataSet.getNewResults().forEach(rs -> {
+                try {
+                    testAlertEvaluationService.evaluateAndDispatch(rs.result, currentUser);
+                } catch (RuntimeException ex) {
+                    LogEvent.logError(ex);
+                }
+            });
+        }
+        for (IResultUpdate updater : saved.updaters()) {
             try {
                 updater.postTransactionalCommitUpdate(dataSet);
             } catch (RuntimeException e) {
                 LogEvent.logError(e);
             }
         }
-
-        Analysis persisted = analysisService.get(analysisId);
-        if (persisted != null) {
-            body.put("analysisStatusId", persisted.getStatusId());
-            if (persisted.getLastupdated() != null) {
-                body.put("analysisLastupdated", String.valueOf(persisted.getLastupdated().getTime()));
-            }
-        }
-        return ResponseEntity.ok(body);
+        return ResponseEntity.ok(saved.response());
     }
 
     /**
@@ -297,17 +234,6 @@ public class ResultEntryRestController extends LogbookResultsBaseController {
         }
     }
 
-    private ResponseEntity<Map<String, Object>> rejectIfStale(TestResultItem item, Analysis analysis,
-            Map<String, Object> body) {
-        Timestamp current = analysis.getLastupdated();
-        String clientToken = item.getAnalysisLastupdated();
-        if (current != null && !GenericValidator.isBlankOrNull(clientToken)
-                && current.getTime() != Long.parseLong(clientToken)) {
-            return rejectStale(analysis, body);
-        }
-        return null;
-    }
-
     @ExceptionHandler(ResultSaveValidationException.class)
     public ResponseEntity<Map<String, Object>> resultSaveValidationFailure(ResultSaveValidationException exception) {
         String code = exception.getErrorCode();
@@ -317,44 +243,9 @@ public class ResultEntryRestController extends LogbookResultsBaseController {
                 "error.results.orderMismatch", "error.results.reviewedResultLocked",
                 "error.results.statusConfigurationInvalid", "error.results.specimenIntakeMissing",
                 "error.results.specimenIntakeChanged", "error.results.testIntakeChanged",
-                "error.results.analysisEntryUnavailable", "error.results.specimenRejected");
+                "error.results.analysisEntryUnavailable", "error.results.staleSave", "error.results.specimenRejected");
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(Map.of("error", code != null && known.contains(code) ? code : "error.save.msg"));
-    }
-
-    /**
-     * 409 body for FR-O2: names who last saved this analysis and when, so the stale
-     * editor gets "updated by {0} at {1} — refresh" rather than a silent merge. The
-     * stale editor always loses; the active user's save is never overwritten.
-     */
-    private ResponseEntity<Map<String, Object>> rejectStale(Analysis analysis, Map<String, Object> body) {
-        body.put("error", "error.results.staleSave");
-        if (analysis.getLastupdated() != null) {
-            body.put("modifiedAt", analysis.getLastupdated().toString());
-            body.put("analysisLastupdated", String.valueOf(analysis.getLastupdated().getTime()));
-        }
-        body.put("modifiedBy", resolveLastModifier(analysis));
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
-    }
-
-    private String resolveLastModifier(Analysis analysis) {
-        try {
-            List<History> rows = historyDAO.getHistoryByRefIdAndRefTableId(analysis.getId(),
-                    AnalysisServiceImpl.getTableReferenceId());
-            History latest = null;
-            for (History row : rows) {
-                if (latest == null || (row.getTimestamp() != null && latest.getTimestamp() != null
-                        && row.getTimestamp().after(latest.getTimestamp()))) {
-                    latest = row;
-                }
-            }
-            if (latest != null) {
-                return getUserDisplayName(latest.getSysUserId());
-            }
-        } catch (RuntimeException e) {
-            LogEvent.logError(e);
-        }
-        return MessageUtil.getMessage("label.results.anotherUser");
     }
 
     private String getUserDisplayName(String sysUserId) {
