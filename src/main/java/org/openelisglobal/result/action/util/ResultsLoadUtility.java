@@ -163,6 +163,8 @@ public class ResultsLoadUtility {
     private org.openelisglobal.testresultcomponent.service.TestResultComponentService testResultComponentService;
     @Autowired
     private org.openelisglobal.unitofmeasure.service.UnitOfMeasureService unitOfMeasureService;
+    @Autowired
+    private org.openelisglobal.result.service.ResultSpecimenAvailabilityService specimenAvailabilityService;
 
     private final StatusRules statusRules = new StatusRules();
 
@@ -533,6 +535,7 @@ public class ResultsLoadUtility {
             }
         }
 
+        specimenAvailabilityService.explain(analysis, testResultList);
         return testResultList;
     }
 

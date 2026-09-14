@@ -17,13 +17,13 @@ import org.openelisglobal.audittrail.dao.HistoryDAO;
 import org.openelisglobal.audittrail.valueholder.History;
 import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.exception.LIMSRuntimeException;
-import org.openelisglobal.common.formfields.FormFields;
 import org.openelisglobal.common.formfields.FormFields.Field;
+import org.openelisglobal.common.formfields.FormFields;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.services.registration.ResultUpdateRegister;
 import org.openelisglobal.common.services.registration.interfaces.IResultUpdate;
-import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.ConfigurationProperties.Property;
+import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.dataexchange.fhir.exception.FhirPersistanceException;
 import org.openelisglobal.dataexchange.fhir.exception.FhirTransformationException;
@@ -32,6 +32,7 @@ import org.openelisglobal.internationalization.MessageUtil;
 import org.openelisglobal.result.action.util.ResultUtil;
 import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
 import org.openelisglobal.result.controller.LogbookResultsBaseController;
+import org.openelisglobal.result.exception.ResultSaveValidationException;
 import org.openelisglobal.result.form.LogbookResultsForm;
 import org.openelisglobal.result.form.SingleResultEntryForm;
 import org.openelisglobal.result.service.LogbookResultsPersistService;
@@ -54,6 +55,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.Errors;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -304,6 +306,18 @@ public class ResultEntryRestController extends LogbookResultsBaseController {
             return rejectStale(analysis, body);
         }
         return null;
+    }
+
+    @ExceptionHandler(ResultSaveValidationException.class)
+    public ResponseEntity<Map<String, Object>> resultSaveValidationFailure(ResultSaveValidationException exception) {
+        String code = exception.getErrorCode();
+        List<String> known = List.of("error.results.specimenNotEligible", "error.results.analysisMismatch",
+                "error.results.resultMismatch", "error.results.qualifiedResultMismatch", "error.results.testMismatch",
+                "error.results.componentMismatch", "error.results.resultDefinitionMissing",
+                "error.results.orderMismatch", "error.results.reviewedResultLocked",
+                "error.results.statusConfigurationInvalid");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("error", code != null && known.contains(code) ? code : "error.save.msg"));
     }
 
     /**

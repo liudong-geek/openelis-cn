@@ -200,6 +200,7 @@ public class TestResultItem implements ResultItem, Serializable {
     private String siblingReflexKey;
     private String thisReflexKey;
     private boolean readOnly = false;
+    private String resultEntryBlockedReason;
     private boolean referredOut = false;
     private boolean referralCanceled = false;
 
@@ -789,6 +790,15 @@ public class TestResultItem implements ResultItem, Serializable {
 
     public boolean isReadOnly() {
         return readOnly;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String getResultEntryBlockedReason() {
+        return resultEntryBlockedReason;
+    }
+
+    public void setResultEntryBlockedReason(String resultEntryBlockedReason) {
+        this.resultEntryBlockedReason = resultEntryBlockedReason;
     }
 
     public void setReferralId(String referralId) {
