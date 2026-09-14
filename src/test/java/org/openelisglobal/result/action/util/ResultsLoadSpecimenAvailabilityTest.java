@@ -71,6 +71,7 @@ public class ResultsLoadSpecimenAvailabilityTest {
         when(config.getPropertyValue(Property.AmbiguousDateHolder)).thenReturn("X");
         beans.put(DefaultConfigurationProperties.class, config);
         IStatusService statuses = mock(IStatusService.class);
+        ResultReviewTransitionTest.configure(statuses);
         when(statuses.getStatusID(SampleStatus.Entered)).thenReturn("10");
         beans.put(IStatusService.class, statuses);
         AutowireCapableBeanFactory factory = mock(AutowireCapableBeanFactory.class, call -> {
@@ -110,6 +111,9 @@ public class ResultsLoadSpecimenAvailabilityTest {
         tube.setStatusId("10");
         analysis = new Analysis();
         analysis.setId("101");
+        analysis.setStatusId("1");
+        when(dao.findState("101")).thenAnswer(call -> new OrdinaryResultSaveStateDAO.State("101",
+                analysis.getStatusId(), analysis.getReleasedDate(), analysis.getPrintedDate()));
         analysis.setTest(test);
         analysis.setSampleItem(tube);
         analysis.setCompletedDate(Timestamp.valueOf("2026-09-14 09:00:00"));

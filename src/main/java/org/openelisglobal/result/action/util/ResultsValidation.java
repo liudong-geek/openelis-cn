@@ -126,7 +126,11 @@ public class ResultsValidation {
                 return;
             }
             try {
-                Double.parseDouble(StringUtil.getActualNumericValue(resultValue));
+                // The helper returns NaN for malformed input; parseDouble accepts
+                // NaN and infinities, so parsing alone is not numeric validation.
+                if (!Double.isFinite(Double.parseDouble(StringUtil.getActualNumericValue(resultValue)))) {
+                    errors.reject("errors.number.format");
+                }
             } catch (NumberFormatException e) {
                 // errors.add(new ActionError("errors.number.format", new
                 // StringBuilder("Result")));

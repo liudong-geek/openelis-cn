@@ -35,11 +35,15 @@ test.each([
   draft.held = true;
   expect(canResumeDraft(draft, rows[0])).toBe(false);
 });
-test("新增检验项目不能把已验收的原项目一起锁住", () => {
+test.each([
+  "error.results.testIntakeChanged",
+  "error.results.reviewedResultLocked",
+  "error.results.analysisEntryUnavailable",
+])("项目状态 %s 仅锁该项目的全部组件", (reason) => {
   const blocked = {
     ...row,
     analysisId: "102",
-    resultEntryBlockedReason: "error.results.testIntakeChanged",
+    resultEntryBlockedReason: reason,
   };
   const rows = restrictTubes([
     blocked,
@@ -50,10 +54,13 @@ test("新增检验项目不能把已验收的原项目一起锁住", () => {
       testResultComponentId: "second",
     },
   ]);
-  expect(entryReason(rows[0])).toBe("error.results.testIntakeChanged");
+  expect(entryReason(rows[0])).toBe(reason);
   expect(entryBlocked(rows[0])).toBe(true);
   expect(entryBlocked(rows[1])).toBe(false);
   expect(entryBlocked(rows[2])).toBe(true);
+  const draft = newEntryDraft(rows[2]);
+  draft.held = true;
+  expect(canResumeDraft(draft, rows[2])).toBe(false);
 });
 test.each([
   "resultType",

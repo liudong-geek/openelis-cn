@@ -46,7 +46,9 @@ public class ResultSpecimenWriteGuard {
             throw blocked();
         }
         requireStatusConfiguration(eligible);
-        Map<String, Owner> owners = owners(data, eligible);
+        OrdinaryResultReviewPolicy review = OrdinaryResultReviewPolicy.read(statuses);
+        var rejecting = explicitRejections(data);
+        Map<String, Owner> owners = owners(data, eligible, review, rejecting);
         if (owners.isEmpty())
             return () -> {
             };
@@ -63,7 +65,7 @@ public class ResultSpecimenWriteGuard {
         Runnable managedCheck = () -> {
             Map<String, Owner> current = new TreeMap<>();
             lockedAnalyses.forEach((id, analysis) -> {
-                add(current, analysis, eligible);
+                add(current, analysis, eligible, review, rejecting);
                 if (!id.equals(analysis.getId())) {
                     throw blocked();
                 }
@@ -82,9 +84,19 @@ public class ResultSpecimenWriteGuard {
         };
         managedCheck.run();
         Map<String, SpecimenState> frozen = new TreeMap<>();
-        owners.forEach((id, owner) -> frozen.put(id, verify(id, owner, eligible)));
+        owners.forEach((id, owner) -> {
+            frozen.put(id, verify(id, owner, eligible));
+            var original = states.findState(id);
+            OrdinaryResultReviewPolicy.require(review.sourceReason(original));
+            if (!id.equals(original.analysisId()))
+                throw new ResultSaveValidationException(OrdinaryResultReviewPolicy.UNAVAILABLE);
+        });
         return () -> {
-            if (!owners.equals(owners(data, eligible))
+            if (!review.sameConfiguration(OrdinaryResultReviewPolicy.read(statuses)))
+                throw new ResultSaveValidationException(OrdinaryResultReviewPolicy.CONFIGURATION);
+            if (!rejecting.equals(explicitRejections(data)))
+                throw new ResultSaveValidationException(OrdinaryResultReviewPolicy.UNAVAILABLE);
+            if (!owners.equals(owners(data, eligible, review, rejecting))
                     || !eligible.equals(statuses.getStatusID(SampleStatus.Entered))) {
                 throw blocked();
             }
@@ -97,6 +109,11 @@ public class ResultSpecimenWriteGuard {
                 if (!frozen.get(id).equals(verify(id, owner, eligible))) {
                     throw blocked();
                 }
+                var persisted = states.findState(id);
+                OrdinaryResultReviewPolicy.require(review.targetReason(persisted, rejecting.contains(id)));
+                if (!id.equals(persisted.analysisId())
+                        || !persisted.equals(OrdinaryResultReviewPolicy.state(lockedAnalyses.get(id))))
+                    throw new ResultSaveValidationException(OrdinaryResultReviewPolicy.UNAVAILABLE);
             });
         };
     }
@@ -121,13 +138,14 @@ public class ResultSpecimenWriteGuard {
         return state;
     }
 
-    private Map<String, Owner> owners(ResultsUpdateDataSet data, String eligible) {
+    private Map<String, Owner> owners(ResultsUpdateDataSet data, String eligible, OrdinaryResultReviewPolicy review,
+            java.util.Set<String> rejecting) {
         if (data == null) {
             throw blocked();
         }
         Map<String, Owner> owners = new TreeMap<>();
         for (Analysis analysis : data.getModifiedAnalysis()) {
-            add(owners, analysis, eligible);
+            add(owners, analysis, eligible, review, rejecting);
         }
         List<ResultSet> results = new ArrayList<>(data.getNewResults());
         results.addAll(data.getModifiedResults());
@@ -136,7 +154,7 @@ public class ResultSpecimenWriteGuard {
                 throw blocked();
             }
             Analysis analysis = result.result.getAnalysis();
-            add(owners, analysis, eligible);
+            add(owners, analysis, eligible, review, rejecting);
             if (!owners.get(analysis.getId()).sampleId().equals(result.sample.getId())) {
                 throw blocked();
             }
@@ -145,21 +163,21 @@ public class ResultSpecimenWriteGuard {
             if (result == null) {
                 throw blocked();
             }
-            add(owners, result.getAnalysis(), eligible);
+            add(owners, result.getAnalysis(), eligible, review, rejecting);
         }
         for (var referral : data.getSavableReferralSets()) {
             if (referral != null) {
                 if (referral.getReferral() == null) {
                     throw blocked();
                 }
-                add(owners, referral.getReferral().getAnalysis(), eligible);
+                add(owners, referral.getReferral().getAnalysis(), eligible, review, rejecting);
                 for (var result : referral.getUpdatableReferralResults()) {
                     if (result == null) {
                         throw blocked();
                     }
                     // A new referral may legitimately have no returned result yet.
                     if (result.getResult() != null) {
-                        add(owners, result.getResult().getAnalysis(), eligible);
+                        add(owners, result.getResult().getAnalysis(), eligible, review, rejecting);
                     }
                 }
             }
@@ -177,7 +195,8 @@ public class ResultSpecimenWriteGuard {
         return owners;
     }
 
-    private void add(Map<String, Owner> owners, Analysis analysis, String eligible) {
+    private void add(Map<String, Owner> owners, Analysis analysis, String eligible, OrdinaryResultReviewPolicy review,
+            java.util.Set<String> rejecting) {
         if (analysis == null || !positive(analysis.getId()) || analysis.getTest() == null
                 || !positive(analysis.getTest().getId()) || analysis.getSampleItem() == null
                 || !positive(analysis.getSampleItem().getId()) || analysis.getSampleItem().getSample() == null
@@ -185,6 +204,8 @@ public class ResultSpecimenWriteGuard {
                 || analysis.getSampleItem().isVoided() || !eligible.equals(analysis.getSampleItem().getStatusId())) {
             throw blocked();
         }
+        OrdinaryResultReviewPolicy.require(
+                review.targetReason(OrdinaryResultReviewPolicy.state(analysis), rejecting.contains(analysis.getId())));
         Owner owner = new Owner(analysis.getTest().getId(), analysis.getSampleItem().getId(),
                 analysis.getSampleItem().getSample().getId());
         Owner previous = owners.putIfAbsent(analysis.getId(), owner);
@@ -195,6 +216,21 @@ public class ResultSpecimenWriteGuard {
 
     private static boolean positive(String value) {
         return value != null && value.matches("[1-9][0-9]{0,9}");
+    }
+
+    private static java.util.Set<String> explicitRejections(ResultsUpdateDataSet data) {
+        if (data == null)
+            throw blocked();
+        Map<String, Boolean> decisions = new TreeMap<>();
+        for (var item : data.getModifiedItems()) {
+            if (item == null || !positive(item.getAnalysisId()))
+                throw blocked();
+            Boolean previous = decisions.putIfAbsent(item.getAnalysisId(), item.isShadowRejected());
+            if (previous != null && previous != item.isShadowRejected())
+                throw new ResultSaveValidationException(OrdinaryResultReviewPolicy.UNAVAILABLE);
+        }
+        return decisions.entrySet().stream().filter(Map.Entry::getValue).map(Map.Entry::getKey)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
     private void requireStatusConfiguration(String eligible) {

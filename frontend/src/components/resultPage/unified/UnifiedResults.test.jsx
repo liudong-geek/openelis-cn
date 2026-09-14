@@ -185,7 +185,7 @@ describe("UnifiedResults", () => {
     fireEvent.change(input, { target: { value: "7.2" } });
     fireEvent.click(await screen.findByRole("button", { name: "Save" }));
 
-    expect(await screen.findByText("Technical acceptance")).toBeInTheDocument();
+    expect(await screen.findByText("Pending review")).toBeInTheDocument();
     expect(screen.queryByText("Not started")).not.toBeInTheDocument();
   });
 });

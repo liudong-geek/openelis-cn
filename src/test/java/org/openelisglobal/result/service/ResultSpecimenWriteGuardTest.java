@@ -39,6 +39,7 @@ public class ResultSpecimenWriteGuardTest {
                 .setCurrentTransactionIsolationLevel(java.sql.Connection.TRANSACTION_SERIALIZABLE);
         dao = mock(OrdinaryResultSaveStateDAO.class);
         statuses = mock(IStatusService.class);
+        org.openelisglobal.result.action.util.ResultReviewTransitionTest.configure(statuses);
         when(statuses.getStatusID(SampleStatus.Entered)).thenReturn("10");
         guard = new ResultSpecimenWriteGuard(dao, statuses);
         data = mock(ResultsUpdateDataSet.class);
@@ -48,6 +49,7 @@ public class ResultSpecimenWriteGuardTest {
         when(dao.findSpecimenState("101")).thenReturn(state("10", false, false));
         when(dao.lockSpecimen("201")).thenReturn(analysis.getSampleItem());
         when(dao.lockAnalysis("101")).thenReturn(analysis);
+        when(dao.findState("101")).thenAnswer(call -> OrdinaryResultReviewPolicy.state(analysis));
         ResultIntakeAdmissionTest.allow(dao, "201", "101");
         ResultIntakeAdmissionTest.allow(dao, "202", "102");
     }
@@ -85,6 +87,106 @@ public class ResultSpecimenWriteGuardTest {
     private void denied() {
         assertEquals(ResultSpecimenWriteGuard.BLOCKED,
                 assertThrows(ResultSaveValidationException.class, () -> guard.begin(data)).getErrorCode());
+    }
+
+    @Test
+    public void persistedReviewedStateCannotBeHiddenByPreparedPendingAnalysis() {
+        when(statuses.getStatusID(org.openelisglobal.common.services.StatusService.AnalysisStatus.Finalized)).thenReturn("90");
+        when(dao.findState("101")).thenReturn(new OrdinaryResultSaveStateDAO.State("101", "90", null, null));
+        assertEquals("error.results.reviewedResultLocked",
+                assertThrows(ResultSaveValidationException.class, () -> guard.begin(data)).getErrorCode());
+        verify(dao, never()).flush();
+    }
+
+    @Test
+    public void releasedAndPrintedSourceCannotBeReopenedByAnUnreviewedStatus() {
+        var date = java.sql.Timestamp.valueOf("2026-09-14 08:00:00");
+        for (var source : List.of(new OrdinaryResultSaveStateDAO.State("101", "1", date, null),
+                new OrdinaryResultSaveStateDAO.State("101", "9", null, date))) {
+            when(dao.findState("101")).thenReturn(source);
+            assertEquals(OrdinaryResultReviewPolicy.REVIEWED,
+                    assertThrows(ResultSaveValidationException.class, () -> guard.begin(data)).getErrorCode());
+        }
+        verify(dao, never()).flush();
+    }
+
+    @Test
+    public void rejectedCanceledUnknownOrMissingSourceCannotBeOrdinaryEdited() {
+        for (var status : org.openelisglobal.common.services.StatusService.AnalysisStatus.values()) {
+            if (status == org.openelisglobal.common.services.StatusService.AnalysisStatus.NotStarted
+                    || status == org.openelisglobal.common.services.StatusService.AnalysisStatus.TechnicalAcceptance
+                    || status == org.openelisglobal.common.services.StatusService.AnalysisStatus.Finalized)
+                continue;
+            String statusId = statuses.getStatusID(status);
+            when(dao.findState("101")).thenReturn(new OrdinaryResultSaveStateDAO.State("101", statusId, null, null));
+            assertEquals(OrdinaryResultReviewPolicy.UNAVAILABLE,
+                    assertThrows(ResultSaveValidationException.class, () -> guard.begin(data)).getErrorCode());
+        }
+        when(dao.findState("101")).thenReturn(null);
+        assertEquals(OrdinaryResultReviewPolicy.UNAVAILABLE,
+                assertThrows(ResultSaveValidationException.class, () -> guard.begin(data)).getErrorCode());
+    }
+
+    @Test
+    public void lateManagedReviewOrPersistedPrintCannotCommit() {
+        Runnable recheck = guard.begin(data);
+        analysis.setStatusId("90");
+        assertEquals(OrdinaryResultReviewPolicy.REVIEWED,
+                assertThrows(ResultSaveValidationException.class, recheck::run).getErrorCode());
+        analysis.setStatusId("1");
+        when(dao.findState("101")).thenReturn(new OrdinaryResultSaveStateDAO.State("101", "1", null,
+                java.sql.Timestamp.valueOf("2026-09-14 08:00:00")));
+        assertEquals(OrdinaryResultReviewPolicy.REVIEWED,
+                assertThrows(ResultSaveValidationException.class, recheck::run).getErrorCode());
+    }
+
+    @Test
+    public void reviewDictionaryMustBeCompleteUniqueAndStable() {
+        Runnable recheck = guard.begin(data);
+        var status = org.openelisglobal.common.services.StatusService.AnalysisStatus.Finalized;
+        for (String value : new String[] { null, "", "1", "-9", "SIM-STATUS" }) {
+            when(statuses.getStatusID(status)).thenReturn(value);
+            assertEquals(OrdinaryResultReviewPolicy.CONFIGURATION,
+                    assertThrows(ResultSaveValidationException.class, () -> guard.begin(data)).getErrorCode());
+        }
+        when(statuses.getStatusID(status)).thenReturn("91");
+        assertEquals(OrdinaryResultReviewPolicy.CONFIGURATION,
+                assertThrows(ResultSaveValidationException.class, recheck::run).getErrorCode());
+    }
+
+    @Test
+    public void onlyExplicitNewRejectionMayReachRejectedOrCanceledTarget() {
+        var item = new org.openelisglobal.test.beanItems.TestResultItem();
+        item.setAnalysisId("101");
+        item.setShadowRejected(true);
+        when(data.getModifiedItems()).thenReturn(List.of(item));
+        for (var status : List.of(org.openelisglobal.common.services.StatusService.AnalysisStatus.TechnicalRejected,
+                org.openelisglobal.common.services.StatusService.AnalysisStatus.Canceled)) {
+            analysis.setStatusId(statuses.getStatusID(status));
+            when(dao.findState("101")).thenReturn(new OrdinaryResultSaveStateDAO.State("101", "1", null, null));
+            Runnable recheck = guard.begin(data);
+            when(dao.findState("101")).thenAnswer(call -> OrdinaryResultReviewPolicy.state(analysis));
+            recheck.run();
+            item.setShadowRejected(false);
+            assertEquals(OrdinaryResultReviewPolicy.UNAVAILABLE,
+                    assertThrows(ResultSaveValidationException.class, recheck::run).getErrorCode());
+            assertEquals(OrdinaryResultReviewPolicy.UNAVAILABLE,
+                    assertThrows(ResultSaveValidationException.class, () -> guard.begin(data)).getErrorCode());
+            item.setShadowRejected(true);
+        }
+    }
+
+    @Test
+    public void conflictingComponentRejectionsCannotAuthorizeWholeAnalysisCancellation() {
+        var one = new org.openelisglobal.test.beanItems.TestResultItem();
+        one.setAnalysisId("101");
+        one.setShadowRejected(true);
+        var two = new org.openelisglobal.test.beanItems.TestResultItem();
+        two.setAnalysisId("101");
+        when(data.getModifiedItems()).thenReturn(List.of(one, two));
+        assertEquals(OrdinaryResultReviewPolicy.UNAVAILABLE,
+                assertThrows(ResultSaveValidationException.class, () -> guard.begin(data)).getErrorCode());
+        verifyZeroInteractions(dao);
     }
 
     @Test
@@ -357,6 +459,7 @@ public class ResultSpecimenWriteGuardTest {
         analyses.add(second);
         when(dao.lockSpecimen("19")).thenReturn(second.getSampleItem());
         when(dao.lockAnalysis("9")).thenReturn(second);
+        when(dao.findState("9")).thenAnswer(call -> OrdinaryResultReviewPolicy.state(second));
         when(dao.findSpecimenState("9")).thenReturn(new SpecimenState("9", "401", "19", "301", "10", false, false));
         guard.begin(data).run();
         var order = inOrder(dao);

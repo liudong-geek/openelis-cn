@@ -206,9 +206,9 @@ public class ResultUtil {
     }
 
     public static boolean areResults(TestResultItem item) {
-        return !(GenericValidator.isBlankOrNull(item.getShadowResultValue())
+        return !(GenericValidator.isBlankOrNull(item.getResultValue())
                 || (TypeOfTestResultServiceImpl.ResultType.DICTIONARY.matches(item.getResultType())
-                        && "0".equals(item.getShadowResultValue())))
+                        && "0".equals(item.getResultValue())))
                 || (TypeOfTestResultServiceImpl.ResultType.isMultiSelectVariant(item.getResultType())
                         && !GenericValidator.isBlankOrNull(item.getMultiSelectResultValues()));
     }
@@ -490,24 +490,13 @@ public class ResultUtil {
             return SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.TechnicalRejected);
         } else if (testResult.isShadowRejected()) {
             return SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.Canceled);
-        } else if (alwaysValidate || !testResult.isValid() || ResultUtil.isForcedToAcceptance(testResult)) {
-            return SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.TechnicalAcceptance);
-        } else if (noResults(testResult.getShadowResultValue(), testResult.getMultiSelectResultValues(),
+        } else if (noResults(testResult.getResultValue(), testResult.getMultiSelectResultValues(),
                 testResult.getResultType())) {
             return SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.NotStarted);
         } else {
-            if (!GenericValidator.isBlankOrNull(testResult.getResultLimitId())) {
-                ResultLimit resultLimit = resultLimitService.get(testResult.getResultLimitId());
-                if (resultLimit.isAlwaysValidate()) {
-                    return SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.TechnicalAcceptance);
-                }
-                if (TypeOfTestResultServiceImpl.ResultType.DICTIONARY.matches(testResult.getResultType())
-                        && !testResult.getResultValue().equals(resultLimit.getDictionaryNormalId())) {
-                    return SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.TechnicalAcceptance);
-                }
-            }
-
-            return SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.Finalized);
+            // Ordinary entry never constitutes review. Keep the legacy flag in the
+            // method contract for callers, but it cannot authorize Finalized results.
+            return SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.TechnicalAcceptance);
         }
     }
 

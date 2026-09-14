@@ -3654,7 +3654,7 @@
   "results.analysisStatus.4": "Not started",
   "results.analysisStatus.7": "Biologist rejection",
   "results.analysisStatus.14": "Canceled",
-  "results.analysisStatus.15": "Technical acceptance",
+  "results.analysisStatus.15": "Pending review",
   "results.analysisStatus.16": "Technical rejection",
   "label.routine.Reports": "Routine Reports",
   "label.sample.types.activate": "The following sample types will be activated:",
@@ -8690,5 +8690,6 @@
   "results.workbench.entryUnavailable": "This result is read-only. Check its status and configuration before entering results.",
   "error.results.specimenIntakeMissing": "该管尚未完成接收验收，请在原申请中核对并记录接收或拒收，再重新查询。",
   "error.results.specimenIntakeChanged": "该管的患者、申请或验收依据已变化，暂不能录入；请核对原申请及验收记录。",
-  "error.results.testIntakeChanged": "该检验项目未被当前接收记录覆盖，或项目已停用，请核对项目后重新查询。"
+  "error.results.testIntakeChanged": "该检验项目未被当前接收记录覆盖，或项目已停用，请核对项目后重新查询。",
+  "error.results.analysisEntryUnavailable": "This test cannot be changed through ordinary entry. Check its review, cancellation or rejection status and use the appropriate workflow."
 }

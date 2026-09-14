@@ -93,6 +93,7 @@ public class ResultSpecimenPersistenceTest {
         previousFactory = ReflectionTestUtils.getField(SpringContext.class, "factory");
         Map<Class<?>, Object> beans = new HashMap<>();
         IStatusService statuses = mock(IStatusService.class);
+        org.openelisglobal.result.action.util.ResultReviewTransitionTest.configure(statuses);
         when(statuses.getStatusID(SampleStatus.Entered)).thenReturn("10");
         beans.put(IStatusService.class, statuses);
         AutowireCapableBeanFactory factory = mock(AutowireCapableBeanFactory.class, invocation -> {
@@ -106,6 +107,7 @@ public class ResultSpecimenPersistenceTest {
         analysis = ResultSpecimenWriteGuardTest.tube("101", "201");
         persisted.set(state(false));
         dao = mock(OrdinaryResultSaveStateDAO.class);
+        when(dao.findState("101")).thenAnswer(call -> OrdinaryResultReviewPolicy.state(analysis));
         when(dao.findSpecimenState("101")).thenAnswer(invocation -> persisted.get());
         when(dao.lockSpecimen("201")).thenReturn(analysis.getSampleItem());
         when(dao.lockAnalysis("101")).thenReturn(analysis);
@@ -164,6 +166,48 @@ public class ResultSpecimenPersistenceTest {
         assertEquals(List.of("SIM-note", "SIM-analysis"), effects);
         verify(updater).transactionalUpdate(data);
         assertEquals(1, tx.commits);
+    }
+
+    @Test
+    public void finalizedPersistedSourceRollsBackBeforeAnyEffects() {
+        when(dao.findState("101")).thenReturn(new OrdinaryResultSaveStateDAO.State("101", "90", null, null));
+        assertEquals(OrdinaryResultReviewPolicy.REVIEWED, assertThrows(ResultSaveValidationException.class,
+                () -> service.persistDataSet(data, List.of(updater), "701")).getErrorCode());
+        verifyZeroInteractions(notes, updater, results);
+        assertTrue(effects.isEmpty()); assertEquals(1, tx.rollbacks); assertEquals(0, tx.commits);
+    }
+
+    @Test
+    public void reviewInsideUpdaterRollsBackPreparedEffects() {
+        doAnswer(call -> {
+            analysis.setStatusId("90");
+            return null;
+        }).when(updater).transactionalUpdate(data);
+        assertEquals(OrdinaryResultReviewPolicy.REVIEWED, assertThrows(ResultSaveValidationException.class,
+                () -> service.persistDataSet(data, List.of(updater), "701")).getErrorCode());
+        assertTrue(effects.isEmpty());
+        assertEquals(1, tx.rollbacks);
+        assertEquals(0, tx.commits);
+    }
+
+    @Test
+    public void beforeCommitReleaseRollsBackPreparedEffects() {
+        var template = new TransactionTemplate(tx);
+        template.setIsolationLevel(TransactionDefinition.ISOLATION_SERIALIZABLE);
+        assertEquals(OrdinaryResultReviewPolicy.REVIEWED,
+                assertThrows(ResultSaveValidationException.class, () -> template.execute(status -> {
+                    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                        @Override
+                        public void beforeCommit(boolean readOnly) {
+                            analysis.setReleasedDate(java.sql.Timestamp.valueOf("2026-09-14 08:00:00"));
+                        }
+                    });
+                    target.persistDataSet(data, List.of(updater), "701");
+                    return null;
+                })).getErrorCode());
+        assertTrue(effects.isEmpty());
+        assertEquals(1, tx.rollbacks);
+        assertEquals(0, tx.commits);
     }
 
     @Test

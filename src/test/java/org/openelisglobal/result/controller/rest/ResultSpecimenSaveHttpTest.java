@@ -104,6 +104,7 @@ public class ResultSpecimenSaveHttpTest {
         when(config.getPropertyValue(Property.DEFAULT_DATE_LOCALE)).thenReturn("en");
         beans.put(DefaultConfigurationProperties.class, config);
         IStatusService statuses = mock(IStatusService.class);
+        org.openelisglobal.result.action.util.ResultReviewTransitionTest.configure(statuses);
         when(statuses.getStatusID(SampleStatus.Entered)).thenReturn("10");
         beans.put(IStatusService.class, statuses);
         analyses = mock(AnalysisService.class);
@@ -133,10 +134,13 @@ public class ResultSpecimenSaveHttpTest {
         test.setId("401");
         analysis = new Analysis();
         analysis.setId("101");
+        analysis.setStatusId("1");
         analysis.setTest(test);
         analysis.setSampleItem(tube);
         when(analyses.get("101")).thenReturn(analysis);
         dao = mock(OrdinaryResultSaveStateDAO.class);
+        when(dao.findState("101")).thenAnswer(call -> new OrdinaryResultSaveStateDAO.State("101",
+                analysis.getStatusId(), analysis.getReleasedDate(), analysis.getPrintedDate()));
         org.openelisglobal.result.service.ResultIntakeAdmissionTest.allow(dao, "201", "101");
         when(dao.lockSpecimen("201")).thenReturn(tube);
         when(dao.lockAnalysis("101")).thenReturn(analysis);
@@ -193,6 +197,22 @@ public class ResultSpecimenSaveHttpTest {
         assertEquals(Map.of("error", "error.save.msg"), response.getBody());
     }
 
+    @Test
+    public void realSaveUrlCannotOverwriteReviewedResultUsingPendingPreparedState() throws Exception {
+        when(dao.findSpecimenState("101"))
+                .thenReturn(new SpecimenState("101", "401", "201", "301", "10", false, false));
+        when(dao.findState("101"))
+                .thenReturn(new OrdinaryResultSaveStateDAO.State("101", "90", null, null));
+        mvc.perform(post("/rest/results-entry/analysis/101/result").session(session)
+                .contentType(MediaType.APPLICATION_JSON).content(
+                        "{\"testResult\":{\"analysisId\":\"101\",\"testId\":\"401\",\"sampleItemId\":\"201\",\"accessionNumber\":\"SIM-RESULT-301\",\"testDate\":\"\",\"resultValue\":\"\",\"isModified\":true}}"))
+                .andExpect(status().isConflict())
+                .andExpect(content().string("{\"error\":\"error.results.reviewedResultLocked\"}"));
+        assertEquals(1, tx.rollbacks);
+        assertEquals(0, tx.commits);
+        verifyZeroInteractions(fhir, alerts, notes);
+    }
+
     @Test public void realSaveUrlExplainsMissingFirstDecisionWithoutWriting() throws Exception {
         when(dao.findSpecimenState("101")).thenReturn(new SpecimenState("101","401","201","301","10",false,false));
         var s=org.openelisglobal.result.service.ResultIntakeAdmissionTest.accepted("201","101");
@@ -208,7 +228,8 @@ public class ResultSpecimenSaveHttpTest {
         for (String code : List.of("error.results.specimenNotEligible", "error.results.resultMismatch",
                 "error.results.resultDefinitionMissing", "error.results.specimenIntakeMissing",
                 "error.results.specimenIntakeChanged", "error.results.testIntakeChanged",
-                "error.results.specimenRejected")) {
+                "error.results.specimenRejected", "error.results.analysisEntryUnavailable",
+                "error.results.reviewedResultLocked", "error.results.statusConfigurationInvalid")) {
             assertEquals(Map.of("error", code),
                     controller.resultSaveValidationFailure(new ResultSaveValidationException(code)).getBody());
         }

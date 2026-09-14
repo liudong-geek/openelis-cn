@@ -124,6 +124,12 @@ beforeEach(() => {
   });
 });
 
+test("普通录入完成的待审核状态不显示为已审核通过", () => {
+  open([row("101", "201", { analysisStatusId: "15", resultValue: "5" })]);
+  expect(within(tableRow()).getByText("待审核")).toBeInTheDocument();
+  expect(within(tableRow()).queryByText("技术审核通过")).toBeNull();
+});
+
 test.each([
   ["error.results.specimenRejected", "标本已拒收"],
   ["error.results.specimenVoided", "标本已作废"],
@@ -147,6 +153,8 @@ test.each([
   "error.results.specimenIntakeMissing",
   "error.results.specimenIntakeChanged",
   "error.results.testIntakeChanged",
+  "error.results.reviewedResultLocked",
+  "error.results.analysisEntryUnavailable",
 ])("%s 显示中文原因并保留已填结果", (reason) => {
   open([row(), row("102", "202")]);
   enter("0");
@@ -156,6 +164,34 @@ test.each([
   expect(within(tableRow()).getByText("0")).toBeInTheDocument();
   expect(io.notify.mock.calls.at(-1)[0].message).toContain(zh[reason]);
   expect(within(tableRow("102")).getByRole("spinbutton")).toHaveValue(8);
+  expect(io.save).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+  "error.results.reviewedResultLocked",
+  "error.results.analysisEntryUnavailable",
+])("%s 锁同项目组件但不影响同管其他项目", (reason) => {
+  const component = row("101", "201", {
+    testName: "模拟组件",
+    testResultComponentId: "702",
+  });
+  open([
+    row("101", "201", { testResultComponentId: "701" }),
+    component,
+    row("102", "201"),
+  ]);
+  enter("0");
+  enter("8", "102");
+  act(() => sign()());
+  act(() => responses[0]({ status: 409, error: reason }));
+  expect(within(tableRow()).getByText("0")).toBeInTheDocument();
+  expect(
+    within(screen.getByText("模拟组件").closest("tr")).queryByRole(
+      "spinbutton",
+    ),
+  ).toBeNull();
+  expect(within(tableRow("102")).getByRole("spinbutton")).toHaveValue(8);
+  expect(io.notify.mock.calls.at(-1)[0].message).toContain(zh[reason]);
   expect(io.save).toHaveBeenCalledTimes(1);
 });
 

@@ -25,12 +25,14 @@ public class ResultSpecimenAvailabilityTest {
     public void setup() {
         dao = mock(OrdinaryResultSaveStateDAO.class);
         statuses = mock(IStatusService.class);
+        org.openelisglobal.result.action.util.ResultReviewTransitionTest.configure(statuses);
         when(statuses.getStatusID(SampleStatus.Entered)).thenReturn("10");
         when(statuses.getStatusID(SampleStatus.SampleRejected)).thenReturn("11");
         when(statuses.getStatusID(SampleStatus.Canceled)).thenReturn("12");
         when(statuses.getStatusID(SampleStatus.Disposed)).thenReturn("13");
         service = new ResultSpecimenAvailabilityService(dao, statuses);
         analysis = ResultSpecimenWriteGuardTest.tube("101", "201");
+        when(dao.findState("101")).thenAnswer(call -> OrdinaryResultReviewPolicy.state(analysis));
         row = row("701");
         state("10", false, false);
         ResultIntakeAdmissionTest.allow(dao, "201", "101");
@@ -60,6 +62,27 @@ public class ResultSpecimenAvailabilityTest {
         assertEquals("{\"0\":\"5,6\"}", row.getMultiSelectResultValues());
         verify(dao, never()).lockSpecimen(anyString());
         verify(dao, never()).lockAnalysis(anyString());
+    }
+
+    @Test
+    public void reviewedResultRemainsReadableButCannotBeOrdinaryEdited() {
+        when(dao.findState("101")).thenReturn(new OrdinaryResultSaveStateDAO.State("101", "90", null, null));
+        expectReason(OrdinaryResultReviewPolicy.REVIEWED);
+    }
+
+    @Test
+    public void canceledAnalysisCannotBorrowActiveTubeEligibility() {
+        analysis.setStatusId(
+                statuses.getStatusID(org.openelisglobal.common.services.StatusService.AnalysisStatus.Canceled));
+        expectReason(OrdinaryResultReviewPolicy.UNAVAILABLE);
+    }
+
+    @Test
+    public void pendingReviewValueRemainsOrdinaryEditableUntilActualReview() {
+        analysis.setStatusId("9");
+        service.explain(analysis, List.of(row));
+        assertFalse(row.isReadOnly());
+        assertNull(row.getResultEntryBlockedReason());
     }
 
     @Test

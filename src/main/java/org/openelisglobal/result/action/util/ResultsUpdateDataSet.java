@@ -115,6 +115,10 @@ public class ResultsUpdateDataSet implements IResultSaveService {
 
     public void filterModifiedItems(List<TestResultItem> allItems) {
         for (TestResultItem item : allItems) {
+            // The posted value is authoritative. Legacy validation/adapters still
+            // consume shadowResultValue, which may be a stale UI copy or may have
+            // been bound after resultValue by JSON deserialization.
+            item.setShadowResultValue(item.getResultValue());
             if (isUpdated(item)) {
                 modifiedItems.add(item);
             } else if (item.getIsModified()) {

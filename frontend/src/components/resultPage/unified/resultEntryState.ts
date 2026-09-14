@@ -19,7 +19,14 @@ export interface EntryDraft {
   uncertainOperation?: "signature";
 }
 
+// Analysis review restrictions cover its components, not other tests on a tube.
+const analysisReasons = new Set([
+  "error.results.testIntakeChanged",
+  "error.results.reviewedResultLocked",
+  "error.results.analysisEntryUnavailable",
+]);
 export const specimenReasons = new Set([
+  ...analysisReasons,
   "error.results.specimenNotEligible",
   "error.results.specimenRejected",
   "error.results.specimenVoided",
@@ -27,7 +34,6 @@ export const specimenReasons = new Set([
   "error.results.specimenDisposed",
   "error.results.specimenIntakeMissing",
   "error.results.specimenIntakeChanged",
-  "error.results.testIntakeChanged",
 ]);
 export const entryReasons = new Set([
   ...specimenReasons,
@@ -38,7 +44,6 @@ export const entryReasons = new Set([
   "error.results.componentMismatch",
   "error.results.resultDefinitionMissing",
   "error.results.orderMismatch",
-  "error.results.reviewedResultLocked",
   "error.results.statusConfigurationInvalid",
 ]);
 export const positiveId = (value: unknown): value is string =>
@@ -58,7 +63,7 @@ export const sameTube = (left: EntryRow, right: EntryRow) =>
     ? left.sampleItemId === right.sampleItemId
     : left.analysisId === right.analysisId;
 
-/** Tube-wide facts cover the tube; uncovered tests cover only that analysis's components. */
+/** Tube facts cover the tube; review/test restrictions cover only that analysis. */
 export function restrictTubes<T extends EntryRow>(
   rows: T[],
   extra?: EntryRow,
@@ -68,7 +73,7 @@ export function restrictTubes<T extends EntryRow>(
   );
   return rows.map((row) => {
     const source = locked.find((other) =>
-      other.resultEntryBlockedReason === "error.results.testIntakeChanged"
+      analysisReasons.has(String(other.resultEntryBlockedReason))
         ? other.analysisId === row.analysisId
         : sameTube(other, row),
     );

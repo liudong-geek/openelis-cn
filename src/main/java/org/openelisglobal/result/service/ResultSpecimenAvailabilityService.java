@@ -34,6 +34,18 @@ public class ResultSpecimenAvailabilityService {
                 ? states.findSpecimenState(analysis.getId())
                 : null;
         String reason = reason(analysis, state);
+        if (reason == null) {
+            try {
+                var review = OrdinaryResultReviewPolicy.read(statuses);
+                var original = states.findState(analysis.getId());
+                reason = review.sourceReason(original);
+                if (reason == null && (!analysis.getId().equals(original.analysisId())
+                        || !original.equals(OrdinaryResultReviewPolicy.state(analysis))))
+                    reason = OrdinaryResultReviewPolicy.UNAVAILABLE;
+            } catch (org.openelisglobal.result.exception.ResultSaveValidationException e) {
+                reason = e.getErrorCode();
+            }
+        }
         for (TestResultItem row : rows) {
             if (row == null) {
                 throw new IllegalArgumentException("Invalid result worklist row");
