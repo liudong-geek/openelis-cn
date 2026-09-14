@@ -14,7 +14,13 @@ import {
 import { IconButton, Select, SelectItem } from "@carbon/react";
 import HelpMenu from "./HelpMenu";
 import AdminSideNav from "../admin/AdminSideNav";
-import React, { createRef, useContext, useEffect, useState } from "react";
+import React, {
+  createRef,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { useLocation, useHistory } from "react-router-dom";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
@@ -41,6 +47,7 @@ import SearchBar from "./search/searchBar";
 import { getBranding } from "../utils/BrandingUtils";
 import config from "../../config.json";
 import { buildTaskFocusedMenu, MENU_PROFILES } from "./taskFocusedMenu";
+import { resolveNavigationProfile } from "./navigationProfile";
 
 const expandMenuForRoute = (items, pathname) => {
   const currentPath = pathname === "/" ? "/Dashboard" : pathname;
@@ -90,11 +97,11 @@ function OEHeader({
   // Use enabled languages from config, fall back to default if not loaded yet
   const languages = enabledLanguages || defaultLanguages;
   const showLanguageSelector = Object.keys(languages).length > 1;
-  const menuProfile =
-    Object.keys(languages).length === 1 &&
-    Object.keys(languages)[0].toLowerCase().startsWith("zh")
-      ? MENU_PROFILES.CHINA
-      : MENU_PROFILES.GLOBAL;
+  const menuProfile = resolveNavigationProfile(
+    configurationProperties?.NAVIGATION_PROFILE,
+    config.navigationProfile,
+  );
+  const isClinicalWorkspace = menuProfile === MENU_PROFILES.CHINA;
   const [headerLogoUrl, setHeaderLogoUrl] = useState(null);
   const [logoVersion, setLogoVersion] = useState(0); // Version counter for cache-busting
 
@@ -113,6 +120,7 @@ function OEHeader({
   });
   const [menuLoadState, setMenuLoadState] = useState("idle");
   const [menuReloadToken, setMenuReloadToken] = useState(0);
+  const menuFocusAfterToggle = useRef(null);
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -302,6 +310,13 @@ function OEHeader({
   }, [location.pathname]);
 
   useEffect(() => {
+    if (!menuFocusAfterToggle.current) return;
+    const item = document.getElementById(menuFocusAfterToggle.current);
+    menuFocusAfterToggle.current = null;
+    item?.querySelector(".cds--side-nav__submenu")?.focus();
+  }, [menus]);
+
+  useEffect(() => {
     const closeTransientUi = (event) => {
       if (event.key !== "Escape") {
         return;
@@ -312,13 +327,16 @@ function OEHeader({
       setSwitchCollapsed(true);
       setHelpOpen(false);
       if (!navPersistent && navOpen) {
+        if (isClinicalWorkspace) {
+          document.getElementById("sidenav-menu-button")?.focus();
+        }
         closeSideNav();
       }
     };
 
     document.addEventListener("keydown", closeTransientUi);
     return () => document.removeEventListener("keydown", closeTransientUi);
-  }, [closeSideNav, navOpen, navPersistent]);
+  }, [closeSideNav, navOpen, navPersistent, isClinicalWorkspace]);
 
   const handlePanelToggle = (panel) => {
     setSearchBar(panel === "search");
@@ -586,6 +604,37 @@ function OEHeader({
       );
     }
 
+    const workspaceNumber =
+      isClinicalWorkspace && level === 0 ? menuItem.menu.workspaceNumber : null;
+    const workspaceSection =
+      isClinicalWorkspace && level === 0
+        ? menuItem.menu.workspaceSection
+        : null;
+    const sectionMessageId = {
+      clinical: "sidenav.workspace.section.clinical",
+      operations: "sidenav.workspace.section.operations",
+    }[workspaceSection];
+    const showSectionTitle =
+      sectionMessageId &&
+      parentMenuItems?.[index - 1]?.menu?.workspaceSection !== workspaceSection;
+    const sectionTitle = showSectionTitle ? (
+      <span className="oe-workspace-nav-section" role="heading" aria-level={2}>
+        <FormattedMessage id={sectionMessageId} />
+      </span>
+    ) : null;
+    const menuLabel = workspaceNumber ? (
+      <span className="oe-workspace-nav-label">
+        <span className="oe-workspace-nav-number" aria-hidden="true">
+          {workspaceNumber}
+        </span>
+        <span>
+          <FormattedMessage id={menuTitleId} />
+        </span>
+      </span>
+    ) : (
+      intl.formatMessage({ id: menuTitleId })
+    );
+
     // Check if this menu item has siblings with paths that start with its own path.
     // If so, only use exact matching to avoid conflicts (e.g., /analyzers vs /analyzers/errors).
     const hasSiblingConflict = hasChildren
@@ -690,6 +739,8 @@ function OEHeader({
         <span
           key={itemId}
           id={menuItem.menu.elementId}
+          className={workspaceNumber ? "oe-workspace-nav-item" : undefined}
+          data-workspace-section={workspaceSection || undefined}
           onClick={(event) => {
             const toggleButton = event.target.closest(
               ".cds--side-nav__submenu",
@@ -698,10 +749,19 @@ function OEHeader({
               toggleButton?.parentElement?.parentElement ===
               event.currentTarget;
             if (ownsToggle) {
+              // Carbon is remounted when sibling expansion changes. Preserve
+              // focus on the operated workspace button across that remount.
+              if (
+                isClinicalWorkspace &&
+                toggleButton === document.activeElement
+              ) {
+                menuFocusAfterToggle.current = itemId;
+              }
               setMenuItemExpanded(menuItem);
             }
           }}
         >
+          {sectionTitle}
           <SideNavMenu
             // Carbon owns its internal expanded state. Changing the key only
             // when our accordion state changes re-syncs defaultExpanded for a
@@ -710,6 +770,18 @@ function OEHeader({
             // IMPORTANT: use stable key (elementId) to prevent React from reusing the wrong subtree
             // when the menu list shape changes (roles/plugins/async load).
             title={intl.formatMessage({ id: menuTitleId })}
+            renderIcon={
+              workspaceNumber
+                ? () => (
+                    <span
+                      className="oe-workspace-nav-number"
+                      aria-hidden="true"
+                    >
+                      {workspaceNumber}
+                    </span>
+                  )
+                : undefined
+            }
             defaultExpanded={carbonExpanded}
             isActive={carbonIsActive}
             className={menuClassName}
@@ -747,8 +819,11 @@ function OEHeader({
       <span
         key={itemId}
         id={menuItem.menu.elementId}
+        className={workspaceNumber ? "oe-workspace-nav-item" : undefined}
+        data-workspace-section={workspaceSection || undefined}
         data-cy={`${menuItem.menu.elementId.replace(/[^\w\s]/gi, "_")}`}
       >
+        {sectionTitle}
         <SideNavMenuItem
           id={menuItem.menu.elementId + "_nav"}
           className={leafClassName}
@@ -797,7 +872,7 @@ function OEHeader({
             }}
           >
             <span style={{ fontSize: `${100 - 5 * Math.max(level - 1, 0)}%` }}>
-              <FormattedMessage id={menuTitleId} />
+              {menuLabel}
             </span>
             {securityRestricted && (
               <span className="oe-sidenav-security-restricted__status">
@@ -871,6 +946,17 @@ function OEHeader({
     });
   };
 
+  const currentWorkspace = isClinicalWorkspace
+    ? menus.menu.find((item) => {
+        const currentPath =
+          location.pathname === "/" ? "/Dashboard" : location.pathname;
+        return (
+          item.menu?.actionURL?.split(/[?#]/)[0] === currentPath ||
+          hasActiveDescendant(item, currentPath)
+        );
+      })
+    : null;
+
   return (
     <>
       <div className="container">
@@ -883,6 +969,10 @@ function OEHeader({
           <Header
             id="mainHeader"
             className="mainHeader"
+            data-navigation-profile={menuProfile}
+            data-nav-persistent={
+              userSessionDetails.authenticated && navPersistent && showSideNav
+            }
             aria-label={configurationProperties?.BANNER_TEXT || "OpenELIS"}
           >
             {userSessionDetails.authenticated &&
@@ -908,7 +998,12 @@ function OEHeader({
                   {navOpen ? <Close size={20} /> : <Menu size={20} />}
                 </button>
               )}
-            <HeaderName href="/" prefix="" style={{ padding: "0px" }}>
+            <HeaderName
+              href="/"
+              prefix=""
+              className={isClinicalWorkspace ? "oe-workspace-brand" : undefined}
+              style={{ padding: "0px" }}
+            >
               <span id="header-logo">{logo()}</span>
               <div className="banner">
                 <h5>{configurationProperties?.BANNER_TEXT}</h5>
@@ -923,6 +1018,20 @@ function OEHeader({
                 </p>
               </div>
             </HeaderName>
+            {isClinicalWorkspace && userSessionDetails.authenticated && (
+              <div className="oe-header-workspace">
+                {currentWorkspace && (
+                  <span className="oe-header-workspace__title">
+                    <FormattedMessage id={currentWorkspace.menu.displayKey} />
+                  </span>
+                )}
+                {userSessionDetails.loginLabUnit && (
+                  <span className="oe-header-workspace__lab">
+                    {userSessionDetails.loginLabUnit}
+                  </span>
+                )}
+              </div>
+            )}
             <HeaderGlobalBar>
               {userSessionDetails.authenticated && (
                 <>
@@ -1147,7 +1256,7 @@ function OEHeader({
                             index,
                             0,
                             "$.menu[" + index + "]",
-                            null, // Top level items have no parent siblings
+                            isClinicalWorkspace ? menus.menu : null,
                           );
                         })
                       ) : (

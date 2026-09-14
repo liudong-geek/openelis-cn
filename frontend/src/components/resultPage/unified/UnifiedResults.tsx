@@ -83,6 +83,12 @@ import { createResultSignatureApi } from "./resultSignatureApi";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import ProductPageHeader from "../../common/ProductPageHeader";
 import CustomDatePicker from "../../common/CustomDatePicker";
+import ResultSpecimenQueue, {
+  groupResultSpecimens,
+  resultSpecimenKey,
+  specimenSubject,
+} from "./ResultSpecimenQueue";
+import "./result-specimen-workspace.scss";
 
 /**
  * OGC-1020 (R1 of OGC-811) — unified /Results worklist.
@@ -318,6 +324,9 @@ const UnifiedResults: React.FC = () => {
   );
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(25);
+  const [selectedSpecimenKey, setSelectedSpecimenKey] = useState<string | null>(
+    null,
+  );
   const [loading, setLoading] = useState<boolean>(false);
   const [hasLoaded, setHasLoaded] = useState<boolean>(false);
   const [loadErrorKey, setLoadErrorKey] = useState<string | null>(null);
@@ -351,6 +360,7 @@ const UnifiedResults: React.FC = () => {
     setSelectedLabUnit("");
     setCollectionDate("");
     setStatusFilter("ALL");
+    setSelectedSpecimenKey(null);
     setLabUnits([]);
     setStatusOptions([]);
     window.history.replaceState(null, "", "/Results");
@@ -650,9 +660,41 @@ const UnifiedResults: React.FC = () => {
     [rows, statusFilter],
   );
 
+  const specimenGroups = useMemo(
+    () => groupResultSpecimens(filteredRows),
+    [filteredRows],
+  );
+  const selectedSpecimen =
+    specimenGroups.find((group) => group.key === selectedSpecimenKey) || null;
+  const scopedRows = selectedSpecimen?.rows || filteredRows;
+  const activeSpecimenKey = selectedSpecimen?.key || null;
+
+  useEffect(() => {
+    // A status/filter change may remove the selected specimen. Reconcile the
+    // queue and detail together; never leave a stale identity above other rows.
+    if (selectedSpecimenKey && !activeSpecimenKey) setSelectedSpecimenKey(null);
+    setPage(1);
+  }, [activeSpecimenKey, statusFilter]);
+
+  const selectSpecimen = (key: string | null) => {
+    setSelectedSpecimenKey(key);
+    setPage(1);
+    setEditingAnalysisId(null);
+    // Selection changes presentation only. All row states, input drafts and
+    // bound save/signature callbacks remain owned by their original analysis.
+  };
+  const queueDraftStates = new Map<string, "unsaved" | "unconfirmed">();
+  for (const draft of drafts.current.values()) {
+    const key = resultSpecimenKey(draft.row);
+    const unconfirmed = ["pending", "unknown"].includes(draft.disposition);
+    if (unconfirmed || !queueDraftStates.has(key)) {
+      queueDraftStates.set(key, unconfirmed ? "unconfirmed" : "unsaved");
+    }
+  }
+
   const pagedRows = useMemo(
-    () => filteredRows.slice((page - 1) * pageSize, page * pageSize),
-    [filteredRows, page, pageSize],
+    () => scopedRows.slice((page - 1) * pageSize, page * pageSize),
+    [scopedRows, page, pageSize],
   );
 
   const visibleAnalysisIds = useMemo(
@@ -1130,14 +1172,51 @@ const UnifiedResults: React.FC = () => {
     renderDrafts((value) => value + 1);
   };
 
-  const subjectCell = (row: WorklistRow): string => {
-    const accession = row.accessionNumber || "";
-    if (domain === "CLINICAL") {
-      const patient = row.patientInfo || row.patientName || "";
-      return patient ? `${accession} · ${patient}` : accession;
-    }
-    // FR-M2/M3: no patient identity outside CLINICAL; sample context instead
-    return row.sampleType ? `${accession} · ${row.sampleType}` : accession;
+  const subjectCell = (row: WorklistRow): React.ReactNode => {
+    // The legacy role filter masks patientInfo without removing patientName.
+    // Preserve that boundary; never reconstruct identity from the raw summary.
+    const patientName =
+      row.patientInfo?.trim() === "---" ? "" : row.patientName?.trim() || "";
+    // Display-only normalization of a clear Han surname/given-name pair.
+    // Mixed, Western or multi-part names remain unchanged in every row payload.
+    const displayedPatientName = /^zh(?:[-_]|$)/i.test(intl.locale)
+      ? patientName.replace(
+          /^(\p{Script=Han}+)\s*[,，]\s*(\p{Script=Han}+)$/u,
+          "$1$2",
+        )
+      : patientName;
+    const specimenBarcode =
+      typeof row.sampleItemExternalId === "string" &&
+      row.sampleItemExternalId.trim()
+        ? row.sampleItemExternalId
+        : null;
+    return (
+      <div className="results-workbench__subject">
+        <span className="results-workbench__accession">
+          {row.accessionNumber || "—"}
+        </span>
+        {specimenBarcode && (
+          <span className="results-workbench__specimen-barcode">
+            <FormattedMessage id="barcode.header" />{" "}
+            <span className="results-workbench__barcode-value">
+              {specimenBarcode}
+            </span>
+          </span>
+        )}
+        {domain === "CLINICAL" ? (
+          <span className="results-workbench__patient-name">
+            {displayedPatientName || "—"}
+          </span>
+        ) : (
+          // FR-M2/M3: no patient identity or patient placeholder outside CLINICAL.
+          row.sampleType && (
+            <span className="results-workbench__sample-type">
+              {row.sampleType}
+            </span>
+          )
+        )}
+      </div>
+    );
   };
 
   const statusName = (statusId?: string): string => {
@@ -1327,289 +1406,378 @@ const UnifiedResults: React.FC = () => {
             })}
           />
         )}
-        <Tile className="results-workbench__list">
-          <div className="results-workbench__section-heading">
-            <div>
-              <h2>
-                <FormattedMessage id="results.workbench.list.title" />
-              </h2>
-              <p>
-                <FormattedMessage id="results.workbench.list.subtitle" />
-              </p>
+        <div className="result-specimen-workspace">
+          <ResultSpecimenQueue
+            groups={specimenGroups}
+            selectedKey={activeSpecimenKey}
+            disabled={loading || !ready()}
+            draftStates={queueDraftStates}
+            onSelect={selectSpecimen}
+            renderSubject={subjectCell}
+          />
+          <Tile
+            id="result-specimen-detail"
+            className={`results-workbench__list result-specimen-detail${selectedSpecimen ? " result-specimen-detail--focused" : ""}`}
+          >
+            <div className="results-workbench__section-heading">
+              <div>
+                <h2>
+                  <FormattedMessage id="results.workbench.list.title" />
+                </h2>
+                <p>
+                  <FormattedMessage id="results.workbench.list.subtitle" />
+                </p>
+              </div>
+              {loading && (
+                <InlineLoading
+                  description={intl.formatMessage({
+                    id: "results.workbench.loading",
+                  })}
+                />
+              )}
             </div>
-            {loading && (
-              <InlineLoading
-                description={intl.formatMessage({
-                  id: "results.workbench.loading",
+
+            {selectedSpecimen ? (
+              <div className="result-specimen-detail__identity">
+                {subjectCell(specimenSubject(selectedSpecimen))}
+                <Tag type="blue">
+                  <FormattedMessage
+                    id="results.workbench.queue.tests"
+                    defaultMessage="{count} tests"
+                    values={{ count: selectedSpecimen.analysisCount }}
+                  />
+                </Tag>
+              </div>
+            ) : (
+              <Tag type="gray">
+                <FormattedMessage
+                  id="results.workbench.queue.count"
+                  defaultMessage="{count} items in this queue"
+                  values={{ count: specimenGroups.length }}
+                />
+              </Tag>
+            )}
+
+            {loadErrorKey && (
+              <InlineNotification
+                kind="error"
+                lowContrast
+                hideCloseButton
+                title={intl.formatMessage({
+                  id: "results.workbench.loadFailed",
                 })}
+                subtitle={intl.formatMessage({ id: loadErrorKey })}
               />
             )}
-          </div>
-
-          {loadErrorKey && (
-            <InlineNotification
-              kind="error"
-              lowContrast
-              hideCloseButton
-              title={intl.formatMessage({ id: "results.workbench.loadFailed" })}
-              subtitle={intl.formatMessage({ id: loadErrorKey })}
-            />
-          )}
-          {!loading &&
-          !loadErrorKey &&
-          hasLoaded &&
-          filteredRows.length === 0 ? (
-            <InlineNotification
-              className="results-workbench__empty"
-              kind="info"
-              hideCloseButton
-              lowContrast
-              title={intl.formatMessage({
-                id: "results.workbench.empty.title",
-              })}
-              subtitle={intl.formatMessage({
-                id: "results.workbench.empty.subtitle",
-              })}
-            />
-          ) : (
-            <div className="results-workbench__table-scroll">
-              <TableContainer>
-                <Table size="lg">
-                  <TableHead>
-                    <TableRow>
-                      <TableHeader>
-                        {formatDomainMessage(
-                          intl,
-                          "label.results.subject",
-                          domain,
+            {!loading &&
+            !loadErrorKey &&
+            hasLoaded &&
+            scopedRows.length === 0 ? (
+              <InlineNotification
+                className="results-workbench__empty"
+                kind="info"
+                hideCloseButton
+                lowContrast
+                title={intl.formatMessage({
+                  id: "results.workbench.empty.title",
+                })}
+                subtitle={intl.formatMessage({
+                  id: "results.workbench.empty.subtitle",
+                })}
+              />
+            ) : (
+              <div className="results-workbench__table-scroll">
+                <TableContainer>
+                  <Table size="lg" className="results-workbench__table">
+                    <colgroup>
+                      {!selectedSpecimen && (
+                        <col className="results-workbench__column--subject" />
+                      )}
+                      <col className="results-workbench__column--test" />
+                      <col className="results-workbench__column--range" />
+                      <col className="results-workbench__column--result" />
+                      <col className="results-workbench__column--status" />
+                      <col className="results-workbench__column--actions" />
+                    </colgroup>
+                    <TableHead>
+                      <TableRow>
+                        {!selectedSpecimen && (
+                          <TableHeader>
+                            {formatDomainMessage(
+                              intl,
+                              "label.results.subject",
+                              domain,
+                            )}
+                          </TableHeader>
                         )}
-                      </TableHeader>
-                      <TableHeader>
-                        <FormattedMessage id="label.results.test" />
-                      </TableHeader>
-                      <TableHeader>
-                        {formatDomainMessage(
-                          intl,
-                          "label.results.range",
-                          domain,
-                        )}
-                      </TableHeader>
-                      <TableHeader>
-                        <FormattedMessage id="label.results.result" />
-                      </TableHeader>
-                      <TableHeader>
-                        <FormattedMessage id="label.results.status" />
-                      </TableHeader>
-                      <TableHeader>
-                        <FormattedMessage id="label.results.actions" />
-                      </TableHeader>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {pagedRows.map((row) => {
-                      const key = worklistRowKey(row);
-                      // Keep a delayed signing callback bound to the rendered
-                      // value's revision and worklist, not a later edit/reload.
-                      const renderedEpoch = loadEpoch.current;
-                      const renderedRevision =
-                        rowEditRevisions.current[key] || 0;
-                      const state = rowStates[key] || "EMPTY";
-                      const draft = drafts.current.get(key);
-                      const stateHeld = Boolean(
-                        draft?.held || analysisUnconfirmed(row.analysisId),
-                      );
-                      const blocked = isResultEntryBlocked(row) || stateHeld;
-                      const stale = staleInfo[key];
-                      const reviewer = presence[row.analysisId];
-                      return (
-                        <React.Fragment key={key}>
-                          <TableRow>
-                            <TableCell>
-                              {subjectCell(row)}
-                              {reviewer && (
-                                <Tag
-                                  type="purple"
-                                  className="unifiedResultsChip"
-                                >
-                                  <FormattedMessage
-                                    id="label.results.inReviewBy"
-                                    values={{ 0: reviewer }}
+                        <TableHeader>
+                          <FormattedMessage id="label.results.test" />
+                        </TableHeader>
+                        <TableHeader>
+                          {formatDomainMessage(
+                            intl,
+                            "label.results.range",
+                            domain,
+                          )}
+                        </TableHeader>
+                        <TableHeader>
+                          <FormattedMessage id="label.results.result" />
+                        </TableHeader>
+                        <TableHeader>
+                          <FormattedMessage id="label.results.status" />
+                        </TableHeader>
+                        <TableHeader className="results-workbench__header--actions">
+                          <FormattedMessage id="label.results.actions" />
+                        </TableHeader>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {pagedRows.map((row) => {
+                        const key = worklistRowKey(row);
+                        // Keep a delayed signing callback bound to the rendered
+                        // value's revision and worklist, not a later edit/reload.
+                        const renderedEpoch = loadEpoch.current;
+                        const renderedRevision =
+                          rowEditRevisions.current[key] || 0;
+                        const state = rowStates[key] || "EMPTY";
+                        const draft = drafts.current.get(key);
+                        const stateHeld = Boolean(
+                          draft?.held || analysisUnconfirmed(row.analysisId),
+                        );
+                        const blocked = isResultEntryBlocked(row) || stateHeld;
+                        const stale = staleInfo[key];
+                        const reviewer = presence[row.analysisId];
+                        return (
+                          <React.Fragment key={key}>
+                            <TableRow>
+                              {!selectedSpecimen && (
+                                <TableCell className="results-workbench__cell--subject">
+                                  {subjectCell(row)}
+                                  {reviewer && (
+                                    <Tag
+                                      type="purple"
+                                      className="unifiedResultsChip"
+                                    >
+                                      <FormattedMessage
+                                        id="label.results.inReviewBy"
+                                        values={{ 0: reviewer }}
+                                      />
+                                    </Tag>
+                                  )}
+                                </TableCell>
+                              )}
+                              <TableCell className="results-workbench__cell--test">
+                                {row.testName}
+                                {selectedSpecimen && reviewer && (
+                                  <Tag
+                                    type="purple"
+                                    className="unifiedResultsChip"
+                                  >
+                                    <FormattedMessage
+                                      id="label.results.inReviewBy"
+                                      values={{ 0: reviewer }}
+                                    />
+                                  </Tag>
+                                )}
+                              </TableCell>
+                              <TableCell className="results-workbench__cell--range">
+                                {row.normalRange}{" "}
+                                {row.unitsOfMeasure ? row.unitsOfMeasure : ""}
+                              </TableCell>
+                              <TableCell className="results-workbench__cell--result">
+                                {blocked ? (
+                                  <span className="unifiedResultsReadOnlyValue">
+                                    {blockedResultDisplay(row)}
+                                  </span>
+                                ) : (
+                                  <PolymorphicResultCell
+                                    row={row}
+                                    editable={
+                                      isRowEditable(state) &&
+                                      ready() &&
+                                      !loading
+                                    }
+                                    onValueChange={(field, value) =>
+                                      handleValueChange(
+                                        row,
+                                        field,
+                                        value,
+                                        renderedEpoch,
+                                      )
+                                    }
                                   />
-                                </Tag>
-                              )}
-                            </TableCell>
-                            <TableCell>{row.testName}</TableCell>
-                            <TableCell>
-                              {row.normalRange}{" "}
-                              {row.unitsOfMeasure ? row.unitsOfMeasure : ""}
-                            </TableCell>
-                            <TableCell>
-                              {blocked ? (
-                                <span className="unifiedResultsReadOnlyValue">
-                                  {blockedResultDisplay(row)}
-                                </span>
-                              ) : (
-                                <PolymorphicResultCell
-                                  row={row}
-                                  editable={
-                                    isRowEditable(state) && ready() && !loading
-                                  }
-                                  onValueChange={(field, value) =>
-                                    handleValueChange(
-                                      row,
-                                      field,
-                                      value,
-                                      renderedEpoch,
-                                    )
-                                  }
-                                />
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {statusName(row.analysisStatusId)}
-                            </TableCell>
-                            <TableCell>
-                              {!blocked && showEdit(state) && (
-                                <Button
-                                  kind="tertiary"
-                                  size="sm"
-                                  onClick={() => handleEdit(row, renderedEpoch)}
-                                >
-                                  <FormattedMessage id="label.results.edit" />
-                                </Button>
-                              )}
-                              {!blocked &&
-                                showSave(state) &&
-                                ready() &&
-                                signingIdentityReady && (
-                                  <ESignatureButton
-                                    signatureApi={signatureApiFor(
-                                      row,
-                                      renderedEpoch,
-                                      renderedRevision,
-                                    )}
-                                    meaning={SignatureMeaning.AUTHORED}
-                                    context={`${intl.formatMessage({
-                                      id: "label.results.save",
-                                    })} ${row.accessionNumber} - ${row.testName}`}
-                                    recordType="RESULT"
-                                    recordId={row.analysisId}
-                                    onSign={() =>
-                                      handleSave(
+                                )}
+                              </TableCell>
+                              <TableCell className="results-workbench__cell--status">
+                                {statusName(row.analysisStatusId)}
+                              </TableCell>
+                              <TableCell className="results-workbench__cell--actions">
+                                {!blocked && showEdit(state) && (
+                                  <Button
+                                    kind="tertiary"
+                                    size="sm"
+                                    onClick={() =>
+                                      handleEdit(row, renderedEpoch)
+                                    }
+                                  >
+                                    <FormattedMessage id="label.results.edit" />
+                                  </Button>
+                                )}
+                                {!blocked &&
+                                  showSave(state) &&
+                                  ready() &&
+                                  signingIdentityReady && (
+                                    <ESignatureButton
+                                      signatureApi={signatureApiFor(
                                         row,
                                         renderedEpoch,
                                         renderedRevision,
-                                      )
-                                    }
-                                    disabled={
-                                      savingRows.has(key) || loading || !ready()
-                                    }
-                                    size="sm"
-                                  >
-                                    <FormattedMessage id="label.results.save" />
-                                  </ESignatureButton>
-                                )}
-                            </TableCell>
-                          </TableRow>
-                          {isResultEntryBlocked(row) && (
-                            <TableRow>
-                              <TableCell colSpan={6}>
-                                <InlineNotification
-                                  kind="warning"
-                                  hideCloseButton
-                                  lowContrast
-                                  title={intl.formatMessage({
-                                    id: entryReason(row),
-                                  })}
-                                />
-                              </TableCell>
-                            </TableRow>
-                          )}
-                          {stale && (
-                            <TableRow>
-                              <TableCell colSpan={6}>
-                                <InlineNotification
-                                  kind="error"
-                                  hideCloseButton
-                                  lowContrast
-                                  title={intl.formatMessage(
-                                    { id: "error.results.staleSave" },
-                                    {
-                                      0:
-                                        stale.modifiedBy ||
-                                        intl.formatMessage({
-                                          id: "label.results.anotherUser",
-                                        }),
-                                      1: stale.modifiedAt || "",
-                                    },
+                                      )}
+                                      meaning={SignatureMeaning.AUTHORED}
+                                      context={`${intl.formatMessage({
+                                        id: "label.results.save",
+                                      })} ${row.accessionNumber} - ${row.testName}`}
+                                      recordType="RESULT"
+                                      recordId={row.analysisId}
+                                      onSign={() =>
+                                        handleSave(
+                                          row,
+                                          renderedEpoch,
+                                          renderedRevision,
+                                        )
+                                      }
+                                      disabled={
+                                        savingRows.has(key) ||
+                                        loading ||
+                                        !ready()
+                                      }
+                                      size="sm"
+                                    >
+                                      <FormattedMessage id="label.results.save" />
+                                    </ESignatureButton>
                                   )}
-                                />
-                                <Button
-                                  kind="ghost"
-                                  size="sm"
-                                  disabled={loading}
-                                  onClick={() => loadWorklist()}
-                                >
-                                  <FormattedMessage id="label.results.refresh" />
-                                </Button>
                               </TableCell>
                             </TableRow>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                            {isResultEntryBlocked(row) && (
+                              <TableRow>
+                                <TableCell colSpan={selectedSpecimen ? 5 : 6}>
+                                  <InlineNotification
+                                    kind="warning"
+                                    hideCloseButton
+                                    lowContrast
+                                    title={intl.formatMessage({
+                                      id: entryReason(row),
+                                    })}
+                                  />
+                                </TableCell>
+                              </TableRow>
+                            )}
+                            {stale && (
+                              <TableRow>
+                                <TableCell colSpan={selectedSpecimen ? 5 : 6}>
+                                  <InlineNotification
+                                    kind="error"
+                                    hideCloseButton
+                                    lowContrast
+                                    title={intl.formatMessage(
+                                      { id: "error.results.staleSave" },
+                                      {
+                                        0:
+                                          stale.modifiedBy ||
+                                          intl.formatMessage({
+                                            id: "label.results.anotherUser",
+                                          }),
+                                        1: stale.modifiedAt || "",
+                                      },
+                                    )}
+                                  />
+                                  <Button
+                                    kind="ghost"
+                                    size="sm"
+                                    disabled={loading}
+                                    onClick={() => loadWorklist()}
+                                  >
+                                    <FormattedMessage id="label.results.refresh" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </div>
+            )}
+            {scopedRows.length > 0 && (
+              <Pagination
+                page={page}
+                pageSize={pageSize}
+                pageSizes={[25, 50, 100]}
+                totalItems={scopedRows.length}
+                backwardText={intl.formatMessage({
+                  id: "pagination.previousPage",
+                })}
+                forwardText={intl.formatMessage({ id: "pagination.nextPage" })}
+                itemsPerPageText={intl.formatMessage({
+                  id: "pagination.itemsPerPage",
+                })}
+                itemRangeText={(min, max, total) =>
+                  intl.formatMessage(
+                    { id: "pagination.item-range" },
+                    { min, max, total },
+                  )
+                }
+                itemText={(min, max) =>
+                  intl.formatMessage({ id: "pagination.item" }, { min, max })
+                }
+                pageRangeText={(_current, total) =>
+                  intl.formatMessage({ id: "pagination.page-range" }, { total })
+                }
+                pageSelectLabelText={(total) =>
+                  intl.formatMessage(
+                    { id: "pagination.page-select" },
+                    { total },
+                  )
+                }
+                pageText={(currentPage) =>
+                  intl.formatMessage(
+                    { id: "pagination.page" },
+                    { page: currentPage },
+                  )
+                }
+                onChange={({
+                  page: newPage,
+                  pageSize: newPageSize,
+                }: {
+                  page: number;
+                  pageSize: number;
+                }) => {
+                  setPage(newPage);
+                  setPageSize(newPageSize);
+                }}
+              />
+            )}
+            <div className="result-specimen-detail__footer">
+              <p>
+                <FormattedMessage
+                  id="results.workbench.workspace.saveHint"
+                  defaultMessage="Saving records result entry. Review and report issuance remain separate tasks."
+                />
+              </p>
+              {drafts.current.size > 0 && (
+                <Tag type="blue">
+                  <FormattedMessage
+                    id="results.workbench.workspace.draftCount"
+                    defaultMessage="{count} unfinished entries on this page"
+                    values={{ count: drafts.current.size }}
+                  />
+                </Tag>
+              )}
             </div>
-          )}
-          {filteredRows.length > 0 && (
-            <Pagination
-              page={page}
-              pageSize={pageSize}
-              pageSizes={[25, 50, 100]}
-              totalItems={filteredRows.length}
-              backwardText={intl.formatMessage({
-                id: "pagination.previousPage",
-              })}
-              forwardText={intl.formatMessage({ id: "pagination.nextPage" })}
-              itemsPerPageText={intl.formatMessage({
-                id: "pagination.itemsPerPage",
-              })}
-              itemRangeText={(min, max, total) =>
-                intl.formatMessage(
-                  { id: "pagination.item-range" },
-                  { min, max, total },
-                )
-              }
-              itemText={(min, max) =>
-                intl.formatMessage({ id: "pagination.item" }, { min, max })
-              }
-              pageRangeText={(_current, total) =>
-                intl.formatMessage({ id: "pagination.page-range" }, { total })
-              }
-              pageSelectLabelText={(total) =>
-                intl.formatMessage({ id: "pagination.page-select" }, { total })
-              }
-              pageText={(currentPage) =>
-                intl.formatMessage(
-                  { id: "pagination.page" },
-                  { page: currentPage },
-                )
-              }
-              onChange={({
-                page: newPage,
-                pageSize: newPageSize,
-              }: {
-                page: number;
-                pageSize: number;
-              }) => {
-                setPage(newPage);
-                setPageSize(newPageSize);
-              }}
-            />
-          )}
-        </Tile>
+          </Tile>
+        </div>
       </main>
     </>
   );

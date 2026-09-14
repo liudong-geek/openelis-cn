@@ -6,6 +6,7 @@ export default function ResultMultiSelect({
   name,
   dictionaryValues = [],
   value = "{}",
+  autoAlign = false,
   onChange,
 }) {
   const selectedIds = useMemo(() => {
@@ -42,6 +43,7 @@ export default function ResultMultiSelect({
     <>
       <Column lg={16} sm={4} md={8}>
         <MultiSelect
+          autoAlign={autoAlign}
           style={{ width: "300px" }}
           id={id}
           items={dictionaryValues.map((d) => ({

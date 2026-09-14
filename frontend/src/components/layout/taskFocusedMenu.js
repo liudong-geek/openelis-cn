@@ -69,6 +69,17 @@ const CHINA_TOP_LEVEL_DISPLAY_KEYS = Object.freeze({
   administration: "banner.menu.administration",
 });
 
+const CHINA_WORKSPACE_DISPLAY_KEYS = Object.freeze({
+  today: "sidenav.workspace.today",
+  orders: "sidenav.workspace.orders",
+  specimens: "sidenav.workspace.specimens",
+  results: "sidenav.workspace.results",
+  quality: "sidenav.workspace.quality",
+  reports: "sidenav.workspace.reports",
+  interfaces: "sidenav.workspace.interfaces",
+  configuration: "sidenav.workspace.configuration",
+});
+
 const CHINA_ITEM_DISPLAY_KEYS = Object.freeze({
   menu_order_dashboard: "sidenav.label.order.active",
   menu_order_enter: "sidenav.label.order.new",
@@ -103,6 +114,7 @@ const CHINA_ITEM_ACTION_URLS = Object.freeze({
  */
 export const CHINA_MENU_MESSAGE_IDS = Object.freeze([
   ...Object.values(CHINA_TOP_LEVEL_DISPLAY_KEYS),
+  ...Object.values(CHINA_WORKSPACE_DISPLAY_KEYS),
   ...new Set(Object.values(CHINA_ITEM_DISPLAY_KEYS)),
 ]);
 
@@ -496,6 +508,135 @@ const buildGlobalTaskFocusedMenu = (items) => {
   ];
 };
 
+/**
+ * Present the already-authorized China menu as the eight clinical workspaces.
+ * This is an information-architecture adapter: it retains leaf ids, routes and
+ * document handling, and creates a workspace only when it has visible content.
+ */
+const organizeChinaWorkspaces = (items) => {
+  const byId = new Map(items.map((entry) => [getElementId(entry), entry]));
+  const output = [];
+  const addWorkspace = (
+    primary,
+    fallbackId,
+    key,
+    number,
+    extraChildren = [],
+  ) => {
+    if (!primary && extraChildren.length === 0) return;
+    const primaryIsLeaf = primary && !(primary.childMenus || []).length;
+    // Adding siblings must not turn an authorized clickable root into an
+    // accordion whose own route is unreachable. Keep that leaf, including its
+    // server id, under a separate presentation-only workspace container.
+    const workspace =
+      primaryIsLeaf && extraChildren.length > 0
+        ? createGroup(`${fallbackId}_workspace`, key, [
+            primary,
+            ...extraChildren,
+          ])
+        : primary
+          ? {
+              ...withDisplayKey(primary, key),
+              childMenus: uniqueByElementId([
+                ...(primary.childMenus || []),
+                ...extraChildren,
+              ]),
+            }
+          : createGroup(fallbackId, key, extraChildren);
+    if (!hasNavigableContent(workspace)) return;
+    workspace.menu = {
+      ...workspace.menu,
+      workspaceNumber: number,
+      workspaceSection: Number(number) <= 6 ? "clinical" : "operations",
+    };
+    output.push(workspace);
+  };
+
+  const specimen =
+    byId.get("menu_storage") || byId.get("menu_specimen_management");
+  const collectionIds = new Set(["menu_order_collect", "menu_order_label"]);
+  const collection = (specimen?.childMenus || []).filter((entry) =>
+    collectionIds.has(getElementId(entry)),
+  );
+  const receiving = specimen
+    ? {
+        ...specimen,
+        childMenus: (specimen.childMenus || []).filter(
+          (entry) => !collectionIds.has(getElementId(entry)),
+        ),
+      }
+    : null;
+  const administration =
+    byId.get("menu_administration") ||
+    byId.get("menu_admin") ||
+    byId.get("menu_system_management");
+  const interfaces = (administration?.childMenus || []).filter(
+    (entry) => getElementId(entry) === "menu_analyzers",
+  );
+  const configuration = administration
+    ? {
+        ...administration,
+        childMenus: (administration.childMenus || []).filter(
+          (entry) => getElementId(entry) !== "menu_analyzers",
+        ),
+      }
+    : null;
+
+  addWorkspace(
+    byId.get("menu_home"),
+    "menu_home",
+    CHINA_WORKSPACE_DISPLAY_KEYS.today,
+    "01",
+  );
+  addWorkspace(
+    byId.get("menu_sample"),
+    "menu_sample",
+    CHINA_WORKSPACE_DISPLAY_KEYS.orders,
+    "02",
+    [...collection, byId.get("menu_patient")].filter(Boolean),
+  );
+  addWorkspace(
+    receiving,
+    "menu_specimen_management",
+    CHINA_WORKSPACE_DISPLAY_KEYS.specimens,
+    "03",
+  );
+  addWorkspace(
+    byId.get("menu_results"),
+    "menu_results",
+    CHINA_WORKSPACE_DISPLAY_KEYS.results,
+    "04",
+    [byId.get("menu_resultvalidation")].filter(Boolean),
+  );
+  addWorkspace(
+    byId.get("menu_quality_management"),
+    "menu_quality_management",
+    CHINA_WORKSPACE_DISPLAY_KEYS.quality,
+    "05",
+  );
+  addWorkspace(
+    byId.get("menu_reports"),
+    "menu_reports",
+    CHINA_WORKSPACE_DISPLAY_KEYS.reports,
+    "06",
+    [byId.get("menu_query_statistics")].filter(Boolean),
+  );
+  addWorkspace(
+    null,
+    "menu_interface_center",
+    CHINA_WORKSPACE_DISPLAY_KEYS.interfaces,
+    "07",
+    interfaces,
+  );
+  addWorkspace(
+    configuration,
+    "menu_system_management",
+    CHINA_WORKSPACE_DISPLAY_KEYS.configuration,
+    "08",
+  );
+  return output;
+};
+
 const buildChinaMenu = (items, options) => {
   const roleSet = roleSetFromOptions(options);
   const roots = items
@@ -762,7 +903,7 @@ const buildChinaMenu = (items, options) => {
 export const buildTaskFocusedMenu = (items = [], options = {}) => {
   const profile = options.profile || MENU_PROFILES.CHINA;
   return profile === MENU_PROFILES.CHINA
-    ? buildChinaMenu(items, options)
+    ? organizeChinaWorkspaces(buildChinaMenu(items, options))
     : buildGlobalTaskFocusedMenu(items);
 };
 

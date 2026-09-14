@@ -1,5 +1,5 @@
 import React, { useContext } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { waitFor } from "@testing-library/dom";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
@@ -126,6 +126,34 @@ describe("Layout", () => {
   });
 
   describe("TwoModeLayout integration", () => {
+    test("keeps the shell and header on the same configured navigation profile", () => {
+      const { container } = renderWithProviders(
+        <Layout>
+          <input aria-label="Draft note" defaultValue="Unsaved note" />
+        </Layout>,
+      );
+      const configurationRead = getFromOpenElisServer.mock.calls.find(
+        ([url]) => url === "/rest/configuration-properties",
+      )[1];
+      for (const profile of ["global", "china"]) {
+        act(() => {
+          configurationRead({
+            NAVIGATION_PROFILE: profile,
+            BANNER_TEXT: "Test Lab",
+          });
+        });
+        expect(container.querySelector(".oe-app-shell")).toHaveAttribute(
+          "data-navigation-profile",
+          profile,
+        );
+        expect(container.querySelector("#mainHeader")).toHaveAttribute(
+          "data-navigation-profile",
+          profile,
+        );
+        expect(screen.getByLabelText("Draft note")).toHaveValue("Unsaved note");
+      }
+    });
+
     test("keeps navigation available and shows a recovery action when any route crashes", () => {
       const consoleError = vi
         .spyOn(console, "error")

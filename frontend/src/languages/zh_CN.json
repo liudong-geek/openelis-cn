@@ -8894,5 +8894,22 @@
   "error.results.testIntakeChanged": "该检验项目未被当前接收记录覆盖，或项目已停用，请核对项目后重新查询。",
   "error.results.analysisEntryUnavailable": "该检验项目当前不能通过普通录入修改，请核对审核、取消或退回状态后使用相应处理流程。",
   "results.workbench.savingAndChecking": "正在保存并重新查询核对结果…",
-  "results.workbench.saveReadbackUnconfirmed": "服务器已受理保存，但尚未核实保存后的记录。已保留本次输入，请勿重复提交；核实记录后再继续操作。"
+  "results.workbench.saveReadbackUnconfirmed": "服务器已受理保存，但尚未核实保存后的记录。已保留本次输入，请勿重复提交；核实记录后再继续操作。",
+  "sidenav.workspace.today": "今日待办",
+  "sidenav.workspace.orders": "申请与采样",
+  "sidenav.workspace.specimens": "标本签收",
+  "sidenav.workspace.results": "检验与审核",
+  "sidenav.workspace.quality": "质量与异常",
+  "sidenav.workspace.reports": "查询与报告",
+  "sidenav.workspace.interfaces": "接口中心",
+  "sidenav.workspace.configuration": "基础配置",
+  "sidenav.workspace.section.clinical": "临床工作区",
+  "sidenav.workspace.section.operations": "系统管理",
+  "results.workbench.queue.title": "标本队列",
+  "results.workbench.queue.subtitle": "选择标本，集中处理该标本的检验项目。",
+  "results.workbench.queue.all": "全部标本",
+  "results.workbench.queue.count": "当前队列 {count} 项",
+  "results.workbench.queue.tests": "{count} 个检验项目",
+  "results.workbench.workspace.saveHint": "保存仅完成结果录入，审核与报告签发请在对应工作台完成。",
+  "results.workbench.workspace.draftCount": "{count} 项本页输入未完成"
 }

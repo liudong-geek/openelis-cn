@@ -5,6 +5,7 @@ import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import { MemoryRouter, Route } from "react-router-dom";
 import { vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import OEHeader from "./Header";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { ConfigurationContext, NotificationContext } from "./Layout";
@@ -62,6 +63,7 @@ const mockConfigurationContext = {
   configurationProperties: {
     BANNER_TEXT: "Test LIMS",
     releaseNumber: "3.2.1",
+    NAVIGATION_PROFILE: "global",
   },
   enabledLanguages: {
     en: { label: "English", messages },
@@ -345,6 +347,223 @@ describe("Header Component - M2b Enhancement Tests", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
+  });
+
+  describe("Site navigation profile", () => {
+    const profileMenuData = [
+      MOCK_MENU_DATA[0],
+      {
+        menu: {
+          elementId: "menu_help",
+          displayKey: "banner.menu.help",
+          actionURL: "",
+          isActive: true,
+        },
+        childMenus: [
+          {
+            menu: {
+              elementId: "menu_help_user_manual",
+              displayKey: "banner.menu.help",
+              actionURL: "/docs/UserManual",
+              isActive: true,
+            },
+            childMenus: [],
+          },
+        ],
+      },
+    ];
+
+    test.each([
+      {
+        name: "Chinese only",
+        languages: { zh: { label: "简体中文", messages } },
+      },
+      {
+        name: "English only",
+        languages: { en: { label: "English", messages } },
+      },
+      {
+        name: "multiple languages",
+        languages: mockConfigurationContext.enabledLanguages,
+      },
+    ])("keeps the China product menu with $name", async ({ languages }) => {
+      const { container } = renderHeader({
+        menuData: profileMenuData,
+        configurationContext: {
+          ...mockConfigurationContext,
+          enabledLanguages: languages,
+          configurationProperties: {
+            ...mockConfigurationContext.configurationProperties,
+            NAVIGATION_PROFILE: "china",
+          },
+        },
+      });
+
+      await waitFor(() => {
+        expect(container.querySelector('a[href="/Dashboard"]')).toBeTruthy();
+      });
+      expect(container.querySelector("#menu_help")).toBeNull();
+    });
+
+    test("respects an explicitly global site even when Chinese is the only language", async () => {
+      const { container } = renderHeader({
+        menuData: profileMenuData,
+        configurationContext: {
+          ...mockConfigurationContext,
+          enabledLanguages: { zh: { label: "简体中文", messages } },
+        },
+      });
+
+      await waitFor(() => {
+        expect(container.querySelector("#menu_help button")).toBeTruthy();
+      });
+    });
+
+    test.each([{}, { NAVIGATION_PROFILE: "unknown" }])(
+      "uses the explicit deployment default while site settings are unavailable or invalid",
+      async (configurationProperties) => {
+        const { container } = renderHeader({
+          menuData: profileMenuData,
+          configurationContext: {
+            ...mockConfigurationContext,
+            configurationProperties,
+          },
+        });
+
+        await waitFor(() => {
+          expect(container.querySelector('a[href="/Dashboard"]')).toBeTruthy();
+        });
+        expect(container.querySelector("#menu_help")).toBeNull();
+      },
+    );
+  });
+
+  describe("Clinical workspace presentation", () => {
+    const chinaConfiguration = {
+      ...mockConfigurationContext,
+      configurationProperties: {
+        ...mockConfigurationContext.configurationProperties,
+        NAVIGATION_PROFILE: "china",
+      },
+    };
+
+    test("numbers the authorized workspace navigation without changing accessible labels", async () => {
+      const { container } = renderHeader({
+        configurationContext: chinaConfiguration,
+      });
+      await waitFor(() => {
+        expect(
+          container.querySelector(".oe-workspace-nav-number"),
+        ).toBeTruthy();
+      });
+      const homeLink = container.querySelector('a[href="/Dashboard"]');
+      expect(
+        homeLink.querySelector(".oe-workspace-nav-number"),
+      ).toHaveTextContent("01");
+      expect(
+        homeLink.querySelector(".oe-workspace-nav-number"),
+      ).toHaveAttribute("aria-hidden", "true");
+      expect(homeLink).toHaveAttribute("aria-current", "page");
+      expect(
+        container.querySelectorAll(".oe-workspace-nav-section").length,
+      ).toBeGreaterThan(0);
+      expect(
+        container.querySelector(".oe-header-workspace__lab"),
+      ).toHaveTextContent("Test Lab");
+      expect(container.querySelector("#header-logo img")).toHaveAttribute(
+        "src",
+        "/images/openelis_logo.png",
+      );
+    });
+
+    test("keeps the global profile free of clinical navigation decoration", async () => {
+      const { container } = renderHeader({
+        menuData: MOCK_MENU_DATA.map((item) => ({
+          ...item,
+          menu: {
+            ...item.menu,
+            workspaceNumber: "01",
+            workspaceSection: "clinical",
+          },
+        })),
+      });
+      await waitFor(() => {
+        expect(container.querySelector('a[href="/Dashboard"]')).toBeTruthy();
+      });
+      expect(container.querySelector("#mainHeader")).toHaveAttribute(
+        "data-navigation-profile",
+        "global",
+      );
+      expect(container.querySelector(".oe-workspace-nav-number")).toBeNull();
+      expect(container.querySelector(".oe-workspace-nav-section")).toBeNull();
+      expect(container.querySelector(".oe-header-workspace")).toBeNull();
+    });
+
+    test("uses the supported Carbon icon slot for parent numbers and a plain title", async () => {
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      try {
+        const { container } = renderHeader({
+          configurationContext: chinaConfiguration,
+        });
+        await waitFor(() => {
+          expect(
+            container.querySelector("#menu_sample .cds--side-nav__submenu"),
+          ).toBeTruthy();
+        });
+        const orderToggle = container.querySelector(
+          "#menu_sample .cds--side-nav__submenu",
+        );
+        expect(orderToggle).toHaveAccessibleName(
+          messages["sidenav.workspace.orders"],
+        );
+        expect(
+          orderToggle.querySelector(".cds--side-nav__submenu-title"),
+        ).toHaveTextContent(messages["sidenav.workspace.orders"]);
+        const number = orderToggle.querySelector(
+          ".cds--side-nav__icon .oe-workspace-nav-number",
+        );
+        expect(number).toHaveTextContent("02");
+        expect(number).toHaveAttribute("aria-hidden", "true");
+        expect(
+          consoleError.mock.calls.some((args) =>
+            args.some((arg) => String(arg).includes("Invalid prop `title`")),
+          ),
+        ).toBe(false);
+      } finally {
+        consoleError.mockRestore();
+      }
+    });
+
+    test("allows keyboard expansion and Escape to close the clinical drawer", async () => {
+      const user = userEvent.setup();
+      const { container, mockCloseSideNav } = renderHeader({
+        configurationContext: chinaConfiguration,
+        isDesktop: false,
+        navOpen: true,
+      });
+      await waitFor(() => {
+        expect(
+          container.querySelector(
+            ".oe-workspace-nav-item .cds--side-nav__submenu",
+          ),
+        ).toBeTruthy();
+      });
+      const getToggle = () =>
+        container.querySelector(
+          ".oe-workspace-nav-item .cds--side-nav__submenu",
+        );
+      getToggle().focus();
+      await user.keyboard("{Enter}");
+      await waitFor(() => {
+        expect(getToggle()).toHaveAttribute("aria-expanded", "true");
+      });
+      expect(getToggle()).toHaveFocus();
+      await user.keyboard("{Escape}");
+      expect(mockCloseSideNav).toHaveBeenCalledTimes(1);
+      expect(container.querySelector("#sidenav-menu-button")).toHaveFocus();
+    });
   });
 
   describe("Home item active state", () => {
@@ -709,6 +928,10 @@ describe("Header Component - M2b Enhancement Tests", () => {
         menuData: orderMenuData,
         configurationContext: {
           ...mockConfigurationContext,
+          configurationProperties: {
+            ...mockConfigurationContext.configurationProperties,
+            NAVIGATION_PROFILE: "china",
+          },
           enabledLanguages: {
             zh: { label: "简体中文", messages },
           },
@@ -766,6 +989,10 @@ describe("Header Component - M2b Enhancement Tests", () => {
         menuData: reportMenuData,
         configurationContext: {
           ...mockConfigurationContext,
+          configurationProperties: {
+            ...mockConfigurationContext.configurationProperties,
+            NAVIGATION_PROFILE: "china",
+          },
           enabledLanguages: {
             zh: { label: "简体中文", messages },
           },

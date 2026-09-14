@@ -342,25 +342,60 @@ test("多选全部替换后使用读回的新代表编号继续编辑", async ()
   render(view());
   await screen.findByText("模拟保存核对");
   fireEvent.click(tr().getByRole("button", { name: "编辑" }));
-  fireEvent.click(tr().getByRole("combobox"));
-  await act(async () =>
-    fireEvent.click(screen.getByRole("option", { name: "选项甲" })),
+  // Carbon autoAlign uses Floating UI's hide() middleware. JSDOM otherwise
+  // supplies zero-sized reference/viewport boxes, so asynchronous positioning
+  // hides an open menu. Model only this control's visible geometry: keep the
+  // real floating component, accessible-option queries and selection checks.
+  const viewport = document.documentElement;
+  const dimensions = { clientWidth: 1280, clientHeight: 720 };
+  const previousDimensions = Object.fromEntries(
+    Object.keys(dimensions).map((key) => [
+      key,
+      Object.getOwnPropertyDescriptor(viewport, key),
+    ]),
   );
-  await waitFor(() =>
+  for (const [key, value] of Object.entries(dimensions)) {
+    Object.defineProperty(viewport, key, { configurable: true, value });
+  }
+  const trigger = tr().getByRole("combobox");
+  const reference = trigger.closest(".cds--list-box__field--wrapper");
+  const referenceRect = vi
+    .spyOn(reference, "getBoundingClientRect")
+    .mockReturnValue(new DOMRect(400, 240, 300, 40));
+  try {
+    fireEvent.click(trigger);
+    const firstOption = await screen.findByRole("option", { name: "选项甲" });
+    const menu = screen.getByRole("listbox");
+    await waitFor(() => expect(menu.style.position).toBe("fixed"));
+    expect(menu).toBeVisible();
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await act(async () => fireEvent.click(firstOption));
+    await waitFor(() =>
+      expect(screen.getByRole("option", { name: "选项甲" })).toHaveAttribute(
+        "aria-selected",
+        "false",
+      ),
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByRole("option", { name: "选项乙" })),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("option", { name: "选项乙" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
     expect(screen.getByRole("option", { name: "选项甲" })).toHaveAttribute(
       "aria-selected",
       "false",
-    ),
-  );
-  await act(async () =>
-    fireEvent.click(screen.getByRole("option", { name: "选项乙" })),
-  );
-  await waitFor(() =>
-    expect(screen.getByRole("option", { name: "选项乙" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    ),
-  );
+    );
+  } finally {
+    referenceRect.mockRestore();
+    for (const [key, descriptor] of Object.entries(previousDimensions)) {
+      if (descriptor) Object.defineProperty(viewport, key, descriptor);
+      else delete viewport[key];
+    }
+  }
   fireEvent.click(tr().getByRole("button", { name: "保存" }));
   await waitFor(() => expect(pendingRead).toHaveLength(1));
   expect(

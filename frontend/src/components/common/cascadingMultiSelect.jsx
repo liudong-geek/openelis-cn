@@ -8,6 +8,7 @@ export default function CascadingMultiSelect({
   name,
   dictionaryValues = [],
   value = "{}",
+  autoAlign = false,
   onChange,
 }) {
   const intl = useIntl();
@@ -121,6 +122,7 @@ export default function CascadingMultiSelect({
                 </div>
 
                 <MultiSelect
+                  autoAlign={autoAlign}
                   id={`${id}_${key}`}
                   items={items}
                   selectedItems={selectedItems}

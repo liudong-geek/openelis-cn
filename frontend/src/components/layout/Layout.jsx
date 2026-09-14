@@ -14,6 +14,8 @@ import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { getFromOpenElisServer } from "../utils/Utils";
 import { defaultLanguages, buildLanguagesFromConfig } from "../../languages";
 import RouteErrorBoundary from "../common/RouteErrorBoundary";
+import config from "../../config.json";
+import { resolveNavigationProfile } from "./navigationProfile";
 
 export const ConfigurationContext = createContext(null);
 export const NotificationContext = createContext(null);
@@ -251,6 +253,10 @@ export default function Layout(props) {
               : "oe-app-shell--public"
           }`}
           data-page-family={pageFamily}
+          data-navigation-profile={resolveNavigationProfile(
+            configurationProperties?.NAVIGATION_PROFILE,
+            config.navigationProfile,
+          )}
         >
           <a className="oe-skip-link" href="#main-content">
             {intl.formatMessage({ id: "accessibility.skip.to.content" })}

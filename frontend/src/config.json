@@ -1,5 +1,6 @@
 {
   "title": "Cote d'Ivoire Regional Laboratory LIS",
   "loginRedirect": "/login",
+  "navigationProfile": "china",
   "serverBaseUrl": "/api/OpenELIS-Global"
 }

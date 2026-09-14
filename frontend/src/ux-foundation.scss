@@ -1,3 +1,5 @@
+@use "./clinical-workspace";
+
 /*
  * OpenELIS CN product UI foundation
  *
@@ -503,6 +505,9 @@ body {
 }
 
 .results-workbench__table-scroll {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
   border: 1px solid var(--oe-border);
   border-radius: 0.5rem 0.5rem 0 0;
@@ -510,7 +515,94 @@ body {
 
 .results-workbench__table-scroll .cds--data-table-container,
 .results-workbench__table-scroll .cds--data-table-content {
-  min-width: 58rem;
+  min-width: 64rem;
+}
+
+/* A long identifier must not take space away from result entry. Keep this
+   column contract local to the workbench; smaller screens scroll this region. */
+.results-workbench__table {
+  width: 100%;
+  min-width: 64rem;
+  table-layout: fixed;
+}
+
+.results-workbench__column--subject {
+  width: 24%;
+}
+
+.results-workbench__column--test {
+  width: 20%;
+}
+
+.results-workbench__column--range {
+  width: 12%;
+}
+
+.results-workbench__column--result {
+  width: 22%;
+}
+
+.results-workbench__column--status {
+  width: 12%;
+}
+
+.results-workbench__column--actions {
+  width: 10%;
+}
+
+.results-workbench__accession,
+.results-workbench__patient-name,
+.results-workbench__sample-type,
+.results-workbench__specimen-barcode {
+  display: block;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.results-workbench__accession {
+  color: var(--cds-text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.results-workbench__patient-name,
+.results-workbench__sample-type,
+.results-workbench__specimen-barcode {
+  margin-top: var(--cds-spacing-02, 0.25rem);
+  color: var(--cds-text-secondary);
+}
+
+.results-workbench__specimen-barcode {
+  font-size: 0.75rem;
+}
+
+.results-workbench__barcode-value {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.results-workbench__table .results-workbench__cell--test,
+.results-workbench__table .results-workbench__cell--range,
+.results-workbench__table .results-workbench__cell--result,
+.results-workbench__table .results-workbench__cell--status {
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.5;
+}
+
+.results-workbench__cell--result
+  :where(.cds--select, .cds--select-input, .cds--text-input, .cds--text-area) {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.results-workbench__cell--actions .cds--btn {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  justify-content: center;
+  padding-inline: var(--cds-spacing-03, 0.5rem);
 }
 
 .results-workbench__table-scroll .cds--data-table th {

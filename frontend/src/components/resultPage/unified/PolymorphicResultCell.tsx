@@ -111,6 +111,7 @@ const PolymorphicResultCell: React.FC<PolymorphicResultCellProps> = ({
     case "M":
       return (
         <ResultMultiSelect
+          autoAlign
           id={`unifiedMultiResultValue-${rowKey}`}
           name={`unifiedMultiResultValue-${rowKey}`}
           dictionaryValues={row.dictionaryResults || []}
@@ -124,6 +125,7 @@ const PolymorphicResultCell: React.FC<PolymorphicResultCellProps> = ({
     case "C":
       return (
         <CascadingMultiSelect
+          autoAlign
           id={`unifiedCascadingResultValue-${rowKey}`}
           name={`unifiedCascadingResultValue-${rowKey}`}
           dictionaryValues={row.dictionaryResults || []}
