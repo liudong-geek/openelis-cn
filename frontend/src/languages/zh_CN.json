@@ -8892,5 +8892,7 @@
   "error.results.specimenIntakeMissing": "该管尚未完成接收验收，请在原申请中核对并记录接收或拒收，再重新查询。",
   "error.results.specimenIntakeChanged": "该管的患者、申请或验收依据已变化，暂不能录入；请核对原申请及验收记录。",
   "error.results.testIntakeChanged": "该检验项目未被当前接收记录覆盖，或项目已停用，请核对项目后重新查询。",
-  "error.results.analysisEntryUnavailable": "该检验项目当前不能通过普通录入修改，请核对审核、取消或退回状态后使用相应处理流程。"
+  "error.results.analysisEntryUnavailable": "该检验项目当前不能通过普通录入修改，请核对审核、取消或退回状态后使用相应处理流程。",
+  "results.workbench.savingAndChecking": "正在保存并重新查询核对结果…",
+  "results.workbench.saveReadbackUnconfirmed": "服务器已受理保存，但尚未核实保存后的记录。已保留本次输入，请勿重复提交；核实记录后再继续操作。"
 }

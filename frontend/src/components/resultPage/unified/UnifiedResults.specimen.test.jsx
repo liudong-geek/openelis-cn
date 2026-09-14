@@ -440,6 +440,20 @@ test("保存后收到严格回执才显示成功并移除本页输入", () => {
   open();
   enter("5");
   act(() => sign()());
+  io.read.mockImplementation((_url, callback) =>
+    callback({
+      testResult: [
+        {
+          ...row("101", "201"),
+          resultValue: "5",
+          rawResultValue: "5",
+          resultId: "601",
+          analysisLastupdated: "2000",
+          analysisStatusId: "6",
+        },
+      ],
+    }),
+  );
   act(() =>
     responses[0]({
       status: 200,

@@ -33,17 +33,18 @@ import org.openelisglobal.analysis.valueholder.ResultFile;
 import org.openelisglobal.analyte.service.AnalyteService;
 import org.openelisglobal.analyte.valueholder.Analyte;
 import org.openelisglobal.common.exception.LIMSRuntimeException;
-import org.openelisglobal.common.formfields.FormFields;
 import org.openelisglobal.common.formfields.FormFields.Field;
+import org.openelisglobal.common.formfields.FormFields;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.services.IStatusService;
-import org.openelisglobal.common.services.QAService;
 import org.openelisglobal.common.services.QAService.QAObservationType;
+import org.openelisglobal.common.services.QAService;
+import org.openelisglobal.common.services.ResultSaveComponentScope;
 import org.openelisglobal.common.services.StatusService.AnalysisStatus;
 import org.openelisglobal.common.services.StatusService.OrderStatus;
 import org.openelisglobal.common.services.TestIdentityService;
-import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.ConfigurationProperties.Property;
+import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.dictionary.service.DictionaryService;
@@ -56,8 +57,8 @@ import org.openelisglobal.localization.valueholder.Localization;
 import org.openelisglobal.note.service.NoteService;
 import org.openelisglobal.note.service.NoteServiceImpl.NoteType;
 import org.openelisglobal.observationhistory.service.ObservationHistoryService;
-import org.openelisglobal.observationhistory.valueholder.ObservationHistory;
 import org.openelisglobal.observationhistory.valueholder.ObservationHistory.ValueType;
+import org.openelisglobal.observationhistory.valueholder.ObservationHistory;
 import org.openelisglobal.patient.form.PatientInfoForm;
 import org.openelisglobal.patient.service.PatientService;
 import org.openelisglobal.patient.util.PatientUtil;
@@ -67,8 +68,10 @@ import org.openelisglobal.patientidentitytype.util.PatientIdentityTypeMap;
 import org.openelisglobal.person.service.PersonService;
 import org.openelisglobal.referral.service.ReferralService;
 import org.openelisglobal.referral.valueholder.Referral;
+import org.openelisglobal.result.exception.ResultSaveValidationException;
 import org.openelisglobal.result.service.ResultInventoryService;
 import org.openelisglobal.result.service.ResultService;
+import org.openelisglobal.result.service.ResultServiceImpl;
 import org.openelisglobal.result.service.ResultSignatureService;
 import org.openelisglobal.result.valueholder.Result;
 import org.openelisglobal.result.valueholder.ResultInventory;
@@ -86,8 +89,8 @@ import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.statusofsample.util.StatusRules;
 import org.openelisglobal.systemuser.service.SystemUserService;
 import org.openelisglobal.systemuser.valueholder.SystemUser;
-import org.openelisglobal.test.beanItems.TestResultItem;
 import org.openelisglobal.test.beanItems.TestResultItem.ResultDisplayType;
+import org.openelisglobal.test.beanItems.TestResultItem;
 import org.openelisglobal.test.service.TestService;
 import org.openelisglobal.test.valueholder.Test;
 import org.openelisglobal.testreflex.action.util.TestReflexUtil;
@@ -883,8 +886,8 @@ public class ResultsLoadUtility {
         testItem.setAnalysisMethod(analysisService.getAnalysisType(analysis));
         testItem.setTestMethod(analysisService.getMethodId(analysis));
         testItem.setResult(result);
+        testItem.setRawResultValue(result == null ? null : result.getValue());
         testItem.setResultValue(getFormattedResultValue(result));
-        testItem.setMultiSelectResultValues(analysisService.getJSONMultiSelectResults(analysis));
         testItem.setAnalysisStatusId(analysisService.getStatusId(analysis));
         // Display type selection:
         // - For existing results with a stored non-blank value whose type differs
@@ -964,11 +967,22 @@ public class ResultsLoadUtility {
                     "Error looking up EQA status for analysis " + analysis.getId() + ", sample " + sampleIdStr, e);
         }
 
-        Result quantifiedResult = analysisService.getQuantifiedResult(analysis);
-        if (quantifiedResult != null) {
-            testItem.setQualifiedResultId(quantifiedResult.getId());
-            testItem.setQualifiedResultValue(quantifiedResult.getValue());
-            testItem.setHasQualifiedResult(true);
+        // Rebuild selection ownership from persisted rows, not an analysis-wide value.
+        testItem.setQualifiedResultId(null);
+        testItem.setQualifiedResultValue(null);
+        testItem.setHasQualifiedResult(false);
+        try {
+            ResultSaveComponentScope scope = new ResultSaveComponentScope(test.getId(),
+                    component == null ? null : component.getId(),
+                    testResultComponentService.getActiveComponentsByTestId(test.getId()));
+            setRowSelectionValues(testItem, result, analysis, scope);
+        } catch (ResultSaveValidationException invalidScope) {
+            testItem.setReadOnly(true);
+            testItem.setResultEntryBlockedReason(invalidScope.getErrorCode());
+            testItem.setMultiSelectResultValues(null);
+            testItem.setQualifiedResultId(null);
+            testItem.setQualifiedResultValue(null);
+            testItem.setHasQualifiedResult(false);
         }
 
         if (!testResults.isEmpty() && NUMERIC_RESULT_TYPE.equals(testResults.get(0).getTestResultType())
@@ -1076,13 +1090,73 @@ public class ResultsLoadUtility {
     }
 
     private void setQualifiedValues(TestResultItem testItem, Result result) {
-        if (result != null) {
+        if (result != null && !GenericValidator.isBlankOrNull(result.getId())) {
             List<Result> results = resultService.getChildResults(result.getId());
-            if (!results.isEmpty()) {
-                Result childResult = results.get(0);
+            for (Result childResult : results) {
+                if (childResult == null || GenericValidator.isBlankOrNull(childResult.getId())
+                        || childResult.getParentResult() == null
+                        || !result.getId().equals(childResult.getParentResult().getId())
+                        || childResult.getAnalysis() == null || result.getAnalysis() == null
+                        || !result.getAnalysis().getId().equals(childResult.getAnalysis().getId())) {
+                    continue;
+                }
                 testItem.setQualifiedResultId(childResult.getId());
                 testItem.setQualifiedResultValue(childResult.getValue());
+                if (!GenericValidator.isBlankOrNull(childResult.getValue())) {
+                    testItem.setHasQualifiedResult(true);
+                }
+                break;
             }
+        }
+    }
+
+    private void setRowSelectionValues(TestResultItem item, Result result, Analysis analysis,
+            ResultSaveComponentScope scope) {
+        if (result != null && (result.getAnalysis() == null || !analysis.getId().equals(result.getAnalysis().getId())
+                || !scope.contains(result))) {
+            throw new ResultSaveValidationException("error.results.componentMismatch");
+        }
+        if (!TypeOfTestResultServiceImpl.ResultType.isMultiSelectVariant(item.getResultType())) {
+            setQualifiedValues(item, result);
+            return;
+        }
+
+        // Multiselect collapses several selected parent records into one row. Use
+        // the same server-owned component/legacy-primary rules as the save guard.
+        List<Result> existing = resultService.getResultsByAnalysis(analysis);
+        List<Result> selectedParents = new ArrayList<>();
+        Set<String> selectedParentIds = new HashSet<>();
+        for (Result parent : existing) {
+            if (parent != null && !GenericValidator.isBlankOrNull(parent.getId()) && parent.getParentResult() == null
+                    && parent.getAnalysis() != null && analysis.getId().equals(parent.getAnalysis().getId())
+                    && TypeOfTestResultServiceImpl.ResultType.isMultiSelectVariant(parent.getResultType())
+                    && scope.contains(parent)) {
+                selectedParents.add(parent);
+                selectedParentIds.add(parent.getId());
+            }
+        }
+        item.setMultiSelectResultValues(ResultServiceImpl.getJSONStringForMultiSelect(selectedParents));
+
+        Result qualified = null;
+        for (Result child : existing) {
+            if (child == null || GenericValidator.isBlankOrNull(child.getId()) || child.getParentResult() == null
+                    || !selectedParentIds.contains(child.getParentResult().getId()) || child.getAnalysis() == null
+                    || !analysis.getId().equals(child.getAnalysis().getId())
+                    || GenericValidator.isBlankOrNull(child.getValue())) {
+                continue;
+            }
+            if (qualified == null) {
+                qualified = child;
+            }
+            if (result != null && result.getId().equals(child.getParentResult().getId())) {
+                qualified = child;
+                break;
+            }
+        }
+        if (qualified != null) {
+            item.setQualifiedResultId(qualified.getId());
+            item.setQualifiedResultValue(qualified.getValue());
+            item.setHasQualifiedResult(true);
         }
     }
 

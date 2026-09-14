@@ -49,6 +49,10 @@ import {
   entryReasons,
 } from "./resultEntryState";
 import ResultDraftReview from "./ResultDraftReview";
+import {
+  confirmedResultReadback,
+  resultReadbackPath,
+} from "./resultSaveReadback";
 import { NotificationContext } from "../../layout/Layout";
 import {
   AlertDialog,
@@ -167,6 +171,7 @@ const isConfirmedSaveResponse = (
 
 // Only known, localized failures are shown. Server exception text is not UI copy.
 const SAVE_ERROR_KEYS = new Set([
+  "results.workbench.saveReadbackUnconfirmed",
   ...entryReasons,
   "error.results.analysisMismatch",
   "error.results.resultMismatch",
@@ -773,6 +778,20 @@ const UnifiedResults: React.FC = () => {
       !mounted.current
     )
       return;
+    // Editing must start from the stored value, not a rounded/truncated label.
+    if (
+      target.resultType !== "M" &&
+      target.resultType !== "C" &&
+      typeof target.rawResultValue === "string"
+    ) {
+      updateRows((current) =>
+        current.map((row) =>
+          worklistRowKey(row) === key
+            ? { ...row, resultValue: target.rawResultValue as string }
+            : row,
+        ),
+      );
+    }
     setRowStates((current) => ({
       ...current,
       [key]: nextRowState(current[key] || "SAVED", {
@@ -787,6 +806,7 @@ const UnifiedResults: React.FC = () => {
       target: WorklistRow,
       response: SaveResponse | undefined,
       unchanged: boolean,
+      confirmedRows?: WorklistRow[],
     ) => {
       const key = worklistRowKey(target);
       const draft = drafts.current.get(key);
@@ -873,6 +893,10 @@ const UnifiedResults: React.FC = () => {
       }
       if (unchanged) drafts.current.delete(key);
       else if (draft) draft.disposition = "editing";
+      // Other component drafts remain separately visible for explicit comparison.
+      for (const sibling of drafts.current.values()) {
+        if (sibling.row.analysisId === target.analysisId) sibling.held = true;
+      }
       if (unchanged) {
         setRowStates((current) => ({
           ...current,
@@ -881,20 +905,18 @@ const UnifiedResults: React.FC = () => {
           }),
         }));
       }
-      // the version token is per ANALYSIS — refresh it on every component
-      // row of this analysis so a sibling save isn't falsely rejected. The
-      // status changes to Technical Acceptance after a successful entry and
-      // must be reflected immediately instead of continuing to say
-      // "Not started" until the next page load.
+      // Replace server-owned identities/definitions from the independent GET,
+      // not from the submitted row. In particular a newly created resultId must
+      // be carried by the next edit instead of silently inserting another result.
       updateRows((current) =>
-        current.map((row) =>
-          row.analysisId === target.analysisId
-            ? {
-                ...row,
-                analysisLastupdated: response.analysisLastupdated,
-                analysisStatusId: response.analysisStatusId,
-              }
-            : row,
+        restrictTubes(
+          current.map((row) =>
+            row.analysisId === target.analysisId
+              ? confirmedRows!.find(
+                  (saved) => worklistRowKey(saved) === worklistRowKey(row),
+                )!
+              : row,
+          ),
         ),
       );
       setStaleInfo((current) => {
@@ -971,29 +993,75 @@ const UnifiedResults: React.FC = () => {
       // TestResultItem serializes reportable as "Y"/"N" but deserializes it
       // as boolean — same normalization the legacy page applies before POST
       item.reportable = item.reportable !== "N";
-      postToOpenElisServerJsonResponse(
-        `/rest/results-entry/analysis/${row.analysisId}/result`,
-        JSON.stringify({ testResult: item }),
-        (response: SaveResponse | undefined) => {
-          if (revokeFor(response, submittedSession)) return;
-          if (pendingSaves.current.get(key) !== submission) return;
-          pendingSaves.current.delete(key);
-          if (!mounted.current) return;
+      const currentSubmission = () =>
+        pendingSaves.current.get(key) === submission &&
+        mounted.current &&
+        submission.epoch === loadEpoch.current &&
+        ready(submittedSession);
+      const clearSubmission = () => {
+        if (pendingSaves.current.get(key) !== submission) return;
+        pendingSaves.current.delete(key);
+        if (mounted.current)
           setSavingRows((current) => {
             const next = new Set(current);
             next.delete(key);
             return next;
           });
-          // Neither success nor failure may annotate a newer loaded row.
-          if (
-            submission.epoch !== loadEpoch.current ||
-            !ready(submittedSession)
-          )
+      };
+      const complete = (
+        response: SaveResponse | undefined,
+        confirmedRows?: WorklistRow[],
+      ) => {
+        if (!currentSubmission()) return;
+        clearSubmission();
+        handleSaveResponse(
+          row,
+          response,
+          submission.revision === (rowEditRevisions.current[key] || 0),
+          confirmedRows,
+        );
+      };
+      postToOpenElisServerJsonResponse(
+        `/rest/results-entry/analysis/${row.analysisId}/result`,
+        JSON.stringify({ testResult: item }),
+        (response: SaveResponse | undefined) => {
+          if (revokeFor(response, submittedSession)) return;
+          if (!currentSubmission()) {
+            clearSubmission();
             return;
-          handleSaveResponse(
-            row,
-            response,
-            submission.revision === (rowEditRevisions.current[key] || 0),
+          }
+          if (!isConfirmedSaveResponse(response)) {
+            complete(response);
+            return;
+          }
+          const path = resultReadbackPath(row);
+          const unconfirmed = () =>
+            complete({
+              status: 0,
+              errorKey: "results.workbench.saveReadbackUnconfirmed",
+            });
+          if (!path) {
+            unconfirmed();
+            return;
+          }
+          // Keep the entire analysis frozen until this independent read completes.
+          getFromOpenElisServer(
+            path,
+            (data: unknown, error?: EntryRequestError) => {
+              if (revokeFor(error, submittedSession)) return;
+              if (!currentSubmission()) {
+                clearSubmission();
+                return;
+              }
+              const verified = error
+                ? null
+                : confirmedResultReadback(row, response, data, rowsRef.current);
+              if (!verified) {
+                unconfirmed();
+                return;
+              }
+              complete(response, verified);
+            },
           );
         },
         submittedSession!.csrf,
@@ -1220,6 +1288,13 @@ const UnifiedResults: React.FC = () => {
           </div>
         </Tile>
 
+        {savingRows.size > 0 && (
+          <InlineLoading
+            description={intl.formatMessage({
+              id: "results.workbench.savingAndChecking",
+            })}
+          />
+        )}
         <ResultDraftReview
           drafts={[...drafts.current.entries()]}
           currentRows={rows}

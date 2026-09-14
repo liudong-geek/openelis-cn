@@ -42,6 +42,10 @@ vi.mock("../../esignature/ESignatureButton", () => ({
 const pendingRow = {
   id: "0",
   analysisId: "42",
+  sampleItemId: "201",
+  testId: "401",
+  analysisLastupdated: "1000",
+  resultId: "",
   accessionNumber: "DEV01260000000000003",
   patientInfo: "P1-20260821-NID-0002",
   sampleType: "Whole blood",
@@ -52,6 +56,13 @@ const pendingRow = {
   resultType: "N",
   resultValue: "",
   reportable: "Y",
+};
+
+const savedReceipt = {
+  reflex: [],
+  calculated: [],
+  analysisStatusId: "15",
+  analysisLastupdated: "1755900000000",
 };
 
 const renderWorkbench = (
@@ -70,8 +81,33 @@ const renderWorkbench = (
       ]);
       return;
     }
-    if (url === "/rest/results-entry/pending") {
-      callback({ testResult: pendingRows, total: pendingRows.length });
+    if (
+      url === "/rest/results-entry/pending" ||
+      url.startsWith("/rest/LogbookResults?")
+    ) {
+      const lastSave = postToOpenElisServerJsonResponse.mock.calls.at(-1);
+      const submitted = lastSave ? JSON.parse(lastSave[1]).testResult : null;
+      const loaded =
+        url.startsWith("/rest/LogbookResults?") && submitted
+          ? pendingRows.map((row) =>
+              row.analysisId !== submitted.analysisId
+                ? row
+                : {
+                    ...row,
+                    ...(row.testResultComponentId ===
+                    submitted.testResultComponentId
+                      ? {
+                          ...submitted,
+                          resultId: submitted.resultId || "601",
+                          rawResultValue: submitted.resultValue,
+                        }
+                      : {}),
+                    analysisLastupdated: savedReceipt.analysisLastupdated,
+                    analysisStatusId: savedReceipt.analysisStatusId,
+                  },
+            )
+          : pendingRows;
+      callback({ testResult: loaded, total: loaded.length });
     }
   });
 

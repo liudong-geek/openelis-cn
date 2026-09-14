@@ -79,7 +79,21 @@ beforeEach(() => {
           signingCount: 1,
         });
       if (path.endsWith("/esig/sign")) return sign();
-      if (path.endsWith("/analysis/101/result")) return save();
+      if (path.endsWith("/analysis/101/result")) {
+        const response = await save();
+        if (response.status === 200) {
+          const receipt = await response.clone().json();
+          if (receipt.analysisLastupdated)
+            row = {
+              ...JSON.parse(init.body).testResult,
+              resultId: "601",
+              rawResultValue: JSON.parse(init.body).testResult.resultValue,
+              analysisLastupdated: receipt.analysisLastupdated,
+              analysisStatusId: receipt.analysisStatusId,
+            };
+        }
+        return response;
+      }
       throw Error("Unexpected SIM endpoint");
     }),
   );

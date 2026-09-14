@@ -131,6 +131,7 @@ public class TestResultItem implements ResultItem, Serializable {
 
     @SafeHtml(level = SafeHtml.SafeListLevel.NONE, groups = { LogbookResultsForm.LogbookResults.class })
     private String resultValue;
+    private String rawResultValue;
 
     private String remarks;
 
@@ -590,6 +591,15 @@ public class TestResultItem implements ResultItem, Serializable {
 
     public String getResultValue() {
         return resultValue;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    public String getRawResultValue() {
+        return rawResultValue;
+    }
+
+    public void setRawResultValue(String value) {
+        rawResultValue = value;
     }
 
     public void setResultValue(String results) {
