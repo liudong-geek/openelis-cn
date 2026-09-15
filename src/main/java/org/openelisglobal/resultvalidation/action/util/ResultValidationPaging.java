@@ -17,6 +17,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.openelisglobal.common.action.IActionConstants;
 import org.openelisglobal.common.paging.IPageDivider;
 import org.openelisglobal.common.paging.IPageFlattener;
@@ -114,7 +115,20 @@ public class ResultValidationPaging {
         @Override
         public void updateCache(List<AnalysisItem> cacheItems, List<AnalysisItem> clientItems) {
             for (int i = 0; i < clientItems.size(); i++) {
-                cacheItems.set(i, clientItems.get(i));
+                AnalysisItem cached = cacheItems.get(i);
+                AnalysisItem posted = clientItems.get(i);
+                // Jackson ignores read-only GET evidence on POST. Keep it only for
+                // the same stored row; never attach another row's evidence by index.
+                if (Objects.equals(cached.getAnalysisId(), posted.getAnalysisId())
+                        && Objects.equals(cached.getTestId(), posted.getTestId())
+                        && Objects.equals(cached.getResultId(), posted.getResultId())
+                        && Objects.equals(cached.getTestResultComponentId(), posted.getTestResultComponentId())) {
+                    posted.setSampleItemId(cached.getSampleItemId());
+                    posted.setAnalysisLastupdated(cached.getAnalysisLastupdated());
+                    posted.setRawResultValue(cached.getRawResultValue());
+                    posted.setResultMembers(cached.getResultMembers());
+                }
+                cacheItems.set(i, posted);
             }
         }
 

@@ -200,7 +200,8 @@ public class AccessionValidationRestController extends BaseResultValidationContr
                             setEmptyResults(form);
                             return form;
                         } else {
-                            resultList = resultsValidationUtility.getValidationAnalysisBySample(sample);
+                            resultList = resultsValidationUtility.getValidationAnalysisBySample(sample,
+                                    getValidationStatus());
                         }
                     }
                 }

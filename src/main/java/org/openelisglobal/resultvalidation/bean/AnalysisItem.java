@@ -13,6 +13,7 @@
  */
 package org.openelisglobal.resultvalidation.bean;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Pattern;
 import java.io.Serializable;
 import java.sql.Timestamp;
@@ -67,6 +68,24 @@ public class AnalysisItem implements Serializable {
 
     @Pattern(regexp = ValidationHelper.ID_REGEX, groups = { ResultValidationForm.ResultValidation.class })
     private String sampleId;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private String sampleItemId;
+
+    // Same analysis version token as the result-entry GET, in epoch milliseconds.
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private String analysisLastupdated;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private String rawResultValue;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private List<ResultMember> resultMembers = List.of();
+
+    /** Stored records represented by this row, including quantified children. */
+    public record ResultMember(String resultId, String rawResultValue, String resultType,
+            String testResultComponentId, String parentResultId, Integer grouping) implements Serializable {
+    }
 
     @Pattern(regexp = ValidationHelper.ID_REGEX, groups = { ResultValidationForm.ResultValidation.class })
     private String analysisId;
@@ -325,6 +344,38 @@ public class AnalysisItem implements Serializable {
 
     public String getSampleId() {
         return sampleId;
+    }
+
+    public String getSampleItemId() {
+        return sampleItemId;
+    }
+
+    public void setSampleItemId(String sampleItemId) {
+        this.sampleItemId = sampleItemId;
+    }
+
+    public String getAnalysisLastupdated() {
+        return analysisLastupdated;
+    }
+
+    public void setAnalysisLastupdated(String analysisLastupdated) {
+        this.analysisLastupdated = analysisLastupdated;
+    }
+
+    public String getRawResultValue() {
+        return rawResultValue;
+    }
+
+    public void setRawResultValue(String rawResultValue) {
+        this.rawResultValue = rawResultValue;
+    }
+
+    public List<ResultMember> getResultMembers() {
+        return resultMembers;
+    }
+
+    public void setResultMembers(List<ResultMember> resultMembers) {
+        this.resultMembers = resultMembers == null ? List.of() : List.copyOf(resultMembers);
     }
 
     public void setTestId(String testId) {

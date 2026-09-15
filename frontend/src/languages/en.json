@@ -7240,6 +7240,7 @@
   "validation.empty.title": "No results loaded",
   "validation.page.subtitle": "Find completed test results, review exceptions, and approve them for reporting.",
   "validation.search.error": "Validation results could not be loaded. Please try again.",
+  "validation.search.unsaved": "Resolve the current review selections, retest selections, and note changes before searching or changing result pages.",
   "validation.search.noresult": "No Results found to be validated",
   "validation.search.noresult.analyser": "No Results found from : ",
   "vl.arvRegimen": "ARV Regimen",

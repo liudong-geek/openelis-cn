@@ -28,7 +28,7 @@ const SearchForm = (props) => {
   const { configurationProperties } = useContext(ConfigurationContext);
   const exactAccessionFromLink = useRef(null);
 
-  const [searchResults, setSearchResults] = useState();
+  const resultRequest = useRef({ generation: 0, controller: null });
   const [searchBy, setSearchBy] = useState();
   const [doRange, setDoRagnge] = useState(true);
   const [testSections, setTestSections] = useState([]);
@@ -54,8 +54,7 @@ const SearchForm = (props) => {
     setPreviousPage(null);
     setIsLoading(false);
 
-    if (data) {
-      setSearchResults(data);
+    if (data && Array.isArray(data.resultList)) {
       if (data.paging) {
         var { totalPages, currentPage } = data.paging;
         if (totalPages > 1) {
@@ -74,22 +73,17 @@ const SearchForm = (props) => {
           }
         }
       }
-      if (data?.resultList?.length > 0) {
-        const newResultsList = data.resultList.map((data, id) => {
-          let tempData = { ...data };
-          tempData.id = id;
-          return tempData;
-        });
-        setSearchResults((prevState) => ({
-          ...prevState,
-          resultList: newResultsList,
-        }));
-      } else {
-        setSearchResults((prevState) => ({
-          ...prevState,
-          resultList: [],
-        }));
-
+      // Keep the server payload and ordering intact: the legacy POST cache uses
+      // array positions. Add only the existing UI index and missing note field.
+      props.setResults({
+        ...data,
+        resultList: data.resultList.map((row, id) => ({
+          ...row,
+          id,
+          note: row.note ?? "",
+        })),
+      });
+      if (data.resultList.length === 0) {
         addNotification({
           kind: NotificationKinds.warning,
           title: intl.formatMessage({ id: "notification.title" }),
@@ -98,7 +92,7 @@ const SearchForm = (props) => {
         setNotificationVisible(true);
       }
     } else {
-      setSearchResults({ resultList: [] });
+      props.setResults({ resultList: [] });
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -108,19 +102,38 @@ const SearchForm = (props) => {
     }
   };
 
+  const requestResults = (endpoint) => {
+    resultRequest.current.controller?.abort();
+    const controller = new AbortController();
+    const generation = resultRequest.current.generation + 1;
+    resultRequest.current = { generation, controller };
+    setIsLoading(true);
+    setPagination(false);
+    setNextPage(null);
+    setPreviousPage(null);
+    // A new query must not leave the previous order available for review.
+    props.setResults({ resultList: [] });
+    getFromOpenElisServer(
+      endpoint,
+      (data) => {
+        if (
+          controller.signal.aborted ||
+          resultRequest.current.generation !== generation
+        ) {
+          return;
+        }
+        validationResults(data);
+      },
+      controller.signal,
+    );
+  };
+
   useEffect(() => {
-    // OGC-654: server's GET response omits a `note` key on each row.
-    // jpSet (utils/JsonPath.js) silently no-ops when the JSONPath query
-    // returns 0 matches, so handleChange's `jpSet(form, "resultList[N].note", value)`
-    // never reaches the form state when typing into the Notes column. Pre-init
-    // each row's note to "" so the path exists and the mutation succeeds.
-    if (searchResults?.resultList) {
-      for (const row of searchResults.resultList) {
-        if (row && row.note === undefined) row.note = "";
-      }
-    }
-    props.setResults(searchResults);
-  }, [searchResults]);
+    return () => {
+      resultRequest.current.controller?.abort();
+      resultRequest.current.generation += 1;
+    };
+  }, []);
 
   const handleSubmit = (
     values,
@@ -128,6 +141,7 @@ const SearchForm = (props) => {
     requestedDoRange = doRange,
     exactAccessionNumber,
   ) => {
+    if (props.beforeQuery?.() === false) return;
     setNextPage(null);
     setPreviousPage(null);
     setPagination(false);
@@ -190,28 +204,25 @@ const SearchForm = (props) => {
         );
         break;
     }
-    getFromOpenElisServer(searchEndPoint, validationResults);
+    requestResults(searchEndPoint);
   };
 
   const handleChange = () => {};
 
   const loadNextResultsPage = () => {
-    setIsLoading(true);
-    getFromOpenElisServer(url + "&page=" + nextPage, validationResults);
+    if (props.beforeQuery?.() === false) return;
+    if (nextPage !== null) requestResults(url + "&page=" + nextPage);
   };
 
   const loadPreviousResultsPage = () => {
-    setIsLoading(true);
-    getFromOpenElisServer(url + "&page=" + previousPage, validationResults);
+    if (props.beforeQuery?.() === false) return;
+    if (previousPage !== null) requestResults(url + "&page=" + previousPage);
   };
   const fetchTestSections = (response) => {
     setTestSections(response);
   };
 
   const submitOnSelect = (e) => {
-    setNextPage(null);
-    setPreviousPage(null);
-    setPagination(false);
     var values = { unitType: e.target.value };
     handleSubmit(values);
   };

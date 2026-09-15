@@ -24,6 +24,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.commons.validator.GenericValidator;
@@ -60,6 +61,7 @@ import org.openelisglobal.patient.valueholder.Patient;
 import org.openelisglobal.patientidentity.valueholder.PatientIdentity;
 import org.openelisglobal.patientidentitytype.util.PatientIdentityTypeMap;
 import org.openelisglobal.result.service.ResultService;
+import org.openelisglobal.result.service.ResultServiceImpl;
 import org.openelisglobal.result.valueholder.Result;
 import org.openelisglobal.resultlimit.service.ResultLimitService;
 import org.openelisglobal.resultlimits.valueholder.ResultLimit;
@@ -75,6 +77,7 @@ import org.openelisglobal.test.service.TestServiceImpl;
 import org.openelisglobal.test.valueholder.Test;
 import org.openelisglobal.testresult.service.TestResultService;
 import org.openelisglobal.testresult.valueholder.TestResult;
+import org.openelisglobal.testresultcomponent.valueholder.TestResultComponent;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -441,6 +444,14 @@ public class ResultsValidationUtility {
             Result result, String accessionNumber, String notes) {
 
         List<TestResult> testResults = getPossibleResultsForTest(test);
+        String componentId = effectiveComponentId(analysis, result);
+        if (componentId != null) {
+            String primaryId = primaryComponentId(analysis);
+            testResults = testResults.stream()
+                    .filter(option -> componentId.equals(option.getComponentId())
+                            || (componentId.equals(primaryId) && option.getComponentId() == null))
+                    .collect(Collectors.toList());
+        }
 
         String displayTestName = TestServiceImpl.getLocalizedTestNameWithType(test);
         displayTestName = appendComponentLabel(displayTestName, result, test);
@@ -606,43 +617,110 @@ public class ResultsValidationUtility {
         return testResultType;
     }
 
+    private record ReviewComponentKey(String analysisId, String componentId) {
+    }
+
     public final List<AnalysisItem> testResultListToAnalysisItemList(List<ResultValidationItem> testResultList) {
-        List<AnalysisItem> analysisResultList = new ArrayList<>();
-
-        /*
-         * The issue with multiselect results is that each selection is one
-         * ResultValidationItem but they all need to be condensed into one AnalysisItem
-         * (whose multiSelectResultValues carries every selection as JSON). The
-         * condensing is scoped per analysis: other results of the same accession —
-         * other analyses, or other components of a multi-component analysis — must
-         * still get their own rows. Qualified results found among an analysis's
-         * multiselect selections are captured onto its condensed item.
-         */
-        Map<String, AnalysisItem> condensedMultiSelectByAnalysis = new HashMap<>();
-        for (ResultValidationItem testResultItem : testResultList) {
-            String analysisId = testResultItem.getAnalysis().getId();
-            boolean multiSelect = TypeOfTestResultServiceImpl.ResultType
-                    .isMultiSelectVariant(testResultItem.getResultType());
-
-            if (!multiSelect || !condensedMultiSelectByAnalysis.containsKey(analysisId)) {
-                AnalysisItem convertedItem = testResultItemToAnalysisItem(testResultItem);
-                analysisResultList.add(convertedItem);
+        List<AnalysisItem> rows = new ArrayList<>();
+        Map<ReviewComponentKey, AnalysisItem> condensed = new HashMap<>();
+        Map<String, List<Result>> storedByAnalysis = new HashMap<>();
+        for (ResultValidationItem item : testResultList) {
+            Analysis analysis = item.getAnalysis();
+            ReviewComponentKey key = new ReviewComponentKey(analysis.getId(),
+                    effectiveComponentId(analysis, item.getResult()));
+            boolean multiSelect = TypeOfTestResultServiceImpl.ResultType.isMultiSelectVariant(item.getResultType());
+            List<Result> stored = storedByAnalysis.computeIfAbsent(analysis.getId(), ignored -> {
+                List<Result> results = resultService.getResultsByAnalysis(analysis);
+                return results == null ? List.of() : results;
+            });
+            AnalysisItem row = multiSelect ? condensed.get(key) : null;
+            if (row == null) {
+                row = testResultItemToAnalysisItem(item, stored);
+                rows.add(row);
                 if (multiSelect) {
-                    condensedMultiSelectByAnalysis.put(analysisId, convertedItem);
+                    condensed.put(key, row);
                 }
             }
-
-            AnalysisItem condensedItem = condensedMultiSelectByAnalysis.get(analysisId);
-            if (condensedItem != null && testResultItem.isHasQualifiedResult()) {
-                condensedItem.setQualifiedResultValue(testResultItem.getQualifiedResultValue());
-                condensedItem.setQualifiedDictionaryId(testResultItem.getQualifiedDictionaryId());
-                condensedItem.setHasQualifiedResult(true);
-                condensedItem.setNormalRange(testResultItem.getNormalRange());
-                condensedItem.setPatientName(testResultItem.getPatientName());
+            // Preserve the legacy qualified-selection metadata, within this component only.
+            if (multiSelect && item.isHasQualifiedResult()) {
+                row.setQualifiedResultValue(item.getQualifiedResultValue());
+                row.setQualifiedResultId(item.getQualificationResultId());
+                row.setQualifiedDictionaryId(item.getQualifiedDictionaryId());
+                row.setHasQualifiedResult(true);
+                row.setNormalRange(item.getNormalRange());
+                row.setPatientName(item.getPatientName());
             }
         }
+        return rows;
+    }
 
-        return analysisResultList;
+    /** Explicit stored component ids win; legacy NULL rows belong to the primary. */
+    private String effectiveComponentId(Analysis analysis, Result result) {
+        Result parent = result != null && result.getParentResult() != null ? result.getParentResult() : result;
+        if (parent != null && parent.getTestResult() != null
+                && !GenericValidator.isBlankOrNull(parent.getTestResult().getComponentId())) {
+            return parent.getTestResult().getComponentId();
+        }
+        // The save service resolves historical NULL definitions to the primary, even
+        // for a single active component. Mixing NULL and explicit primary rows must
+        // therefore remain one editable selection set.
+        return primaryComponentId(analysis);
+    }
+
+    private String primaryComponentId(Analysis analysis) {
+        List<TestResultComponent> components = testResultComponentService
+                .getActiveComponentsByTestId(analysis.getTest().getId());
+        if (components == null || components.isEmpty()) {
+            return null;
+        }
+        return components.stream().filter(component -> Boolean.TRUE.equals(component.getIsPrimary()))
+                .findFirst().orElse(components.get(0)).getId();
+    }
+
+    private void addStoredEvidence(AnalysisItem row, ResultValidationItem item, List<Result> stored) {
+        Analysis analysis = item.getAnalysis();
+        boolean multiSelect = TypeOfTestResultServiceImpl.ResultType.isMultiSelectVariant(item.getResultType());
+        List<Result> parents = stored.stream().filter(Objects::nonNull)
+                .filter(result -> result.getAnalysis() != null
+                        && Objects.equals(analysis.getId(), result.getAnalysis().getId()))
+                .filter(result -> result.getParentResult() == null)
+                .filter(result -> Objects.equals(row.getTestResultComponentId(), effectiveComponentId(analysis, result)))
+                .filter(result -> multiSelect
+                        ? TypeOfTestResultServiceImpl.ResultType.isMultiSelectVariant(result.getResultType())
+                        : Objects.equals(item.getResultId(), result.getId()))
+                .collect(Collectors.toList());
+        Set<String> parentIds = parents.stream().map(Result::getId).collect(Collectors.toSet());
+        List<Result> represented = stored.stream().filter(Objects::nonNull)
+                .filter(result -> result.getAnalysis() != null
+                        && Objects.equals(analysis.getId(), result.getAnalysis().getId()))
+                .filter(result -> result.getParentResult() == null ? parentIds.contains(result.getId())
+                        : parentIds.contains(result.getParentResult().getId()))
+                .collect(Collectors.toList());
+        row.setResultMembers(represented.stream()
+                .map(result -> new AnalysisItem.ResultMember(result.getId(), result.getValue(), result.getResultType(),
+                        effectiveComponentId(analysis, result),
+                        result.getParentResult() == null ? null : result.getParentResult().getId(), result.getGrouping()))
+                .collect(Collectors.toList()));
+        if (multiSelect) {
+            row.setMultiSelectResultValues(ResultServiceImpl.getJSONStringForMultiSelect(new ArrayList<>(parents)));
+        }
+        Result qualified = null;
+        for (Result member : represented) {
+            if (member.getParentResult() != null) {
+                if (qualified == null) {
+                    qualified = member;
+                }
+                if (Objects.equals(item.getResultId(), member.getParentResult().getId())) {
+                    qualified = member;
+                    break;
+                }
+            }
+        }
+        if (qualified != null) {
+            row.setQualifiedResultId(qualified.getId());
+            row.setQualifiedResultValue(qualified.getValue());
+            row.setHasQualifiedResult(true);
+        }
     }
 
     protected final RecordStatus getSampleRecordStatus(Sample sample) {
@@ -658,6 +736,11 @@ public class ResultsValidationUtility {
     }
 
     public final AnalysisItem testResultItemToAnalysisItem(ResultValidationItem testResultItem) {
+        List<Result> stored = resultService.getResultsByAnalysis(testResultItem.getAnalysis());
+        return testResultItemToAnalysisItem(testResultItem, stored == null ? List.of() : stored);
+    }
+
+    private AnalysisItem testResultItemToAnalysisItem(ResultValidationItem testResultItem, List<Result> stored) {
         AnalysisItem analysisResultItem = new AnalysisItem();
         String testUnits = getUnitsByTestId(testResultItem.getTestId());
         String testName = testResultItem.getTestName();
@@ -688,12 +771,23 @@ public class ResultsValidationUtility {
         analysisResultItem.setPatientName(testResultItem.getPatientName());
         analysisResultItem.setTestName(testName);
         analysisResultItem.setUnits(testUnits);
-        analysisResultItem.setAnalysisId(testResultItem.getAnalysis().getId());
+        Analysis analysis = testResultItem.getAnalysis();
+        analysisResultItem.setAnalysisId(analysis.getId());
+        analysisResultItem.setStatusId(analysis.getStatusId());
+        analysisResultItem.setLastUpdated(analysis.getLastupdated());
+        if (analysis.getLastupdated() != null) {
+            analysisResultItem.setAnalysisLastupdated(String.valueOf(analysis.getLastupdated().getTime()));
+        }
+        if (analysis.getSampleItem() != null) {
+            analysisResultItem.setSampleItemId(analysis.getSampleItem().getId());
+            if (analysis.getSampleItem().getSample() != null) {
+                analysisResultItem.setSampleId(analysis.getSampleItem().getSample().getId());
+            }
+        }
+        analysisResultItem.setRawResultValue(result == null ? null : result.getValue());
         analysisResultItem.setPastNotes(testResultItem.getPastNotes());
         analysisResultItem.setResultId(testResultItem.getResultId());
-        if (result != null && result.getTestResult() != null) {
-            analysisResultItem.setTestResultComponentId(result.getTestResult().getComponentId());
-        }
+        analysisResultItem.setTestResultComponentId(effectiveComponentId(analysis, result));
         analysisResultItem.setResultType(testResultItem.getResultType());
         analysisResultItem.setTestId(testResultItem.getTestId());
         analysisResultItem.setTestSortNumber(sortOrder);
@@ -702,10 +796,7 @@ public class ResultsValidationUtility {
                 TestIdentityService.getInstance().isTestNumericViralLoad(testResultItem.getTestId()));
         analysisResultItem.setNormal(testResultItem.isNormalResult());
         if (result != null) {
-            if (TypeOfTestResultServiceImpl.ResultType.isMultiSelectVariant(testResultItem.getResultType())) {
-                Analysis analysis = testResultItem.getAnalysis();
-                analysisResultItem.setMultiSelectResultValues(analysisService.getJSONMultiSelectResults(analysis));
-            } else {
+            if (!TypeOfTestResultServiceImpl.ResultType.isMultiSelectVariant(testResultItem.getResultType())) {
                 analysisResultItem.setResult(getFormattedResult(testResultItem));
             }
 
@@ -724,6 +815,7 @@ public class ResultsValidationUtility {
         analysisResultItem.setQualifiedResultValue(testResultItem.getQualifiedResultValue());
         analysisResultItem.setQualifiedResultId(testResultItem.getQualificationResultId());
         analysisResultItem.setHasQualifiedResult(testResultItem.isHasQualifiedResult());
+        addStoredEvidence(analysisResultItem, testResultItem, stored);
 
         return analysisResultItem;
     }
@@ -759,6 +851,22 @@ public class ResultsValidationUtility {
             }
         }
         return uomName;
+    }
+
+    /** Exact accession lookup uses the same review-ready whitelist as range/date lookup. */
+    public List<AnalysisItem> getValidationAnalysisBySample(Sample sample, List<String> statusList) {
+        if (sample == null || statusList == null || statusList.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<Analysis> analyses = analysisService.getAnalysesBySampleId(sample.getId());
+        List<Analysis> eligible = analyses == null ? List.of()
+                : analyses.stream().filter(Objects::nonNull)
+                        .filter(analysis -> statusList.contains(analysis.getStatusId())).collect(Collectors.toList());
+        List<AnalysisItem> rows = testResultListToAnalysisItemList(
+                getGroupedTestsForAnalysisList(eligible, !StatusRules.useRecordStatusForValidation()));
+        sortByAccessionNumberAndOrder(rows);
+        setGroupingNumbers(rows);
+        return rows;
     }
 
     public List<AnalysisItem> getValidationAnalysisBySample(Sample sample) {

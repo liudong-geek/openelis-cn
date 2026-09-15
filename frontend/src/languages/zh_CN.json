@@ -7239,6 +7239,7 @@
   "validation.empty.title": "尚未加载待审核结果",
   "validation.page.subtitle": "查询已完成的检验结果，复核异常并批准进入报告环节。",
   "validation.search.error": "暂时无法加载待审核结果，请重试。",
+  "validation.search.unsaved": "请先处理本次审核选择、复检选择及备注修改，再查询或翻页。",
   "validation.search.noresult": "未找到待审核结果",
   "validation.search.noresult.analyser": "未找到分析仪结果：",
   "vl.arvRegimen": "抗逆转录病毒治疗方案",
