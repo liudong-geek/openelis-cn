@@ -43,9 +43,12 @@ public interface ElectronicSignatureService extends BaseObjectService<Electronic
     ElectronicSignature executeSignature(String username, String password, SignatureMeaning meaning, String recordType,
             Long recordId, String rejectionReason, String clientIp, String userAgent);
 
-    /** Sign server-owned immutable content inside the caller's clinical transaction. */
+    /**
+     * Sign server-owned immutable content inside the caller's clinical transaction.
+     */
     ElectronicSignature executeSignatureForSnapshot(String username, String password, SignatureMeaning meaning,
-            String recordType, Long recordId, String rejectionReason, String clientIp, String userAgent, String signedContent);
+            String recordType, Long recordId, String rejectionReason, String clientIp, String userAgent,
+            String signedContent);
 
     // ========================
     // Signature Queries

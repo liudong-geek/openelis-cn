@@ -138,10 +138,21 @@ public class ElectronicSignature extends BaseObject<Long> {
     private String contentSha256;
 
     @com.fasterxml.jackson.annotation.JsonIgnore
-    public String getSignedContent() { return signedContent; }
-    public void setSignedContent(String value) { signedContent = value; }
-    public String getContentSha256() { return contentSha256; }
-    public void setContentSha256(String value) { contentSha256 = value; }
+    public String getSignedContent() {
+        return signedContent;
+    }
+
+    public void setSignedContent(String value) {
+        signedContent = value;
+    }
+
+    public String getContentSha256() {
+        return contentSha256;
+    }
+
+    public void setContentSha256(String value) {
+        contentSha256 = value;
+    }
 
     public ElectronicSignature() {
         super();

@@ -27,8 +27,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.apache.commons.validator.GenericValidator;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.validator.GenericValidator;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.analyte.service.AnalyteService;
@@ -659,7 +659,9 @@ public class ResultsValidationUtility {
         return rows;
     }
 
-    /** Explicit stored component ids win; legacy NULL rows belong to the primary. */
+    /**
+     * Explicit stored component ids win; legacy NULL rows belong to the primary.
+     */
     private String effectiveComponentId(Analysis analysis, Result result) {
         Result parent = result != null && result.getParentResult() != null ? result.getParentResult() : result;
         if (parent != null && parent.getTestResult() != null
@@ -678,8 +680,8 @@ public class ResultsValidationUtility {
         if (components == null || components.isEmpty()) {
             return null;
         }
-        return components.stream().filter(component -> Boolean.TRUE.equals(component.getIsPrimary()))
-                .findFirst().orElse(components.get(0)).getId();
+        return components.stream().filter(component -> Boolean.TRUE.equals(component.getIsPrimary())).findFirst()
+                .orElse(components.get(0)).getId();
     }
 
     private void addStoredEvidence(AnalysisItem row, ResultValidationItem item, List<Result> stored) {
@@ -689,7 +691,8 @@ public class ResultsValidationUtility {
                 .filter(result -> result.getAnalysis() != null
                         && Objects.equals(analysis.getId(), result.getAnalysis().getId()))
                 .filter(result -> result.getParentResult() == null)
-                .filter(result -> Objects.equals(row.getTestResultComponentId(), effectiveComponentId(analysis, result)))
+                .filter(result -> Objects.equals(row.getTestResultComponentId(),
+                        effectiveComponentId(analysis, result)))
                 .filter(result -> multiSelect
                         ? TypeOfTestResultServiceImpl.ResultType.isMultiSelectVariant(result.getResultType())
                         : Objects.equals(item.getResultId(), result.getId()))
@@ -701,11 +704,10 @@ public class ResultsValidationUtility {
                 .filter(result -> result.getParentResult() == null ? parentIds.contains(result.getId())
                         : parentIds.contains(result.getParentResult().getId()))
                 .collect(Collectors.toList());
-        row.setResultMembers(represented.stream()
-                .map(result -> new AnalysisItem.ResultMember(result.getId(), result.getValue(), result.getResultType(),
-                        effectiveComponentId(analysis, result),
-                        result.getParentResult() == null ? null : result.getParentResult().getId(), result.getGrouping(),
-                        result.getLastupdated() == null ? null : result.getLastupdated().toInstant().toString()))
+        row.setResultMembers(represented.stream().map(result -> new AnalysisItem.ResultMember(result.getId(),
+                result.getValue(), result.getResultType(), effectiveComponentId(analysis, result),
+                result.getParentResult() == null ? null : result.getParentResult().getId(), result.getGrouping(),
+                result.getLastupdated() == null ? null : result.getLastupdated().toInstant().toString()))
                 .collect(Collectors.toList()));
         if (multiSelect) {
             row.setMultiSelectResultValues(ResultServiceImpl.getJSONStringForMultiSelect(new ArrayList<>(parents)));
@@ -859,7 +861,10 @@ public class ResultsValidationUtility {
         return uomName;
     }
 
-    /** Exact accession lookup uses the same review-ready whitelist as range/date lookup. */
+    /**
+     * Exact accession lookup uses the same review-ready whitelist as range/date
+     * lookup.
+     */
     public List<AnalysisItem> getValidationAnalysisBySample(Sample sample, List<String> statusList) {
         if (sample == null || statusList == null || statusList.isEmpty()) {
             return new ArrayList<>();

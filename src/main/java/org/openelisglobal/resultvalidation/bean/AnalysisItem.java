@@ -83,10 +83,10 @@ public class AnalysisItem implements Serializable {
     private List<ResultMember> resultMembers = List.of();
 
     /** Stored records represented by this row, including quantified children. */
-    public record ResultMember(String resultId, String rawResultValue, String resultType,
-            String testResultComponentId, String parentResultId, Integer grouping, String lastupdated) implements Serializable {
-        public ResultMember(String resultId, String rawResultValue, String resultType,
-                String testResultComponentId, String parentResultId, Integer grouping) {
+    public record ResultMember(String resultId, String rawResultValue, String resultType, String testResultComponentId,
+            String parentResultId, Integer grouping, String lastupdated) implements Serializable {
+        public ResultMember(String resultId, String rawResultValue, String resultType, String testResultComponentId,
+                String parentResultId, Integer grouping) {
             this(resultId, rawResultValue, resultType, testResultComponentId, parentResultId, grouping, null);
         }
     }

@@ -11,8 +11,6 @@ import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.formfields.FormFields;
 import org.openelisglobal.common.formfields.FormFields.Field;
-import org.openelisglobal.common.exception.LIMSRuntimeException;
-import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.services.DisplayListService;
 import org.openelisglobal.common.services.DisplayListService.ListType;
 import org.openelisglobal.common.services.IResultSaveService;
@@ -20,14 +18,10 @@ import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.ResultSaveService;
 import org.openelisglobal.common.services.StatusService.AnalysisStatus;
 import org.openelisglobal.common.services.beanAdapters.ResultSaveBeanAdapter;
-import org.openelisglobal.common.services.registration.ValidationUpdateRegister;
-import org.openelisglobal.common.services.registration.interfaces.IResultUpdate;
 import org.openelisglobal.common.services.serviceBeans.ResultSaveBean;
 import org.openelisglobal.common.util.ConfigurationProperties;
-import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.common.util.validator.GenericValidator;
 import org.openelisglobal.common.validator.BaseErrors;
-import org.openelisglobal.dataexchange.fhir.exception.FhirLocalPersistingException;
 import org.openelisglobal.dataexchange.fhir.service.FhirTransformService;
 import org.openelisglobal.dataexchange.orderresult.OrderResponseWorker.Event;
 import org.openelisglobal.internationalization.MessageUtil;
@@ -46,7 +40,6 @@ import org.openelisglobal.resultvalidation.controller.BaseResultValidationContro
 import org.openelisglobal.resultvalidation.form.ResultValidationForm;
 import org.openelisglobal.resultvalidation.service.ResultValidationService;
 import org.openelisglobal.resultvalidation.service.ReviewQueryContextService;
-import org.openelisglobal.resultvalidation.util.ResultValidationSaveService;
 import org.openelisglobal.resultvalidation.util.ResultsValidationUtility;
 import org.openelisglobal.role.service.RoleService;
 import org.openelisglobal.sample.service.SampleService;
@@ -58,20 +51,19 @@ import org.openelisglobal.systemuser.service.SystemUserService;
 import org.openelisglobal.systemuser.service.UserService;
 import org.openelisglobal.systemuser.valueholder.SystemUser;
 import org.openelisglobal.test.service.TestSectionService;
-import org.openelisglobal.test.valueholder.TestSection;
 import org.openelisglobal.testresult.service.TestResultService;
 import org.openelisglobal.testresult.valueholder.TestResult;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.Errors;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 @Controller
 @RequestMapping(value = "/rest/")
@@ -90,13 +82,13 @@ public class AccessionValidationRestController extends BaseResultValidationContr
     @Autowired
     private org.openelisglobal.resultvalidation.service.ReviewSubmissionService reviewSubmissionService;
 
-    private static final String[] ALLOWED_FIELDS = new String[] { "queryId", "doRange", "testSectionId", "paging.currentPage", "testSection",
-            "testName", "resultList*.accessionNumber", "resultList*.analysisId", "resultList*.testId",
-            "resultList*.sampleId", "resultList*.resultType", "resultList*.sampleGroupingNumber", "resultList*.noteId",
-            "resultList*.resultId", "resultList*.hasQualifiedResult", "resultList*.sampleIsAccepted",
-            "resultList*.sampleIsRejected", "resultList*.result", "resultList*.qualifiedResultValue",
-            "resultList*.multiSelectResultValues", "resultList*.isAccepted", "resultList*.isRejected",
-            "resultList*.note" };
+    private static final String[] ALLOWED_FIELDS = new String[] { "queryId", "doRange", "testSectionId",
+            "paging.currentPage", "testSection", "testName", "resultList*.accessionNumber", "resultList*.analysisId",
+            "resultList*.testId", "resultList*.sampleId", "resultList*.resultType", "resultList*.sampleGroupingNumber",
+            "resultList*.noteId", "resultList*.resultId", "resultList*.hasQualifiedResult",
+            "resultList*.sampleIsAccepted", "resultList*.sampleIsRejected", "resultList*.result",
+            "resultList*.qualifiedResultValue", "resultList*.multiSelectResultValues", "resultList*.isAccepted",
+            "resultList*.isRejected", "resultList*.note" };
 
     // autowiring not needed, using constructor injection
     private AnalysisService analysisService;
@@ -325,7 +317,8 @@ public class AccessionValidationRestController extends BaseResultValidationContr
         }
     }
 
-    private void createNeededNotes(AnalysisItem analysisItem, Analysis analysis, List<Note> noteUpdateList, String actor) {
+    private void createNeededNotes(AnalysisItem analysisItem, Analysis analysis, List<Note> noteUpdateList,
+            String actor) {
         if (analysisItem.getIsRejected()) {
             Note note = noteService.createSavableNote(analysis, NoteType.INTERNAL,
                     MessageUtil.getMessage("validation.note.retest"), RESULT_SUBJECT, actor);

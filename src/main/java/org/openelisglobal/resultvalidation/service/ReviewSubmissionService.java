@@ -48,7 +48,10 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
-/** A review changes status, notes and signatures atomically; stored results remain untouched. */
+/**
+ * A review changes status, notes and signatures atomically; stored results
+ * remain untouched.
+ */
 @Service
 public class ReviewSubmissionService {
     private final ReviewWriteGuard guard;
@@ -68,9 +71,17 @@ public class ReviewSubmissionService {
             NoteService notes, SampleService samples, SampleHumanService sampleHumans,
             ElectronicSignatureService signatures, SystemUserService users, OrdinaryResultSaveStateDAO states,
             FhirTransformService fhir, TestNotificationService notifications) {
-        this.guard = guard; this.analyses = analyses; this.statuses = statuses; this.notes = notes;
-        this.samples = samples; this.sampleHumans = sampleHumans; this.signatures = signatures;
-        this.users = users; this.states = states; this.fhir = fhir; this.notifications = notifications;
+        this.guard = guard;
+        this.analyses = analyses;
+        this.statuses = statuses;
+        this.notes = notes;
+        this.samples = samples;
+        this.sampleHumans = sampleHumans;
+        this.signatures = signatures;
+        this.users = users;
+        this.states = states;
+        this.fhir = fhir;
+        this.notifications = notifications;
     }
 
     @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
@@ -78,9 +89,11 @@ public class ReviewSubmissionService {
         var session = request.getSession(false);
         Runnable verifyActor = () -> {
             if (session == null || request.getSession(false) != session
-                    || !Objects.equals(actor, ControllerUtills.getSysUserId(request))) throw ReviewWriteGuard.forbidden();
+                    || !Objects.equals(actor, ControllerUtills.getSysUserId(request)))
+                throw ReviewWriteGuard.forbidden();
             var currentUser = users.get(actor);
-            if (currentUser == null || !"Y".equals(currentUser.getIsActive())) throw ReviewWriteGuard.forbidden();
+            if (currentUser == null || !"Y".equals(currentUser.getIsActive()))
+                throw ReviewWriteGuard.forbidden();
         };
         try {
             verifyActor.run();
@@ -104,11 +117,13 @@ public class ReviewSubmissionService {
                 if (esigEnabled) {
                     try {
                         var signature = signatures.executeSignatureForSnapshot(login, credentials.getPassword(),
-                                decision.getIsAccepted() ? SignatureMeaning.VALIDATED_AND_RELEASED : SignatureMeaning.REJECTED,
-                                "ANALYSIS", Long.valueOf(entry.getKey()), decision.getIsRejected()
-                                        ? StringUtils.trimToEmpty(decision.getNote()) : null,
+                                decision.getIsAccepted() ? SignatureMeaning.VALIDATED_AND_RELEASED
+                                        : SignatureMeaning.REJECTED,
+                                "ANALYSIS", Long.valueOf(entry.getKey()),
+                                decision.getIsRejected() ? StringUtils.trimToEmpty(decision.getNote()) : null,
                                 request.getRemoteAddr(), request.getHeader("User-Agent"), content);
-                        if (signature == null || signature.getId() == null) throw ReviewWriteGuard.conflict();
+                        if (signature == null || signature.getId() == null)
+                            throw ReviewWriteGuard.conflict();
                         signatureIds.put(entry.getKey(), signature.getId());
                     } catch (IllegalArgumentException e) {
                         throw ReviewWriteGuard.badRequest("Invalid review signing credentials or certification");
@@ -117,7 +132,8 @@ public class ReviewSubmissionService {
             }
             verifyActor.run();
             locked.verify().run();
-            if (esigEnabled != signatures.isEsigEnabled()) throw ReviewWriteGuard.conflict();
+            if (esigEnabled != signatures.isEsigEnabled())
+                throw ReviewWriteGuard.conflict();
             List<Analysis> changedAnalyses = new ArrayList<>();
             ArrayList<Result> reviewedResults = new ArrayList<>();
             ArrayList<Note> createdNotes = new ArrayList<>();
@@ -131,8 +147,8 @@ public class ReviewSubmissionService {
                 String id = entry.getKey();
                 var decision = entry.getValue().get(0);
                 var analysis = locked.analyses().get(id);
-                String target = statuses.getStatusID(decision.getIsAccepted()
-                        ? AnalysisStatus.Finalized : AnalysisStatus.BiologistRejected);
+                String target = statuses.getStatusID(
+                        decision.getIsAccepted() ? AnalysisStatus.Finalized : AnalysisStatus.BiologistRejected);
                 Timestamp released = decision.getIsAccepted() ? new Timestamp(System.currentTimeMillis()) : null;
                 analysis.setSysUserId(actor);
                 analysis.setStatusId(target);
@@ -142,8 +158,9 @@ public class ReviewSubmissionService {
                 analyses.update(analysis);
                 changedAnalyses.add(analysis);
                 String text = StringUtils.trimToEmpty(decision.getNote());
-                if (!text.isEmpty()) addNote(analysis, decision.getIsAccepted() ? NoteType.EXTERNAL : NoteType.INTERNAL,
-                        text, "Result Note", actor, createdNotes);
+                if (!text.isEmpty())
+                    addNote(analysis, decision.getIsAccepted() ? NoteType.EXTERNAL : NoteType.INTERNAL, text,
+                            "Result Note", actor, createdNotes);
                 // Preserve the exact reviewed content even when the site disables e-signatures.
                 addNote(analysis, NoteType.INTERNAL, "sha256=" + DigestUtils.sha256Hex(contents.get(id))
                         + ";signatureId=" + signatureIds.get(id) + ";content=" + contents.get(id),
@@ -158,18 +175,21 @@ public class ReviewSubmissionService {
                     }
                 }
             }
-            for (IResultUpdate updater : updaters) updater.transactionalUpdate(eventData);
+            for (IResultUpdate updater : updaters)
+                updater.transactionalUpdate(eventData);
             finishSamples(actor, changedAnalyses, changedSamples);
             Runnable verifyFinal = () -> {
                 verifyActor.run();
-                if (esigEnabled != signatures.isEsigEnabled()) throw ReviewWriteGuard.conflict();
+                if (esigEnabled != signatures.isEsigEnabled())
+                    throw ReviewWriteGuard.conflict();
                 locked.verifyResultsAndAccess().run();
                 for (var entry : locked.decisions().entrySet()) {
                     var analysis = locked.analyses().get(entry.getKey());
                     var decision = entry.getValue().get(0);
                     if (!Objects.equals(targets.get(entry.getKey()), analysis.getStatusId())
-                            || !Objects.equals(targets.get(entry.getKey()), statuses.getStatusID(decision.getIsAccepted()
-                                    ? AnalysisStatus.Finalized : AnalysisStatus.BiologistRejected))
+                            || !Objects.equals(targets.get(entry.getKey()),
+                                    statuses.getStatusID(decision.getIsAccepted() ? AnalysisStatus.Finalized
+                                            : AnalysisStatus.BiologistRejected))
                             || !Objects.equals(releaseDates.get(entry.getKey()), analysis.getReleasedDate()))
                         throw ReviewWriteGuard.conflict();
                 }
@@ -179,44 +199,64 @@ public class ReviewSubmissionService {
             verifyFinal.run();
             guard.verifyPersisted(locked);
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override public void beforeCommit(boolean readOnly) {
+                @Override
+                public void beforeCommit(boolean readOnly) {
                     states.flush();
                     verifyFinal.run();
                     guard.verifyPersisted(locked);
                 }
-                @Override public void afterCommit() {
+
+                @Override
+                public void afterCommit() {
                     // External effects are intentionally beyond the clinical transaction. A failure
-                    // is logged for reconciliation and never changes a committed review to "failed".
-                    try { fhir.transformPersistResultValidationFhirObjects(List.of(), changedAnalyses,
-                            reviewedResults, rows, changedSamples, createdNotes); }
-                    catch (Exception e) { LogEvent.logError(e); }
+                    // is logged for reconciliation and never changes a committed review to
+                    // "failed".
+                    try {
+                        fhir.transformPersistResultValidationFhirObjects(List.of(), changedAnalyses, reviewedResults,
+                                rows, changedSamples, createdNotes);
+                    } catch (Exception e) {
+                        LogEvent.logError(e);
+                    }
                     for (Result result : reviewedResults) {
-                        try { notifications.createAndSendNotificationsToConfiguredSources(NotificationNature.RESULT_VALIDATION, result); }
-                        catch (RuntimeException e) { LogEvent.logError(e); }
+                        try {
+                            notifications.createAndSendNotificationsToConfiguredSources(
+                                    NotificationNature.RESULT_VALIDATION, result);
+                        } catch (RuntimeException e) {
+                            LogEvent.logError(e);
+                        }
                     }
                     for (IResultUpdate updater : updaters) {
-                        try { updater.postTransactionalCommitUpdate(eventData); }
-                        catch (RuntimeException e) { LogEvent.logError(e); }
+                        try {
+                            updater.postTransactionalCommitUpdate(eventData);
+                        } catch (RuntimeException e) {
+                            LogEvent.logError(e);
+                        }
                     }
                 }
             });
         } finally {
-            if (credentials != null) credentials.clear();
+            if (credentials != null)
+                credentials.clear();
         }
     }
 
-    protected List<IResultUpdate> registeredUpdaters() { return ValidationUpdateRegister.getRegisteredUpdaters(); }
+    protected List<IResultUpdate> registeredUpdaters() {
+        return ValidationUpdateRegister.getRegisteredUpdaters();
+    }
 
-    private void addNote(Analysis analysis, NoteType type, String text, String subject, String actor, List<Note> created) {
+    private void addNote(Analysis analysis, NoteType type, String text, String subject, String actor,
+            List<Note> created) {
         Note note = notes.createSavableNote(analysis, type, text, subject, actor);
-        if (note == null) throw ReviewWriteGuard.conflict();
+        if (note == null)
+            throw ReviewWriteGuard.conflict();
         notes.insert(note);
         created.add(note);
     }
 
     private void finishSamples(String actor, List<Analysis> changed, List<Sample> finished) {
         Set<String> done = Set.of(statuses.getStatusID(AnalysisStatus.Finalized),
-                statuses.getStatusID(AnalysisStatus.Canceled), statuses.getStatusID(AnalysisStatus.NonConforming_depricated));
+                statuses.getStatusID(AnalysisStatus.Canceled),
+                statuses.getStatusID(AnalysisStatus.NonConforming_depricated));
         changed.stream().map(a -> a.getSampleItem().getSample().getId()).distinct().forEach(id -> {
             var all = analyses.getAnalysesBySampleId(id);
             if (all != null && !all.isEmpty() && all.stream().allMatch(a -> done.contains(a.getStatusId()))) {
@@ -233,15 +273,22 @@ public class ReviewSubmissionService {
         var row = rows.get(0);
         Map<String, Object> content = new LinkedHashMap<>();
         content.put("schema", "openelis.review.v1");
-        content.put("analysisId", analysisId); content.put("actor", actor);
-        content.put("sampleId", row.getSampleId()); content.put("sampleItemId", row.getSampleItemId());
-        content.put("accessionNumber", row.getAccessionNumber()); content.put("testId", row.getTestId());
-        content.put("analysisVersion", row.getAnalysisLastupdated()); content.put("sourceStatus", row.getStatusId());
+        content.put("analysisId", analysisId);
+        content.put("actor", actor);
+        content.put("sampleId", row.getSampleId());
+        content.put("sampleItemId", row.getSampleItemId());
+        content.put("accessionNumber", row.getAccessionNumber());
+        content.put("testId", row.getTestId());
+        content.put("analysisVersion", row.getAnalysisLastupdated());
+        content.put("sourceStatus", row.getStatusId());
         content.put("decision", row.getIsAccepted() ? "ACCEPT" : "RETURN");
         content.put("note", StringUtils.trimToEmpty(row.getNote()));
         content.put("members", rows.stream().flatMap(r -> r.getResultMembers().stream())
                 .sorted(java.util.Comparator.comparing(AnalysisItem.ResultMember::resultId)).toList());
-        try { return mapper.writeValueAsString(content); }
-        catch (JsonProcessingException e) { throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Review content unavailable", e); }
+        try {
+            return mapper.writeValueAsString(content);
+        } catch (JsonProcessingException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Review content unavailable", e);
+        }
     }
 }

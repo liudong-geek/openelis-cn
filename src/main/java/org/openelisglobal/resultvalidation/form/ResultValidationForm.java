@@ -21,18 +21,38 @@ public class ResultValidationForm extends BaseForm implements ValidationPagingFo
     @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
     private ReviewSignature reviewSignature;
 
-    public ReviewSignature getReviewSignature() { return reviewSignature; }
-    public void setReviewSignature(ReviewSignature reviewSignature) { this.reviewSignature = reviewSignature; }
+    public ReviewSignature getReviewSignature() {
+        return reviewSignature;
+    }
+
+    public void setReviewSignature(ReviewSignature reviewSignature) {
+        this.reviewSignature = reviewSignature;
+    }
 
     public static class ReviewSignature {
         private String username;
         @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.WRITE_ONLY)
         private String password;
-        public String getUsername() { return username; }
-        public void setUsername(String username) { this.username = username; }
-        public String getPassword() { return password; }
-        public void setPassword(String password) { this.password = password; }
-        public void clear() { password = null; }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+
+        public String getPassword() {
+            return password;
+        }
+
+        public void setPassword(String password) {
+            this.password = password;
+        }
+
+        public void clear() {
+            password = null;
+        }
     }
 
     private String queryId;

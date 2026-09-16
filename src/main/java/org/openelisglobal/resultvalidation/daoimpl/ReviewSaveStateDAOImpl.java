@@ -13,7 +13,8 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class ReviewSaveStateDAOImpl implements ReviewSaveStateDAO {
-    @PersistenceContext private EntityManager entityManager;
+    @PersistenceContext
+    private EntityManager entityManager;
 
     private <T> org.hibernate.query.Query<T> query(String hql, Class<T> type, String id) {
         return entityManager.unwrap(Session.class).createQuery(hql, type).setParameter("id", id)
@@ -25,9 +26,10 @@ public class ReviewSaveStateDAOImpl implements ReviewSaveStateDAO {
         Object[] r = query("select a.id, a.test.id, si.id, s.id, s.accessionNumber, ts.id, a.statusId, "
                 + "a.lastupdated, a.releasedDate, a.printedDate from Analysis a join a.sampleItem si "
                 + "join si.sample s left join a.testSection ts where a.id = :id", Object[].class, id).uniqueResult();
-        return r == null ? null : new AnalysisState((String) r[0], (String) r[1], (String) r[2], (String) r[3],
-                (String) r[4], (String) r[5], (String) r[6], r[7] == null ? null : String.valueOf(((Timestamp) r[7]).getTime()),
-                r[8] != null, r[9] != null);
+        return r == null ? null
+                : new AnalysisState((String) r[0], (String) r[1], (String) r[2], (String) r[3], (String) r[4],
+                        (String) r[5], (String) r[6],
+                        r[7] == null ? null : String.valueOf(((Timestamp) r[7]).getTime()), r[8] != null, r[9] != null);
     }
 
     @Override
@@ -40,8 +42,10 @@ public class ReviewSaveStateDAOImpl implements ReviewSaveStateDAO {
     public List<Member> members(String id) {
         return query("select r.id, r.value, r.resultType, tr.componentId, p.id, r.grouping, r.lastupdated "
                 + "from Result r left join r.testResult tr left join r.parentResult p "
-                + "where r.analysis.id = :id order by r.id", Object[].class, id).list().stream()
+                + "where r.analysis.id = :id order by r.id", Object[].class, id)
+                .list().stream()
                 .map(r -> new Member((String) r[0], (String) r[1], (String) r[2], (String) r[3], (String) r[4],
-                        ((Number) r[5]).intValue(), r[6] == null ? null : ((Timestamp) r[6]).toInstant().toString())).toList();
+                        ((Number) r[5]).intValue(), r[6] == null ? null : ((Timestamp) r[6]).toInstant().toString()))
+                .toList();
     }
 }

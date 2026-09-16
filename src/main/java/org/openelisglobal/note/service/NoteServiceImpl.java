@@ -202,7 +202,8 @@ public class NoteServiceImpl extends AuditableBaseObjectServiceImpl<Note, String
 
     private String notesToString(NoteObject noteObject, boolean prefixType, boolean prefixTimestamp,
             String noteSeparator, List<Note> noteList, boolean excludeExternPrefix, EncodeContext context) {
-        // Machine-readable review evidence remains available through audit/note records,
+        // Machine-readable review evidence remains available through audit/note
+        // records,
         // while clinical comment fields contain only human-entered notes and reasons.
         noteList = noteList.stream().filter(note -> !Note.REVIEW_AUDIT_SUBJECT.equals(note.getSubject())).toList();
         if (noteList.isEmpty()) {

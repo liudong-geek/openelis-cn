@@ -11,7 +11,9 @@ public class ResultValidationSaveService implements IResultSaveService {
     private List<ResultSet> newResults = new ArrayList<>();
     private List<ResultSet> modifiedResults = new ArrayList<>();
 
-    public void setCurrentUserId(String value) { currentUserId = value; }
+    public void setCurrentUserId(String value) {
+        currentUserId = value;
+    }
 
     @Override
     public String getCurrentUserId() {

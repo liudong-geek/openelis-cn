@@ -14,8 +14,8 @@ import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.StatusService.SampleStatus;
 import org.openelisglobal.result.action.util.ResultSet;
 import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
-import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO.SpecimenState;
 import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO;
+import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO.SpecimenState;
 import org.openelisglobal.result.exception.ResultSaveValidationException;
 import org.openelisglobal.result.valueholder.Result;
 import org.openelisglobal.sample.valueholder.Sample;
@@ -524,19 +524,24 @@ public class ResultSpecimenWriteGuardTest {
         denied();
         assertEquals("SIM-LEGACY-REASON", analysis.getSampleItem().getRejectReasonId());
     }
+
     @Test
     public void explicitUnreleasedReviewReturnCanBeReenteredButReleaseOrPrintStillLocksIt() {
-        String returned = statuses.getStatusID(org.openelisglobal.common.services.StatusService.AnalysisStatus.BiologistRejected);
+        String returned = statuses
+                .getStatusID(org.openelisglobal.common.services.StatusService.AnalysisStatus.BiologistRejected);
         analysis.setStatusId(returned);
         Runnable check = guard.begin(data);
-        analysis.setStatusId(statuses.getStatusID(org.openelisglobal.common.services.StatusService.AnalysisStatus.TechnicalAcceptance));
+        analysis.setStatusId(statuses
+                .getStatusID(org.openelisglobal.common.services.StatusService.AnalysisStatus.TechnicalAcceptance));
         check.run();
         analysis.setStatusId(returned);
-        org.springframework.test.util.ReflectionTestUtils.setField(analysis, "releasedDate", java.sql.Timestamp.valueOf("2026-09-14 08:00:00"));
+        org.springframework.test.util.ReflectionTestUtils.setField(analysis, "releasedDate",
+                java.sql.Timestamp.valueOf("2026-09-14 08:00:00"));
         assertEquals(OrdinaryResultReviewPolicy.REVIEWED,
                 assertThrows(ResultSaveValidationException.class, () -> guard.begin(data)).getErrorCode());
         org.springframework.test.util.ReflectionTestUtils.setField(analysis, "releasedDate", null);
-        org.springframework.test.util.ReflectionTestUtils.setField(analysis, "printedDate", java.sql.Date.valueOf("2026-09-14"));
+        org.springframework.test.util.ReflectionTestUtils.setField(analysis, "printedDate",
+                java.sql.Date.valueOf("2026-09-14"));
         assertEquals(OrdinaryResultReviewPolicy.REVIEWED,
                 assertThrows(ResultSaveValidationException.class, () -> guard.begin(data)).getErrorCode());
     }

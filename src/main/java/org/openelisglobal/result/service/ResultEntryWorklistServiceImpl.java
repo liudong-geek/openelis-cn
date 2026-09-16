@@ -34,10 +34,12 @@ public class ResultEntryWorklistServiceImpl implements ResultEntryWorklistServic
         String notStartedStatusId = statusService.getStatusID(AnalysisStatus.NotStarted);
         String returnedStatusId = statusService.getStatusID(AnalysisStatus.BiologistRejected);
         if (notStartedStatusId == null || returnedStatusId == null || notStartedStatusId.equals(returnedStatusId))
-            throw new org.openelisglobal.result.exception.ResultSaveValidationException(OrdinaryResultReviewPolicy.CONFIGURATION);
+            throw new org.openelisglobal.result.exception.ResultSaveValidationException(
+                    OrdinaryResultReviewPolicy.CONFIGURATION);
         java.util.Map<String, Analysis> pending = new java.util.LinkedHashMap<>();
-        java.util.stream.Stream.concat(analysisService.getAnalysesForStatusId(notStartedStatusId).stream(),
-                analysisService.getAnalysesForStatusId(returnedStatusId).stream())
+        java.util.stream.Stream
+                .concat(analysisService.getAnalysesForStatusId(notStartedStatusId).stream(),
+                        analysisService.getAnalysesForStatusId(returnedStatusId).stream())
                 .filter(a -> a != null && a.getReleasedDate() == null && a.getPrintedDate() == null)
                 .forEach(a -> pending.putIfAbsent(a.getId(), a));
         List<Analysis> pendingAnalyses = new java.util.ArrayList<>(pending.values());
