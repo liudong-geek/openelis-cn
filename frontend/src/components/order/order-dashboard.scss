@@ -1,0 +1,65 @@
+.order-dashboard {
+  .order-dashboard-table .cds--data-table {
+    table-layout: fixed;
+    min-width: 58rem;
+
+    th,
+    td {
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+
+    th:nth-child(1) {
+      width: 14%;
+    }
+    th:nth-child(2) {
+      width: 9%;
+    }
+    th:nth-child(3) {
+      width: 11%;
+    }
+    th:nth-child(4) {
+      width: 8%;
+    }
+    th:nth-child(5) {
+      width: 28%;
+    }
+    th:nth-child(6) {
+      width: 13%;
+    }
+    th:nth-child(7) {
+      width: 17%;
+    }
+
+    th:last-child,
+    td:last-child {
+      position: sticky;
+      right: 0;
+      background: var(--cds-layer, #fff);
+      box-shadow: -1px 0 0 var(--cds-border-subtle, #e0e0e0);
+    }
+  }
+
+  .order-progress {
+    display: grid;
+    min-width: 0;
+    gap: 0.375rem;
+    padding-block: 0.75rem;
+  }
+
+  .progress-stage {
+    font-weight: 600;
+  }
+  .progress-label {
+    white-space: normal;
+    line-height: 1.5;
+  }
+  .order-actions {
+    flex-wrap: wrap;
+    gap: 0;
+  }
+  .order-actions .cds--btn {
+    min-width: 0;
+    padding-inline: 0.5rem;
+  }
+}

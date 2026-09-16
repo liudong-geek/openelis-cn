@@ -56,6 +56,8 @@ import org.openelisglobal.program.valueholder.Program;
 import org.openelisglobal.program.valueholder.ProgramSample;
 import org.openelisglobal.provider.valueholder.Provider;
 import org.openelisglobal.qachecklist.service.SampleQaChecklistService;
+import org.openelisglobal.sample.form.OrderDashboardQuery;
+import org.openelisglobal.sample.service.OrderDashboardService;
 import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.samplehuman.service.SampleHumanService;
@@ -88,6 +90,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/rest/order")
 public class OrderSearchRestController extends BaseRestController {
+    @Autowired
+    private OrderDashboardService orderDashboardService;
 
     @Autowired
     private SampleService sampleService;
@@ -165,162 +169,24 @@ public class OrderSearchRestController extends BaseRestController {
      * @return Dashboard data with orders list and counts
      */
     @GetMapping(value = "/dashboard", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Map<String, Object>> getDashboard(@RequestParam(defaultValue = "1") int page,
+    public ResponseEntity<?> getDashboard(HttpServletRequest request, @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "100") int pageSize, @RequestParam(required = false) String search,
             @RequestParam(required = false) String status, @RequestParam(required = false) String priority,
             @RequestParam(defaultValue = "false") boolean includeExternal,
-            @RequestParam(required = false) String startDate, @RequestParam(required = false) String endDate) {
-
+            @RequestParam(required = false) String startDate, @RequestParam(required = false) String endDate,
+            @RequestParam(required = false) String specimenIntakeStatus) {
         try {
-            Map<String, Object> response = new HashMap<>();
-            List<Map<String, Object>> ordersList = new ArrayList<>();
-
-            // Get recent samples - getPageOfSamples expects 1-based startingRecNo
-            int startingRecNo = ((page - 1) * pageSize) + 1;
-            List<Sample> samples = sampleService.getPageOfSamples(startingRecNo);
-
-            // Apply filters
-            for (Sample sample : samples) {
-                // Filter by search query (lab number or patient name)
-                if (search != null && !search.isEmpty()) {
-                    String searchLower = search.toLowerCase();
-                    boolean matchesLabNumber = sample.getAccessionNumber() != null
-                            && sample.getAccessionNumber().toLowerCase().contains(searchLower);
-                    Patient patient = sampleHumanService.getPatientForSample(sample);
-                    boolean matchesPatient = false;
-                    if (patient != null) {
-                        String patientName = (patientService.getFirstName(patient) + " "
-                                + patientService.getLastName(patient)).toLowerCase();
-                        matchesPatient = patientName.contains(searchLower);
-                    }
-                    if (!matchesLabNumber && !matchesPatient) {
-                        continue; // Skip this sample
-                    }
-                }
-
-                // Filter by priority
-                String samplePriority = sample.getPriority() != null ? sample.getPriority().name().toLowerCase()
-                        : "routine";
-                if (priority != null && !priority.isEmpty() && !"all".equals(priority)) {
-                    if (!samplePriority.equals(priority.toLowerCase())) {
-                        continue; // Skip this sample
-                    }
-                }
-
-                // Filter by date range (using entered date)
-                java.sql.Date sampleDate = sample.getEnteredDate();
-                if (startDate != null && !startDate.isEmpty()) {
-                    try {
-                        java.sql.Date filterStartDate = java.sql.Date.valueOf(startDate);
-                        if (sampleDate == null || sampleDate.before(filterStartDate)) {
-                            continue; // Skip this sample
-                        }
-                    } catch (IllegalArgumentException e) {
-                        // Invalid date format, skip filter
-                    }
-                }
-                if (endDate != null && !endDate.isEmpty()) {
-                    try {
-                        java.sql.Date filterEndDate = java.sql.Date.valueOf(endDate);
-                        if (sampleDate == null || sampleDate.after(filterEndDate)) {
-                            continue; // Skip this sample
-                        }
-                    } catch (IllegalArgumentException e) {
-                        // Invalid date format, skip filter
-                    }
-                }
-
-                // Calculate step progress for status filtering
-                List<SampleItem> sampleItemsForProgress = sampleItemService.getSampleItemsBySampleId(sample.getId());
-
-                // Collect is complete if all sample items with tests have collection dates
-                boolean collectComplete = false;
-                if (!sampleItemsForProgress.isEmpty()) {
-                    List<SampleItem> itemsWithTests = sampleItemsForProgress.stream()
-                            .filter(si -> !analysisService.getAnalysesBySampleItem(si).isEmpty())
-                            .collect(java.util.stream.Collectors.toList());
-                    if (!itemsWithTests.isEmpty()) {
-                        collectComplete = itemsWithTests.stream().allMatch(si -> si.getCollectionDate() != null);
-                    }
-                }
-
-                // Label is complete if all sample items have storage assignments OR storage is
-                // skipped
-                boolean labelComplete = false;
-                if (Boolean.TRUE.equals(sample.getStorageSkipped())) {
-                    labelComplete = true;
-                } else if (!sampleItemsForProgress.isEmpty()) {
-                    labelComplete = sampleItemsForProgress.stream().allMatch(si -> {
-                        SampleStorageAssignment assignment = sampleStorageAssignmentDAO.findBySampleItemId(si.getId());
-                        return assignment != null && assignment.getLocationId() != null;
-                    });
-                }
-
-                // QA is complete if all checklist items are verified
-                boolean qaComplete = sampleQaChecklistService.areAllItemsVerified(Integer.parseInt(sample.getId()));
-
-                // Determine order status
-                String orderStatus;
-                if (qaComplete) {
-                    orderStatus = "completed";
-                } else if (labelComplete) {
-                    orderStatus = "pending_qa";
-                } else {
-                    orderStatus = "in_progress";
-                }
-
-                // Filter by status
-                if (status != null && !status.isEmpty() && !"all".equals(status)) {
-                    if (!orderStatus.equals(status)) {
-                        continue; // Skip this sample
-                    }
-                }
-
-                Map<String, Object> orderData = new HashMap<>();
-                orderData.put("id", sample.getId());
-                orderData.put("labNumber", sample.getAccessionNumber());
-                orderData.put("lastUpdated", sample.getLastupdated() != null ? sample.getLastupdated().toString() : "");
-                orderData.put("priority", samplePriority);
-                orderData.put("isExternal", false);
-                orderData.put("returnedFromQA", false);
-
-                // Get patient name (reuse patient if already fetched for search filter)
-                Patient orderPatient = sampleHumanService.getPatientForSample(sample);
-                if (orderPatient != null) {
-                    String patientName = (patientService.getFirstName(orderPatient) + " "
-                            + patientService.getLastName(orderPatient)).trim();
-                    orderData.put("patientName", patientName);
-                } else {
-                    orderData.put("patientName", "---");
-                }
-
-                // Facility (simplified - could get from organization)
-                orderData.put("facilityName", "---");
-
-                // Step progress - reuse values calculated for status filtering
-                Map<String, Boolean> stepProgress = new HashMap<>();
-                stepProgress.put("enter", isEnterComplete(sample));
-                stepProgress.put("collect", collectComplete);
-                stepProgress.put("label", labelComplete);
-                stepProgress.put("qa", qaComplete);
-                orderData.put("stepProgress", stepProgress);
-                orderData.put("status", orderStatus);
-                orderData.put("storageSkipped", Boolean.TRUE.equals(sample.getStorageSkipped()));
-
-                ordersList.add(orderData);
-            }
-
-            response.put("orders", ordersList);
-            response.put("totalCount", ordersList.size()); // Simplified, should be total count
-            response.put("externalCount", 0); // Placeholder for external orders count
-            response.put("page", page);
-            response.put("pageSize", pageSize);
-
-            return ResponseEntity.ok(response);
-
+            return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                    .body(orderDashboardService.getDashboard(new OrderDashboardQuery(page, pageSize, search, status,
+                            specimenIntakeStatus, priority, includeExternal, startDate, endDate), request));
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "dashboard.access.changed"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
-            LogEvent.logError(this.getClass().getName(), "getDashboard", "Error fetching dashboard: " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            LogEvent.logError(getClass().getName(), "getDashboard", "Error fetching dashboard");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "dashboard.load.failed"));
         }
     }
 
@@ -627,8 +493,8 @@ public class OrderSearchRestController extends BaseRestController {
         patientInfo.setCustomNotes(identityMap.getIdentityValue(identityList, "CUSTOM_NOTES"));
         patientInfo.setTargetDiseaseProgramme(identityMap.getIdentityValue(identityList, "DISEASE_PROGRAMME"));
 
-        patientInfo.setBirthDateForDisplay(
-                DateUtil.formatStringDateForConfiguredLocale(patient.getBirthDateForDisplay()));
+        patientInfo
+                .setBirthDateForDisplay(DateUtil.formatStringDateForConfiguredLocale(patient.getBirthDateForDisplay()));
 
         patientInfo.setCommune(commune);
         patientInfo.setAddressDepartment(dept);

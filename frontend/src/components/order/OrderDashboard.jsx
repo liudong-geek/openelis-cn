@@ -35,9 +35,12 @@ import { AlertDialog, NotificationKinds } from "../common/CustomNotification";
 import { getFromOpenElisServer } from "../utils/Utils";
 import BarcodeScannerBar from "./BarcodeScannerBar";
 import { useOrderContext } from "./OrderContext";
+import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import ProductPageHeader from "../common/ProductPageHeader";
 import { fromList } from "../common/listWorkspace";
+import { normalizeIntakeFilter, resolveIntakeStage } from "./orderIntakeStatus";
 import "./order-workflow.scss";
+import "./order-dashboard.scss";
 import {
   getDatePickerFormat,
   getDatePickerPlaceholderMessage,
@@ -59,8 +62,14 @@ import {
 const STATUS_OPTIONS = [
   { id: "all", messageId: "order.status.all" },
   { id: "in_progress", messageId: "order.status.in.progress" },
-  { id: "pending_qa", messageId: "order.status.pending.qa" },
-  { id: "completed", messageId: "order.status.completed" },
+  {
+    id: "registration_pending",
+    messageId: "order.intake.registration.pending",
+  },
+  { id: "collection_pending", messageId: "order.intake.collection.pending" },
+  { id: "label_pending", messageId: "order.intake.label.pending" },
+  { id: "qa_pending", messageId: "order.intake.qa.pending" },
+  { id: "checklist_complete", messageId: "order.dashboard.checklistComplete" },
 ];
 
 const PRIORITY_OPTIONS = [
@@ -74,6 +83,18 @@ const PRIORITY_OPTIONS = [
 const PAGE_SIZES = [25, 50, 100];
 
 const OrderDashboardContent = () => {
+  const session = useContext(UserSessionDetailsContext);
+  const sessionKey = JSON.stringify([
+    session?.userSessionDetails,
+    session?.sessionPhase,
+    Boolean(session?.errorLoadingSessionDetails),
+  ]);
+  const sessionAvailable =
+    session?.userSessionDetails?.authenticated !== false &&
+    !session?.errorLoadingSessionDetails &&
+    (!session?.sessionPhase || session.sessionPhase === "authenticated");
+  const currentSession = useRef(sessionKey);
+  currentSession.current = sessionKey;
   const intl = useIntl();
   const history = useHistory();
   const location = useLocation();
@@ -102,7 +123,7 @@ const OrderDashboardContent = () => {
     initial.searchQuery || "",
   );
   const [statusFilter, setStatusFilter] = useState(
-    initial.statusFilter || "all",
+    normalizeIntakeFilter(initial.statusFilter),
   );
   const [priorityFilter, setPriorityFilter] = useState(
     initial.priorityFilter || "all",
@@ -140,8 +161,16 @@ const OrderDashboardContent = () => {
   // Fetch orders
   const fetchOrders = useCallback(() => {
     const request = ++requestSequence.current;
+    setOrders([]);
+    setTotalItems(0);
     setIsLoading(true);
     setLoadError(false);
+    const dispatchedSession = sessionKey;
+    if (!sessionAvailable) {
+      setIsLoading(false);
+      setLoadError(true);
+      return;
+    }
 
     const params = new URLSearchParams({
       page: page.toString(),
@@ -149,7 +178,9 @@ const OrderDashboardContent = () => {
     });
 
     if (debouncedSearchQuery) params.append("search", debouncedSearchQuery);
-    if (statusFilter !== "all") params.append("status", statusFilter);
+    if (statusFilter === "in_progress") params.append("status", statusFilter);
+    else if (statusFilter !== "all")
+      params.append("specimenIntakeStatus", statusFilter);
     if (priorityFilter !== "all") params.append("priority", priorityFilter);
     // Format dates as YYYY-MM-DD for backend
     if (dateRange.start) {
@@ -161,19 +192,50 @@ const OrderDashboardContent = () => {
       params.append("endDate", toLocalIsoDate(d));
     }
 
-    getFromOpenElisServer(`/rest/order/dashboard?${params}`, (response) => {
-      if (request !== requestSequence.current) return;
-      setIsLoading(false);
-      if (response) {
-        setOrders(response.orders || []);
-        setTotalItems(response.totalCount || 0);
-      } else {
-        setOrders([]);
-        setTotalItems(0);
-        setLoadError(true);
-      }
-    });
+    getFromOpenElisServer(
+      `/rest/order/dashboard?${params}`,
+      (response, requestError) => {
+        if (
+          request !== requestSequence.current ||
+          dispatchedSession !== currentSession.current
+        )
+          return;
+        if (
+          !requestError &&
+          Array.isArray(response?.orders) &&
+          Number.isSafeInteger(response.totalCount) &&
+          response.totalCount >= response.orders.length
+        ) {
+          const lastPage = Math.max(
+            1,
+            Math.ceil(response.totalCount / pageSize),
+          );
+          if (page > lastPage) {
+            // A remembered page can disappear after filtering or another user's work.
+            // Stay in loading state while retrieving an existing page, not a false empty list.
+            setPage(lastPage);
+            return;
+          }
+          if (response.totalCount > 0 && response.orders.length === 0) {
+            setOrders([]);
+            setTotalItems(0);
+            setLoadError(true);
+            setIsLoading(false);
+            return;
+          }
+          setOrders(response.orders);
+          setTotalItems(response.totalCount);
+        } else {
+          setOrders([]);
+          setTotalItems(0);
+          setLoadError(requestError?.errorKey || "order.dashboard.load.error");
+        }
+        setIsLoading(false);
+      },
+    );
   }, [
+    sessionKey,
+    sessionAvailable,
     page,
     pageSize,
     debouncedSearchQuery,
@@ -206,10 +268,11 @@ const OrderDashboardContent = () => {
   };
 
   const handleContinueOrder = async (order) => {
+    const nextStep = resolveIntakeStage(order).nextStep;
+    if (!nextStep) return;
     // Load the order into context, then navigate to the appropriate step
     try {
       await loadOrder(order.labNumber, false); // false = editable
-      const nextStep = getNextStep(order);
       openFromList(`/order/${nextStep}`);
     } catch (error) {
       console.error("handleContinueOrder: Error loading order", error);
@@ -240,6 +303,7 @@ const OrderDashboardContent = () => {
   };
 
   const handleAcceptExternal = async (order) => {
+    if (resolveIntakeStage(order).completedSteps === null) return;
     try {
       await loadOrder(order.labNumber, false);
       openFromList("/order/enter");
@@ -257,6 +321,7 @@ const OrderDashboardContent = () => {
   };
 
   const handleFixIssue = async (order) => {
+    if (resolveIntakeStage(order).completedSteps === null) return;
     // Load the order into context, then navigate to the step that needs fixing
     try {
       await loadOrder(order.labNumber, false); // false = editable
@@ -279,48 +344,6 @@ const OrderDashboardContent = () => {
     openFromList(
       `/order/enter?labNumber=${encodeURIComponent(order.labNumber)}`,
     );
-  };
-
-  const getNextStep = (order) => {
-    if (!order.stepProgress) return "enter";
-    if (!order.stepProgress.enter) return "enter";
-    if (!order.stepProgress.collect) return "collect";
-    if (!isLabelStepComplete(order)) return "label";
-    if (!order.stepProgress.qa) return "qa";
-    return "qa";
-  };
-
-  // Check if label step is complete based on storage or storageSkipped
-  const isLabelStepComplete = (order) => {
-    // Check if storageSkipped is set from backend
-    const storageSkipped = order.storageSkipped === true;
-
-    // Check if all samples have storage assigned
-    const allHaveStorage =
-      order.samples?.length > 0 &&
-      order.samples.every((s) => s.storageLocationId);
-
-    return allHaveStorage || storageSkipped || order.stepProgress?.label;
-  };
-
-  const getStepProgressValue = (order) => {
-    if (!order.stepProgress) return 0;
-    let completed = 0;
-    if (order.stepProgress.enter) completed++;
-    if (order.stepProgress.collect) completed++;
-    if (isLabelStepComplete(order)) completed++;
-    if (order.stepProgress.qa) completed++;
-    return (completed / 4) * 100;
-  };
-
-  const getCompletedStepsCount = (order) => {
-    if (!order.stepProgress) return 0;
-    let completed = 0;
-    if (order.stepProgress.enter) completed++;
-    if (order.stepProgress.collect) completed++;
-    if (isLabelStepComplete(order)) completed++;
-    if (order.stepProgress.qa) completed++;
-    return completed;
   };
 
   // Table headers
@@ -377,131 +400,167 @@ const OrderDashboardContent = () => {
   ];
 
   // Transform orders to table rows
-  const rows = orders.map((order) => ({
-    id: order.id || order.labNumber,
-    labNumber: (
-      <div className="order-lab-number">
-        {order.labNumber}
-        {order.isExternal && (
-          <Tag type="purple" size="sm" className="external-badge">
-            <FormattedMessage id="order.external" defaultMessage="External" />
-          </Tag>
-        )}
-      </div>
-    ),
-    patient: order.patientName || order.subjectName || "---",
-    facility: order.facilityName || "---",
-    priority: (() => {
-      const p = order.priority?.toLowerCase();
-      if (p === "stat") {
+  const rows = orders.map((order) => {
+    const stage = resolveIntakeStage(order);
+    const readOnly = stage.completedSteps === null;
+    return {
+      id: order.id || order.labNumber,
+      labNumber: (
+        <div className="order-lab-number">
+          {order.labNumber}
+          {order.isExternal && (
+            <Tag type="purple" size="sm" className="external-badge">
+              <FormattedMessage id="order.external" defaultMessage="External" />
+            </Tag>
+          )}
+        </div>
+      ),
+      patient: order.patientName || order.subjectName || "---",
+      facility: order.facilityName || "---",
+      priority: (() => {
+        const p = order.priority?.toLowerCase();
+        if (p === "stat") {
+          return (
+            <Tag type="red" size="sm">
+              {intl.formatMessage({ id: "order.priority.stat" })}
+            </Tag>
+          );
+        } else if (p === "asap") {
+          return (
+            <Tag type="orange" size="sm">
+              {intl.formatMessage({ id: "order.priority.asap" })}
+            </Tag>
+          );
+        } else if (p === "timed") {
+          return (
+            <Tag type="blue" size="sm">
+              {intl.formatMessage({ id: "order.priority.timed" })}
+            </Tag>
+          );
+        } else {
+          return (
+            <Tag type="gray" size="sm">
+              {intl.formatMessage({ id: "order.priority.routine" })}
+            </Tag>
+          );
+        }
+      })(),
+      progress: (() => {
         return (
-          <Tag type="red" size="sm">
-            {intl.formatMessage({ id: "order.priority.stat" })}
-          </Tag>
+          <div className="order-progress">
+            <span className="progress-stage">
+              <FormattedMessage id={stage.messageId} />
+            </span>
+            {stage.completedSteps !== null && (
+              <>
+                <ProgressBar
+                  label={intl.formatMessage({ id: "order.progress" })}
+                  value={stage.completedSteps * 25}
+                  size="small"
+                  status={stage.completedSteps === 4 ? "finished" : "active"}
+                  hideLabel
+                />
+                <span className="progress-label">{stage.completedSteps}/4</span>
+              </>
+            )}
+            {order.labelEvidenceScope && (
+              <span className="progress-label">
+                <FormattedMessage id="order.dashboard.labelEvidence" />
+              </span>
+            )}
+            {order.specimenDecisions && (
+              <span
+                className="progress-label"
+                data-testid={`decisions-${order.id}`}
+              >
+                {intl.formatMessage(
+                  { id: "order.dashboard.decisions" },
+                  order.specimenDecisions,
+                )}
+                {" · "}
+                <FormattedMessage id="order.dashboard.acceptanceUnverified" />
+              </span>
+            )}
+          </div>
         );
-      } else if (p === "asap") {
-        return (
-          <Tag type="orange" size="sm">
-            {intl.formatMessage({ id: "order.priority.asap" })}
-          </Tag>
-        );
-      } else if (p === "timed") {
-        return (
-          <Tag type="blue" size="sm">
-            {intl.formatMessage({ id: "order.priority.timed" })}
-          </Tag>
-        );
-      } else {
-        return (
-          <Tag type="gray" size="sm">
-            {intl.formatMessage({ id: "order.priority.routine" })}
-          </Tag>
-        );
-      }
-    })(),
-    progress: (
-      <div className="order-progress">
-        <ProgressBar
-          label={intl.formatMessage({ id: "order.progress" })}
-          value={getStepProgressValue(order)}
-          size="small"
-          status={order.status === "rejected" ? "error" : "active"}
-          hideLabel
-        />
-        <span className="progress-label">
-          {getCompletedStepsCount(order)}/4
-        </span>
-      </div>
-    ),
-    lastUpdated: order.lastUpdated || "---",
-    actions: (
-      <div className="order-actions">
-        {!order.isExternal && (
-          <>
+      })(),
+      lastUpdated: order.lastUpdated || "---",
+      actions: (
+        <div className="order-actions">
+          {(!order.isExternal || readOnly) && (
+            <>
+              <Button
+                kind="ghost"
+                size="sm"
+                onClick={() => handleViewOrder(order)}
+              >
+                <FormattedMessage id="label.button.view" />
+              </Button>
+              {!readOnly && (
+                <>
+                  <Button
+                    kind="ghost"
+                    size="sm"
+                    onClick={() =>
+                      openFromList(
+                        `/ModifyOrder?accessionNumber=${encodeURIComponent(order.labNumber)}`,
+                      )
+                    }
+                  >
+                    <FormattedMessage id="workspace.order.edit" />
+                  </Button>
+                  <Button
+                    kind="ghost"
+                    size="sm"
+                    onClick={() =>
+                      openFromList(
+                        `/PrintBarcode?labNumber=${encodeURIComponent(order.labNumber)}`,
+                      )
+                    }
+                  >
+                    <FormattedMessage id="workspace.order.reprint" />
+                  </Button>
+                </>
+              )}
+            </>
+          )}
+          {readOnly ? null : order.returnedFromQA ? (
+            <Button
+              kind="danger--tertiary"
+              size="sm"
+              onClick={() => handleFixIssue(order)}
+            >
+              <FormattedMessage
+                id="order.fixIssue"
+                defaultMessage="Fix Issue"
+              />
+            </Button>
+          ) : order.isExternal ? (
+            <Button
+              kind="primary"
+              size="sm"
+              onClick={() => handleAcceptExternal(order)}
+            >
+              <FormattedMessage id="order.accept" defaultMessage="Accept" />
+            </Button>
+          ) : stage.nextStep ? (
             <Button
               kind="ghost"
               size="sm"
-              onClick={() => handleViewOrder(order)}
+              onClick={() => handleContinueOrder(order)}
             >
-              <FormattedMessage id="label.button.view" />
+              <FormattedMessage id="order.continue" defaultMessage="Continue" />
             </Button>
-            <Button
-              kind="ghost"
-              size="sm"
-              onClick={() =>
-                openFromList(
-                  `/ModifyOrder?accessionNumber=${encodeURIComponent(order.labNumber)}`,
-                )
-              }
-            >
-              <FormattedMessage id="workspace.order.edit" />
-            </Button>
-            <Button
-              kind="ghost"
-              size="sm"
-              onClick={() =>
-                openFromList(
-                  `/PrintBarcode?labNumber=${encodeURIComponent(order.labNumber)}`,
-                )
-              }
-            >
-              <FormattedMessage id="workspace.order.reprint" />
-            </Button>
-          </>
-        )}
-        {order.returnedFromQA ? (
-          <Button
-            kind="danger--tertiary"
-            size="sm"
-            onClick={() => handleFixIssue(order)}
-          >
-            <FormattedMessage id="order.fixIssue" defaultMessage="Fix Issue" />
-          </Button>
-        ) : order.isExternal ? (
-          <Button
-            kind="primary"
-            size="sm"
-            onClick={() => handleAcceptExternal(order)}
-          >
-            <FormattedMessage id="order.accept" defaultMessage="Accept" />
-          </Button>
-        ) : (
-          <Button
-            kind="ghost"
-            size="sm"
-            onClick={() => handleContinueOrder(order)}
-          >
-            <FormattedMessage id="order.continue" defaultMessage="Continue" />
-          </Button>
-        )}
-      </div>
-    ),
-    className: order.returnedFromQA
-      ? "returned-from-qa"
-      : order.isExternal
-        ? "external-order"
-        : "",
-  }));
+          ) : null}
+        </div>
+      ),
+      className: order.returnedFromQA
+        ? "returned-from-qa"
+        : order.isExternal
+          ? "external-order"
+          : "",
+    };
+  });
 
   return (
     <>
@@ -597,7 +656,7 @@ const OrderDashboardContent = () => {
           </div>
 
           {/* Orders Table */}
-          <DataTable rows={rows} headers={headers} isSortable>
+          <DataTable rows={rows} headers={headers}>
             {({
               rows,
               headers,
@@ -646,7 +705,9 @@ const OrderDashboardContent = () => {
                           isLoading
                             ? "order.dashboard.loading"
                             : loadError
-                              ? "order.dashboard.load.error"
+                              ? typeof loadError === "string"
+                                ? loadError
+                                : "order.dashboard.load.error"
                               : "order.dashboard.empty"
                         }
                       />
