@@ -704,7 +704,8 @@ public class ResultsValidationUtility {
         row.setResultMembers(represented.stream()
                 .map(result -> new AnalysisItem.ResultMember(result.getId(), result.getValue(), result.getResultType(),
                         effectiveComponentId(analysis, result),
-                        result.getParentResult() == null ? null : result.getParentResult().getId(), result.getGrouping()))
+                        result.getParentResult() == null ? null : result.getParentResult().getId(), result.getGrouping(),
+                        result.getLastupdated() == null ? null : result.getLastupdated().toInstant().toString()))
                 .collect(Collectors.toList()));
         if (multiSelect) {
             row.setMultiSelectResultValues(ResultServiceImpl.getJSONStringForMultiSelect(new ArrayList<>(parents)));

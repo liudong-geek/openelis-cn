@@ -87,6 +87,8 @@ public class AccessionValidationRestController extends BaseResultValidationContr
     private SampleService sampleService;
     @Autowired
     private ReviewQueryContextService reviewQueryContextService;
+    @Autowired
+    private org.openelisglobal.resultvalidation.service.ReviewSubmissionService reviewSubmissionService;
 
     private static final String[] ALLOWED_FIELDS = new String[] { "queryId", "doRange", "testSectionId", "paging.currentPage", "testSection",
             "testName", "resultList*.accessionNumber", "resultList*.analysisId", "resultList*.testId",
@@ -230,73 +232,10 @@ public class AccessionValidationRestController extends BaseResultValidationContr
         }
         String actor = getSysUserId(request);
         List<AnalysisItem> resultItemList = reviewQueryContextService.consumeForSave(request.getSession(), actor, form);
-        List<IResultUpdate> updaters = ValidationUpdateRegister.getRegisteredUpdaters();
-        boolean areListeners = !updaters.isEmpty();
-
-
-        String testSectionName = form.getTestSection();
-        String testName = form.getTestName();
-        // ----------------------
-        String url = request.getRequestURL().toString();
-
-        Errors errors = validateModifiedItems(resultItemList);
-        if (errors.hasErrors()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid review decisions");
-        }
-
-
-        // Update Lists
-        List<Analysis> analysisUpdateList = new ArrayList<>();
-        ArrayList<Sample> sampleUpdateList = new ArrayList<>();
-        ArrayList<Note> noteUpdateList = new ArrayList<>();
-        ArrayList<Result> resultUpdateList = new ArrayList<>();
-        List<Result> deletableList = new ArrayList<>();
-
-        // wrapper object for holding modifedResultSet and newResultSet
-        IResultSaveService resultSaveService = new ResultValidationSaveService();
-
-        // if (testSectionName.equals("serology")) {
-        // createUpdateElisaList(resultItemList, analysisUpdateList);
-        // } else {
-        createUpdateList(resultItemList, analysisUpdateList, resultUpdateList, noteUpdateList, deletableList,
-                resultSaveService, areListeners, actor);
-        // }
-        try {
-            resultValidationService.persistdata(deletableList, analysisUpdateList, resultUpdateList, resultItemList,
-                    sampleUpdateList, noteUpdateList, resultSaveService, updaters, actor);
-
-            try {
-                fhirTransformService.transformPersistResultValidationFhirObjects(deletableList, analysisUpdateList,
-                        resultUpdateList, resultItemList, sampleUpdateList, noteUpdateList);
-            } catch (FhirLocalPersistingException e) {
-                LogEvent.logError(e);
-            }
-        } catch (LIMSRuntimeException e) {
-            LogEvent.logError(e);
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Review save failed", e);
-        }
-
-        for (IResultUpdate updater : updaters) {
-
-            // updater.postTransactionalCommitUpdate(resultSaveService);
-        }
-
-        // route save back to RetroC specific ResultValidationRetroCAction
-        // if
-        // (ConfigurationProperties.getInstance().isPropertyValueEqual(Property.configurationName,
-        // "CI RetroCI"))
-        // redirectAttributes.addFlashAttribute(FWD_SUCCESS, true);
-        if (isBlankOrNull(testSectionName)) {
-            // return findForward(forward, form);
-            return form;
-        } else {
-            Map<String, String> params = new HashMap<>();
-            params.put("type", testSectionName);
-            params.put("test", testName);
-            // return getForwardWithParameters(findForward(forward, form), params);
-        }
-
-        return (form);
+        reviewSubmissionService.save(request, actor, resultItemList, form.getReviewSignature());
+        form.setReviewSignature(null);
+        form.setResultList(java.util.List.of());
+        return form;
     }
 
     private Errors validateModifiedItems(List<AnalysisItem> resultItemList) {

@@ -48,6 +48,7 @@ public class AccessionValidationQueryControllerTest {
     private AccessionValidationRestController controller;
     private ReviewQueryContextService contexts;
     private ResultValidationService persistence;
+    private org.openelisglobal.resultvalidation.service.ReviewSubmissionService submissions;
     private MockHttpServletRequest request;
 
     @Before public void setup() {
@@ -66,10 +67,27 @@ public class AccessionValidationQueryControllerTest {
                 mock(FhirTransformService.class));
         contexts = mock(ReviewQueryContextService.class);
         ReflectionTestUtils.setField(controller, "reviewQueryContextService", contexts);
+        submissions = mock(org.openelisglobal.resultvalidation.service.ReviewSubmissionService.class);
+        ReflectionTestUtils.setField(controller, "reviewSubmissionService", submissions);
         request = new MockHttpServletRequest();
         UserSessionData user = new UserSessionData();
         user.setSytemUserId(7);
         request.getSession().setAttribute(IActionConstants.USER_SESSION_DATA, user);
+    }
+
+    @Test public void saveDelegatesOnlyServerSnapshotAndReturnsQueryReceiptWithoutCredentials() throws Exception {
+        ResultValidationForm form = new ResultValidationForm();
+        form.setQueryId("SIM-query-A");
+        var credentials = new ResultValidationForm.ReviewSignature();
+        credentials.setUsername("SIM-user"); credentials.setPassword("SIM-secret");
+        form.setReviewSignature(credentials);
+        var serverRows = java.util.List.of(new org.openelisglobal.resultvalidation.bean.AnalysisItem());
+        when(contexts.consumeForSave(request.getSession(), "7", form)).thenReturn(serverRows);
+        var response = controller.showAccessionValidationRangeSave(request, form, new BeanPropertyBindingResult(form, "form"));
+        verify(submissions).save(request, "7", serverRows, credentials);
+        assertEquals("SIM-query-A", response.getQueryId());
+        assertTrue(response.getResultList().isEmpty()); assertNull(response.getReviewSignature());
+        verifyZeroInteractions(persistence);
     }
 
     @Test public void actualHttpMappingPreservesStaleAndForbiddenStatuses() throws Exception {

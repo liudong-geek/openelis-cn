@@ -196,7 +196,7 @@ test("unsaved review changes block server pagination before the existing batch i
   expect(document.getElementById("loadnextresults")).toBeEnabled();
 });
 
-test("an allowed query rebuilds uncontrolled inputs and resets local pagination for a new batch", async () => {
+test("an allowed query clears selections and resets local pagination for a new batch", async () => {
   start(Array.from({ length: 12 }, (_, index) => record(index + 1)));
   const acceptAll = screen.getByLabelText(messages["validation.accept.all"]);
   fireEvent.click(acceptAll);
@@ -204,9 +204,8 @@ test("an allowed query rebuilds uncontrolled inputs and resets local pagination 
     expect(editable("isAccepted", index)).toBeChecked();
     fireEvent.click(editable("isAccepted", index));
   }
-  // The row edits are undone, but this legacy bulk checkbox keeps its own DOM
-  // state. The next batch must not inherit that misleading checked indicator.
-  expect(acceptAll).toBeChecked();
+  // The bulk indicator follows the actual row decisions.
+  expect(acceptAll).not.toBeChecked();
   const pageSize = screen.getByLabelText(messages["pagination.items-per-page"]);
   fireEvent.change(pageSize, { target: { value: "10" } });
   fireEvent.click(

@@ -131,6 +131,18 @@ public class ElectronicSignature extends BaseObject<Long> {
     @Column(name = "user_agent", length = 500)
     private String userAgent;
 
+    @Column(name = "signed_content", columnDefinition = "TEXT")
+    private String signedContent;
+
+    @Column(name = "content_sha256", length = 64)
+    private String contentSha256;
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public String getSignedContent() { return signedContent; }
+    public void setSignedContent(String value) { signedContent = value; }
+    public String getContentSha256() { return contentSha256; }
+    public void setContentSha256(String value) { contentSha256 = value; }
+
     public ElectronicSignature() {
         super();
     }

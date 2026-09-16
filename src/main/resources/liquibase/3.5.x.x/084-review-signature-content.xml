@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+ <changeSet id="3.5.0-084-review-signature-content" author="local-chinese-edition">
+  <preConditions onFail="HALT" onError="HALT">
+   <tableExists schemaName="clinlims" tableName="electronic_signature"/>
+   <columnExists schemaName="clinlims" tableName="note" columnName="text"/>
+  </preConditions>
+  <!-- Full review snapshots must remain intact when e-signatures are disabled. -->
+  <modifyDataType schemaName="clinlims" tableName="note" columnName="text" newDataType="TEXT"/>
+  <addColumn schemaName="clinlims" tableName="electronic_signature">
+   <column name="signed_content" type="TEXT"/>
+   <column name="content_sha256" type="VARCHAR(64)"/>
+  </addColumn>
+  <rollback>
+   <!-- Keep note.text widened: shrinking it would truncate historical review evidence. -->
+   <dropColumn schemaName="clinlims" tableName="electronic_signature" columnName="content_sha256"/>
+   <dropColumn schemaName="clinlims" tableName="electronic_signature" columnName="signed_content"/>
+  </rollback>
+ </changeSet>
+</databaseChangeLog>

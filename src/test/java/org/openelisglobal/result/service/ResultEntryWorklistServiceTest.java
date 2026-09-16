@@ -47,6 +47,7 @@ public class ResultEntryWorklistServiceTest {
         pendingResult.setResult(nestedResult);
 
         when(statusService.getStatusID(AnalysisStatus.NotStarted)).thenReturn("4");
+        when(statusService.getStatusID(AnalysisStatus.BiologistRejected)).thenReturn("5");
         when(analysisService.getAnalysesForStatusId("4")).thenReturn(Collections.singletonList(analysis));
         when(worklistLoader.load(Collections.singletonList(analysis), "7"))
                 .thenReturn(Collections.singletonList(pendingResult));
@@ -62,5 +63,18 @@ public class ResultEntryWorklistServiceTest {
         verify(worklistLoader).load(Collections.singletonList(analysis), "7");
         verify(userService).filterResultsByLabUnitRoles("7", Collections.singletonList(pendingResult),
                 Constants.ROLE_RESULTS);
+    }
+    @Test
+    public void reviewReturnsReenterQueueButReleasedOrPrintedRowsStayExcluded() {
+        Analysis returned = new Analysis(); returned.setId("43");
+        Analysis released = new Analysis(); released.setId("44"); org.springframework.test.util.ReflectionTestUtils.setField(released, "releasedDate", new java.sql.Timestamp(1));
+        Analysis printed = new Analysis(); printed.setId("45"); org.springframework.test.util.ReflectionTestUtils.setField(printed, "printedDate", new java.sql.Date(1));
+        when(statusService.getStatusID(AnalysisStatus.NotStarted)).thenReturn("4");
+        when(statusService.getStatusID(AnalysisStatus.BiologistRejected)).thenReturn("5");
+        when(analysisService.getAnalysesForStatusId("5")).thenReturn(List.of(returned, released, printed));
+        when(worklistLoader.load(List.of(returned), "7")).thenReturn(List.of());
+        when(userService.filterResultsByLabUnitRoles("7", List.of(), Constants.ROLE_RESULTS)).thenReturn(List.of());
+        worklistService.getPendingResultsForUser("7");
+        verify(worklistLoader).load(List.of(returned), "7");
     }
 }

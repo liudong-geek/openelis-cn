@@ -22,33 +22,65 @@ export const getReviewResults = async (endpoint, callback, signal) => {
   }
 };
 
-export const postReviewResults = async (payload, callback) => {
+export const postReviewResults = async (payload, callback, options = {}) => {
+  const controller = new AbortController();
+  let timer;
+  let cancel;
+  const stopped = new Promise((_, reject) => {
+    cancel = () => {
+      controller.abort();
+      reject(new Error("REVIEW_STOPPED"));
+    };
+    timer = setTimeout(cancel, 30000);
+  });
+  options.signal?.addEventListener("abort", cancel, { once: true });
+  if (options.signal?.aborted) cancel();
+  let status = 0;
   try {
-    const response = await fetch(
-      config.serverBaseUrl + "/rest/AccessionValidation",
-      {
-        credentials: "include",
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": localStorage.getItem("CSRF") || "",
-          "Accept-Language": getRequestLocale(),
-        },
-        body: JSON.stringify(payload),
-      },
-    );
-    // Drain and verify the response before navigating. A direct login/error
-    // page with HTTP 200 is not proof that a clinical write succeeded.
-    const body = await response.text();
-    if (response.redirected) return callback(401);
-    if (!response.ok) return callback(response.status);
-    if (!response.headers.get("content-type")?.includes("application/json"))
-      return callback(0);
-    const form = JSON.parse(body);
-    callback(form?.queryId === payload.queryId ? response.status : 0);
+    status = await Promise.race([
+      stopped,
+      (async () => {
+        if (controller.signal.aborted) return 0;
+        const response = await fetch(
+          config.serverBaseUrl + "/rest/AccessionValidation",
+          {
+            credentials: "include",
+            method: "POST",
+            cache: "no-store",
+            redirect: "manual",
+            signal: controller.signal,
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRF-Token":
+                options.csrf ?? localStorage.getItem("CSRF") ?? "",
+              "Accept-Language": getRequestLocale(),
+            },
+            body: JSON.stringify(payload),
+          },
+        );
+        if (response.redirected || response.type === "opaqueredirect")
+          return 401;
+        if (!response.ok) return response.status;
+        if (
+          !/^application\/json(?:\s*;|$)/i.test(
+            response.headers.get("content-type") || "",
+          )
+        )
+          return 0;
+        const form = JSON.parse(await response.text());
+        if (controller.signal.aborted || form?.error || form?.success === false)
+          return 0;
+        return form?.queryId === payload.queryId ? response.status : 0;
+      })(),
+    ]);
   } catch {
-    callback(0);
+    status = 0;
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", cancel);
+    controller.abort();
   }
+  callback(status);
 };
 
 export const hasReviewQuery = (value) =>

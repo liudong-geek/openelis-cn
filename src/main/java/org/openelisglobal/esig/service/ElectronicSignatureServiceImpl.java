@@ -68,6 +68,14 @@ public class ElectronicSignatureServiceImpl extends AuditableBaseObjectServiceIm
     public ElectronicSignature executeSignature(String username, String password, SignatureMeaning meaning,
             String recordType, Long recordId, String rejectionReason, String clientIp, String userAgent) {
 
+        return executeSignatureForSnapshot(username, password, meaning, recordType, recordId,
+                rejectionReason, clientIp, userAgent, null);
+    }
+
+    @Override
+    @Transactional
+    public ElectronicSignature executeSignatureForSnapshot(String username, String password, SignatureMeaning meaning,
+            String recordType, Long recordId, String rejectionReason, String clientIp, String userAgent, String signedContent) {
         // 0. Validate required parameters
         if (meaning == null) {
             throw new IllegalArgumentException("Signature meaning is required");
@@ -135,6 +143,11 @@ public class ElectronicSignatureServiceImpl extends AuditableBaseObjectServiceIm
         signature.setAuthMethod(authMethod);
         signature.setClientIp(clientIp);
         signature.setUserAgent(truncateUserAgent(userAgent));
+        if (signedContent != null) {
+            if (signedContent.isBlank()) throw new IllegalArgumentException("Signed content is required");
+            signature.setSignedContent(signedContent);
+            signature.setContentSha256(org.apache.commons.codec.digest.DigestUtils.sha256Hex(signedContent));
+        }
         signature.setSysUserId(userId.toString());
 
         // 9. Save

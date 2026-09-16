@@ -1,6 +1,7 @@
 import React from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { waitFor } from "@testing-library/dom";
 import { IntlProvider } from "react-intl";
 import { MemoryRouter } from "react-router-dom";
 import Validation from "./Validation";
@@ -9,25 +10,24 @@ import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { ConfigurationContext, NotificationContext } from "../layout/Layout";
 import { postReviewResults } from "./reviewTransport";
 
-const signState = vi.hoisted(() => ({ onSign: null }));
+const signState = vi.hoisted(() => ({ enabled: null }));
 vi.mock("./reviewTransport", async () => ({
   ...(await vi.importActual("./reviewTransport")),
   postReviewResults: vi.fn(),
 }));
-vi.mock("../esignature/ESignatureButton", () => ({
-  default: ({ children, onSign, disabled }) => {
-    signState.onSign = onSign;
-    return (
-      <button type="button" disabled={disabled} onClick={onSign}>
-        {children}
-      </button>
-    );
-  },
-  SignatureMeaning: { VALIDATED_AND_RELEASED: "VALIDATED_AND_RELEASED" },
+vi.mock("../resultPage/unified/resultSignatureApi", () => ({
+  createResultSignatureApi: ({ guard }) => ({
+    assertCurrent: () => {
+      if (!guard()) throw new Error("STALE");
+    },
+    dispose: vi.fn(),
+    isEsigEnabled: () =>
+      signState.enabled || Promise.resolve({ enabled: false }),
+  }),
 }));
 const row = (extra = {}) => ({
   id: 0,
-  analysisId: "SIM-ANALYSIS",
+  analysisId: "101",
   resultId: "SIM-RESULT",
   testResultComponentId: "SIM-COMPONENT",
   accessionNumber: "SIM-ORDER",
@@ -91,7 +91,11 @@ const start = (initial = form()) => {
     change: (next) => view.rerender(viewFor(next)),
   };
 };
-beforeEach(() => postReviewResults.mockReset());
+beforeEach(() => {
+  localStorage.setItem("CSRF", "SIM-review-csrf");
+  postReviewResults.mockReset();
+  signState.enabled = null;
+});
 
 test("shows actual raw zero and member evidence without exposing masked patient data or inventing result version", () => {
   const source = row({
@@ -145,14 +149,17 @@ test("changing query for the same result identity clears the open details", () =
 
 test.each([403, 409, 0])(
   "save outcome %s invalidates the context without retry",
-  (status) => {
-    const source = form();
+  async (status) => {
+    const source = form([row({ isAccepted: true })]);
     const view = start(source);
     fireEvent.click(
-      screen.getByRole("button", { name: messages["label.button.validate"] }),
+      screen.getByRole("button", {
+        name: messages["validation.review.submit"],
+      }),
     );
-    expect(postReviewResults).toHaveBeenCalledTimes(1);
-    expect(postReviewResults.mock.calls[0][0]).toBe(source);
+    await waitFor(() => expect(postReviewResults).toHaveBeenCalledTimes(1));
+    expect(postReviewResults.mock.calls[0][0]).toEqual(source);
+    expect(postReviewResults.mock.calls[0][0]).not.toBe(source);
     expect(view.onSubmissionChange).toHaveBeenLastCalledWith(true);
     act(() => postReviewResults.mock.calls[0][1](status));
     expect(view.onSubmissionChange).toHaveBeenLastCalledWith(false);
@@ -161,25 +168,34 @@ test.each([403, 409, 0])(
       expect.objectContaining({ kind: "error" }),
     );
     fireEvent.click(
-      screen.getByRole("button", { name: messages["label.button.validate"] }),
+      screen.getByRole("button", {
+        name: messages["validation.review.submit"],
+      }),
     );
     expect(postReviewResults).toHaveBeenCalledTimes(1);
   },
 );
 
-test("a late signature cannot submit an unmounted review", () => {
-  const view = start();
-  const oldSign = signState.onSign;
+test("a late signature configuration response cannot submit an unmounted review", async () => {
+  let resolve;
+  signState.enabled = new Promise((done) => {
+    resolve = done;
+  });
+  const view = start(form([row({ isAccepted: true })]));
+  fireEvent.click(
+    screen.getByRole("button", { name: messages["validation.review.submit"] }),
+  );
   view.unmount();
-  act(() => oldSign());
+  await act(async () => resolve({ enabled: false }));
   expect(postReviewResults).not.toHaveBeenCalled();
 });
 
-test("late save completion cannot notify or clear another mounted query", () => {
-  const view = start();
+test("late save completion cannot notify or clear another mounted query", async () => {
+  const view = start(form([row({ isAccepted: true })]));
   fireEvent.click(
-    screen.getByRole("button", { name: messages["label.button.validate"] }),
+    screen.getByRole("button", { name: messages["validation.review.submit"] }),
   );
+  await waitFor(() => expect(postReviewResults).toHaveBeenCalledTimes(1));
   const callback = postReviewResults.mock.calls[0][1];
   view.change(form([row()], "SIM-QUERY-NEW"));
   act(() => callback(200));
@@ -240,4 +256,45 @@ test("accept and return stay mutually exclusive for row and bulk decisions", () 
   ).toBe(true);
   fireEvent.click(editable(1, "isAccepted"));
   expect(records[1]).toMatchObject({ isAccepted: true, isRejected: false });
+});
+
+test("same-analysis components share decision and required return reason", () => {
+  const rows = [row(), row({ id: 1, resultId: "102" })];
+  const view = start(form(rows));
+  fireEvent.click(document.querySelector('[name="resultList[0].isRejected"]'));
+  expect(rows.every((row) => row.isRejected && !row.isAccepted)).toBe(true);
+  fireEvent.click(
+    screen.getByRole("button", { name: messages["validation.review.submit"] }),
+  );
+  expect(postReviewResults).not.toHaveBeenCalled();
+  expect(view.addNotification).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      message: messages["validation.review.reasonRequired"],
+    }),
+  );
+  fireEvent.change(document.querySelector('[name="resultList[1].note"]'), {
+    target: { value: "SIM repeat required" },
+  });
+  expect(rows.map((row) => row.note)).toEqual([
+    "SIM repeat required",
+    "SIM repeat required",
+  ]);
+});
+test("no selection does not begin a review submission", () => {
+  const view = start();
+  fireEvent.click(
+    screen.getByRole("button", { name: messages["validation.review.submit"] }),
+  );
+  expect(postReviewResults).not.toHaveBeenCalled();
+  expect(view.addNotification).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      message: messages["validation.review.selectRequired"],
+    }),
+  );
+});
+test("accept normal does not partially select an analysis with an abnormal component", () => {
+  const rows = [row({ normal: true }), row({ id: 1, normal: false })];
+  start(form(rows));
+  fireEvent.click(screen.getByLabelText(messages["validation.accept.normal"]));
+  expect(rows.every((row) => !row.isAccepted)).toBe(true);
 });

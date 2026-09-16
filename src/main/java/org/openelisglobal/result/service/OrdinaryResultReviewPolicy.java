@@ -54,8 +54,11 @@ final class OrdinaryResultReviewPolicy {
                 || ids.get(AnalysisStatus.Finalized).equals(state.statusId()))
             return REVIEWED;
         if (ids.get(AnalysisStatus.NotStarted).equals(state.statusId())
-                || ids.get(AnalysisStatus.TechnicalAcceptance).equals(state.statusId()))
+                || ids.get(AnalysisStatus.TechnicalAcceptance).equals(state.statusId())
+                || ids.get(AnalysisStatus.BiologistRejected).equals(state.statusId()))
             return null;
+        // An explicit review return may be re-entered, but released/printed facts above
+        // always remain locked. A new valid entry goes back through TechnicalAcceptance.
         // Entry may record a new explicit technical rejection, not edit an existing
         // canceled/rejected/reviewed result through an ordinary save.
         if (target && (ids.get(AnalysisStatus.TechnicalRejected).equals(state.statusId())

@@ -59,6 +59,7 @@ const ESignatureModal = ({
   onClose,
   onSuccess,
   meaning,
+  meaningLabel = undefined,
   context,
   recordType,
   recordId,
@@ -341,6 +342,7 @@ const ESignatureModal = ({
   };
 
   const getMeaningLabel = () => {
+    if (meaningLabel) return meaningLabel;
     switch (meaning) {
       case SignatureMeaning.AUTHORED:
         return intl.formatMessage({

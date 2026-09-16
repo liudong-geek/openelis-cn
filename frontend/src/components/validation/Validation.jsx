@@ -18,19 +18,12 @@ import { hasRole, Roles } from "../utils/Utils";
 import { NotificationContext } from "../layout/Layout";
 import { ConfigurationContext } from "../layout/Layout";
 import { convertAlphaNumLabNumForDisplay } from "../utils/Utils";
-import { jpSet } from "../utils/JsonPath";
 import config from "../../config.json";
-import ESignatureButton, {
-  SignatureMeaning,
-} from "../esignature/ESignatureButton";
+import ReviewSubmissionButton from "./ReviewSubmissionButton";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { useHistory } from "react-router-dom";
 import ReviewResultDetails, { reviewRowIdentity } from "./ReviewResultDetails";
-import {
-  hasReviewQuery,
-  postReviewResults,
-  reviewContextErrorKey,
-} from "./reviewTransport";
+import { hasReviewQuery, reviewContextErrorKey } from "./reviewTransport";
 
 const Validation = (props) => {
   const componentMounted = useRef(false);
@@ -48,8 +41,6 @@ const Validation = (props) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [, refreshSelection] = useState(0);
   const submitting = useRef(false);
-  const activeQuery = useRef(props.results?.queryId);
-  activeQuery.current = props.results?.queryId;
   const [detailIdentity, setDetailIdentity] = useState(null);
   const detailRow =
     hasReviewQuery(props.results?.queryId) &&
@@ -105,7 +96,7 @@ const Validation = (props) => {
     },
     {
       id: "save",
-      name: intl.formatMessage({ id: "column.name.save" }),
+      name: intl.formatMessage({ id: "validation.review.accept" }),
       cell: (row, index, column, id) => {
         return renderCell(row, index, column, id);
       },
@@ -113,7 +104,7 @@ const Validation = (props) => {
     },
     {
       id: "retest",
-      name: intl.formatMessage({ id: "column.name.retest" }),
+      name: intl.formatMessage({ id: "validation.review.return" }),
       cell: (row, index, column, id) => {
         return renderCell(row, index, column, id);
       },
@@ -121,7 +112,7 @@ const Validation = (props) => {
     },
     {
       id: "notes",
-      name: intl.formatMessage({ id: "column.name.notes" }),
+      name: intl.formatMessage({ id: "validation.review.notes" }),
       cell: (row, index, column, id) => {
         return renderCell(row, index, column, id);
       },
@@ -129,69 +120,69 @@ const Validation = (props) => {
     },
   ];
 
-  const buildSignContext = () => {
-    const results = (props.results && props.results.resultList) || [];
-    const count = results.length;
-    const accessions = [
-      ...new Set(results.map((r) => r.accessionNumber).filter(Boolean)),
-    ];
-    if (accessions.length === 1) {
-      return intl.formatMessage(
-        {
-          id: "esig.context.validateResults",
-          defaultMessage:
-            "Validate {count} result(s) for accession {accession}",
-        },
-        {
-          count,
-          accession:
-            convertAlphaNumLabNumForDisplay(accessions[0]) || accessions[0],
-        },
-      );
-    }
+  const buildSignContext = (payload) => {
+    const selected = payload.resultList.filter(
+      (row) => row.isAccepted || row.isRejected,
+    );
+    const accepted = new Set(
+      selected.filter((row) => row.isAccepted).map((row) => row.analysisId),
+    ).size;
+    const returned = new Set(
+      selected.filter((row) => row.isRejected).map((row) => row.analysisId),
+    ).size;
+    const accessions = [...new Set(selected.map((row) => row.accessionNumber))];
     return intl.formatMessage(
+      { id: "validation.review.signContext" },
       {
-        id: "esig.context.validateResultsMulti",
-        defaultMessage:
-          "Validate {count} result(s) across {accessionCount} accessions",
+        accepted,
+        returned,
+        results: selected.length,
+        accessions: accessions.join(", "),
       },
-      { count, accessionCount: accessions.length },
     );
   };
 
-  const getFirstAnalysisId = () => {
-    const results = (props.results && props.results.resultList) || [];
-    for (const r of results) {
-      if (r.analysisId) return Number(r.analysisId);
-    }
-    return 0;
+  const showError = (id) => {
+    addNotification({
+      kind: NotificationKinds.error,
+      title: intl.formatMessage({ id: "notification.title" }),
+      message: intl.formatMessage({ id }),
+    });
+    setNotificationVisible(true);
   };
-
-  const handleSave = () => {
+  const prepareSubmission = () => {
     if (
       !componentMounted.current ||
       submitting.current ||
       !hasReviewQuery(props.results?.queryId)
     )
-      return;
-    const queryAtSubmission = props.results.queryId;
-    submitting.current = true;
-    setIsSubmitting(true);
-    props.onSubmissionChange?.(true);
-    postReviewResults(props.results, (status) => {
-      if (
-        !componentMounted.current ||
-        activeQuery.current !== queryAtSubmission
-      )
-        return;
-      handleResponse(status);
-    });
+      return null;
+    const selected = props.results.resultList.filter(
+      (row) => row.isAccepted || row.isRejected,
+    );
+    if (!selected.length) {
+      showError("validation.review.selectRequired");
+      return null;
+    }
+    if (selected.some((row) => row.isRejected && !row.note?.trim())) {
+      showError("validation.review.reasonRequired");
+      return null;
+    }
+    return JSON.parse(JSON.stringify(props.results));
+  };
+  const handleBusy = (value) => {
+    submitting.current = value;
+    setIsSubmitting(value);
+    props.onSubmissionChange?.(value);
   };
   const handleResponse = (status) => {
     let message = intl.formatMessage({
-      id: [401, 403, 409].includes(status)
-        ? reviewContextErrorKey(status)
-        : "validation.query.submitUnconfirmed",
+      id:
+        status === 400
+          ? "validation.review.invalidSubmission"
+          : [401, 403, 409].includes(status)
+            ? reviewContextErrorKey(status)
+            : "validation.query.submitUnconfirmed",
     });
     let kind = NotificationKinds.error;
     setIsSubmitting(false);
@@ -222,43 +213,56 @@ const Validation = (props) => {
     }
   };
 
+  const canReviewRow = (row) => !row.readOnly && row.showAcceptReject !== false;
+  const groups = new Map();
+  props.results.resultList?.forEach((row) => {
+    if (!groups.has(row.analysisId)) groups.set(row.analysisId, []);
+    groups.get(row.analysisId).push(row);
+  });
+  const groupFor = (row) => groups.get(row.analysisId) || [];
+  const canReview = (row) =>
+    canReviewRow(row) && groupFor(row).every(canReviewRow);
   const handleChange = (e, rowId) => {
-    const { name, id, value } = e.target;
-    let form = props.results;
-    jpSet(form, name, value);
-  };
-
-  const handleDatePickerChange = (date, rowId) => {
-    console.debug("handleDatePickerChange:" + date);
-    const d = new Date(date).toLocaleDateString("fr-FR");
-    var form = props.results;
-    jpSet(form, "resultList[" + rowId + "].sentDate_", d);
-  };
-  const canReview = (row) => !row.readOnly && row.showAcceptReject !== false;
-  const handleCheckBox = (e, rowId) => {
-    if (!canReview(props.results.resultList[rowId])) return;
-    jpSet(props.results, e.target.name, e.target.checked);
-    if (e.target.checked) {
-      const opposite = e.target.name.endsWith("isAccepted")
-        ? "isRejected"
-        : "isAccepted";
-      props.results.resultList[rowId][opposite] = false;
-    }
-    refreshSelection((version) => version + 1);
-  };
-
-  const handleAutomatedCheck = (checked, field, onlyNormal = false) => {
-    props.results.resultList.forEach((row) => {
-      if (canReview(row) && (!onlyNormal || row.normal === true)) {
-        row[field] = checked;
-        if (checked)
-          row[field === "isAccepted" ? "isRejected" : "isAccepted"] = false;
-      }
+    if (submitting.current) return;
+    const row = props.results.resultList[rowId];
+    if (!canReview(row)) return;
+    groupFor(row).forEach((member) => {
+      member.note = e.target.value;
     });
     refreshSelection((version) => version + 1);
   };
-  const validateResults = (e, rowId) => {
-    handleChange(e, rowId);
+  const setDecision = (row, field, checked) => {
+    row[field] = checked;
+    if (checked)
+      row[field === "isAccepted" ? "isRejected" : "isAccepted"] = false;
+  };
+  const handleCheckBox = (e, rowId) => {
+    if (submitting.current) return;
+    const row = props.results.resultList[rowId];
+    if (!canReview(row)) return;
+    const field = e.target.name.endsWith("isAccepted")
+      ? "isAccepted"
+      : "isRejected";
+    groupFor(row).forEach((member) =>
+      setDecision(member, field, e.target.checked),
+    );
+    refreshSelection((version) => version + 1);
+  };
+  const bulkRows = (onlyNormal = false) =>
+    props.results.resultList.filter(
+      (row) =>
+        canReview(row) &&
+        (!onlyNormal ||
+          groupFor(row).every((member) => member.normal === true)),
+    );
+  const bulkChecked = (field, onlyNormal = false) => {
+    const rows = bulkRows(onlyNormal);
+    return rows.length > 0 && rows.every((row) => row[field] === true);
+  };
+  const handleAutomatedCheck = (checked, field, onlyNormal = false) => {
+    if (submitting.current) return;
+    bulkRows(onlyNormal).forEach((row) => setDecision(row, field, checked));
+    refreshSelection((version) => version + 1);
   };
 
   const renderCell = (row, index, column, id) => {
@@ -419,7 +423,7 @@ const Validation = (props) => {
                 id={"resultList" + row.id + ".note"}
                 name={"resultList[" + row.id + "].note"}
                 disabled={!canReview(row) || isSubmitting}
-                defaultValue={row.note ?? ""}
+                value={row.note ?? ""}
                 type="text"
                 labelText=""
                 rows={2}
@@ -508,6 +512,7 @@ const Validation = (props) => {
           </Column>
           <Column lg={3} md={2} sm={4}>
             <Checkbox
+              checked={bulkChecked("isAccepted", true)}
               id={"saveallnormal"}
               name={"autochecks"}
               labelText={intl.formatMessage({ id: "validation.accept.normal" })}
@@ -519,6 +524,7 @@ const Validation = (props) => {
           </Column>
           <Column lg={3} md={2} sm={4}>
             <Checkbox
+              checked={bulkChecked("isAccepted")}
               id={"saveallresults"}
               name={"autochecks"}
               labelText={intl.formatMessage({ id: "validation.accept.all" })}
@@ -530,6 +536,7 @@ const Validation = (props) => {
           </Column>
           <Column lg={3} md={2} sm={4}>
             <Checkbox
+              checked={bulkChecked("isRejected")}
               id={"retestalltests"}
               name={"autochecks"}
               labelText={intl.formatMessage({ id: "validation.reject.all" })}
@@ -609,19 +616,22 @@ const Validation = (props) => {
                 }
               />
 
-              <ESignatureButton
-                meaning={SignatureMeaning.VALIDATED_AND_RELEASED}
-                context={buildSignContext()}
-                recordType="VALIDATION_BATCH"
-                recordId={getFirstAnalysisId()}
-                onSign={handleSave}
+              <ReviewSubmissionButton
+                queryId={props.results?.queryId}
+                prepare={prepareSubmission}
+                isCurrent={(payload) =>
+                  JSON.stringify(props.results) === JSON.stringify(payload)
+                }
+                context={buildSignContext}
+                onBusy={handleBusy}
+                onOutcome={handleResponse}
+                onError={showError}
                 disabled={
                   isSubmitting || !hasReviewQuery(props.results?.queryId)
                 }
-                style={{ marginTop: "16px" }}
               >
-                <FormattedMessage id="label.button.validate" />
-              </ESignatureButton>
+                <FormattedMessage id="validation.review.submit" />
+              </ReviewSubmissionButton>
             </Form>
           )}
         </Formik>

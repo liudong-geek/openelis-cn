@@ -32,7 +32,15 @@ public class ResultEntryWorklistServiceImpl implements ResultEntryWorklistServic
     @Transactional(readOnly = true)
     public List<TestResultItem> getPendingResultsForUser(String systemUserId) {
         String notStartedStatusId = statusService.getStatusID(AnalysisStatus.NotStarted);
-        List<Analysis> pendingAnalyses = analysisService.getAnalysesForStatusId(notStartedStatusId);
+        String returnedStatusId = statusService.getStatusID(AnalysisStatus.BiologistRejected);
+        if (notStartedStatusId == null || returnedStatusId == null || notStartedStatusId.equals(returnedStatusId))
+            throw new org.openelisglobal.result.exception.ResultSaveValidationException(OrdinaryResultReviewPolicy.CONFIGURATION);
+        java.util.Map<String, Analysis> pending = new java.util.LinkedHashMap<>();
+        java.util.stream.Stream.concat(analysisService.getAnalysesForStatusId(notStartedStatusId).stream(),
+                analysisService.getAnalysesForStatusId(returnedStatusId).stream())
+                .filter(a -> a != null && a.getReleasedDate() == null && a.getPrintedDate() == null)
+                .forEach(a -> pending.putIfAbsent(a.getId(), a));
+        List<Analysis> pendingAnalyses = new java.util.ArrayList<>(pending.values());
 
         List<TestResultItem> pendingResults = worklistLoader.load(pendingAnalyses, systemUserId);
         List<TestResultItem> authorizedResults = userService.filterResultsByLabUnitRoles(systemUserId, pendingResults,

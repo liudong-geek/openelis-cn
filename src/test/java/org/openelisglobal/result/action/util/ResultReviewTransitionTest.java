@@ -26,6 +26,10 @@ public class ResultReviewTransitionTest {
         configure(statuses);
         AutowireCapableBeanFactory factory = mock(AutowireCapableBeanFactory.class);
         when(factory.getBean(IStatusService.class)).thenReturn(statuses);
+        // ResultUtil captures this legacy dependency when the class is first loaded.
+        // Install a safe synthetic dependency regardless of test class order.
+        when(factory.getBean(org.openelisglobal.testanalyte.service.TestAnalyteService.class))
+                .thenReturn(mock(org.openelisglobal.testanalyte.service.TestAnalyteService.class));
         ReflectionTestUtils.setField(SpringContext.class, "factory", factory);
     }
 

@@ -20,6 +20,8 @@ import org.openelisglobal.referencetables.valueholder.ReferenceTables;
 import org.openelisglobal.systemuser.valueholder.SystemUser;
 
 public class Note extends BaseObject<String> {
+    public static final String REVIEW_AUDIT_SUBJECT = "Review Decision";
+
     public static final String EXTERNAL = "E";
     public static final String INTERNAL = "I";
     public static final String REJECT_REASON = "R";
