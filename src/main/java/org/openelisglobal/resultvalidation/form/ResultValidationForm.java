@@ -18,6 +18,25 @@ public class ResultValidationForm extends BaseForm implements ValidationPagingFo
 
     private boolean searchFinished;
 
+    private String queryId;
+    private Boolean doRange = true;
+
+    public String getQueryId() {
+        return queryId;
+    }
+
+    public void setQueryId(String queryId) {
+        this.queryId = queryId;
+    }
+
+    public Boolean getDoRange() {
+        return doRange;
+    }
+
+    public void setDoRange(Boolean doRange) {
+        this.doRange = doRange;
+    }
+
     // for display
     private PagingBean paging;
 

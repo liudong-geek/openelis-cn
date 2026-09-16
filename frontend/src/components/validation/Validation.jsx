@@ -14,7 +14,7 @@ import DataTable from "react-data-table-component";
 import { FormattedMessage, useIntl } from "react-intl";
 import ValidationSearchFormValues from "../formModel/innitialValues/ValidationSearchFormValues";
 import { NotificationKinds } from "../common/CustomNotification";
-import { hasRole, postToOpenElisServer, Roles } from "../utils/Utils";
+import { hasRole, Roles } from "../utils/Utils";
 import { NotificationContext } from "../layout/Layout";
 import { ConfigurationContext } from "../layout/Layout";
 import { convertAlphaNumLabNumForDisplay } from "../utils/Utils";
@@ -25,6 +25,12 @@ import ESignatureButton, {
 } from "../esignature/ESignatureButton";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { useHistory } from "react-router-dom";
+import ReviewResultDetails, { reviewRowIdentity } from "./ReviewResultDetails";
+import {
+  hasReviewQuery,
+  postReviewResults,
+  reviewContextErrorKey,
+} from "./reviewTransport";
 
 const Validation = (props) => {
   const componentMounted = useRef(false);
@@ -40,6 +46,19 @@ const Validation = (props) => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [, refreshSelection] = useState(0);
+  const submitting = useRef(false);
+  const activeQuery = useRef(props.results?.queryId);
+  activeQuery.current = props.results?.queryId;
+  const [detailIdentity, setDetailIdentity] = useState(null);
+  const detailRow =
+    hasReviewQuery(props.results?.queryId) &&
+    props.results.resultList?.find(
+      (row) => reviewRowIdentity(props.results.queryId, row) === detailIdentity,
+    );
+  useEffect(() => {
+    setDetailIdentity(null);
+  }, [props.results]);
 
   useEffect(() => {
     componentMounted.current = true;
@@ -57,7 +76,7 @@ const Validation = (props) => {
       },
       selector: (row) => row.accessionNumber,
       sortable: true,
-      width: "16rem",
+      width: "14rem",
     },
     {
       id: "testName",
@@ -67,7 +86,7 @@ const Validation = (props) => {
         return renderCell(row, index, column, id);
       },
       sortable: true,
-      width: "15rem",
+      width: "14rem",
     },
     {
       id: "normalRange",
@@ -106,15 +125,7 @@ const Validation = (props) => {
       cell: (row, index, column, id) => {
         return renderCell(row, index, column, id);
       },
-      width: "15rem",
-    },
-    {
-      id: "pastNotes",
-      name: intl.formatMessage({ id: "column.name.pastNotes" }),
-      cell: (row, index, column, id) => {
-        return renderCell(row, index, column, id);
-      },
-      width: "28rem",
+      width: "14rem",
     },
   ];
 
@@ -157,20 +168,34 @@ const Validation = (props) => {
   };
 
   const handleSave = () => {
-    if (isSubmitting) {
+    if (
+      !componentMounted.current ||
+      submitting.current ||
+      !hasReviewQuery(props.results?.queryId)
+    )
       return;
-    }
+    const queryAtSubmission = props.results.queryId;
+    submitting.current = true;
     setIsSubmitting(true);
-    postToOpenElisServer(
-      "/rest/AccessionValidation",
-      JSON.stringify(props.results),
-      handleResponse,
-    );
+    props.onSubmissionChange?.(true);
+    postReviewResults(props.results, (status) => {
+      if (
+        !componentMounted.current ||
+        activeQuery.current !== queryAtSubmission
+      )
+        return;
+      handleResponse(status);
+    });
   };
   const handleResponse = (status) => {
-    let message = intl.formatMessage({ id: "validation.save.error" });
+    let message = intl.formatMessage({
+      id: [401, 403, 409].includes(status)
+        ? reviewContextErrorKey(status)
+        : "validation.query.submitUnconfirmed",
+    });
     let kind = NotificationKinds.error;
     setIsSubmitting(false);
+    props.onSubmissionChange?.(false);
     if (status == 200) {
       message = intl.formatMessage({ id: "validation.save.success" });
       kind = NotificationKinds.success;
@@ -182,6 +207,10 @@ const Validation = (props) => {
       message: message,
     });
     setNotificationVisible(true);
+    // A submission consumes the server context. Always obtain a fresh batch
+    // before another attempt, including unknown transport outcomes.
+    setDetailIdentity(null);
+    props.onContextInvalid?.();
   };
 
   const handlePageChange = (pageInfo) => {
@@ -205,15 +234,28 @@ const Validation = (props) => {
     var form = props.results;
     jpSet(form, "resultList[" + rowId + "].sentDate_", d);
   };
+  const canReview = (row) => !row.readOnly && row.showAcceptReject !== false;
   const handleCheckBox = (e, rowId) => {
-    const { name, id, checked } = e.target;
-    let form = props.results;
-    jpSet(form, name, checked);
+    if (!canReview(props.results.resultList[rowId])) return;
+    jpSet(props.results, e.target.name, e.target.checked);
+    if (e.target.checked) {
+      const opposite = e.target.name.endsWith("isAccepted")
+        ? "isRejected"
+        : "isAccepted";
+      props.results.resultList[rowId][opposite] = false;
+    }
+    refreshSelection((version) => version + 1);
   };
 
-  const handleAutomatedCheck = (checked, name) => {
-    let form = props.results;
-    jpSet(form, name, checked);
+  const handleAutomatedCheck = (checked, field, onlyNormal = false) => {
+    props.results.resultList.forEach((row) => {
+      if (canReview(row) && (!onlyNormal || row.normal === true)) {
+        row[field] = checked;
+        if (checked)
+          row[field === "isAccepted" ? "isRejected" : "isAccepted"] = false;
+      }
+    });
+    refreshSelection((version) => version + 1);
   };
   const validateResults = (e, rowId) => {
     handleChange(e, rowId);
@@ -257,22 +299,23 @@ const Validation = (props) => {
                 hasIconOnly
                 renderIcon={Copy}
               />
-              {hasRole(userSessionDetails, Roles.RECEPTION) && (
-                <Button
-                  kind="ghost"
-                  hasIconOnly
-                  renderIcon={Launch}
-                  iconDescription={intl.formatMessage({
-                    id: "label.validation.viewPatient",
-                  })}
-                  href={`/PatientManagement?labNumber=${encodeURIComponent(
-                    row.accessionNumber,
-                  )}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  as="a"
-                />
-              )}
+              {row.patientInfo !== "---" &&
+                hasRole(userSessionDetails, Roles.RECEPTION) && (
+                  <Button
+                    kind="ghost"
+                    hasIconOnly
+                    renderIcon={Launch}
+                    iconDescription={intl.formatMessage({
+                      id: "label.validation.viewPatient",
+                    })}
+                    href={`/PatientManagement?labNumber=${encodeURIComponent(
+                      row.accessionNumber,
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    as="a"
+                  />
+                )}
             </div>
             <div className="sampleInfo" data-testid="LabNo">
               <br></br>
@@ -280,7 +323,7 @@ const Validation = (props) => {
                 ? convertAlphaNumLabNumForDisplay(row.accessionNumber)
                 : row.accessionNumber}
               <br></br>
-              {row.patientName} <br></br>
+              {row.patientInfo !== "---" ? row.patientName : null} <br></br>
               {row.patientInfo}
               <br></br>
               <br></br>
@@ -313,6 +356,17 @@ const Validation = (props) => {
             )}
             <br></br>
             {sampleType}
+            <Button
+              type="button"
+              kind="ghost"
+              size="sm"
+              disabled={!hasReviewQuery(props.results?.queryId)}
+              onClick={() =>
+                setDetailIdentity(reviewRowIdentity(props.results.queryId, row))
+              }
+            >
+              <FormattedMessage id="validation.details.open" />
+            </Button>
           </div>
         );
       }
@@ -328,6 +382,8 @@ const Validation = (props) => {
                     name={"resultList[" + row.id + "].isAccepted"}
                     labelText=""
                     value={true}
+                    checked={row.isAccepted === true}
+                    disabled={!canReview(row) || isSubmitting}
                     onChange={(e) => handleCheckBox(e, row.id)}
                   />
                 )}
@@ -346,6 +402,8 @@ const Validation = (props) => {
                   name={"resultList[" + row.id + "].isRejected"}
                   labelText=""
                   value={true}
+                  checked={row.isRejected === true}
+                  disabled={!canReview(row) || isSubmitting}
                   onChange={(e) => handleCheckBox(e, row.id)}
                 />
               )}
@@ -360,7 +418,8 @@ const Validation = (props) => {
               <TextArea
                 id={"resultList" + row.id + ".note"}
                 name={"resultList[" + row.id + "].note"}
-                disabled={false}
+                disabled={!canReview(row) || isSubmitting}
+                defaultValue={row.note ?? ""}
                 type="text"
                 labelText=""
                 rows={2}
@@ -452,18 +511,10 @@ const Validation = (props) => {
               id={"saveallnormal"}
               name={"autochecks"}
               labelText={intl.formatMessage({ id: "validation.accept.normal" })}
-              onChange={(e) => {
-                const nomalResults = props.results.resultList?.filter(
-                  (result) => result.normal == true,
-                );
-                nomalResults.forEach((result) => {
-                  const checkbox = document.getElementById(
-                    "resultList" + result.id + ".isAccepted",
-                  );
-                  checkbox.checked = e.target.checked;
-                  handleAutomatedCheck(e.target.checked, checkbox.name);
-                });
-              }}
+              disabled={isSubmitting}
+              onChange={(e) =>
+                handleAutomatedCheck(e.target.checked, "isAccepted", true)
+              }
             />
           </Column>
           <Column lg={3} md={2} sm={4}>
@@ -471,16 +522,10 @@ const Validation = (props) => {
               id={"saveallresults"}
               name={"autochecks"}
               labelText={intl.formatMessage({ id: "validation.accept.all" })}
-              onChange={(e) => {
-                const nomalResults = props.results.resultList;
-                nomalResults.forEach((result) => {
-                  const checkbox = document.getElementById(
-                    "resultList" + result.id + ".isAccepted",
-                  );
-                  checkbox.checked = e.target.checked;
-                  handleAutomatedCheck(e.target.checked, checkbox.name);
-                });
-              }}
+              disabled={isSubmitting}
+              onChange={(e) =>
+                handleAutomatedCheck(e.target.checked, "isAccepted")
+              }
             />
           </Column>
           <Column lg={3} md={2} sm={4}>
@@ -488,16 +533,10 @@ const Validation = (props) => {
               id={"retestalltests"}
               name={"autochecks"}
               labelText={intl.formatMessage({ id: "validation.reject.all" })}
-              onChange={(e) => {
-                const nomalResults = props.results.resultList;
-                nomalResults.forEach((result) => {
-                  const checkbox = document.getElementById(
-                    "resultList" + result.id + ".isRejected",
-                  );
-                  checkbox.checked = e.target.checked;
-                  handleAutomatedCheck(e.target.checked, checkbox.name);
-                });
-              }}
+              disabled={isSubmitting}
+              onChange={(e) =>
+                handleAutomatedCheck(e.target.checked, "isRejected")
+              }
             />
           </Column>
         </Grid>
@@ -511,7 +550,14 @@ const Validation = (props) => {
         >
           {({ handleChange }) => (
             <Form onChange={handleChange}>
-              <div className="validation-results-table">
+              <div
+                className="validation-results-table"
+                role="region"
+                tabIndex={0}
+                aria-label={intl.formatMessage({
+                  id: "validation.table.scroll",
+                })}
+              >
                 <DataTable
                   data={props.results.resultList.slice(
                     (page - 1) * pageSize,
@@ -569,7 +615,9 @@ const Validation = (props) => {
                 recordType="VALIDATION_BATCH"
                 recordId={getFirstAnalysisId()}
                 onSign={handleSave}
-                disabled={isSubmitting}
+                disabled={
+                  isSubmitting || !hasReviewQuery(props.results?.queryId)
+                }
                 style={{ marginTop: "16px" }}
               >
                 <FormattedMessage id="label.button.validate" />
@@ -586,6 +634,13 @@ const Validation = (props) => {
             <FormattedMessage id="validation.empty.message" />
           </p>
         </div>
+      )}
+      {detailRow && (
+        <ReviewResultDetails
+          row={detailRow}
+          displayValue={renderCell(detailRow, 0, { id: "result" })}
+          onClose={() => setDetailIdentity(null)}
+        />
       )}
     </>
   );

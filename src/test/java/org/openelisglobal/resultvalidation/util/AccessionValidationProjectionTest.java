@@ -164,6 +164,45 @@ public class AccessionValidationProjectionTest {
         return utility.testResultListToAnalysisItemList(utility.getGroupedTestsForAnalysisList(List.of(inputs), true));
     }
 
+    @Test public void reviewPatientProjectionUsesActualSampleAndDoesNotReuseAnotherSample() {
+        org.openelisglobal.sample.service.SampleService samples = (org.openelisglobal.sample.service.SampleService) beans.get(org.openelisglobal.sample.service.SampleService.class);
+        org.openelisglobal.samplehuman.service.SampleHumanService humans = (org.openelisglobal.samplehuman.service.SampleHumanService) beans.get(org.openelisglobal.samplehuman.service.SampleHumanService.class);
+        org.openelisglobal.patient.valueholder.Patient patient = mock(org.openelisglobal.patient.valueholder.Patient.class);
+        org.openelisglobal.person.valueholder.Person person = new org.openelisglobal.person.valueholder.Person();
+        person.setLastName("SIM"); person.setFirstName("Patient");
+        when(patient.getPerson()).thenReturn(person);
+        when(patient.getNationalId()).thenReturn("SIM-ID"); when(patient.getGender()).thenReturn("F");
+        when(patient.getBirthDateForDisplay()).thenReturn("2000-01-01");
+        when(samples.get("301")).thenReturn(sample); when(humans.getPatientForSample(sample)).thenReturn(patient);
+        AnalysisItem first = new AnalysisItem(), repeated = new AnalysisItem(), missing = new AnalysisItem();
+        first.setSampleId("301"); repeated.setSampleId("301"); missing.setSampleId("302");
+        missing.setPatientName("STALE"); missing.setPatientInfo("STALE");
+        utility.populateReviewPatientInfo(List.of(first, repeated, missing), false);
+        assertEquals("SIM Patient", first.getPatientName()); assertEquals("SIM-ID, F, 2000-01-01", first.getPatientInfo());
+        assertEquals(first.getPatientInfo(), repeated.getPatientInfo());
+        assertEquals("", missing.getPatientName()); assertEquals("", missing.getPatientInfo());
+        verify(samples, times(1)).get("301"); verify(humans, times(1)).getPatientForSample(sample);
+        verify(samples, never()).getSampleByAccessionNumber(anyString());
+    }
+
+    @Test public void maskedReviewClearsAllPatientFieldsWithoutLoadingPatientRecords() {
+        AnalysisItem item = new AnalysisItem(); item.setSampleId("301");
+        item.setPatientName("PRIVATE NAME"); item.setPatientInfo("PRIVATE IDENTIFIER");
+        utility.populateReviewPatientInfo(List.of(item), true);
+        assertEquals("---", item.getPatientName()); assertEquals("---", item.getPatientInfo());
+        verifyZeroInteractions(beans.get(org.openelisglobal.samplehuman.service.SampleHumanService.class));
+        verifyZeroInteractions(beans.get(org.openelisglobal.sample.service.SampleService.class));
+    }
+
+    @Test public void reviewPatientWithoutPersonDoesNotCrashOrRetainOldName() {
+        org.openelisglobal.patient.valueholder.Patient patient = mock(org.openelisglobal.patient.valueholder.Patient.class);
+        when(((org.openelisglobal.sample.service.SampleService) beans.get(org.openelisglobal.sample.service.SampleService.class)).get("301")).thenReturn(sample);
+        when(((org.openelisglobal.samplehuman.service.SampleHumanService) beans.get(org.openelisglobal.samplehuman.service.SampleHumanService.class)).getPatientForSample(sample)).thenReturn(patient);
+        AnalysisItem item = new AnalysisItem(); item.setSampleId("301"); item.setPatientName("STALE");
+        utility.populateReviewPatientInfo(List.of(item), false);
+        assertEquals("", item.getPatientName()); assertEquals(", , ", item.getPatientInfo());
+    }
+
     @Test public void actualTubeAndAnalysisVersionRemainDistinctFromDisplayValue() {
         TestResult definition = definition("501", "P", "N", "", false);
         when(definitions.getAllActiveTestResultsPerTest(test)).thenReturn(List.of(definition));

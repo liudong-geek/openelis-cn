@@ -28,6 +28,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.commons.validator.GenericValidator;
+import org.apache.commons.lang3.StringUtils;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.analyte.service.AnalyteService;
@@ -69,6 +70,7 @@ import org.openelisglobal.resultvalidation.action.util.ResultValidationItem;
 import org.openelisglobal.resultvalidation.bean.AnalysisItem;
 import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.valueholder.Sample;
+import org.openelisglobal.samplehuman.service.SampleHumanService;
 import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.statusofsample.util.StatusRules;
 import org.openelisglobal.test.service.TestSectionService;
@@ -111,6 +113,9 @@ public class ResultsValidationUtility {
     protected ResultLimitService resultLimitService;
     @Autowired
     protected org.openelisglobal.testresultcomponent.service.TestResultComponentService testResultComponentService;
+
+    @Autowired
+    protected SampleHumanService sampleHumanService;
 
     private Patient currentPatient;
     protected String SAMPLE_STATUS_OBSERVATION_HISTORY_TYPE_ID;
@@ -886,6 +891,34 @@ public class ResultsValidationUtility {
         List<Analysis> analysisList = analysisService.getAnalysesBySampleIdExcludedByStatusId(sample.getId(),
                 excludedAnalysisStatus);
         return getGroupedTestsForAnalysisList(analysisList, !StatusRules.useRecordStatusForValidation());
+    }
+
+    /** Called within the review-context transaction; uses the server sample id. */
+    public void populateReviewPatientInfo(List<AnalysisItem> rows, boolean depersonalized) {
+        Map<String, Patient> patients = new HashMap<>();
+        for (AnalysisItem row : rows) {
+            row.setPatientName(depersonalized ? "---" : "");
+            row.setPatientInfo(depersonalized ? "---" : "");
+            if (depersonalized || StringUtils.isBlank(row.getSampleId())) {
+                continue;
+            }
+            String sampleId = row.getSampleId();
+            if (!patients.containsKey(sampleId)) {
+                Sample sample = sampleService.get(sampleId);
+                patients.put(sampleId, sample == null ? null : sampleHumanService.getPatientForSample(sample));
+            }
+            Patient patient = patients.get(sampleId);
+            if (patient == null) {
+                continue;
+            }
+            if (patient.getPerson() != null) {
+                row.setPatientName((StringUtils.trimToEmpty(patient.getPerson().getLastName()) + " "
+                        + StringUtils.trimToEmpty(patient.getPerson().getFirstName())).trim());
+            }
+            row.setPatientInfo(StringUtils.trimToEmpty(patient.getNationalId()) + ", "
+                    + StringUtils.trimToEmpty(patient.getGender()) + ", "
+                    + StringUtils.trimToEmpty(patient.getBirthDateForDisplay()));
+        }
     }
 
     public void addIdentifingPatientInfo(Patient patient, PatientInfoForm form) {

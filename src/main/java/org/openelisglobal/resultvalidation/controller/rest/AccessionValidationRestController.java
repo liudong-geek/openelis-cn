@@ -8,8 +8,9 @@ import java.util.*;
 import org.apache.commons.lang3.StringUtils;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
-import org.openelisglobal.common.action.IActionConstants;
 import org.openelisglobal.common.constants.Constants;
+import org.openelisglobal.common.formfields.FormFields;
+import org.openelisglobal.common.formfields.FormFields.Field;
 import org.openelisglobal.common.exception.LIMSRuntimeException;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.services.DisplayListService;
@@ -40,11 +41,11 @@ import org.openelisglobal.reports.service.DocumentTypeService;
 import org.openelisglobal.reports.valueholder.DocumentTrack;
 import org.openelisglobal.result.action.util.ResultSet;
 import org.openelisglobal.result.valueholder.Result;
-import org.openelisglobal.resultvalidation.action.util.ResultValidationPaging;
 import org.openelisglobal.resultvalidation.bean.AnalysisItem;
 import org.openelisglobal.resultvalidation.controller.BaseResultValidationController;
 import org.openelisglobal.resultvalidation.form.ResultValidationForm;
 import org.openelisglobal.resultvalidation.service.ResultValidationService;
+import org.openelisglobal.resultvalidation.service.ReviewQueryContextService;
 import org.openelisglobal.resultvalidation.util.ResultValidationSaveService;
 import org.openelisglobal.resultvalidation.util.ResultsValidationUtility;
 import org.openelisglobal.role.service.RoleService;
@@ -63,6 +64,8 @@ import org.openelisglobal.testresult.valueholder.TestResult;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.Errors;
@@ -82,8 +85,10 @@ public class AccessionValidationRestController extends BaseResultValidationContr
     SearchResultsService searchService;
     @Autowired
     private SampleService sampleService;
+    @Autowired
+    private ReviewQueryContextService reviewQueryContextService;
 
-    private static final String[] ALLOWED_FIELDS = new String[] { "testSectionId", "paging.currentPage", "testSection",
+    private static final String[] ALLOWED_FIELDS = new String[] { "queryId", "doRange", "testSectionId", "paging.currentPage", "testSection",
             "testName", "resultList*.accessionNumber", "resultList*.analysisId", "resultList*.testId",
             "resultList*.sampleId", "resultList*.resultType", "resultList*.sampleGroupingNumber", "resultList*.noteId",
             "resultList*.resultId", "resultList*.hasQualifiedResult", "resultList*.sampleIsAccepted",
@@ -140,6 +145,7 @@ public class AccessionValidationRestController extends BaseResultValidationContr
             throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
 
         ResultValidationForm newForm = new ResultValidationForm();
+        newForm.setDoRange(doRange);
         if (StringUtils.isNotBlank(accessionNumber)) {
             newForm.setAccessionNumber(accessionNumber);
         } else if (StringUtils.isNotBlank(date)) {
@@ -153,95 +159,45 @@ public class AccessionValidationRestController extends BaseResultValidationContr
     private ResultValidationForm getResultValidation(HttpServletRequest request, ResultValidationForm form,
             Boolean doRange) throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
 
-        String patientName = "";
-        String patientInfo = "";
-        Patient patient = null;
-        List<AnalysisItem> filteredresultList = new ArrayList<>();
-
-        request.getSession().setAttribute(SAVE_DISABLED, "true");
-
-        ResultValidationPaging paging = new ResultValidationPaging();
+        String actor = getSysUserId(request);
+        form.setDoRange(doRange);
         String newPage = request.getParameter("page");
+        if (newPage != null) {
+            reviewQueryContextService.page(request.getSession(), actor, form, request.getParameter("queryId"), newPage);
+            return form;
+        }
+        if (StringUtils.isNotBlank(request.getParameter("queryId"))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Review query requires a page");
+        }
 
-        TestSection ts = null;
-        form.setSearchFinished(false);
-
-        if (GenericValidator.isBlankOrNull(newPage)) {
-
-            // load testSections for drop down
-            String resultsRoleId = roleService.getRoleByName(Constants.ROLE_VALIDATION).getId();
-            List<IdValuePair> testSections = userService.getUserTestSections(getSysUserId(request), resultsRoleId);
-            form.setTestSections(testSections);
-            form.setTestSectionsByName(DisplayListService.getInstance().getList(ListType.TEST_SECTION_BY_NAME));
-
-            if (!GenericValidator.isBlankOrNull(form.getTestSectionId())) {
-                ts = testSectionService.get(form.getTestSectionId());
-            }
-
-            List<AnalysisItem> resultList = new ArrayList<>();
-
-            ResultsValidationUtility resultsValidationUtility = SpringContext.getBean(ResultsValidationUtility.class);
-            if (request.getRequestURI().contains("AccessionValidationRange")) {
-                setRequestType(ts == null ? MessageUtil.getMessage("validation.range.title") : ts.getLocalizedName());
-            } else if (request.getRequestURI().contains("ResultValidationByTestDate")) {
-                setRequestType(ts == null ? MessageUtil.getMessage("validation.date.title") : ts.getLocalizedName());
-            }
-            if (!(GenericValidator.isBlankOrNull(form.getTestSectionId())
-                    && GenericValidator.isBlankOrNull(form.getAccessionNumber())
-                    && GenericValidator.isBlankOrNull(form.getTestDate()))) {
-
-                if (doRange) {
-                    resultList = resultsValidationUtility.getResultValidationList(getValidationStatus(),
-                            form.getTestSectionId(), form.getAccessionNumber(), form.getTestDate());
-                } else {
-                    if (StringUtils.isNotBlank(form.getAccessionNumber())) {
-                        Sample sample = getSample(form.getAccessionNumber());
-                        if (sample == null) {
-                            setEmptyResults(form);
-                            return form;
-                        } else {
-                            resultList = resultsValidationUtility.getValidationAnalysisBySample(sample,
-                                    getValidationStatus());
-                        }
-                    }
+        if (StringUtils.isBlank(actor)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Review session is unavailable");
+        }
+        var reviewRole = roleService.getRoleByName(Constants.ROLE_VALIDATION);
+        if (reviewRole == null || StringUtils.isBlank(reviewRole.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Review role is unavailable");
+        }
+        String resultsRoleId = reviewRole.getId();
+        form.setTestSections(userService.getUserTestSections(actor, resultsRoleId));
+        form.setTestSectionsByName(DisplayListService.getInstance().getList(ListType.TEST_SECTION_BY_NAME));
+        List<AnalysisItem> resultList = new ArrayList<>();
+        ResultsValidationUtility utility = SpringContext.getBean(ResultsValidationUtility.class);
+        if (!(GenericValidator.isBlankOrNull(form.getTestSectionId())
+                && GenericValidator.isBlankOrNull(form.getAccessionNumber())
+                && GenericValidator.isBlankOrNull(form.getTestDate()))) {
+            if (Boolean.TRUE.equals(doRange)) {
+                resultList = utility.getResultValidationList(getValidationStatus(), form.getTestSectionId(),
+                        form.getAccessionNumber(), form.getTestDate());
+            } else if (StringUtils.isNotBlank(form.getAccessionNumber())) {
+                Sample sample = getSample(form.getAccessionNumber());
+                if (sample != null) {
+                    resultList = utility.getValidationAnalysisBySample(sample, getValidationStatus());
                 }
-
-                filteredresultList = userService.filterAnalysisResultsByLabUnitRoles(getSysUserId(request), resultList,
-                        Constants.ROLE_VALIDATION);
-                request.setAttribute("pageSize", filteredresultList.size());
-                form.setSearchFinished(true);
-            } else {
-                resultList = new ArrayList<>();
             }
-            paging.setDatabaseResults(request, form, filteredresultList);
-        } else {
-            paging.page(request, form, Integer.parseInt(newPage));
         }
-
-        addFlashMsgsToRequest(request);
-
-        for (AnalysisItem analysisItem : filteredresultList) {
-            Sample itemSample = sampleService.getSampleByAccessionNumber(analysisItem.getAccessionNumber());
-            if (itemSample == null) {
-                continue;
-            }
-            Patient itemPatient = sampleHumanService.getPatientForSample(itemSample);
-            if (itemPatient == null) {
-                continue;
-            }
-            analysisItem
-                    .setPatientName(
-                            itemPatient
-                                    .getPerson() == null
-                                            ? ""
-                                            : (StringUtils.trimToEmpty(itemPatient.getPerson().getLastName()) + " "
-                                                    + StringUtils.trimToEmpty(itemPatient.getPerson().getFirstName()))
-                                                    .trim());
-            analysisItem.setPatientInfo(StringUtils.trimToEmpty(itemPatient.getNationalId()) + ", "
-                    + StringUtils.trimToEmpty(itemPatient.getGender()) + ", "
-                    + StringUtils.trimToEmpty(itemPatient.getBirthDateForDisplay()));
-        }
-
+        // Utility owns patient disclosure rules. Never enrich the cached DTO here.
+        boolean depersonalized = FormFields.getInstance().useField(Field.DepersonalizedResults);
+        reviewQueryContextService.create(request.getSession(), actor, form, resultList, depersonalized);
         return form;
     }
 
@@ -265,44 +221,29 @@ public class AccessionValidationRestController extends BaseResultValidationContr
             BindingResult result) throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
 
         if ("true".equals(request.getParameter("pageResults"))) {
-            return getResultValidation(request, form, false);
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Use the query-bound GET page endpoint");
         }
         form.setSearchFinished(false);
 
         if (result.hasErrors()) {
-            saveErrors(result);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid review submission");
         }
+        String actor = getSysUserId(request);
+        List<AnalysisItem> resultItemList = reviewQueryContextService.consumeForSave(request.getSession(), actor, form);
         List<IResultUpdate> updaters = ValidationUpdateRegister.getRegisteredUpdaters();
         boolean areListeners = !updaters.isEmpty();
 
-        request.getSession().setAttribute(SAVE_DISABLED, "true");
-
-        List<Result> checkPagedResults = (List<Result>) request.getSession()
-                .getAttribute(IActionConstants.RESULTS_SESSION_CACHE);
-        List<Result> checkResults = (List<Result>) checkPagedResults.get(0);
-        if (checkResults.size() == 0) {
-            LogEvent.logDebug(this.getClass().getSimpleName(), "ResultValidation()", "Attempted save of stale page.");
-            return form;
-        }
-
-        ResultValidationPaging paging = new ResultValidationPaging();
-        paging.updatePagedResults(request, form);
-        List<AnalysisItem> resultItemList = paging.getResults(request);
 
         String testSectionName = form.getTestSection();
         String testName = form.getTestName();
-        setRequestType(testSectionName);
         // ----------------------
         String url = request.getRequestURL().toString();
 
         Errors errors = validateModifiedItems(resultItemList);
         if (errors.hasErrors()) {
-            saveErrors(errors);
-            // return findForward(FWD_VALIDATION_ERROR, form);
-            return form;
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid review decisions");
         }
 
-        createSystemUser();
 
         // Update Lists
         List<Analysis> analysisUpdateList = new ArrayList<>();
@@ -318,11 +259,11 @@ public class AccessionValidationRestController extends BaseResultValidationContr
         // createUpdateElisaList(resultItemList, analysisUpdateList);
         // } else {
         createUpdateList(resultItemList, analysisUpdateList, resultUpdateList, noteUpdateList, deletableList,
-                resultSaveService, areListeners);
+                resultSaveService, areListeners, actor);
         // }
         try {
             resultValidationService.persistdata(deletableList, analysisUpdateList, resultUpdateList, resultItemList,
-                    sampleUpdateList, noteUpdateList, resultSaveService, updaters, getSysUserId(request));
+                    sampleUpdateList, noteUpdateList, resultSaveService, updaters, actor);
 
             try {
                 fhirTransformService.transformPersistResultValidationFhirObjects(deletableList, analysisUpdateList,
@@ -332,6 +273,7 @@ public class AccessionValidationRestController extends BaseResultValidationContr
             }
         } catch (LIMSRuntimeException e) {
             LogEvent.logError(e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Review save failed", e);
         }
 
         for (IResultUpdate updater : updaters) {
@@ -399,7 +341,7 @@ public class AccessionValidationRestController extends BaseResultValidationContr
 
     private void createUpdateList(List<AnalysisItem> analysisItems, List<Analysis> analysisUpdateList,
             List<Result> resultUpdateList, List<Note> noteUpdateList, List<Result> deletableList,
-            IResultSaveService resultValidationSave, boolean areListeners) {
+            IResultSaveService resultValidationSave, boolean areListeners, String actor) {
 
         List<String> analysisIdList = new ArrayList<>();
 
@@ -407,7 +349,7 @@ public class AccessionValidationRestController extends BaseResultValidationContr
             if (!analysisItem.isReadOnly() && analysisItemWillBeUpdated(analysisItem)) {
 
                 Analysis analysis = analysisService.get(analysisItem.getAnalysisId());
-                analysis.setSysUserId(getSysUserId(request));
+                analysis.setSysUserId(actor);
 
                 if (!analysisIdList.contains(analysis.getId())) {
 
@@ -427,11 +369,11 @@ public class AccessionValidationRestController extends BaseResultValidationContr
                     }
                 }
 
-                createNeededNotes(analysisItem, analysis, noteUpdateList);
+                createNeededNotes(analysisItem, analysis, noteUpdateList, actor);
 
                 if (areResults(analysisItem)) {
                     List<Result> results = createResultFromAnalysisItem(analysisItem, analysis, analysis,
-                            noteUpdateList, deletableList);
+                            noteUpdateList, deletableList, actor);
                     for (Result result : results) {
                         resultUpdateList.add(result);
 
@@ -444,17 +386,17 @@ public class AccessionValidationRestController extends BaseResultValidationContr
         }
     }
 
-    private void createNeededNotes(AnalysisItem analysisItem, Analysis analysis, List<Note> noteUpdateList) {
+    private void createNeededNotes(AnalysisItem analysisItem, Analysis analysis, List<Note> noteUpdateList, String actor) {
         if (analysisItem.getIsRejected()) {
             Note note = noteService.createSavableNote(analysis, NoteType.INTERNAL,
-                    MessageUtil.getMessage("validation.note.retest"), RESULT_SUBJECT, getSysUserId(request));
+                    MessageUtil.getMessage("validation.note.retest"), RESULT_SUBJECT, actor);
             noteUpdateList.add(note);
         }
 
         if (!GenericValidator.isBlankOrNull(analysisItem.getNote())) {
             NoteType noteType = analysisItem.getIsAccepted() ? NoteType.EXTERNAL : NoteType.INTERNAL;
             Note note = noteService.createSavableNote(analysis, noteType, analysisItem.getNote(), RESULT_SUBJECT,
-                    getSysUserId(request));
+                    actor);
             noteUpdateList.add(note);
         }
     }
@@ -575,18 +517,18 @@ public class AccessionValidationRestController extends BaseResultValidationContr
     }
 
     private List<Result> createResultFromAnalysisItem(AnalysisItem analysisItem, Analysis analysis, Analysis analysis2,
-            List<Note> noteUpdateList, List<Result> deletableList) {
+            List<Note> noteUpdateList, List<Result> deletableList, String actor) {
 
         ResultSaveBean bean = ResultSaveBeanAdapter.fromAnalysisItem(analysisItem);
-        ResultSaveService resultSaveService = new ResultSaveService(analysis, getSysUserId(request));
+        ResultSaveService resultSaveService = new ResultSaveService(analysis, actor);
         List<Result> results = resultSaveService.createResultsFromTestResultItem(bean, deletableList);
         if (analysisService.patientReportHasBeenDone(analysis) && resultSaveService.isUpdatedResult()) {
             Note note = noteService.createSavableNote(analysis, NoteType.EXTERNAL,
-                    MessageUtil.getMessage("note.corrected.result"), RESULT_SUBJECT, getSysUserId(request));
+                    MessageUtil.getMessage("note.corrected.result"), RESULT_SUBJECT, actor);
             if (!noteService.duplicateNoteExists(note)) {
                 analysis.setCorrectedSincePatientReport(true);
                 noteUpdateList.add(noteService.createSavableNote(analysis, NoteType.EXTERNAL,
-                        MessageUtil.getMessage("note.corrected.result"), RESULT_SUBJECT, getSysUserId(request)));
+                        MessageUtil.getMessage("note.corrected.result"), RESULT_SUBJECT, actor));
             }
         }
         return results;

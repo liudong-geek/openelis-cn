@@ -1,3 +1,9 @@
+vi.mock("./reviewTransport", async () => ({
+  ...(await vi.importActual("./reviewTransport")),
+  getReviewResults: vi.fn(),
+  postReviewResults: vi.fn(),
+}));
+import { getReviewResults, postReviewResults } from "./reviewTransport";
 import React, { useState } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { waitFor } from "@testing-library/dom";
@@ -39,8 +45,21 @@ const record = (number = 1, overrides = {}) => ({
   ...overrides,
 });
 let requests;
+let changeSession;
+let changeSessionPhase;
 
 function Contexts() {
+  const [session, setSession] = useState({
+    authenticated: true,
+    userId: "SIM-USER-A",
+    roles: ["Validation"],
+  });
+  changeSession = setSession;
+  const [phaseState, setPhaseState] = useState({
+    sessionPhase: "authenticated",
+    errorLoadingSessionDetails: false,
+  });
+  changeSessionPhase = setPhaseState;
   const [notifications, setNotifications] = useState([]);
   const [notificationVisible, setNotificationVisible] = useState(false);
   return (
@@ -48,7 +67,8 @@ function Contexts() {
       <IntlProvider locale="en" messages={messages}>
         <UserSessionDetailsContext.Provider
           value={{
-            userSessionDetails: { authenticated: true, roles: ["Validation"] },
+            userSessionDetails: session,
+            ...phaseState,
           }}
         >
           <ConfigurationContext.Provider
@@ -80,7 +100,9 @@ const editable = (field, index = 0) =>
   document.querySelector(`[name="resultList[${index}].${field}"]`);
 const search = () => fireEvent.click(screen.getByTestId("Search-btn"));
 const respond = (resultList, extra = {}) =>
-  act(() => requests.at(-1).callback({ resultList, ...extra }));
+  act(() =>
+    requests.at(-1).callback({ queryId: "query-test", resultList, ...extra }),
+  );
 const start = (rows = [record()], extra = {}) => {
   render(<Contexts />);
   expect(requests).toHaveLength(1);
@@ -94,9 +116,9 @@ beforeEach(() => {
     "",
     "/AccessionValidation?accessionNumber=SIM-W02-001",
   );
-  getFromOpenElisServer.mockReset();
+  getReviewResults.mockReset();
   postToOpenElisServer.mockReset();
-  getFromOpenElisServer.mockImplementation((url, callback, signal) => {
+  getReviewResults.mockImplementation((url, callback, signal) => {
     if (!url.startsWith("/rest/AccessionValidation?"))
       throw new Error(`Unexpected request: ${url}`);
     requests.push({ url, callback, signal });
@@ -105,6 +127,7 @@ beforeEach(() => {
 
 afterEach(() => {
   expect(postToOpenElisServer).not.toHaveBeenCalled();
+  expect(postReviewResults).not.toHaveBeenCalled();
 });
 
 test.each(["isAccepted", "isRejected", "note"])(
@@ -209,3 +232,70 @@ test("an allowed query rebuilds uncontrolled inputs and resets local pagination 
   expect(editable("isRejected")).not.toBeChecked();
   expect(editable("note")).toHaveValue("");
 });
+
+test.each([
+  [
+    "user",
+    { authenticated: true, userId: "SIM-USER-B", roles: ["Validation"] },
+  ],
+  [
+    "permission",
+    { authenticated: true, userId: "SIM-USER-A", roles: ["Results"] },
+  ],
+  [
+    "session",
+    {
+      authenticated: true,
+      userId: "SIM-USER-A",
+      sessionId: "SIM-SESSION-B",
+      roles: ["Validation"],
+    },
+  ],
+  ["logout", { authenticated: false, userId: "SIM-USER-A", roles: [] }],
+])(
+  "a %s change hides old rows and details and ignores the previous request",
+  (_case, session) => {
+    start();
+    fireEvent.click(
+      screen.getByRole("button", { name: messages["validation.details.open"] }),
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    const oldRequest = requests[0];
+    act(() => changeSession(session));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("SIM-W02-TEST-1 (SERUM)"),
+    ).not.toBeInTheDocument();
+    expect(oldRequest.signal.aborted).toBe(true);
+    act(() =>
+      oldRequest.callback({ queryId: "query-test", resultList: [record()] }),
+    );
+    expect(
+      screen.queryByText("SIM-W02-TEST-1 (SERUM)"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getAllByText(messages["validation.query.permissionChanged"])
+        .length,
+    ).toBeGreaterThan(0);
+  },
+);
+
+test.each([
+  ["checking", { sessionPhase: "checking", errorLoadingSessionDetails: false }],
+  [
+    "error",
+    { sessionPhase: "authenticated", errorLoadingSessionDetails: true },
+  ],
+])(
+  "a session %s state hides old review data and blocks further queries",
+  (_case, phase) => {
+    start();
+    const requestCount = requests.length;
+    act(() => changeSessionPhase(phase));
+    expect(
+      screen.queryByText("SIM-W02-TEST-1 (SERUM)"),
+    ).not.toBeInTheDocument();
+    search();
+    expect(requests).toHaveLength(requestCount);
+  },
+);

@@ -1,3 +1,9 @@
+vi.mock("./reviewTransport", async () => ({
+  ...(await vi.importActual("./reviewTransport")),
+  getReviewResults: vi.fn(),
+  postReviewResults: vi.fn(),
+}));
+import { getReviewResults, postReviewResults } from "./reviewTransport";
 import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { waitFor } from "@testing-library/dom";
@@ -20,6 +26,10 @@ describe("validation SearchForm", () => {
   beforeEach(() => {
     window.history.pushState({}, "", "/validation");
     getFromOpenElisServer.mockReset();
+    getReviewResults.mockReset();
+    getReviewResults.mockImplementation((_url, callback) =>
+      callback({ queryId: "query-test", resultList: [] }),
+    );
     getFromOpenElisServer.mockImplementation((_url, callback) => callback([]));
   });
 
@@ -53,7 +63,7 @@ describe("validation SearchForm", () => {
     return setParams;
   };
   const query = () => {
-    const request = getFromOpenElisServer.mock.calls.findLast(([url]) =>
+    const request = getReviewResults.mock.calls.findLast(([url]) =>
       url.startsWith("/rest/AccessionValidation?"),
     );
     return new URLSearchParams(request?.[0].split("?")[1]);
@@ -87,7 +97,7 @@ describe("validation SearchForm", () => {
     );
     renderSearch("ALPHANUM");
     expect(query().get("accessionNumber")).toBe("12345678-01");
-    getFromOpenElisServer.mockClear();
+    getReviewResults.mockClear();
     fireEvent.click(screen.getByTestId("Search-btn"));
     await waitFor(() =>
       expect(query().get("accessionNumber")).toBe("12345678-01"),

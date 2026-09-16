@@ -71,6 +71,8 @@ test("the real frontend save/readback/navigation/search chain queries the comple
       }
       if (path.endsWith("/AccessionValidation"))
         return json({
+          queryId: "SIM-REVIEW-HANDOFF",
+          doRange: false,
           resultList: [
             {
               analysisId: committed.analysisId,
@@ -148,6 +150,8 @@ test("the real frontend save/readback/navigation/search chain queries the comple
     await waitFor(() =>
       expect(reviewResults).toHaveBeenCalledWith(
         expect.objectContaining({
+          queryId: "SIM-REVIEW-HANDOFF",
+          doRange: false,
           resultList: [
             expect.objectContaining({
               analysisId: "101",

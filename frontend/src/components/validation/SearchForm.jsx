@@ -19,6 +19,11 @@ import { ConfigurationContext, NotificationContext } from "../layout/Layout";
 import { NotificationKinds } from "../common/CustomNotification";
 import CustomDatePicker from "../common/CustomDatePicker";
 import { ArrowLeft, ArrowRight } from "@carbon/react/icons";
+import {
+  getReviewResults,
+  hasReviewQuery,
+  reviewContextErrorKey,
+} from "./reviewTransport";
 
 const SearchForm = (props) => {
   const { setNotificationVisible, addNotification } =
@@ -45,8 +50,9 @@ const SearchForm = (props) => {
   const [currentApiPage, setCurrentApiPage] = useState(null);
   const [totalApiPages, setTotalApiPages] = useState(null);
   const [url, setUrl] = useState("");
+  const queryId = useRef(null);
 
-  const validationResults = (data) => {
+  const validationResults = (data, status, expectedQueryId, expectedPage) => {
     setPagination(false);
     setCurrentApiPage(null);
     setTotalApiPages(null);
@@ -54,9 +60,30 @@ const SearchForm = (props) => {
     setPreviousPage(null);
     setIsLoading(false);
 
-    if (data && Array.isArray(data.resultList)) {
+    const validPayload =
+      data &&
+      Array.isArray(data.resultList) &&
+      data.resultList.every(
+        (row) => row !== null && typeof row === "object" && !Array.isArray(row),
+      );
+    const returnedPage = Number(data?.paging?.currentPage);
+    const totalPages = Number(data?.paging?.totalPages);
+    const validPaging = !data?.paging
+      ? !expectedPage
+      : Number.isInteger(returnedPage) &&
+        returnedPage >= 1 &&
+        Number.isInteger(totalPages) &&
+        totalPages >= returnedPage &&
+        (!expectedPage || returnedPage === expectedPage);
+    const validContext =
+      validPayload &&
+      hasReviewQuery(data.queryId) &&
+      validPaging &&
+      (!expectedQueryId || data.queryId === expectedQueryId);
+    queryId.current = validContext ? data.queryId : null;
+    if (validContext) {
       if (data.paging) {
-        var { totalPages, currentPage } = data.paging;
+        const { totalPages, currentPage } = data.paging;
         if (totalPages > 1) {
           setPagination(true);
           setCurrentApiPage(currentPage);
@@ -96,14 +123,21 @@ const SearchForm = (props) => {
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "validation.search.error" }),
+        message: intl.formatMessage({
+          id:
+            [401, 403, 409].includes(status) || (validPayload && !validContext)
+              ? reviewContextErrorKey(status)
+              : "validation.search.error",
+        }),
       });
       setNotificationVisible(true);
     }
   };
 
-  const requestResults = (endpoint) => {
+  const requestResults = (endpoint, expectedQueryId = null) => {
     resultRequest.current.controller?.abort();
+    const expectedPage =
+      Number(new URLSearchParams(endpoint.split("?")[1]).get("page")) || null;
     const controller = new AbortController();
     const generation = resultRequest.current.generation + 1;
     resultRequest.current = { generation, controller };
@@ -113,16 +147,16 @@ const SearchForm = (props) => {
     setPreviousPage(null);
     // A new query must not leave the previous order available for review.
     props.setResults({ resultList: [] });
-    getFromOpenElisServer(
+    getReviewResults(
       endpoint,
-      (data) => {
+      (data, status) => {
         if (
           controller.signal.aborted ||
           resultRequest.current.generation !== generation
         ) {
           return;
         }
-        validationResults(data);
+        validationResults(data, status, expectedQueryId, expectedPage);
       },
       controller.signal,
     );
@@ -141,7 +175,7 @@ const SearchForm = (props) => {
     requestedDoRange = doRange,
     exactAccessionNumber,
   ) => {
-    if (props.beforeQuery?.() === false) return;
+    if (props.disabled || props.beforeQuery?.() === false) return;
     setNextPage(null);
     setPreviousPage(null);
     setPagination(false);
@@ -210,13 +244,33 @@ const SearchForm = (props) => {
   const handleChange = () => {};
 
   const loadNextResultsPage = () => {
-    if (props.beforeQuery?.() === false) return;
-    if (nextPage !== null) requestResults(url + "&page=" + nextPage);
+    if (props.disabled || props.beforeQuery?.() === false) return;
+    if (nextPage !== null && hasReviewQuery(queryId.current)) {
+      requestResults(
+        url +
+          "&" +
+          new URLSearchParams({
+            page: String(nextPage),
+            queryId: queryId.current,
+          }),
+        queryId.current,
+      );
+    }
   };
 
   const loadPreviousResultsPage = () => {
-    if (props.beforeQuery?.() === false) return;
-    if (previousPage !== null) requestResults(url + "&page=" + previousPage);
+    if (props.disabled || props.beforeQuery?.() === false) return;
+    if (previousPage !== null && hasReviewQuery(queryId.current)) {
+      requestResults(
+        url +
+          "&" +
+          new URLSearchParams({
+            page: String(previousPage),
+            queryId: queryId.current,
+          }),
+        queryId.current,
+      );
+    }
   };
   const fetchTestSections = (response) => {
     setTestSections(response);
@@ -396,6 +450,7 @@ const SearchForm = (props) => {
                   <Column lg={16} md={8} sm={4}>
                     <Button
                       type="submit"
+                      disabled={props.disabled}
                       id="submit"
                       style={{ marginTop: "16px" }}
                       data-testid="Search-btn"
@@ -417,6 +472,7 @@ const SearchForm = (props) => {
               <Select
                 labelText={intl.formatMessage({ id: "search.label.testunit" })}
                 name="unitType"
+                disabled={props.disabled}
                 id="unitType"
                 onChange={submitOnSelect}
               >

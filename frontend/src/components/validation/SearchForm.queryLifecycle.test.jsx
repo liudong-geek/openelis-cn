@@ -1,3 +1,9 @@
+vi.mock("./reviewTransport", async () => ({
+  ...(await vi.importActual("./reviewTransport")),
+  getReviewResults: vi.fn(),
+  postReviewResults: vi.fn(),
+}));
+import { getReviewResults, postReviewResults } from "./reviewTransport";
 import React, { useState } from "react";
 import { act, render, screen } from "@testing-library/react";
 import { waitFor } from "@testing-library/dom";
@@ -41,6 +47,7 @@ const makeRow = (accessionNumber, overrides = {}) => ({
 });
 
 const makeResponse = (accessionNumber, paging) => ({
+  queryId: "query-test",
   resultList: [makeRow(accessionNumber)],
   ...(paging ? { paging } : {}),
 });
@@ -51,7 +58,7 @@ const renderSearch = ({ beforeQuery } = {}) => {
   const setParams = vi.fn();
   const addNotification = vi.fn();
   const setNotificationVisible = vi.fn();
-  getFromOpenElisServer.mockImplementation((url, callback, signal) => {
+  getReviewResults.mockImplementation((url, callback, signal) => {
     requests.push({
       url,
       callback,
@@ -123,7 +130,7 @@ const respond = async (request, response) => {
 describe("validation SearchForm query lifecycle", () => {
   beforeEach(() => {
     window.history.replaceState({}, "", "/AccessionValidation");
-    getFromOpenElisServer.mockReset();
+    getReviewResults.mockReset();
   });
 
   test("clears the previous result batch before dispatching a new query", async () => {
@@ -167,6 +174,7 @@ describe("validation SearchForm query lifecycle", () => {
       }),
     ];
     const response = {
+      queryId: "query-test",
       resultList: rows,
       paging: { currentPage: 1, totalPages: 1, searchToPageMapping: [] },
       accessionNumber: "ORDER-B",
@@ -279,9 +287,15 @@ describe("validation SearchForm query lifecycle", () => {
   test("a valid empty result batch remains a no-results warning", async () => {
     const harness = renderSearch();
 
-    await respond(await search(harness, "ORDER-EMPTY"), { resultList: [] });
+    await respond(await search(harness, "ORDER-EMPTY"), {
+      queryId: "query-test",
+      resultList: [],
+    });
 
-    expect(harness.latestResults()).toEqual({ resultList: [] });
+    expect(harness.latestResults()).toEqual({
+      queryId: "query-test",
+      resultList: [],
+    });
     expect(harness.addNotification).toHaveBeenLastCalledWith(
       expect.objectContaining({
         kind: NotificationKinds.warning,
@@ -420,5 +434,88 @@ describe("validation SearchForm query lifecycle", () => {
       expect(screen.getByText("2 / 3")).toBeInTheDocument();
       expect(harness.addNotification).not.toHaveBeenCalled();
     },
+  );
+});
+
+test.each([401, 403, 409])(
+  "context failure %s clears rows and requires a fresh query",
+  async (status) => {
+    window.history.replaceState({}, "", "/AccessionValidation");
+    const harness = renderSearch();
+    const first = await search(harness, "SIM-CONTEXT-A");
+    await respond(
+      first,
+      makeResponse("SIM-CONTEXT-A", { currentPage: 1, totalPages: 2 }),
+    );
+    await harness.user.click(
+      screen.getByRole("button", { name: messages["pagination.forward"] }),
+    );
+    const page = harness.requests.at(-1);
+    expect(new URLSearchParams(page.url.split("?")[1]).get("queryId")).toBe(
+      "query-test",
+    );
+    await act(async () => page.callback(undefined, status));
+    expect(harness.latestResults()).toEqual({ resultList: [] });
+    expect(harness.addNotification).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        message:
+          messages[
+            status === 409
+              ? "validation.query.expired"
+              : "validation.query.permissionChanged"
+          ],
+      }),
+    );
+    const retry = await search(harness, "SIM-CONTEXT-A");
+    expect(new URLSearchParams(retry.url.split("?")[1]).has("queryId")).toBe(
+      false,
+    );
+  },
+);
+
+test.each([
+  ["missing token", { resultList: [makeRow("SIM-INVALID")] }],
+  ["blank token", { queryId: " ", resultList: [] }],
+  ["null row", { queryId: "query-test", resultList: [null] }],
+])("rejects %s without leaving rows reviewable", async (_case, payload) => {
+  window.history.replaceState({}, "", "/AccessionValidation");
+  const harness = renderSearch();
+  await respond(await search(harness, "SIM-INVALID"), payload);
+  expect(harness.latestResults()).toEqual({ resultList: [] });
+  expect(harness.addNotification).toHaveBeenLastCalledWith(
+    expect.objectContaining({ kind: NotificationKinds.error }),
+  );
+});
+
+test.each([
+  [
+    "different query",
+    { queryId: "other-query", paging: { currentPage: 2, totalPages: 3 } },
+  ],
+  [
+    "wrong page",
+    { queryId: "query-test", paging: { currentPage: 1, totalPages: 3 } },
+  ],
+  [
+    "invalid total",
+    { queryId: "query-test", paging: { currentPage: 2, totalPages: 1 } },
+  ],
+])("rejects a page response for %s", async (_case, extra) => {
+  window.history.replaceState({}, "", "/AccessionValidation");
+  const harness = renderSearch();
+  await respond(
+    await search(harness, "SIM-PAGE-A"),
+    makeResponse("SIM-PAGE-A", { currentPage: 1, totalPages: 3 }),
+  );
+  await harness.user.click(
+    screen.getByRole("button", { name: messages["pagination.forward"] }),
+  );
+  await respond(harness.requests.at(-1), {
+    resultList: [makeRow("SIM-WRONG")],
+    ...extra,
+  });
+  expect(harness.latestResults()).toEqual({ resultList: [] });
+  expect(harness.addNotification).toHaveBeenLastCalledWith(
+    expect.objectContaining({ message: messages["validation.query.expired"] }),
   );
 });

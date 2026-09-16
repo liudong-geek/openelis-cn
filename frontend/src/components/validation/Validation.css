@@ -32,3 +32,42 @@
 .validation-results-table > div {
   min-width: 72rem;
 }
+
+.validation-results-table:focus-visible {
+  outline: 2px solid var(--cds-focus, #0f62fe);
+  outline-offset: 2px;
+}
+
+.validation-detail-summary {
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.validation-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.validation-detail-field dt {
+  color: var(--cds-text-secondary, #525252);
+  font-size: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.validation-detail-field dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.validation-detail-member {
+  margin: 0.75rem 0;
+}
+
+.validation-detail-notes {
+  margin: 0.75rem 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
