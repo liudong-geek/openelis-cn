@@ -26,9 +26,10 @@ import org.openelisglobal.common.valueholder.BaseObject;
 /**
  * Stable application/group identity, not a second release or snapshot model.
  * Current members describe the group; issued content must still be frozen on
- * PatientReportRelease. No preparation/issuance path uses this foundation yet.
- * The inherited lastupdated is the only ORM version. A future transactional
- * writer must also lock/version the parent when changing any member.
+ * PatientReportRelease. Preparation resolves and persists the complete server
+ * configured group. The inherited lastupdated is the only ORM version. Members
+ * are not changed implicitly; an explicit future regrouping transaction must
+ * lock/version this parent as well as its members.
  */
 @Entity
 @Table(name = "report_document", schema = "clinlims", uniqueConstraints = {

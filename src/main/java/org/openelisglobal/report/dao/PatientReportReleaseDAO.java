@@ -5,16 +5,13 @@ import org.openelisglobal.common.dao.BaseDAO;
 import org.openelisglobal.report.valueholder.PatientReportRelease;
 
 public interface PatientReportReleaseDAO extends BaseDAO<PatientReportRelease, Long> {
+    int getNextVersion(String documentId);
 
-    void lockPatientVersion(String patientId);
+    PatientReportRelease getDraft(String documentId);
 
-    int getNextVersion(String patientId);
+    PatientReportRelease getLatestIssued(String documentId);
 
-    PatientReportRelease getDraft(String patientId);
+    PatientReportRelease getLatestReleased(String documentId);
 
-    PatientReportRelease getLatestIssued(String patientId);
-
-    PatientReportRelease getLatestReleased(String patientId);
-
-    List<PatientReportRelease> getByPatient(String patientId);
+    List<PatientReportRelease> getByDocument(String documentId);
 }

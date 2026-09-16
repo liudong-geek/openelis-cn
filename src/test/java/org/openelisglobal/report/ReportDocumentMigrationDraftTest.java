@@ -29,9 +29,12 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 
-/** Offline draft structure checks, NOT executed migration or constraint tests. */
+/**
+ * Offline draft structure checks, NOT executed migration or constraint tests.
+ */
 public class ReportDocumentMigrationDraftTest {
-    private static final Path DRAFT = Path.of("src/main/resources/liquibase/3.5.x.x/081-report-document-foundation.xml");
+    private static final Path DRAFT = Path
+            .of("src/main/resources/liquibase/3.5.x.x/081-report-document-foundation.xml");
     private static final String NS = "http://www.liquibase.org/xml/ns/dbchangelog";
     private static Document document;
 
@@ -50,8 +53,8 @@ public class ReportDocumentMigrationDraftTest {
         SchemaFactory factory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
         factory.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
         factory.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-        try (InputStream xsd = getClass().getClassLoader().getResourceAsStream(
-                "www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd")) {
+        try (InputStream xsd = getClass().getClassLoader()
+                .getResourceAsStream("www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd")) {
             assertNotNull("Use the exact locally bundled Liquibase schema", xsd);
             factory.newSchema(new StreamSource(xsd)).newValidator().validate(new StreamSource(DRAFT.toFile()));
         }
@@ -62,7 +65,8 @@ public class ReportDocumentMigrationDraftTest {
         assertEquals(Set.of("report_document", "report_document_member"), tableNames());
         assertEquals(1, elements("changeSet").size());
         assertEquals("lis-cn-081-report-document-foundation", elements("changeSet").get(0).getAttribute("id"));
-        for (String operation : List.of("addColumn", "modifyDataType", "dropUniqueConstraint", "insert", "update", "delete", "dropTable")) {
+        for (String operation : List.of("addColumn", "modifyDataType", "dropUniqueConstraint", "insert", "update",
+                "delete", "dropTable")) {
             assertTrue("No old-table mutations or unconditional drop: " + operation, elements(operation).isEmpty());
         }
     }
@@ -76,7 +80,8 @@ public class ReportDocumentMigrationDraftTest {
     @Test
     public void stableGroupIdentityDoesNotIncludeRuleVersionOrPatientAlone() {
         assertEquals(Set.of("sample_id,report_group_key", "report_number", "fhir_uuid"), uniqueKeys("report_document"));
-        assertEquals(Set.of("report_document_id,analysis_id", "report_document_id,member_position"), uniqueKeys("report_document_member"));
+        assertEquals(Set.of("report_document_id,analysis_id", "report_document_id,member_position"),
+                uniqueKeys("report_document_member"));
     }
 
     @Test
@@ -110,7 +115,8 @@ public class ReportDocumentMigrationDraftTest {
                     + fk.getAttribute("referencedTableName") + "." + fk.getAttribute("referencedColumnNames"));
         }
         assertEquals(Set.of("report_document.patient_id->patient.id", "report_document.sample_id->sample.id",
-                "report_document.created_by->system_user.id", "report_document_member.report_document_id->report_document.id",
+                "report_document.created_by->system_user.id",
+                "report_document_member.report_document_id->report_document.id",
                 "report_document_member.analysis_id->analysis.id"), actual);
     }
 
@@ -145,9 +151,11 @@ public class ReportDocumentMigrationDraftTest {
     }
 
     @Test
-    public void draftIsNotIncludedInVersionStartupChangelog() throws Exception {
+    public void foundationPrecedesDocumentReleaseMigrationInStartupChangelog() throws Exception {
         String startup = Files.readString(Path.of("src/main/resources/liquibase/3.5.x.x/base.xml"));
-        assertFalse(startup.contains("081-report-document-foundation.xml"));
+        assertTrue(startup.contains("081-report-document-foundation.xml"));
+        assertTrue(startup.indexOf("081-report-document-foundation.xml") < startup
+                .indexOf("085-report-document-release-scope.xml"));
         assertFalse(startup.contains("includeAll"));
     }
 
@@ -175,7 +183,9 @@ public class ReportDocumentMigrationDraftTest {
                 forwardSql.add(sql.getTextContent().trim().replaceAll("\\s+", " "));
             }
         }
-        assertEquals(List.of("ALTER TABLE clinlims.report_document_member ADD CONSTRAINT ck_report_document_member_position CHECK (member_position >= 0)"), forwardSql);
+        assertEquals(List.of(
+                "ALTER TABLE clinlims.report_document_member ADD CONSTRAINT ck_report_document_member_position CHECK (member_position >= 0)"),
+                forwardSql);
     }
 
     private static void assertColumn(Map<String, Element> columns, String name, String type, boolean nullable) {
@@ -193,8 +203,10 @@ public class ReportDocumentMigrationDraftTest {
             for (Field field : type.getDeclaredFields()) {
                 Column column = field.getAnnotation(Column.class);
                 JoinColumn join = field.getAnnotation(JoinColumn.class);
-                if (column != null) result.add(column.name());
-                if (join != null) result.add(join.name());
+                if (column != null)
+                    result.add(column.name());
+                if (join != null)
+                    result.add(join.name());
             }
         }
         return result;
@@ -202,14 +214,16 @@ public class ReportDocumentMigrationDraftTest {
 
     private static Set<String> tableNames() {
         Set<String> names = new HashSet<>();
-        for (Element table : elements("createTable")) names.add(table.getAttribute("tableName"));
+        for (Element table : elements("createTable"))
+            names.add(table.getAttribute("tableName"));
         return names;
     }
 
     private static Map<String, Element> columns(String name) {
         Map<String, Element> columns = new LinkedHashMap<>();
         for (Element table : elements("createTable")) {
-            if (!name.equals(table.getAttribute("tableName"))) continue;
+            if (!name.equals(table.getAttribute("tableName")))
+                continue;
             for (Node node = table.getFirstChild(); node != null; node = node.getNextSibling()) {
                 if (node instanceof Element element && "column".equals(element.getLocalName())) {
                     assertEquals("No duplicate columns", null, columns.put(element.getAttribute("name"), element));
@@ -222,7 +236,8 @@ public class ReportDocumentMigrationDraftTest {
     private static Set<String> uniqueKeys(String table) {
         Set<String> keys = new HashSet<>();
         for (Element key : elements("addUniqueConstraint")) {
-            if (table.equals(key.getAttribute("tableName"))) keys.add(key.getAttribute("columnNames"));
+            if (table.equals(key.getAttribute("tableName")))
+                keys.add(key.getAttribute("columnNames"));
         }
         return keys;
     }
@@ -230,7 +245,8 @@ public class ReportDocumentMigrationDraftTest {
     private static List<Element> elements(String name) {
         List<Element> elements = new ArrayList<>();
         var nodes = document.getElementsByTagNameNS(NS, name);
-        for (int i = 0; i < nodes.getLength(); i++) elements.add((Element) nodes.item(i));
+        for (int i = 0; i < nodes.getLength(); i++)
+            elements.add((Element) nodes.item(i));
         return elements;
     }
 }

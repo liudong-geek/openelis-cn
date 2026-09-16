@@ -208,4 +208,6 @@
   <include relativeToChangelogFile="true" file="082-qa-checklist-confirmed-context.xml"/>
   <include relativeToChangelogFile="true" file="083-specimen-intake-decision.xml"/>
   <include relativeToChangelogFile="true" file="084-review-signature-content.xml"/>
+  <include relativeToChangelogFile="true" file="081-report-document-foundation.xml"/>
+  <include relativeToChangelogFile="true" file="085-report-document-release-scope.xml"/>
 </databaseChangeLog>

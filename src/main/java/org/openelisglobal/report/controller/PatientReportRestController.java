@@ -17,8 +17,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -54,8 +54,8 @@ public class PatientReportRestController extends BaseRestController {
             return ResponseEntity.notFound().build();
         }
 
-        ContentDisposition disposition = ContentDisposition.inline()
-                .filename("检验结果报告.pdf", StandardCharsets.UTF_8).build();
+        ContentDisposition disposition = ContentDisposition.inline().filename("检验结果报告.pdf", StandardCharsets.UTF_8)
+                .build();
         return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
                 .header("X-Report-Version", "PREVIEW-1").contentType(MediaType.APPLICATION_PDF).body(pdf);
     }
@@ -64,7 +64,10 @@ public class PatientReportRestController extends BaseRestController {
     @PreAuthorize("hasRole('REPORTS')")
     public ResponseEntity<PatientReportReleaseSummary> createPatientReportDraft(
             @RequestBody PatientReportDraftRequest draftRequest, HttpServletRequest request) {
-        PatientReportReleaseSummary release = patientReportReleaseService.createDraft(draftRequest.patientId(),
+        if (draftRequest.patientId() != null || draftRequest.documentId() == null) {
+            throw new IllegalStateException("EXPLICIT_REPORT_DOCUMENT_REQUIRED");
+        }
+        PatientReportReleaseSummary release = patientReportReleaseService.createDocumentDraft(draftRequest.documentId(),
                 draftRequest.amendmentReason(), getSysUserId(request));
         return ResponseEntity.ok(release);
     }
@@ -87,20 +90,21 @@ public class PatientReportRestController extends BaseRestController {
     @GetMapping(value = "/patient-results/releases", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAnyRole('RESULTS', 'REPORTS')")
     public ResponseEntity<List<PatientReportReleaseSummary>> getPatientReportReleases(@RequestParam String patientId) {
-        return ResponseEntity.ok(patientReportReleaseService.getByPatient(patientId));
+        throw new IllegalStateException("EXPLICIT_REPORT_DOCUMENT_REQUIRED");
     }
 
     @GetMapping(value = "/patient-results/releases/{releaseId}.pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     @PreAuthorize("hasAnyRole('RESULTS', 'REPORTS')")
-    public ResponseEntity<byte[]> getIssuedPatientReport(@PathVariable Long releaseId) {
-        return officialPdfResponse(releaseId, patientReportReleaseService.getIssuedPdf(releaseId), false);
+    public ResponseEntity<byte[]> getIssuedPatientReport(@PathVariable Long releaseId, HttpServletRequest request) {
+        return officialPdfResponse(releaseId,
+                patientReportReleaseService.getIssuedPdf(releaseId, getSysUserId(request)), false);
     }
 
     @PostMapping(value = "/patient-results/releases/{releaseId}/print", produces = MediaType.APPLICATION_PDF_VALUE)
     @PreAuthorize("hasRole('REPORTS')")
     public ResponseEntity<byte[]> printIssuedPatientReport(@PathVariable Long releaseId, HttpServletRequest request) {
-        return officialPdfResponse(releaseId,
-                patientReportReleaseService.recordPrint(releaseId, getSysUserId(request)), true);
+        return officialPdfResponse(releaseId, patientReportReleaseService.recordPrint(releaseId, getSysUserId(request)),
+                true);
     }
 
     private ResponseEntity<byte[]> officialPdfResponse(Long releaseId, byte[] pdf, boolean printRecorded) {

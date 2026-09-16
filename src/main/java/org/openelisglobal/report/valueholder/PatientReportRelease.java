@@ -18,8 +18,9 @@ import org.openelisglobal.common.valueholder.BaseObject;
 
 /**
  * Immutable PDF snapshot and lifecycle metadata for a formally issued patient
- * result report. Draft rows are signed through the existing electronic-signature
- * ceremony before they can transition to {@link PatientReportReleaseStatus#ISSUED}.
+ * result report. Draft rows are signed through the existing
+ * electronic-signature ceremony before they can transition to
+ * {@link PatientReportReleaseStatus#ISSUED}.
  */
 @Entity
 @Table(name = "patient_report_release", schema = "clinlims")
@@ -37,7 +38,15 @@ public class PatientReportRelease extends BaseObject<Long> {
     @Type(type = "org.openelisglobal.hibernate.resources.usertype.LIMSStringNumberUserType")
     private String patientId;
 
-    @Column(name = "report_number", nullable = false, length = 50, unique = true)
+    /**
+     * Null only for historical patient-level records; never inferred from accession
+     * text.
+     */
+    @Column(name = "report_document_id", precision = 10, scale = 0, updatable = false)
+    @Type(type = "org.openelisglobal.hibernate.resources.usertype.LIMSStringNumberUserType")
+    private String reportDocumentId;
+
+    @Column(name = "report_number", nullable = false, length = 50, unique = false)
     private String reportNumber;
 
     @Column(name = "report_version", nullable = false)
@@ -120,6 +129,14 @@ public class PatientReportRelease extends BaseObject<Long> {
 
     public void setPatientId(String patientId) {
         this.patientId = patientId;
+    }
+
+    public String getReportDocumentId() {
+        return reportDocumentId;
+    }
+
+    public void setReportDocumentId(String reportDocumentId) {
+        this.reportDocumentId = reportDocumentId;
     }
 
     public String getReportNumber() {

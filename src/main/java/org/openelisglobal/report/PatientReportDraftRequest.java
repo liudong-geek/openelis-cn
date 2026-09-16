@@ -1,5 +1,8 @@
 package org.openelisglobal.report;
 
-/** Request to prepare a first release or a corrected report version. */
-public record PatientReportDraftRequest(String patientId, String amendmentReason) {
+/**
+ * Patient-only requests are rejected; documentId must come from server
+ * preparation.
+ */
+public record PatientReportDraftRequest(String documentId, String patientId, String amendmentReason) {
 }

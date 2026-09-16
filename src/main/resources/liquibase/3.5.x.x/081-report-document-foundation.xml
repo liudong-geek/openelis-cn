@@ -1,11 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- DRAFT ONLY: deliberately not registered. Real isolated migration tests required. -->
+<!-- Report document foundation. Production rollout requires isolated migration verification. -->
 <databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
-    <!-- Model-only prerequisite. Do not include in base.xml until current-source
-         PostgreSQL migration/rollback and legacy compatibility gates pass.
-         No current_release link, release snapshot, legacy update, or new writer. -->
     <changeSet id="lis-cn-081-report-document-foundation" author="codex" runInTransaction="true">
         <preConditions onFail="HALT" onError="HALT">
             <dbms type="postgresql"/>

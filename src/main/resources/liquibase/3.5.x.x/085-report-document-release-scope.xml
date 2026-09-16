@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+    <changeSet id="lis-cn-085-report-document-release-scope" author="codex" runInTransaction="true">
+        <preConditions onFail="HALT" onError="HALT">
+            <dbms type="postgresql"/>
+            <tableExists schemaName="clinlims" tableName="report_document"/>
+            <tableExists schemaName="clinlims" tableName="patient_report_release"/>
+            <not><columnExists schemaName="clinlims" tableName="patient_report_release" columnName="report_document_id"/></not>
+        </preConditions>
+        <!-- Historical rows stay unassigned: accession strings cannot prove exact membership. -->
+        <addColumn schemaName="clinlims" tableName="patient_report_release">
+            <column name="report_document_id" type="NUMERIC(10)"/>
+        </addColumn>
+        <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="patient_report_release"
+            baseColumnNames="report_document_id" referencedTableSchemaName="clinlims" referencedTableName="report_document"
+            referencedColumnNames="id" constraintName="fk_patient_report_release_document" onDelete="RESTRICT"/>
+        <dropUniqueConstraint schemaName="clinlims" tableName="patient_report_release" constraintName="uq_patient_report_release_patient_version"/>
+        <dropUniqueConstraint schemaName="clinlims" tableName="patient_report_release" constraintName="uq_patient_report_release_number"/>
+        <dropIndex schemaName="clinlims" tableName="patient_report_release" indexName="uq_patient_report_release_active_draft"/>
+        <addUniqueConstraint schemaName="clinlims" tableName="patient_report_release"
+            columnNames="report_document_id,report_version" constraintName="uq_patient_report_release_document_version"/>
+        <sql>CREATE UNIQUE INDEX uq_patient_report_release_document_draft ON clinlims.patient_report_release (report_document_id) WHERE status = 'DRAFT' AND report_document_id IS NOT NULL</sql>
+        <sql>CREATE UNIQUE INDEX uq_patient_report_release_document_issued ON clinlims.patient_report_release (report_document_id) WHERE status = 'ISSUED' AND report_document_id IS NOT NULL</sql>
+        <sql>CREATE UNIQUE INDEX uq_patient_report_release_legacy_version ON clinlims.patient_report_release (patient_id,report_version) WHERE report_document_id IS NULL</sql>
+        <sql>CREATE UNIQUE INDEX uq_patient_report_release_legacy_number ON clinlims.patient_report_release (report_number) WHERE report_document_id IS NULL</sql>
+        <sql>CREATE UNIQUE INDEX uq_patient_report_release_legacy_draft ON clinlims.patient_report_release (patient_id) WHERE status = 'DRAFT' AND report_document_id IS NULL</sql>
+        <rollback>
+            <!-- New document releases can repeat old patient-wide version numbers: never discard them to roll back. -->
+            <sql splitStatements="false"><![CDATA[
+DO $report_scope_rollback$
+BEGIN
+    LOCK TABLE clinlims.patient_report_release IN ACCESS EXCLUSIVE MODE;
+    IF EXISTS (SELECT 1 FROM clinlims.patient_report_release WHERE report_document_id IS NOT NULL) THEN
+        RAISE EXCEPTION 'Document releases exist; retain data and use a forward migration';
+    END IF;
+    DROP INDEX clinlims.uq_patient_report_release_document_draft;
+    DROP INDEX clinlims.uq_patient_report_release_document_issued;
+    DROP INDEX clinlims.uq_patient_report_release_legacy_version;
+    DROP INDEX clinlims.uq_patient_report_release_legacy_number;
+    DROP INDEX clinlims.uq_patient_report_release_legacy_draft;
+    ALTER TABLE clinlims.patient_report_release DROP CONSTRAINT uq_patient_report_release_document_version;
+    ALTER TABLE clinlims.patient_report_release DROP CONSTRAINT fk_patient_report_release_document;
+    ALTER TABLE clinlims.patient_report_release DROP COLUMN report_document_id;
+    ALTER TABLE clinlims.patient_report_release ADD CONSTRAINT uq_patient_report_release_patient_version UNIQUE (patient_id,report_version);
+    ALTER TABLE clinlims.patient_report_release ADD CONSTRAINT uq_patient_report_release_number UNIQUE (report_number);
+    CREATE UNIQUE INDEX uq_patient_report_release_active_draft ON clinlims.patient_report_release (patient_id) WHERE status = 'DRAFT';
+END;
+$report_scope_rollback$;
+            ]]></sql>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>
