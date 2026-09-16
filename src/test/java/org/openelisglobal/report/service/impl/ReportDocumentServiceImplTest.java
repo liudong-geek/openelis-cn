@@ -156,6 +156,25 @@ public class ReportDocumentServiceImplTest {
         verify(documents, never()).insert(any());
     }
 
+    @Test
+    public void historicalMembershipAuthorizesFrozenMembersRatherThanLaterCurrentMembers() {
+        var changedCurrent = document("SIM-1", List.of("999"));
+        when(documents.getWithMembers("201", false)).thenReturn(changedCurrent);
+        var frozen = new ReportScopeDefinition("101", "301", "SIM-CHEM", "SIM-1", List.of("401", "402"));
+        var result = service.authorizePersistedScope("201", frozen, "7", false);
+        assertEquals(List.of("401", "402"), result.analysisIds());
+        verify(authorization).authorizeExplicitScope(frozen, "7");
+        verify(configuration, never()).getRules();
+    }
+
+    @Test
+    public void frozenMembershipCannotBorrowAnotherApplicationDocument() {
+        when(documents.getWithMembers("201", false)).thenReturn(document("SIM-1", List.of("401", "402")));
+        var foreign = new ReportScopeDefinition("101", "302", "SIM-CHEM", "SIM-1", List.of("401", "402"));
+        assertThrows(IllegalStateException.class, () -> service.authorizePersistedScope("201", foreign, "7", false));
+        verify(authorization, never()).authorizeExplicitScope(any(), anyString());
+    }
+
     private Analysis analysis(String id, String testId) {
         Analysis analysis = new Analysis();
         analysis.setId(id);

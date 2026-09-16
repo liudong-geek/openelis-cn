@@ -3,6 +3,8 @@ package org.openelisglobal.report.service;
 import java.util.List;
 import org.openelisglobal.common.service.BaseObjectService;
 import org.openelisglobal.report.PatientReportReleaseSummary;
+import org.openelisglobal.report.form.ReportPdfContent;
+import org.openelisglobal.report.form.ReportReleaseDetail;
 import org.openelisglobal.report.valueholder.PatientReportRelease;
 
 public interface PatientReportReleaseService extends BaseObjectService<PatientReportRelease, Long> {
@@ -14,7 +16,9 @@ public interface PatientReportReleaseService extends BaseObjectService<PatientRe
 
     List<PatientReportReleaseSummary> getByDocument(String documentId, String sysUserId);
 
-    byte[] getIssuedPdf(Long releaseId, String sysUserId);
+    ReportReleaseDetail getDetail(String documentId, Long releaseId, String actor);
 
-    byte[] recordPrint(Long releaseId, String sysUserId);
+    ReportPdfContent getOriginalPdf(String documentId, Long releaseId, String actor);
+
+    ReportPdfContent recordPrint(String documentId, Long releaseId, String actor);
 }

@@ -42,7 +42,7 @@ public class PatientReportRestControllerTest extends BaseWebContextSensitiveTest
         executeDataSetWithStateManagement("testdata/patient-results-report.xml");
 
         UserService userServiceMock = Mockito.mock(UserService.class);
-        Mockito.when(userServiceMock.filterResultsByLabUnitRoles(anyString(), anyList(), anyString()))
+        Mockito.when(userServiceMock.filterAnalysesByLabUnitRoles(anyString(), anyList(), anyString()))
                 .thenAnswer(invocation -> invocation.getArgument(1)); // Return results unfiltered
 
         ReflectionTestUtils.setField(patientReportService, "userService", userServiceMock);

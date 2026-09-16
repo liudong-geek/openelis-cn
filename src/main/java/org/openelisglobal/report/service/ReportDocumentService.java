@@ -13,5 +13,12 @@ public interface ReportDocumentService {
 
     ReportDocumentSummary lockCurrent(String documentId, String actor);
 
+    /**
+     * Internal service contract, using only a release's verified persisted
+     * membership.
+     */
+    ReportDocumentSummary authorizePersistedScope(String documentId, ReportScopeDefinition scope, String actor,
+            boolean lock);
+
     ReportScopeDefinition authorizedScope(String documentId, String actor);
 }

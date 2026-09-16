@@ -90,6 +90,52 @@ public class ReportDocumentRestControllerTest {
     }
 
     @Test
+    public void scopedHistoricalPdfPreservesBytesAndAdvertisesHistoricalStatusWithoutCache() throws Exception {
+        var original = new org.openelisglobal.report.form.ReportPdfContent(10L, "201",
+                org.openelisglobal.report.valueholder.PatientReportReleaseStatus.SUPERSEDED, "a".repeat(64), false,
+                new byte[] { 37, 80, 68, 70 });
+        when(releases.getOriginalPdf("201", 10L, "7")).thenReturn(original);
+        mvc.perform(get("/rest/reports/documents/201/releases/10.pdf").session(session)).andExpect(status().isOk())
+                .andExpect(content().bytes(original.content()))
+                .andExpect(header().string("X-Report-Status", "SUPERSEDED"))
+                .andExpect(header().string("X-Report-Current", "false"))
+                .andExpect(header().string("X-Report-Type", "HISTORICAL_ORIGINAL"))
+                .andExpect(header().string("Cache-Control", "no-store, private"))
+                .andExpect(header().doesNotExist("X-Report-Print-Audit"));
+        verify(releases).getOriginalPdf("201", 10L, "7");
+    }
+
+    @Test
+    public void legacyPdfUsesTheSameActorBoundOriginalService() throws Exception {
+        var original = new org.openelisglobal.report.form.ReportPdfContent(10L, "201",
+                org.openelisglobal.report.valueholder.PatientReportReleaseStatus.VOIDED, "a".repeat(64), false,
+                new byte[] { 37, 80, 68, 70 });
+        when(releases.getOriginalPdf(null, 10L, "7")).thenReturn(original);
+        mvc.perform(get("/rest/reports/patient-results/releases/10.pdf").session(session)).andExpect(status().isOk())
+                .andExpect(header().string("X-Report-Status", "VOIDED"));
+        verify(releases).getOriginalPdf(null, 10L, "7");
+    }
+
+    @Test
+    public void scopedPrintUsesRequestedDocumentActorAndExplicitPrintAuditHeader() throws Exception {
+        var original = new org.openelisglobal.report.form.ReportPdfContent(10L, "201",
+                org.openelisglobal.report.valueholder.PatientReportReleaseStatus.ISSUED, "a".repeat(64), true,
+                new byte[] { 37, 80, 68, 70 });
+        when(releases.recordPrint("201", 10L, "7")).thenReturn(original);
+        mvc.perform(post("/rest/reports/documents/201/releases/10/print").session(session)).andExpect(status().isOk())
+                .andExpect(header().string("X-Report-Print-Audit", "recorded"))
+                .andExpect(header().string("X-Report-Current", "true"));
+        verify(releases).recordPrint("201", 10L, "7");
+    }
+
+    @Test
+    public void detailUsesRequestedDocumentActorAndDoesNotCacheClinicalMetadata() throws Exception {
+        mvc.perform(get("/rest/reports/documents/201/releases/10").session(session)).andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store, private"));
+        verify(releases).getDetail("201", 10L, "7");
+    }
+
+    @Test
     public void roleAnnotationsSeparateReportPreparationFromConfigurationAdministration() throws Exception {
         assertEquals("hasRole('REPORTS')",
                 ReportDocumentRestController.class.getAnnotation(PreAuthorize.class).value());

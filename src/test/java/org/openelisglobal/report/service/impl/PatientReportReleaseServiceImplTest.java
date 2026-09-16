@@ -1,7 +1,7 @@
 package org.openelisglobal.report.service.impl;
 
 import static org.junit.Assert.*;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import java.util.List;
@@ -36,6 +36,8 @@ public class PatientReportReleaseServiceImplTest {
     @Before public void setup() {
         when(documents.lockCurrent("201", "7")).thenReturn(document);
         when(documents.get("201", "7")).thenReturn(document);
+        when(documents.authorizePersistedScope(eq("201"), any(), eq("7"), anyBoolean())).thenReturn(document);
+        when(patientReportReleaseDAO.lockRelease(any())).thenAnswer(invocation -> patientReportReleaseDAO.get(invocation.<Long>getArgument(0)).orElse(null));
         when(patientReportReleaseDAO.getNextVersion("201")).thenReturn(1);
         when(patientReportReleaseDAO.insert(any())).thenAnswer(invocation -> {
             PatientReportRelease value = invocation.getArgument(0); value.setId(10L); return 10L;
@@ -119,10 +121,10 @@ public class PatientReportReleaseServiceImplTest {
         var legacy = release(PatientReportReleaseStatus.ISSUED);
         legacy.setReportDocumentId(null);
         when(patientReportReleaseDAO.get(10L)).thenReturn(Optional.of(legacy));
-        assertThrows(IllegalStateException.class, () -> service.getIssuedPdf(10L, "7"));
+        assertThrows(IllegalStateException.class, () -> service.getOriginalPdf(null, 10L, "7").content());
         assertThrows(IllegalStateException.class, () -> service.issue(10L, 44L, "7"));
         assertThrows(IllegalStateException.class, () -> service.voidRelease(10L, 44L, "7"));
-        assertThrows(IllegalStateException.class, () -> service.recordPrint(10L, "7"));
+        assertThrows(IllegalStateException.class, () -> service.recordPrint(null, 10L, "7").content());
         verify(patientReportReleaseDAO, never()).update(any());
     }
 
@@ -141,12 +143,13 @@ public class PatientReportReleaseServiceImplTest {
     public void storedPdfIsDefensivelyCopiedAndPrintCountsOnlyAfterAuthorization() {
         var issued = release(PatientReportReleaseStatus.ISSUED);
         when(patientReportReleaseDAO.get(10L)).thenReturn(Optional.of(issued));
-        byte[] downloaded = service.getIssuedPdf(10L, "7");
+        when(patientReportReleaseDAO.getLatestIssued("201")).thenReturn(issued);
+        byte[] downloaded = service.getOriginalPdf(null, 10L, "7").content();
         downloaded[0] = 9;
         assertArrayEquals(new byte[] { 1, 2 }, issued.getPdfContent());
-        assertArrayEquals(new byte[] { 1, 2 }, service.recordPrint(10L, "7"));
+        assertArrayEquals(new byte[] { 1, 2 }, service.recordPrint(null, 10L, "7").content());
         assertEquals(Integer.valueOf(1), issued.getPrintCount());
-        verify(documents, times(2)).get("201", "7");
+        verify(documents, times(4)).authorizePersistedScope(eq("201"), any(), eq("7"), anyBoolean());
         verify(patientReportReleaseDAO).update(issued);
     }
 
@@ -159,6 +162,15 @@ public class PatientReportReleaseServiceImplTest {
         release.setReportVersion(1);
         release.setStatus(status);
         release.setPdfContent(new byte[] { 1, 2 });
+        release.setPdfSha256(org.apache.commons.codec.digest.DigestUtils.sha256Hex(release.getPdfContent()));
+        try {
+            release.setMemberScopeJson(new com.fasterxml.jackson.databind.ObjectMapper()
+                    .writeValueAsString(org.openelisglobal.report.form.ReportReleaseScope.from(document)));
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
+        release.setMemberScopeSha256(
+                org.apache.commons.codec.digest.DigestUtils.sha256Hex(release.getMemberScopeJson()));
         return release;
     }
 }

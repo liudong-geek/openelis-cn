@@ -72,6 +72,36 @@ public class ReportDocumentRestController extends BaseRestController {
         return releases.getByDocument(documentId, getSysUserId(request));
     }
 
+    @GetMapping("/documents/{documentId}/releases/{releaseId}")
+    public org.openelisglobal.report.form.ReportReleaseDetail detail(@PathVariable String documentId,
+            @PathVariable Long releaseId, HttpServletRequest request) {
+        return releases.getDetail(documentId, releaseId, getSysUserId(request));
+    }
+
+    @GetMapping(value = "/documents/{documentId}/releases/{releaseId}.pdf", produces = "application/pdf")
+    public ResponseEntity<byte[]> original(@PathVariable String documentId, @PathVariable Long releaseId,
+            HttpServletRequest request) {
+        return PatientReportRestController
+                .originalPdfResponse(releases.getOriginalPdf(documentId, releaseId, getSysUserId(request)), false);
+    }
+
+    @PostMapping(value = "/documents/{documentId}/releases/{releaseId}/print", produces = "application/pdf")
+    public ResponseEntity<byte[]> print(@PathVariable String documentId, @PathVariable Long releaseId,
+            HttpServletRequest request) {
+        return PatientReportRestController
+                .originalPdfResponse(releases.recordPrint(documentId, releaseId, getSysUserId(request)), true);
+    }
+
+    @org.springframework.web.bind.annotation.ModelAttribute
+    public void preventClinicalResponseCaching(jakarta.servlet.http.HttpServletResponse response) {
+        response.setHeader(org.springframework.http.HttpHeaders.CACHE_CONTROL, "no-store, private");
+    }
+
+    @ExceptionHandler(org.hibernate.ObjectNotFoundException.class)
+    public ResponseEntity<Map<String, String>> missing() {
+        return ResponseEntity.status(404).body(Map.of("error", "REPORT_NOT_FOUND", "message", "Report does not exist"));
+    }
+
     @ExceptionHandler({ org.springframework.dao.OptimisticLockingFailureException.class,
             jakarta.persistence.OptimisticLockException.class, org.hibernate.StaleObjectStateException.class })
     public ResponseEntity<Map<String, String>> concurrentChange() {

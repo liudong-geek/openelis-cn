@@ -46,6 +46,14 @@ public class PatientReportRelease extends BaseObject<Long> {
     @Type(type = "org.openelisglobal.hibernate.resources.usertype.LIMSStringNumberUserType")
     private String reportDocumentId;
 
+    @JsonIgnore
+    @Column(name = "member_scope_json", columnDefinition = "TEXT", updatable = false)
+    private String memberScopeJson;
+
+    @JsonIgnore
+    @Column(name = "member_scope_sha256", length = 64, updatable = false)
+    private String memberScopeSha256;
+
     @Column(name = "report_number", nullable = false, length = 50, unique = false)
     private String reportNumber;
 
@@ -137,6 +145,22 @@ public class PatientReportRelease extends BaseObject<Long> {
 
     public void setReportDocumentId(String reportDocumentId) {
         this.reportDocumentId = reportDocumentId;
+    }
+
+    public String getMemberScopeJson() {
+        return memberScopeJson;
+    }
+
+    public void setMemberScopeJson(String value) {
+        memberScopeJson = value;
+    }
+
+    public String getMemberScopeSha256() {
+        return memberScopeSha256;
+    }
+
+    public void setMemberScopeSha256(String value) {
+        memberScopeSha256 = value;
     }
 
     public String getReportNumber() {

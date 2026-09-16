@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+    <changeSet id="lis-cn-086-report-release-member-scope" author="codex" runInTransaction="true">
+        <preConditions onFail="HALT" onError="HALT">
+            <dbms type="postgresql"/>
+            <columnExists schemaName="clinlims" tableName="patient_report_release" columnName="report_document_id"/>
+            <not><columnExists schemaName="clinlims" tableName="patient_report_release" columnName="member_scope_json"/></not>
+        </preConditions>
+        <!-- Never infer past membership from today's document or legacy accession strings. -->
+        <addColumn schemaName="clinlims" tableName="patient_report_release">
+            <column name="member_scope_json" type="TEXT"/>
+            <column name="member_scope_sha256" type="VARCHAR(64)"/>
+        </addColumn>
+        <sql>ALTER TABLE clinlims.patient_report_release ADD CONSTRAINT ck_patient_report_release_member_scope CHECK ((member_scope_json IS NULL AND member_scope_sha256 IS NULL) OR (member_scope_json IS NOT NULL AND member_scope_sha256 IS NOT NULL AND member_scope_sha256 ~ '^[a-f0-9]{64}$' AND report_document_id IS NOT NULL))</sql>
+        <rollback>
+            <sql splitStatements="false"><![CDATA[
+DO $report_member_scope_rollback$
+BEGIN
+    LOCK TABLE clinlims.patient_report_release IN ACCESS EXCLUSIVE MODE;
+    IF EXISTS (SELECT 1 FROM clinlims.patient_report_release WHERE member_scope_json IS NOT NULL OR member_scope_sha256 IS NOT NULL) THEN
+        RAISE EXCEPTION 'Report membership snapshots exist; retain evidence and use a forward migration';
+    END IF;
+    ALTER TABLE clinlims.patient_report_release DROP CONSTRAINT ck_patient_report_release_member_scope;
+    ALTER TABLE clinlims.patient_report_release DROP COLUMN member_scope_sha256;
+    ALTER TABLE clinlims.patient_report_release DROP COLUMN member_scope_json;
+END;
+$report_member_scope_rollback$;
+            ]]></sql>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

@@ -9,6 +9,7 @@ import org.openelisglobal.common.rest.BaseRestController;
 import org.openelisglobal.report.PatientReportDraftRequest;
 import org.openelisglobal.report.PatientReportReleaseSummary;
 import org.openelisglobal.report.ReportingData;
+import org.openelisglobal.report.form.ReportPdfContent;
 import org.openelisglobal.report.service.PatientReportReleaseService;
 import org.openelisglobal.report.service.PatientReportService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -94,29 +95,39 @@ public class PatientReportRestController extends BaseRestController {
     }
 
     @GetMapping(value = "/patient-results/releases/{releaseId}.pdf", produces = MediaType.APPLICATION_PDF_VALUE)
-    @PreAuthorize("hasAnyRole('RESULTS', 'REPORTS')")
+    @PreAuthorize("hasRole('REPORTS')")
     public ResponseEntity<byte[]> getIssuedPatientReport(@PathVariable Long releaseId, HttpServletRequest request) {
-        return officialPdfResponse(releaseId,
-                patientReportReleaseService.getIssuedPdf(releaseId, getSysUserId(request)), false);
+        return originalPdfResponse(patientReportReleaseService.getOriginalPdf(null, releaseId, getSysUserId(request)),
+                false);
     }
 
     @PostMapping(value = "/patient-results/releases/{releaseId}/print", produces = MediaType.APPLICATION_PDF_VALUE)
     @PreAuthorize("hasRole('REPORTS')")
     public ResponseEntity<byte[]> printIssuedPatientReport(@PathVariable Long releaseId, HttpServletRequest request) {
-        return officialPdfResponse(releaseId, patientReportReleaseService.recordPrint(releaseId, getSysUserId(request)),
+        return originalPdfResponse(patientReportReleaseService.recordPrint(null, releaseId, getSysUserId(request)),
                 true);
     }
 
-    private ResponseEntity<byte[]> officialPdfResponse(Long releaseId, byte[] pdf, boolean printRecorded) {
+    static ResponseEntity<byte[]> originalPdfResponse(ReportPdfContent pdf, boolean printRecorded) {
         ContentDisposition disposition = ContentDisposition.inline()
-                .filename("正式检验报告-" + releaseId + ".pdf", StandardCharsets.UTF_8).build();
+                .filename((printRecorded ? "正式检验报告-" : "检验报告原件-") + pdf.releaseId() + ".pdf", StandardCharsets.UTF_8)
+                .build();
         ResponseEntity.BodyBuilder response = ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString()).header("X-Report-Type", "OFFICIAL")
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .header(HttpHeaders.CACHE_CONTROL, "no-store, private").header("X-Content-Type-Options", "nosniff")
+                .header("X-Report-Type", pdf.current() ? "CURRENT_ORIGINAL" : "HISTORICAL_ORIGINAL")
+                .header("X-Report-Status", pdf.status().name())
+                .header("X-Report-Current", Boolean.toString(pdf.current()))
+                .header("X-Report-Document", pdf.documentId()).header("X-Report-SHA256", pdf.sha256())
                 .contentType(MediaType.APPLICATION_PDF);
-        if (printRecorded) {
+        if (printRecorded)
             response.header("X-Report-Print-Audit", "recorded");
-        }
-        return response.body(pdf);
+        return response.body(pdf.content());
+    }
+
+    @org.springframework.web.bind.annotation.ModelAttribute
+    public void preventClinicalResponseCaching(jakarta.servlet.http.HttpServletResponse response) {
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-store, private");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

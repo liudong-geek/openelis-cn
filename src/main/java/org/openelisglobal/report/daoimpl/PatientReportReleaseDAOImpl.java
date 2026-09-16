@@ -20,6 +20,18 @@ public class PatientReportReleaseDAOImpl extends BaseDAOImpl<PatientReportReleas
     }
 
     @Override
+    public PatientReportRelease lockRelease(Long releaseId) {
+        PatientReportRelease release = entityManager.find(PatientReportRelease.class, releaseId,
+                jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if (release != null) {
+            // An earlier authorization lookup may already have placed the entity in this
+            // transaction's cache.
+            entityManager.refresh(release, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        }
+        return release;
+    }
+
+    @Override
     public int getNextVersion(String documentId) {
         Integer current = entityManager.unwrap(Session.class).createQuery(
                 "SELECT MAX(r.reportVersion) FROM PatientReportRelease r WHERE r.reportDocumentId = :documentId",

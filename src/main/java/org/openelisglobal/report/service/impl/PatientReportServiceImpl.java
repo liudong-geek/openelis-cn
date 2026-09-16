@@ -1,9 +1,14 @@
 package org.openelisglobal.report.service.impl;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
+import org.openelisglobal.analysis.service.AnalysisService;
+import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.action.IActionConstants;
 import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.StatusService.AnalysisStatus;
@@ -30,6 +35,7 @@ import org.openelisglobal.test.service.TestService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /** Report type constant for patient results report definition lookup. */
 final class PatientReportConstants {
@@ -46,6 +52,9 @@ public class PatientReportServiceImpl implements PatientReportService {
 
     @Autowired
     private PatientService patientService;
+
+    @Autowired
+    private AnalysisService analysisService;
 
     @Autowired
     private SampleService sampleService;
@@ -78,6 +87,7 @@ public class PatientReportServiceImpl implements PatientReportService {
     private ChinesePatientReportPdfRenderer patientReportPdfRenderer;
 
     @Override
+    @Transactional(readOnly = true)
     public ReportingData buildPatientResultsReport(String patientId, String sysUserId) {
         if (sysUserId == null) {
             throw new org.springframework.web.server.ResponseStatusException(
@@ -94,22 +104,46 @@ public class PatientReportServiceImpl implements PatientReportService {
         excludeNonFinalResults(resultsUtility);
 
         List<TestResultItem> results = resultsUtility.getGroupedTestsForPatient(patient);
-        results = userService.filterResultsByLabUnitRoles(sysUserId, results,
-                org.openelisglobal.common.constants.Constants.ROLE_RESULTS);
+        results = authorizePreviewResults(sysUserId, results);
         return buildReportFromResults(results, patient);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public byte[] buildPatientResultsPdf(String patientId, String sysUserId) {
         ReportingData data = buildPatientResultsReport(patientId, sysUserId);
         return data == null ? null : patientReportPdfRenderer.render(data);
     }
 
+    List<TestResultItem> authorizePreviewResults(String actor, List<TestResultItem> projected) {
+        if (projected == null || projected.stream().anyMatch(Objects::isNull)) {
+            throw new IllegalStateException("Patient result preview could not be loaded completely");
+        }
+        List<TestResultItem> rows = projected.stream().filter(item -> !item.getIsGroupSeparator()).toList();
+        if (rows.stream()
+                .anyMatch(item -> item.getAnalysisId() == null || !item.getAnalysisId().matches("[1-9][0-9]*"))) {
+            throw new IllegalStateException("Patient result preview has no verifiable analysis identity");
+        }
+        Set<String> ids = rows.stream().map(TestResultItem::getAnalysisId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (ids.isEmpty())
+            return List.of();
+        List<Analysis> actual = analysisService.get(new ArrayList<>(ids));
+        if (actual == null || actual.size() != ids.size() || actual.stream().anyMatch(Objects::isNull)
+                || !actual.stream().map(Analysis::getId).collect(Collectors.toSet()).equals(ids)) {
+            throw new IllegalStateException("Patient result preview analysis scope changed");
+        }
+        Set<String> visible = userService
+                .filterAnalysesByLabUnitRoles(actor, actual, org.openelisglobal.common.constants.Constants.ROLE_RESULTS)
+                .stream().map(Analysis::getId).collect(Collectors.toSet());
+        // The legacy patient chart is a visibility-filtered preview, not a formally
+        // issued report.
+        return rows.stream().filter(item -> visible.contains(item.getAnalysisId())).toList();
+    }
+
     ReportingData buildReportFromResults(List<TestResultItem> results, Patient patient) {
-        results = results.stream()
-                .filter(item -> item.getIsGroupSeparator()
-                        || (IActionConstants.YES.equals(item.getReportable())
-                                && isFinalized(item.getAnalysisStatusId())))
+        results = results.stream().filter(item -> item.getIsGroupSeparator()
+                || (IActionConstants.YES.equals(item.getReportable()) && isFinalized(item.getAnalysisStatusId())))
                 .collect(Collectors.toList());
 
         List<ReportColumn> columns = resolveColumns();
@@ -313,9 +347,8 @@ public class PatientReportServiceImpl implements PatientReportService {
 
     private String getResultFlag(TestResultItem item) {
         Double numericResult = parseNumericResult(item.getResultValue());
-        if (numericResult != null
-                && ((item.getLowerCritical() != 0 && numericResult < item.getLowerCritical())
-                        || (item.getHigherCritical() != 0 && numericResult > item.getHigherCritical()))) {
+        if (numericResult != null && ((item.getLowerCritical() != 0 && numericResult < item.getLowerCritical())
+                || (item.getHigherCritical() != 0 && numericResult > item.getHigherCritical()))) {
             return "危急";
         }
         if (!item.isValid()) {

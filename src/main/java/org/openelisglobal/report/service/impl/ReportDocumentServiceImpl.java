@@ -120,6 +120,26 @@ public class ReportDocumentServiceImpl extends AuditableBaseObjectServiceImpl<Re
         return scope(requireAuthorized(documentId, actor, false));
     }
 
+    @Override
+    @Transactional
+    public ReportDocumentSummary authorizePersistedScope(String documentId, ReportScopeDefinition frozenScope,
+            String actor, boolean lock) {
+        requireId(documentId);
+        ReportDocument document = documents.getWithMembers(documentId, lock);
+        if (document == null || frozenScope == null || !Objects.equals(document.getPatientId(), frozenScope.patientId())
+                || !Objects.equals(document.getSampleId(), frozenScope.sampleId())
+                || !Objects.equals(document.getReportGroupKey(), frozenScope.groupKey())
+                || !Objects.equals(document.getGroupRuleVersion(), frozenScope.ruleVersion())) {
+            throw new IllegalStateException("Report membership ownership does not match its document");
+        }
+        // Historical release members are authoritative here, not a later mutable
+        // current group.
+        authorization.authorizeExplicitScope(frozenScope, actor);
+        return new ReportDocumentSummary(document.getId(), document.getPatientId(), document.getSampleId(),
+                document.getReportGroupKey(), document.getGroupRuleVersion(), document.getReportNumber(),
+                document.getLastupdated(), frozenScope.analysisIds());
+    }
+
     private ReportDocument requireAuthorized(String id, String actor, boolean lock) {
         requireId(id);
         ReportDocument document = documents.getWithMembers(id, lock);
