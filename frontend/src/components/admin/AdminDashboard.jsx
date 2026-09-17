@@ -14,10 +14,16 @@ import {
   ResultNew,
   Settings,
   TableOfContents,
+  DataReference,
   User,
 } from "@carbon/icons-react";
 
 const ADMIN_DASHBOARD_LINKS = [
+  {
+    messageId: "masterData.title",
+    path: "masterDataIdentity",
+    icon: DataReference,
+  },
   {
     messageId: "unifiedSystemUser.browser.title",
     path: "userManagement",

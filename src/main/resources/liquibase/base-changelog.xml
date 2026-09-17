@@ -31,4 +31,6 @@
   <include file="liquibase/qc/008-add-instrument-fk-constraints.xml" />
   <include file="liquibase/qc/009-nullable-unit-of-measure.xml" />
   <include file="liquibase/qc/010-qc-release-gate.xml" />
+  <!-- Canonical identities for interface-facing master data -->
+  <include file="liquibase/masterdata/001-master-data-identity.xml" />
 </databaseChangeLog>

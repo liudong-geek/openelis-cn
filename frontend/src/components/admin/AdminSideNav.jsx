@@ -26,6 +26,7 @@ import {
   ConnectionSignal,
   Calendar,
   TrashCan,
+  DataReference,
 } from "@carbon/icons-react";
 import {
   SideNavItems,
@@ -328,6 +329,13 @@ export default function AdminSideNav({ isTrainingInstallation = false }) {
         {...navProps(`${path}/program`)}
       >
         <FormattedMessage id="sidenav.label.admin.program" />
+      </SideNavLink>
+      <SideNavLink
+        data-cy="masterDataIdentity"
+        renderIcon={DataReference}
+        {...navProps(`${path}/masterDataIdentity`)}
+      >
+        <FormattedMessage id="masterData.title" />
       </SideNavLink>
       <SideNavLink
         data-cy="providerMgmnt"

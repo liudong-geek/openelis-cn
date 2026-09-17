@@ -75,6 +75,7 @@ import ExternalConnectionMenu from "./externalConnections/ExternalConnectionMenu
 import ExternalConnectionAddModify from "./externalConnections/ExternalConnectionAddModify";
 import DatabaseCleaning from "./databaseCleaning/DatabaseCleaning";
 import AdminDashboard from "./AdminDashboard";
+import MasterDataIdentityManagement from "./masterDataIdentity/MasterDataIdentityManagement";
 
 function Admin() {
   const { path } = useRouteMatch();
@@ -325,6 +326,10 @@ function Admin() {
         component={ExternalConnectionAddModify}
       />
       <Route path={`${path}/DatabaseCleaning`} component={DatabaseCleaning} />
+      <Route
+        path={`${path}/masterDataIdentity`}
+        component={MasterDataIdentityManagement}
+      />
       <Route
         path={path}
         exact

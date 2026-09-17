@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <changeSet id="master-data-identity-001" author="openelis-cn">
+        <comment>Canonical codes, source systems and validity windows for interface-facing master data.</comment>
+        <createSequence sequenceName="master_data_identity_seq" startValue="1" incrementBy="1"/>
+        <createTable schemaName="clinlims" tableName="master_data_identity">
+            <column name="id" type="BIGINT" defaultValueSequenceNext="master_data_identity_seq">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="entity_type" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="test_id" type="BIGINT"/>
+            <column name="sample_type_id" type="BIGINT"/>
+            <column name="organization_id" type="BIGINT"/>
+            <column name="provider_id" type="BIGINT"/>
+            <column name="canonical_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="source_system" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="valid_from" type="DATE"/>
+            <column name="valid_to" type="DATE"/>
+            <column name="created_by" type="INTEGER"><constraints nullable="false"/></column>
+            <column name="updated_by" type="INTEGER"><constraints nullable="false"/></column>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="last_updated" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
+        </createTable>
+        <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="master_data_identity" baseColumnNames="test_id"
+            referencedTableSchemaName="clinlims" referencedTableName="test" referencedColumnNames="id"
+            constraintName="fk_master_identity_test" onDelete="RESTRICT"/>
+        <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="master_data_identity" baseColumnNames="sample_type_id"
+            referencedTableSchemaName="clinlims" referencedTableName="type_of_sample" referencedColumnNames="id"
+            constraintName="fk_master_identity_sample_type" onDelete="RESTRICT"/>
+        <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="master_data_identity" baseColumnNames="organization_id"
+            referencedTableSchemaName="clinlims" referencedTableName="organization" referencedColumnNames="id"
+            constraintName="fk_master_identity_organization" onDelete="RESTRICT"/>
+        <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="master_data_identity" baseColumnNames="provider_id"
+            referencedTableSchemaName="clinlims" referencedTableName="provider" referencedColumnNames="id"
+            constraintName="fk_master_identity_provider" onDelete="RESTRICT"/>
+        <sql>
+            ALTER TABLE clinlims.master_data_identity
+              ADD CONSTRAINT chk_master_identity_type CHECK (entity_type IN ('TEST','SAMPLE_TYPE','ORGANIZATION','PROVIDER')),
+              ADD CONSTRAINT chk_master_identity_one_reference CHECK (num_nonnulls(test_id, sample_type_id, organization_id, provider_id) = 1),
+              ADD CONSTRAINT chk_master_identity_reference_matches_type CHECK (
+                (entity_type = 'TEST' AND test_id IS NOT NULL) OR
+                (entity_type = 'SAMPLE_TYPE' AND sample_type_id IS NOT NULL) OR
+                (entity_type = 'ORGANIZATION' AND organization_id IS NOT NULL) OR
+                (entity_type = 'PROVIDER' AND provider_id IS NOT NULL)),
+              ADD CONSTRAINT chk_master_identity_validity CHECK (valid_to IS NULL OR valid_from IS NULL OR valid_to &gt;= valid_from),
+              ADD CONSTRAINT chk_master_identity_code_nonblank CHECK (btrim(canonical_code) &lt;&gt; ''),
+              ADD CONSTRAINT chk_master_identity_source_nonblank CHECK (btrim(source_system) &lt;&gt; '');
+
+            CREATE UNIQUE INDEX uq_master_identity_test ON clinlims.master_data_identity(test_id) WHERE test_id IS NOT NULL;
+            CREATE UNIQUE INDEX uq_master_identity_sample_type ON clinlims.master_data_identity(sample_type_id) WHERE sample_type_id IS NOT NULL;
+            CREATE UNIQUE INDEX uq_master_identity_organization ON clinlims.master_data_identity(organization_id) WHERE organization_id IS NOT NULL;
+            CREATE UNIQUE INDEX uq_master_identity_provider ON clinlims.master_data_identity(provider_id) WHERE provider_id IS NOT NULL;
+            CREATE UNIQUE INDEX uq_master_identity_code ON clinlims.master_data_identity(entity_type, upper(btrim(canonical_code)));
+            CREATE INDEX idx_master_identity_status ON clinlims.master_data_identity(entity_type, valid_from, valid_to);
+        </sql>
+
+        <createTable schemaName="clinlims" tableName="master_data_identity_history">
+            <column name="id" type="BIGSERIAL"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="identity_id" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="entity_type" type="VARCHAR(24)"><constraints nullable="false"/></column>
+            <column name="entity_id" type="BIGINT"><constraints nullable="false"/></column>
+            <column name="canonical_code" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="source_system" type="VARCHAR(64)"><constraints nullable="false"/></column>
+            <column name="valid_from" type="DATE"/>
+            <column name="valid_to" type="DATE"/>
+            <column name="changed_by" type="INTEGER"><constraints nullable="false"/></column>
+            <column name="changed_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
+        </createTable>
+        <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="master_data_identity_history" baseColumnNames="identity_id"
+            referencedTableSchemaName="clinlims" referencedTableName="master_data_identity" referencedColumnNames="id"
+            constraintName="fk_master_identity_history" onDelete="RESTRICT"/>
+        <createIndex schemaName="clinlims" tableName="master_data_identity_history" indexName="idx_master_identity_history_identity">
+            <column name="identity_id"/><column name="changed_at"/>
+        </createIndex>
+
+        <sql splitStatements="false"><![CDATA[
+            CREATE OR REPLACE FUNCTION clinlims.capture_master_data_identity_history()
+            RETURNS trigger AS $$
+            BEGIN
+              IF TG_OP = 'DELETE' THEN
+                RAISE EXCEPTION 'Master data identities cannot be deleted; set valid_to instead';
+              END IF;
+              IF NEW.entity_type IS DISTINCT FROM OLD.entity_type
+                 OR NEW.test_id IS DISTINCT FROM OLD.test_id
+                 OR NEW.sample_type_id IS DISTINCT FROM OLD.sample_type_id
+                 OR NEW.organization_id IS DISTINCT FROM OLD.organization_id
+                 OR NEW.provider_id IS DISTINCT FROM OLD.provider_id THEN
+                RAISE EXCEPTION 'Master data identity target cannot be changed';
+              END IF;
+              INSERT INTO clinlims.master_data_identity_history
+                (identity_id, entity_type, entity_id, canonical_code, source_system, valid_from, valid_to, changed_by)
+              VALUES
+                (OLD.id, OLD.entity_type, COALESCE(OLD.test_id, OLD.sample_type_id, OLD.organization_id, OLD.provider_id),
+                 OLD.canonical_code, OLD.source_system, OLD.valid_from, OLD.valid_to, NEW.updated_by);
+              NEW.last_updated := CURRENT_TIMESTAMP;
+              RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+            CREATE TRIGGER trg_master_data_identity_history
+              BEFORE UPDATE OR DELETE ON clinlims.master_data_identity
+              FOR EACH ROW EXECUTE FUNCTION clinlims.capture_master_data_identity_history();
+        ]]></sql>
+
+        <sql><![CDATA[
+            INSERT INTO clinlims.master_data_identity
+              (entity_type, test_id, canonical_code, source_system, valid_from, valid_to, created_by, updated_by)
+            SELECT 'TEST', id, code, 'LEGACY_IMPORT', active_begin, active_end, 1, 1
+              FROM (SELECT id, upper(btrim(local_code)) code, active_begin, active_end,
+                           row_number() OVER (PARTITION BY upper(btrim(local_code)) ORDER BY id) rn
+                      FROM clinlims.test WHERE local_code IS NOT NULL AND btrim(local_code) <> '') s WHERE rn = 1;
+            INSERT INTO clinlims.master_data_identity
+              (entity_type, sample_type_id, canonical_code, source_system, created_by, updated_by)
+            SELECT 'SAMPLE_TYPE', id, code, 'LEGACY_IMPORT', 1, 1
+              FROM (SELECT id, upper(btrim(local_abbrev)) code,
+                           row_number() OVER (PARTITION BY upper(btrim(local_abbrev)) ORDER BY id) rn
+                      FROM clinlims.type_of_sample WHERE local_abbrev IS NOT NULL AND btrim(local_abbrev) <> '') s WHERE rn = 1;
+            INSERT INTO clinlims.master_data_identity
+              (entity_type, organization_id, canonical_code, source_system, created_by, updated_by)
+            SELECT 'ORGANIZATION', id, code, 'LEGACY_IMPORT', 1, 1
+              FROM (SELECT id, upper(btrim(code)) code,
+                           row_number() OVER (PARTITION BY upper(btrim(code)) ORDER BY id) rn
+                      FROM clinlims.organization WHERE code IS NOT NULL AND btrim(code) <> '') s WHERE rn = 1;
+            INSERT INTO clinlims.master_data_identity
+              (entity_type, provider_id, canonical_code, source_system, created_by, updated_by)
+            SELECT 'PROVIDER', id, code, 'LEGACY_IMPORT', 1, 1
+              FROM (SELECT id, upper(btrim(external_id)) code,
+                           row_number() OVER (PARTITION BY upper(btrim(external_id)) ORDER BY id) rn
+                      FROM clinlims.provider WHERE external_id IS NOT NULL AND btrim(external_id) <> '') s WHERE rn = 1;
+        ]]></sql>
+        <rollback>
+            <sql>DROP FUNCTION IF EXISTS clinlims.capture_master_data_identity_history() CASCADE;</sql>
+            <dropTable schemaName="clinlims" tableName="master_data_identity_history"/>
+            <dropTable schemaName="clinlims" tableName="master_data_identity"/>
+            <dropSequence sequenceName="master_data_identity_seq"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>
