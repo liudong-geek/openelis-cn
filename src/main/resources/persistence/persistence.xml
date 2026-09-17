@@ -128,6 +128,7 @@
         <!-- Sample Type Request (OGC-356) -->
         <class>org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest</class>
         <class>org.openelisglobal.fhir.valueholder.FhirIntakeReceipt</class>
+        <class>org.openelisglobal.integration.outbox.HisResultOutbox</class>
         <!-- Electronic Signature entities (21 CFR Part 11 Compliance) -->
         <class>org.openelisglobal.esig.valueholder.ElectronicSignature</class>
         <class>org.openelisglobal.esig.valueholder.EsigFirstUseCertification</class>

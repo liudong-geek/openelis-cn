@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <changeSet id="i03-his-result-outbox-1" author="openelis-cn">
+        <createSequence sequenceName="his_result_outbox_seq" startValue="1" incrementBy="1"/>
+        <createTable tableName="his_result_outbox">
+            <column name="id" type="BIGINT" defaultValueSequenceNext="his_result_outbox_seq">
+                <constraints primaryKey="true" nullable="false" primaryKeyName="pk_his_result_outbox"/>
+            </column>
+            <column name="source_system" type="VARCHAR(80)"><constraints nullable="false"/></column>
+            <column name="business_id" type="VARCHAR(120)"><constraints nullable="false"/></column>
+            <column name="event_type" type="VARCHAR(30)"><constraints nullable="false"/></column>
+            <column name="idempotency_key" type="VARCHAR(128)"><constraints nullable="false" unique="true" uniqueConstraintName="uq_his_result_outbox_idempotency"/></column>
+            <column name="payload" type="TEXT"><constraints nullable="false"/></column>
+            <column name="payload_hash" type="CHAR(64)"><constraints nullable="false"/></column>
+            <column name="status" type="VARCHAR(30)" defaultValue="PENDING"><constraints nullable="false"/></column>
+            <column name="attempt_count" type="INT" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="max_attempts" type="INT" defaultValueNumeric="5"><constraints nullable="false"/></column>
+            <column name="next_attempt_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="response_code" type="VARCHAR(40)"/>
+            <column name="response_body" type="TEXT"/>
+            <column name="last_error" type="TEXT"/>
+            <column name="owner" type="VARCHAR(120)"/>
+            <column name="close_reason" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="acknowledged_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="last_updated" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="his_result_outbox" indexName="idx_his_result_outbox_dispatch">
+            <column name="status"/><column name="next_attempt_at"/>
+        </createIndex>
+        <createIndex tableName="his_result_outbox" indexName="idx_his_result_outbox_business">
+            <column name="source_system"/><column name="business_id"/>
+        </createIndex>
+        <sql>
+            ALTER TABLE clinlims.his_result_outbox ADD CONSTRAINT chk_his_result_outbox_status
+            CHECK (status IN ('PENDING','FAILED','ACKNOWLEDGED','DEAD_LETTER','CLOSED'));
+            ALTER TABLE clinlims.his_result_outbox ADD CONSTRAINT chk_his_result_outbox_event
+            CHECK (event_type IN ('RESULT','REPORT','AMENDMENT','WITHDRAWAL'));
+            ALTER TABLE clinlims.his_result_outbox ADD CONSTRAINT chk_his_result_outbox_attempts
+            CHECK (attempt_count &gt;= 0 AND max_attempts BETWEEN 1 AND 20);
+            ALTER TABLE clinlims.his_result_outbox ADD CONSTRAINT chk_his_result_outbox_hash
+            CHECK (payload_hash ~ '^[0-9a-f]{64}$');
+            ALTER TABLE clinlims.his_result_outbox ADD CONSTRAINT chk_his_result_outbox_close
+            CHECK (status &lt;&gt; 'CLOSED' OR length(btrim(close_reason)) &gt; 0);
+        </sql>
+        <sql splitStatements="false"><![CDATA[
+            CREATE OR REPLACE FUNCTION clinlims.freeze_his_result_outbox_evidence()
+            RETURNS trigger AS $body$
+            BEGIN
+                IF NEW.source_system IS DISTINCT FROM OLD.source_system
+                   OR NEW.business_id IS DISTINCT FROM OLD.business_id
+                   OR NEW.event_type IS DISTINCT FROM OLD.event_type
+                   OR NEW.idempotency_key IS DISTINCT FROM OLD.idempotency_key
+                   OR NEW.payload IS DISTINCT FROM OLD.payload
+                   OR NEW.payload_hash IS DISTINCT FROM OLD.payload_hash
+                   OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+                    RAISE EXCEPTION 'HIS result outbox evidence is immutable' USING ERRCODE = '55000';
+                END IF;
+                RETURN NEW;
+            END;
+            $body$ LANGUAGE plpgsql;
+
+            CREATE TRIGGER trg_freeze_his_result_outbox_evidence
+            BEFORE UPDATE ON clinlims.his_result_outbox
+            FOR EACH ROW EXECUTE FUNCTION clinlims.freeze_his_result_outbox_evidence();
+        ]]></sql>
+    </changeSet>
+</databaseChangeLog>

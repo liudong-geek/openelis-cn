@@ -22,6 +22,7 @@ import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import ReportGroupingConfiguration from "./ReportGroupingConfiguration";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import { refreshCurrentRoute } from "../../utils/NavigationUtils";
+import HisResultOutboxPanel from "./HisResultOutboxPanel";
 
 let breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -191,6 +192,7 @@ function ResultReportingConfiguration() {
         </Grid>
         <div className="orderLegendBody">
           <ReportGroupingConfiguration />
+          <HisResultOutboxPanel />
           {reportsShow &&
             reportsShow.map((report, index) => (
               <div key={index}>
