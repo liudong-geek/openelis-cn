@@ -58,6 +58,12 @@ public class QCRuleViolation extends BaseObject<String> {
     @Column(name = "resolved_by_user_id")
     private Integer resolvedByUserId;
 
+    @Column(name = "acknowledged_date_time")
+    private Timestamp acknowledgedDateTime;
+
+    @Column(name = "acknowledged_by_user_id")
+    private Integer acknowledgedByUserId;
+
     @Column(name = "resolution_notes", columnDefinition = "TEXT")
     private String resolutionNotes;
 
@@ -148,6 +154,22 @@ public class QCRuleViolation extends BaseObject<String> {
 
     public void setResolvedByUserId(Integer resolvedByUserId) {
         this.resolvedByUserId = resolvedByUserId;
+    }
+
+    public Timestamp getAcknowledgedDateTime() {
+        return acknowledgedDateTime;
+    }
+
+    public void setAcknowledgedDateTime(Timestamp acknowledgedDateTime) {
+        this.acknowledgedDateTime = acknowledgedDateTime;
+    }
+
+    public Integer getAcknowledgedByUserId() {
+        return acknowledgedByUserId;
+    }
+
+    public void setAcknowledgedByUserId(Integer acknowledgedByUserId) {
+        this.acknowledgedByUserId = acknowledgedByUserId;
     }
 
     public String getResolutionNotes() {

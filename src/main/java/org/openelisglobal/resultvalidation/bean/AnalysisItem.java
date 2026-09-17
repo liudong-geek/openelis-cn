@@ -20,6 +20,7 @@ import java.sql.Timestamp;
 import java.util.List;
 import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.common.validator.ValidationHelper;
+import org.openelisglobal.qc.dto.QCReleaseBlocker;
 import org.openelisglobal.resultvalidation.form.ResultValidationForm;
 import org.openelisglobal.validation.annotations.SafeHtml;
 import org.openelisglobal.validation.annotations.ValidAccessionNumber;
@@ -96,6 +97,15 @@ public class AnalysisItem implements Serializable {
 
     @Pattern(regexp = ValidationHelper.ID_REGEX, groups = { ResultValidationForm.ResultValidation.class })
     private String testId;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private String analyzerId;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private boolean qcReleaseBlocked;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private List<QCReleaseBlocker> qcBlockingViolations = List.of();
 
     @Pattern(regexp = ValidationHelper.ID_REGEX, groups = { ResultValidationForm.ResultValidation.class })
     private String resultId;
@@ -388,6 +398,31 @@ public class AnalysisItem implements Serializable {
 
     public String getTestId() {
         return testId;
+    }
+
+    public String getAnalyzerId() {
+        return analyzerId;
+    }
+
+    public void setAnalyzerId(String analyzerId) {
+        this.analyzerId = analyzerId;
+    }
+
+    public boolean isQcReleaseBlocked() {
+        return qcReleaseBlocked;
+    }
+
+    public void setQcReleaseBlocked(boolean qcReleaseBlocked) {
+        this.qcReleaseBlocked = qcReleaseBlocked;
+    }
+
+    public List<QCReleaseBlocker> getQcBlockingViolations() {
+        return qcBlockingViolations;
+    }
+
+    public void setQcBlockingViolations(List<QCReleaseBlocker> qcBlockingViolations) {
+        this.qcBlockingViolations = qcBlockingViolations == null ? List.of() : List.copyOf(qcBlockingViolations);
+        this.qcReleaseBlocked = !this.qcBlockingViolations.isEmpty();
     }
 
     public void setCompleteDate(String completeDate) {

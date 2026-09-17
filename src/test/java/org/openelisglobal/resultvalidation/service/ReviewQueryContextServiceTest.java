@@ -27,6 +27,8 @@ import org.openelisglobal.common.paging.PagingProperties;
 import org.openelisglobal.resultvalidation.bean.AnalysisItem;
 import org.openelisglobal.resultvalidation.form.ResultValidationForm;
 import org.openelisglobal.resultvalidation.util.ResultsValidationUtility;
+import org.openelisglobal.qc.dto.QCReleaseBlocker;
+import org.openelisglobal.qc.service.QCReleaseGateService;
 import org.openelisglobal.systemuser.service.UserService;
 import org.openelisglobal.test.valueholder.TestSection;
 import org.springframework.mock.web.MockHttpSession;
@@ -41,6 +43,7 @@ public class ReviewQueryContextServiceTest {
     private MutableClock clock;
     private boolean authorized;
     private boolean masked;
+    private QCReleaseGateService qcReleaseGate;
 
     @Before public void setup() {
         oldForms = ReflectionTestUtils.getField(FormFields.class, "instance");
@@ -50,7 +53,9 @@ public class ReviewQueryContextServiceTest {
         PagingProperties paging = mock(PagingProperties.class);
         when(paging.getValidationPageSize()).thenReturn(1);
         clock = new MutableClock();
-        service = new ReviewQueryContextService(analyses, users, paging, mock(ResultsValidationUtility.class), clock, () -> masked);
+        qcReleaseGate = mock(QCReleaseGateService.class);
+        service = new ReviewQueryContextService(analyses, users, paging, mock(ResultsValidationUtility.class),
+                qcReleaseGate, clock, () -> masked);
         session = new MockHttpSession();
         authorized = true;
         when(users.filterAnalysesByLabUnitRoles(anyString(), anyList(), anyString())).thenAnswer(call -> {
@@ -84,6 +89,24 @@ public class ReviewQueryContextServiceTest {
         service.page(session, "7", form, form.getQueryId(), "1");
         assertEquals("3.33", form.getResultList().get(0).getResult());
         assertFalse(form.getResultList().get(0).getIsAccepted());
+    }
+
+    @Test public void queryProjectsServerOwnedQcReleaseBlockers() {
+        AnalysisItem source = row("1", "SIM-A");
+        analyses.get("1").setAnalyzerId("31");
+        when(qcReleaseGate.blockersFor(analyses.get("1"))).thenReturn(List.of(new QCReleaseBlocker("v-1", "1_3S",
+                "REJECTION", "31", "101", Timestamp.valueOf("2026-09-17 08:00:00"), "ACKNOWLEDGED")));
+        ResultValidationForm form = create("SIM-A", source);
+        AnalysisItem displayed = form.getResultList().get(0);
+        assertEquals("31", displayed.getAnalyzerId());
+        assertTrue(displayed.isQcReleaseBlocked());
+        assertEquals("v-1", displayed.getQcBlockingViolations().get(0).violationId());
+
+        displayed.setQcBlockingViolations(List.of());
+        displayed.setIsAccepted(true);
+        AnalysisItem saved = service.consumeForSave(session, "7", form).get(0);
+        assertTrue(saved.isQcReleaseBlocked());
+        assertEquals("v-1", saved.getQcBlockingViolations().get(0).violationId());
     }
 
     @Test public void missingForeignActorCriteriaAndInvalidPagesFailClosed() {

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+  <changeSet id="qc-020-separate-acknowledgment-evidence" author="openelis-cn">
+    <comment>Preserve acknowledgment evidence separately from corrective-action resolution</comment>
+    <addColumn tableName="qc_rule_violation">
+      <column name="acknowledged_date_time" type="TIMESTAMP"/>
+      <column name="acknowledged_by_user_id" type="INT"/>
+    </addColumn>
+    <sql>
+      UPDATE qc_rule_violation
+         SET acknowledged_date_time = resolved_date_time,
+             acknowledged_by_user_id = resolved_by_user_id,
+             resolved_date_time = NULL,
+             resolved_by_user_id = NULL
+       WHERE resolution_status = 'ACKNOWLEDGED';
+    </sql>
+    <addForeignKeyConstraint
+      baseTableName="qc_rule_violation"
+      baseColumnNames="acknowledged_by_user_id"
+      constraintName="fk_qc_violation_ack_user"
+      referencedTableName="system_user"
+      referencedColumnNames="id"/>
+    <createIndex tableName="qc_rule_violation" indexName="idx_qc_violation_release_gate">
+      <column name="instrument_id"/>
+      <column name="test_id"/>
+      <column name="severity"/>
+      <column name="resolution_status"/>
+    </createIndex>
+  </changeSet>
+
+  <changeSet id="qc-021-freeze-violation-release-evidence" author="openelis-cn">
+    <comment>Prevent rule, instrument, test, severity, and triggering evidence from changing after detection</comment>
+    <sql splitStatements="false"><![CDATA[
+      CREATE OR REPLACE FUNCTION clinlims.freeze_qc_violation_evidence()
+      RETURNS trigger AS $body$
+      BEGIN
+        IF NEW.triggering_result_id IS DISTINCT FROM OLD.triggering_result_id
+           OR NEW.rule_code IS DISTINCT FROM OLD.rule_code
+           OR NEW.violation_date_time IS DISTINCT FROM OLD.violation_date_time
+           OR NEW.severity IS DISTINCT FROM OLD.severity
+           OR NEW.instrument_id IS DISTINCT FROM OLD.instrument_id
+           OR NEW.test_id IS DISTINCT FROM OLD.test_id THEN
+          RAISE EXCEPTION 'QC violation release evidence is immutable'
+            USING ERRCODE = '55000';
+        END IF;
+        RETURN NEW;
+      END;
+      $body$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS trg_freeze_qc_violation_evidence ON clinlims.qc_rule_violation;
+      CREATE TRIGGER trg_freeze_qc_violation_evidence
+      BEFORE UPDATE ON clinlims.qc_rule_violation
+      FOR EACH ROW EXECUTE FUNCTION clinlims.freeze_qc_violation_evidence();
+    ]]></sql>
+  </changeSet>
+</databaseChangeLog>

@@ -3,6 +3,7 @@ package org.openelisglobal.qc.dao;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Root;
+import jakarta.persistence.LockModeType;
 import java.sql.Timestamp;
 import java.util.List;
 import org.openelisglobal.common.daoimpl.BaseDAOImpl;
@@ -107,6 +108,36 @@ public class QCRuleViolationDAOImpl extends BaseDAOImpl<QCRuleViolation, String>
             return entityManager.createQuery(cq).getResultList();
         } catch (RuntimeException e) {
             throw new LIMSRuntimeException("Error retrieving QC violations by triggering result ID", e);
+        }
+    }
+
+    @Override
+    public List<QCRuleViolation> findReleaseBlocking(String instrumentId, String testId) throws LIMSRuntimeException {
+        return releaseBlocking(instrumentId, testId, false);
+    }
+
+    @Override
+    public List<QCRuleViolation> lockReleaseBlocking(String instrumentId, String testId) throws LIMSRuntimeException {
+        return releaseBlocking(instrumentId, testId, true);
+    }
+
+    private List<QCRuleViolation> releaseBlocking(String instrumentId, String testId, boolean lock)
+            throws LIMSRuntimeException {
+        try {
+            CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+            CriteriaQuery<QCRuleViolation> cq = cb.createQuery(QCRuleViolation.class);
+            Root<QCRuleViolation> root = cq.from(QCRuleViolation.class);
+            cq.where(cb.equal(root.get("instrumentId"), instrumentId), cb.equal(root.get("testId"), testId),
+                    cb.equal(root.get("severity"), "REJECTION"),
+                    root.get("resolutionStatus").in(List.of("UNRESOLVED", "ACKNOWLEDGED")));
+            cq.orderBy(cb.desc(root.get("violationDateTime")), cb.asc(root.get("id")));
+            var query = entityManager.createQuery(cq);
+            if (lock) {
+                query.setLockMode(LockModeType.PESSIMISTIC_READ);
+            }
+            return query.getResultList();
+        } catch (RuntimeException e) {
+            throw new LIMSRuntimeException("Error retrieving QC release blockers", e);
         }
     }
 }

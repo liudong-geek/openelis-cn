@@ -32,6 +32,8 @@ import {
   Button,
   Loading,
   InlineNotification,
+  Modal,
+  TextArea,
 } from "@carbon/react";
 import { CheckmarkFilled } from "@carbon/icons-react";
 import { useIntl } from "react-intl";
@@ -56,6 +58,9 @@ const AlertsTab = ({ refreshToken = 0 }) => {
   const [error, setError] = useState(null);
   const [timePeriod, setTimePeriod] = useState("72h");
   const [acknowledgingId, setAcknowledgingId] = useState(null);
+  const [resolvingViolation, setResolvingViolation] = useState(null);
+  const [resolutionNotes, setResolutionNotes] = useState("");
+  const [resolving, setResolving] = useState(false);
 
   const timePeriodOptions = [
     {
@@ -169,6 +174,37 @@ const AlertsTab = ({ refreshToken = 0 }) => {
     );
   };
 
+  const handleResolve = () => {
+    if (!resolvingViolation || !resolutionNotes.trim() || resolving) return;
+    setResolving(true);
+    setError(null);
+    const endpoint = `/rest/qc/violations/${encodeURIComponent(
+      resolvingViolation.id,
+    )}/resolve`;
+    postToOpenElisServerFullResponse(
+      endpoint,
+      JSON.stringify({ notes: resolutionNotes.trim() }),
+      (response) => {
+        if (response?.ok) {
+          setResolvingViolation(null);
+          setResolutionNotes("");
+          setResolving(false);
+          loadViolations();
+        } else {
+          setResolving(false);
+          setError({
+            title: intl.formatMessage({
+              id: "qc.violations.error.resolveTitle",
+            }),
+            message: intl.formatMessage({
+              id: "qc.violations.error.resolveFailed",
+            }),
+          });
+        }
+      },
+    );
+  };
+
   const formatSeverity = (severity) => {
     const normalizedSeverity = String(severity || "WARNING").toLowerCase();
     const knownSeverities = ["warning", "rejection"];
@@ -214,6 +250,10 @@ const AlertsTab = ({ refreshToken = 0 }) => {
         id: "qc.dashboard.alerts.col.acknowledgedDate",
       }),
     },
+    {
+      key: "action",
+      header: intl.formatMessage({ id: "qc.dashboard.alerts.col.action" }),
+    },
   ];
 
   const acknowledgedRows = acknowledgedViolations.map((v) => ({
@@ -224,6 +264,7 @@ const AlertsTab = ({ refreshToken = 0 }) => {
     rule: v.ruleCode || "-",
     acknowledgedBy: v.resolvedByUserName || "-",
     acknowledgedDate: formatTimestamp(v.acknowledgedDate),
+    action: String(v.id),
   }));
 
   if (loading && violations.length === 0) {
@@ -422,6 +463,27 @@ const AlertsTab = ({ refreshToken = 0 }) => {
                             );
                           }
 
+                          if (cell.info.header === "action") {
+                            const violation = acknowledgedViolations.find(
+                              (candidate) =>
+                                String(candidate.id) === cell.value,
+                            );
+                            cellContent = (
+                              <Button
+                                kind="tertiary"
+                                size="sm"
+                                onClick={() => {
+                                  setResolvingViolation(violation);
+                                  setResolutionNotes("");
+                                }}
+                              >
+                                {intl.formatMessage({
+                                  id: "qc.dashboard.alerts.resolve",
+                                })}
+                              </Button>
+                            );
+                          }
+
                           return (
                             <TableCell key={cell.id}>{cellContent}</TableCell>
                           );
@@ -435,6 +497,41 @@ const AlertsTab = ({ refreshToken = 0 }) => {
           </TableContainer>
         )}
       </div>
+      <Modal
+        open={Boolean(resolvingViolation)}
+        modalHeading={intl.formatMessage({
+          id: "qc.dashboard.alerts.resolve.title",
+        })}
+        primaryButtonText={intl.formatMessage({
+          id: resolving
+            ? "qc.dashboard.alerts.resolving"
+            : "qc.dashboard.alerts.resolve.confirm",
+        })}
+        secondaryButtonText={intl.formatMessage({ id: "button.cancel" })}
+        primaryButtonDisabled={!resolutionNotes.trim() || resolving}
+        onRequestSubmit={handleResolve}
+        onRequestClose={() => {
+          if (resolving) return;
+          setResolvingViolation(null);
+          setResolutionNotes("");
+        }}
+      >
+        <p>
+          {intl.formatMessage({
+            id: "qc.dashboard.alerts.resolve.description",
+          })}
+        </p>
+        <TextArea
+          id="qc-resolution-notes"
+          labelText={intl.formatMessage({
+            id: "qc.dashboard.alerts.resolve.notes",
+          })}
+          value={resolutionNotes}
+          maxLength={2000}
+          disabled={resolving}
+          onChange={(event) => setResolutionNotes(event.target.value)}
+        />
+      </Modal>
     </div>
   );
 };

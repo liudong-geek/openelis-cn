@@ -26,6 +26,7 @@ import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.resultvalidation.bean.AnalysisItem;
 import org.openelisglobal.resultvalidation.form.ResultValidationForm;
 import org.openelisglobal.resultvalidation.util.ResultsValidationUtility;
+import org.openelisglobal.qc.service.QCReleaseGateService;
 import org.openelisglobal.systemuser.service.UserService;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,22 +47,25 @@ public class ReviewQueryContextService {
     private final PagingProperties pagingProperties;
     private final Clock clock;
     private final ResultsValidationUtility utility;
+    private final QCReleaseGateService qcReleaseGate;
     private final BooleanSupplier depersonalized;
 
     @Autowired
     public ReviewQueryContextService(AnalysisService analysisService, UserService userService,
-            PagingProperties pagingProperties, ResultsValidationUtility utility) {
-        this(analysisService, userService, pagingProperties, utility, Clock.systemUTC(),
+            PagingProperties pagingProperties, ResultsValidationUtility utility, QCReleaseGateService qcReleaseGate) {
+        this(analysisService, userService, pagingProperties, utility, qcReleaseGate, Clock.systemUTC(),
                 () -> FormFields.getInstance().useField(Field.DepersonalizedResults));
     }
 
     ReviewQueryContextService(AnalysisService analysisService, UserService userService,
-            PagingProperties pagingProperties, ResultsValidationUtility utility, Clock clock, BooleanSupplier depersonalized) {
+            PagingProperties pagingProperties, ResultsValidationUtility utility, QCReleaseGateService qcReleaseGate,
+            Clock clock, BooleanSupplier depersonalized) {
         this.analysisService = analysisService;
         this.userService = userService;
         this.pagingProperties = pagingProperties;
         this.clock = clock;
         this.utility = utility;
+        this.qcReleaseGate = qcReleaseGate;
         this.depersonalized = depersonalized;
     }
 
@@ -71,6 +75,7 @@ public class ReviewQueryContextService {
         Set<String> visible = authorizedIds(actor, analyses);
         List<AnalysisItem> allowed = rows.stream().filter(row -> visible.contains(row.getAnalysisId()))
                 .map(SerializationUtils::clone).collect(Collectors.toList());
+        annotateQualityControl(allowed, analyses);
         utility.populateReviewPatientInfo(allowed, masked);
         if (masked != depersonalized.getAsBoolean()) {
             throw stale();
@@ -178,6 +183,16 @@ public class ReviewQueryContextService {
     private Set<String> authorizedIds(String actor, Map<String, Analysis> analyses) {
         return userService.filterAnalysesByLabUnitRoles(actor, new ArrayList<>(analyses.values()),
                 Constants.ROLE_VALIDATION).stream().map(Analysis::getId).collect(Collectors.toSet());
+    }
+
+    private void annotateQualityControl(List<AnalysisItem> rows, Map<String, Analysis> analyses) {
+        Map<String, List<org.openelisglobal.qc.dto.QCReleaseBlocker>> blockers = new LinkedHashMap<>();
+        for (AnalysisItem row : rows) {
+            Analysis analysis = analyses.get(row.getAnalysisId());
+            row.setAnalyzerId(analysis == null ? null : analysis.getAnalyzerId());
+            row.setQcBlockingViolations(blockers.computeIfAbsent(row.getAnalysisId(),
+                    ignored -> qcReleaseGate.blockersFor(analysis)));
+        }
     }
 
     private Context requireContext(HttpSession session, String actor, ResultValidationForm form, String queryId) {

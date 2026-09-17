@@ -231,7 +231,10 @@ public class QCRuleViolationServiceTest {
         QCRuleViolation result = violationService.acknowledgeViolation("V1", 1);
 
         assertEquals("ACKNOWLEDGED", result.getResolutionStatus());
-        assertEquals(Integer.valueOf(1), result.getResolvedByUserId());
+        assertEquals(Integer.valueOf(1), result.getAcknowledgedByUserId());
+        assertNotNull(result.getAcknowledgedDateTime());
+        assertNull(result.getResolvedByUserId());
+        assertNull(result.getResolvedDateTime());
         assertTrue(result.getResolutionNotes().contains("Acknowledged by user 1"));
 
         verify(violationDAO).update(violation);
@@ -249,6 +252,27 @@ public class QCRuleViolationServiceTest {
 
         assertEquals("RESOLVED", result.getResolutionStatus());
         verify(violationDAO, never()).update(any());
+    }
+
+    @Test
+    public void resolveRequiresCorrectiveActionAndPreservesAcknowledgmentEvidence() {
+        QCRuleViolation violation = new QCRuleViolation();
+        violation.setId("V1");
+        violation.setResolutionStatus("ACKNOWLEDGED");
+        violation.setAcknowledgedByUserId(7);
+        Timestamp acknowledged = Timestamp.valueOf("2026-09-17 08:00:00");
+        violation.setAcknowledgedDateTime(acknowledged);
+        when(violationDAO.get("V1")).thenReturn(Optional.of(violation));
+
+        assertThrows(IllegalArgumentException.class, () -> violationService.resolveViolation("V1", 8, "  "));
+        verify(violationDAO, never()).update(any());
+
+        QCRuleViolation resolved = violationService.resolveViolation("V1", 8, "  重新校准并复测合格  ");
+        assertEquals("RESOLVED", resolved.getResolutionStatus());
+        assertEquals(Integer.valueOf(7), resolved.getAcknowledgedByUserId());
+        assertEquals(acknowledged, resolved.getAcknowledgedDateTime());
+        assertEquals(Integer.valueOf(8), resolved.getResolvedByUserId());
+        assertTrue(resolved.getResolutionNotes().contains("重新校准并复测合格"));
     }
 
     // ===================== getUnresolvedCountBySeverity tests

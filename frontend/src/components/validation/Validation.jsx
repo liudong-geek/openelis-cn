@@ -6,6 +6,7 @@ import {
   Column,
   Form,
   Grid,
+  InlineNotification,
   Pagination,
   TextArea,
 } from "@carbon/react";
@@ -168,6 +169,10 @@ const Validation = (props) => {
       showError("validation.review.reasonRequired");
       return null;
     }
+    if (selected.some((row) => row.isAccepted && row.qcReleaseBlocked)) {
+      showError("validation.qc.releaseBlocked.submit");
+      return null;
+    }
     return JSON.parse(JSON.stringify(props.results));
   };
   const handleBusy = (value) => {
@@ -180,9 +185,11 @@ const Validation = (props) => {
       id:
         status === 400
           ? "validation.review.invalidSubmission"
-          : [401, 403, 409].includes(status)
-            ? reviewContextErrorKey(status)
-            : "validation.query.submitUnconfirmed",
+          : status === 422
+            ? "validation.qc.releaseBlocked.submit"
+            : [401, 403, 409].includes(status)
+              ? reviewContextErrorKey(status)
+              : "validation.query.submitUnconfirmed",
     });
     let kind = NotificationKinds.error;
     setIsSubmitting(false);
@@ -248,20 +255,23 @@ const Validation = (props) => {
     );
     refreshSelection((version) => version + 1);
   };
-  const bulkRows = (onlyNormal = false) =>
+  const bulkRows = (onlyNormal = false, field) =>
     props.results.resultList.filter(
       (row) =>
         canReview(row) &&
+        !(field === "isAccepted" && row.qcReleaseBlocked) &&
         (!onlyNormal ||
           groupFor(row).every((member) => member.normal === true)),
     );
   const bulkChecked = (field, onlyNormal = false) => {
-    const rows = bulkRows(onlyNormal);
+    const rows = bulkRows(onlyNormal, field);
     return rows.length > 0 && rows.every((row) => row[field] === true);
   };
   const handleAutomatedCheck = (checked, field, onlyNormal = false) => {
     if (submitting.current) return;
-    bulkRows(onlyNormal).forEach((row) => setDecision(row, field, checked));
+    bulkRows(onlyNormal, field).forEach((row) =>
+      setDecision(row, field, checked),
+    );
     refreshSelection((version) => version + 1);
   };
 
@@ -387,7 +397,9 @@ const Validation = (props) => {
                     labelText=""
                     value={true}
                     checked={row.isAccepted === true}
-                    disabled={!canReview(row) || isSubmitting}
+                    disabled={
+                      !canReview(row) || row.qcReleaseBlocked || isSubmitting
+                    }
                     onChange={(e) => handleCheckBox(e, row.id)}
                   />
                 )}
@@ -492,6 +504,26 @@ const Validation = (props) => {
 
   return (
     <>
+      {props.results?.resultList?.some((row) => row.qcReleaseBlocked) && (
+        <InlineNotification
+          lowContrast
+          hideCloseButton
+          kind="error"
+          title={intl.formatMessage({
+            id: "validation.qc.releaseBlocked.title",
+          })}
+          subtitle={intl.formatMessage(
+            { id: "validation.qc.releaseBlocked.description" },
+            {
+              count: new Set(
+                props.results.resultList
+                  .filter((row) => row.qcReleaseBlocked)
+                  .map((row) => row.analysisId),
+              ).size,
+            },
+          )}
+        />
+      )}
       {props.results?.resultList?.length > 0 && (
         <Grid style={{ marginTop: "20px" }} className="gridBoundary">
           <Column lg={7} md={8} sm={2}>

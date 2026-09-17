@@ -4,6 +4,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.apache.commons.lang3.StringUtils;
 import org.openelisglobal.analyzer.service.AnalyzerService;
 import org.openelisglobal.analyzer.valueholder.Analyzer;
 import org.openelisglobal.common.log.LogEvent;
@@ -149,6 +150,18 @@ public class QCRuleViolationServiceImpl implements QCRuleViolationService {
             return null;
         }
 
+        if (STATUS_RESOLVED.equals(violation.getResolutionStatus())) {
+            return violation;
+        }
+        if (!STATUS_UNRESOLVED.equals(violation.getResolutionStatus())
+                && !STATUS_ACKNOWLEDGED.equals(violation.getResolutionStatus())) {
+            throw new IllegalStateException("QC violation is not in a resolvable state");
+        }
+        String resolution = StringUtils.trimToEmpty(notes);
+        if (resolution.isEmpty()) {
+            throw new IllegalArgumentException("Resolution notes are required");
+        }
+
         violation.setResolutionStatus(STATUS_RESOLVED);
         violation.setResolvedDateTime(Timestamp.from(Instant.now()));
         violation.setResolvedByUserId(userId);
@@ -156,9 +169,9 @@ public class QCRuleViolationServiceImpl implements QCRuleViolationService {
         // Append resolution notes
         String existingNotes = violation.getResolutionNotes();
         if (existingNotes != null && !existingNotes.isEmpty()) {
-            violation.setResolutionNotes(existingNotes + "\nResolution: " + notes);
+            violation.setResolutionNotes(existingNotes + "\nResolution: " + resolution);
         } else {
-            violation.setResolutionNotes("Resolution: " + notes);
+            violation.setResolutionNotes("Resolution: " + resolution);
         }
 
         violationDAO.update(violation);
@@ -181,11 +194,12 @@ public class QCRuleViolationServiceImpl implements QCRuleViolationService {
         // Only acknowledge if currently unresolved
         if (STATUS_UNRESOLVED.equals(violation.getResolutionStatus())) {
             violation.setResolutionStatus(STATUS_ACKNOWLEDGED);
-            violation.setResolvedByUserId(userId);
-            violation.setResolvedDateTime(Timestamp.from(Instant.now()));
+            violation.setAcknowledgedByUserId(userId);
+            violation.setAcknowledgedDateTime(Timestamp.from(Instant.now()));
 
             String existingNotes = violation.getResolutionNotes();
-            String ackNote = "Acknowledged by user " + userId + " at " + Instant.now();
+            String ackNote = "Acknowledged by user " + userId + " at "
+                    + violation.getAcknowledgedDateTime().toInstant();
             if (existingNotes != null && !existingNotes.isEmpty()) {
                 violation.setResolutionNotes(existingNotes + "\n" + ackNote);
             } else {
@@ -250,20 +264,23 @@ public class QCRuleViolationServiceImpl implements QCRuleViolationService {
             }
         }
 
-        if (violation.getResolvedByUserId() != null) {
+        Integer displayUserId = STATUS_ACKNOWLEDGED.equals(violation.getResolutionStatus())
+                ? violation.getAcknowledgedByUserId()
+                : violation.getResolvedByUserId();
+        if (displayUserId != null) {
             try {
-                SystemUser user = systemUserService.getUserById(String.valueOf(violation.getResolvedByUserId()));
+                SystemUser user = systemUserService.getUserById(String.valueOf(displayUserId));
                 if (user != null) {
                     form.setResolvedByUserName(user.getDisplayName());
                 }
             } catch (Exception e) {
                 LogEvent.logWarn(this.getClass().getName(), "toForm",
-                        "Could not resolve user name for ID " + violation.getResolvedByUserId());
+                        "Could not resolve user name for ID " + displayUserId);
             }
         }
 
         if (STATUS_ACKNOWLEDGED.equals(violation.getResolutionStatus())) {
-            form.setAcknowledgedDate(violation.getResolvedDateTime());
+            form.setAcknowledgedDate(violation.getAcknowledgedDateTime());
         }
 
         return form;

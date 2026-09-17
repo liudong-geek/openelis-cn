@@ -41,4 +41,10 @@ public interface QCRuleViolationDAO extends BaseDAO<QCRuleViolation, String> {
      * Get violations for a specific triggering QC result.
      */
     List<QCRuleViolation> findByTriggeringResultId(String triggeringResultId) throws LIMSRuntimeException;
+
+    /** Rejection-level failures that still block clinical result release. */
+    List<QCRuleViolation> findReleaseBlocking(String instrumentId, String testId) throws LIMSRuntimeException;
+
+    /** Same release blockers, locked for the surrounding review transaction. */
+    List<QCRuleViolation> lockReleaseBlocking(String instrumentId, String testId) throws LIMSRuntimeException;
 }

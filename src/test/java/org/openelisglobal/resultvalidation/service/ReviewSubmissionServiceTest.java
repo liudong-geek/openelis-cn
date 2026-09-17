@@ -21,6 +21,7 @@ import org.openelisglobal.login.valueholder.UserSessionData;
 import org.openelisglobal.note.service.NoteService;
 import org.openelisglobal.note.valueholder.Note;
 import org.openelisglobal.notification.service.TestNotificationService;
+import org.openelisglobal.qc.service.QCReleaseGateService;
 import org.openelisglobal.resultvalidation.form.ResultValidationForm;
 import org.openelisglobal.resultvalidation.form.ResultValidationForm.ReviewSignature;
 import org.openelisglobal.sample.service.SampleService;
@@ -46,6 +47,7 @@ public class ReviewSubmissionServiceTest {
     private MockHttpServletRequest request;
     private ReviewSignature credentials;
     private IResultUpdate updater;
+    private QCReleaseGateService qcReleaseGate;
 
     @Before
     public void setup() {
@@ -61,6 +63,7 @@ public class ReviewSubmissionServiceTest {
         notes = mock(NoteService.class);
         fhir = mock(FhirTransformService.class);
         notifications = mock(TestNotificationService.class);
+        qcReleaseGate = mock(QCReleaseGateService.class);
         var users = mock(SystemUserService.class);
         var user = new SystemUser();
         user.setId("801");
@@ -69,7 +72,8 @@ public class ReviewSubmissionServiceTest {
         when(users.get("801")).thenReturn(user);
         service = spy(
                 new ReviewSubmissionService(fixture.guard, analyses, fixture.statuses, notes, mock(SampleService.class),
-                        mock(SampleHumanService.class), signatures, users, fixture.specimens, fhir, notifications));
+                        mock(SampleHumanService.class), signatures, users, fixture.specimens, fhir, notifications,
+                        qcReleaseGate));
         updater = mock(IResultUpdate.class);
         doReturn(List.of(updater)).when(service).registeredUpdaters();
         request = new MockHttpServletRequest();
@@ -118,6 +122,15 @@ public class ReviewSubmissionServiceTest {
         assertNull(credentials.getPassword());
         assertEquals("20", fixture.analysis.getStatusId());
         assertEquals("5.2000", fixture.result.getValue());
+        verify(qcReleaseGate, atLeast(2)).requireReleasable(anyMap(), anyMap());
+    }
+
+    @Test public void qcReleaseBlockerStopsAcceptanceBeforeSignatureOrMutation() {
+        doThrow(QCReleaseGateService.blocked()).when(qcReleaseGate).requireReleasable(anyMap(), anyMap());
+        assertEquals(422, assertThrows(ResponseStatusException.class, this::save).getStatusCode().value());
+        verify(signatures, never()).executeSignatureForSnapshot(anyString(), anyString(), any(), anyString(), anyLong(),
+                any(), any(), any(), anyString());
+        verify(analyses, never()).update(any());
     }
 
     @Test public void invalidCredentialsNeverChangeAnalysisOrCreateNotes() {

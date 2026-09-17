@@ -30,6 +30,7 @@ import org.openelisglobal.note.service.NoteServiceImpl.NoteType;
 import org.openelisglobal.note.valueholder.Note;
 import org.openelisglobal.notification.service.TestNotificationService;
 import org.openelisglobal.notification.valueholder.NotificationConfigOption.NotificationNature;
+import org.openelisglobal.qc.service.QCReleaseGateService;
 import org.openelisglobal.result.action.util.ResultSet;
 import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO;
 import org.openelisglobal.result.valueholder.Result;
@@ -65,12 +66,13 @@ public class ReviewSubmissionService {
     private final OrdinaryResultSaveStateDAO states;
     private final FhirTransformService fhir;
     private final TestNotificationService notifications;
+    private final QCReleaseGateService qcReleaseGate;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public ReviewSubmissionService(ReviewWriteGuard guard, AnalysisService analyses, IStatusService statuses,
             NoteService notes, SampleService samples, SampleHumanService sampleHumans,
             ElectronicSignatureService signatures, SystemUserService users, OrdinaryResultSaveStateDAO states,
-            FhirTransformService fhir, TestNotificationService notifications) {
+            FhirTransformService fhir, TestNotificationService notifications, QCReleaseGateService qcReleaseGate) {
         this.guard = guard;
         this.analyses = analyses;
         this.statuses = statuses;
@@ -82,6 +84,7 @@ public class ReviewSubmissionService {
         this.states = states;
         this.fhir = fhir;
         this.notifications = notifications;
+        this.qcReleaseGate = qcReleaseGate;
     }
 
     @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
@@ -98,6 +101,7 @@ public class ReviewSubmissionService {
         try {
             verifyActor.run();
             var locked = guard.begin(actor, rows);
+            qcReleaseGate.requireReleasable(locked.analyses(), locked.decisions());
             boolean esigEnabled = signatures.isEsigEnabled();
             String login = null;
             if (esigEnabled) {
@@ -111,7 +115,7 @@ public class ReviewSubmissionService {
             Map<String, String> contents = new LinkedHashMap<>();
             Map<String, Long> signatureIds = new LinkedHashMap<>();
             for (var entry : locked.decisions().entrySet()) {
-                String content = content(entry.getKey(), actor, entry.getValue());
+                String content = content(entry.getKey(), actor, entry.getValue(), locked.analyses().get(entry.getKey()));
                 contents.put(entry.getKey(), content);
                 var decision = entry.getValue().get(0);
                 if (esigEnabled) {
@@ -180,6 +184,7 @@ public class ReviewSubmissionService {
             finishSamples(actor, changedAnalyses, changedSamples);
             Runnable verifyFinal = () -> {
                 verifyActor.run();
+                qcReleaseGate.requireReleasable(locked.analyses(), locked.decisions());
                 if (esigEnabled != signatures.isEsigEnabled())
                     throw ReviewWriteGuard.conflict();
                 locked.verifyResultsAndAccess().run();
@@ -269,7 +274,7 @@ public class ReviewSubmissionService {
         });
     }
 
-    private String content(String analysisId, String actor, List<AnalysisItem> rows) {
+    private String content(String analysisId, String actor, List<AnalysisItem> rows, Analysis analysis) {
         var row = rows.get(0);
         Map<String, Object> content = new LinkedHashMap<>();
         content.put("schema", "openelis.review.v1");
@@ -279,6 +284,9 @@ public class ReviewSubmissionService {
         content.put("sampleItemId", row.getSampleItemId());
         content.put("accessionNumber", row.getAccessionNumber());
         content.put("testId", row.getTestId());
+        content.put("analyzerId", analysis == null ? null : analysis.getAnalyzerId());
+        content.put("qualityControlReleaseGate",
+                analysis == null || StringUtils.isBlank(analysis.getAnalyzerId()) ? "NOT_APPLICABLE" : "PASSED");
         content.put("analysisVersion", row.getAnalysisLastupdated());
         content.put("sourceStatus", row.getStatusId());
         content.put("decision", row.getIsAccepted() ? "ACCEPT" : "RETURN");

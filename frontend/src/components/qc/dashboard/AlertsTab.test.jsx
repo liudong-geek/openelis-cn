@@ -87,4 +87,44 @@ describe("AlertsTab", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认已知悉" })).toBeEnabled();
   });
+
+  test("已确认的拒绝级失控必须填写纠正措施后才能解决", async () => {
+    getFromOpenElisServer.mockImplementation((_url, callback) =>
+      callback([
+        {
+          id: "V-RESOLVE",
+          severity: "REJECTION",
+          resolutionStatus: "ACKNOWLEDGED",
+          ruleCode: "1-3s",
+          instrumentName: "生化分析仪",
+          testName: "葡萄糖",
+          acknowledgedDate: new Date().toISOString(),
+          violationDateTime: new Date().toISOString(),
+        },
+      ]),
+    );
+    postToOpenElisServerFullResponse.mockImplementation(
+      (_url, _body, callback) => callback({ ok: true }),
+    );
+    const user = userEvent.setup();
+    renderAlerts();
+
+    await user.click(
+      await screen.findByRole("button", { name: "登记纠正措施" }),
+    );
+    const confirm = screen.getByRole("button", { name: "解决并恢复放行" });
+    expect(confirm).toBeDisabled();
+    await user.type(
+      screen.getByLabelText("纠正措施与验证结果"),
+      "重新校准并复测质控品合格",
+    );
+    expect(confirm).toBeEnabled();
+    await user.click(confirm);
+
+    expect(postToOpenElisServerFullResponse).toHaveBeenCalledWith(
+      "/rest/qc/violations/V-RESOLVE/resolve",
+      JSON.stringify({ notes: "重新校准并复测质控品合格" }),
+      expect.any(Function),
+    );
+  });
 });
