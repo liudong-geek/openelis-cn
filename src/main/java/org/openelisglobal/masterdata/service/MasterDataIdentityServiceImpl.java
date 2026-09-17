@@ -30,6 +30,7 @@ import org.openelisglobal.typeofsample.service.TypeOfSampleService;
 import org.openelisglobal.typeofsample.valueholder.TypeOfSample;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,6 +56,7 @@ public class MasterDataIdentityServiceImpl implements MasterDataIdentityService 
     private final ProviderService providerService;
     private final Clock clock;
 
+    @Autowired
     public MasterDataIdentityServiceImpl(MasterDataIdentityRepository repository, TestService testService,
             TypeOfSampleService sampleTypeService, OrganizationService organizationService,
             ProviderService providerService) {

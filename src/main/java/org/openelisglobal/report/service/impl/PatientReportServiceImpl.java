@@ -150,7 +150,8 @@ public class PatientReportServiceImpl implements PatientReportService {
         return mapToReportingData(results, patient, columns);
     }
 
-    ReportingData buildDocumentReportFromResults(List<TestResultItem> results, Patient patient) {
+    @Override
+    public ReportingData buildDocumentReportFromResults(List<TestResultItem> results, Patient patient) {
         // The built-in A4 template needs all clinical header and result fields even
         // if the unrelated legacy grid has a custom column projection.
         return mapToReportingData(results, patient, getDefaultPatientReportColumns());

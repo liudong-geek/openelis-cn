@@ -32,6 +32,7 @@ import org.openelisglobal.sample.valueholder.SpecimenRecollection;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
 import org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest;
 import org.openelisglobal.systemuser.service.UserService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -50,6 +51,7 @@ public class SpecimenRecollectionService {
     private final DefaultConfigurationProperties configuration;
     private final Clock clock;
 
+    @Autowired
     public SpecimenRecollectionService(SpecimenReceiptDAO graph, SpecimenRecollectionDAO recollections,
             OrderEntryActorGuard actors, UserService users, AuditTrailService audit,
             DefaultConfigurationProperties configuration) {

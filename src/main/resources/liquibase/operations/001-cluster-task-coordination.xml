@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+  xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+  <changeSet id="operations-001-cluster-task-coordination" author="openelis-cn">
+    <createSequence sequenceName="cluster_task_fencing_token_seq" startValue="1" incrementBy="1" />
+    <createTable tableName="cluster_task_execution">
+      <column name="task_name" type="varchar(120)">
+        <constraints nullable="false" />
+      </column>
+      <column name="execution_slot" type="bigint">
+        <constraints nullable="false" />
+      </column>
+      <column name="owner_id" type="varchar(180)">
+        <constraints nullable="false" />
+      </column>
+      <column name="fencing_token" type="bigint" defaultValueSequenceNext="cluster_task_fencing_token_seq">
+        <constraints nullable="false" />
+      </column>
+      <column name="status" type="varchar(16)">
+        <constraints nullable="false" />
+      </column>
+      <column name="started_at" type="timestamp with time zone" defaultValueComputed="CURRENT_TIMESTAMP">
+        <constraints nullable="false" />
+      </column>
+      <column name="heartbeat_at" type="timestamp with time zone" defaultValueComputed="CURRENT_TIMESTAMP">
+        <constraints nullable="false" />
+      </column>
+      <column name="lease_until" type="timestamp with time zone">
+        <constraints nullable="false" />
+      </column>
+      <column name="completed_at" type="timestamp with time zone" />
+      <column name="last_error" type="varchar(1000)" />
+    </createTable>
+    <addPrimaryKey tableName="cluster_task_execution" columnNames="task_name, execution_slot"
+      constraintName="pk_cluster_task_execution" />
+    <sql>ALTER TABLE cluster_task_execution ADD CONSTRAINT ck_cluster_task_execution_status
+      CHECK (status IN ('RUNNING', 'SUCCEEDED', 'FAILED'))</sql>
+    <createIndex tableName="cluster_task_execution" indexName="idx_cluster_task_execution_lease">
+      <column name="status" />
+      <column name="lease_until" />
+    </createIndex>
+  </changeSet>
+</databaseChangeLog>

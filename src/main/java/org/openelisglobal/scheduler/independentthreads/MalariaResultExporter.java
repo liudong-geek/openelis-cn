@@ -14,6 +14,7 @@
 package org.openelisglobal.scheduler.independentthreads;
 
 import jakarta.annotation.PostConstruct;
+import java.time.Duration;
 import java.util.List;
 import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.ConfigurationProperties.Property;
@@ -23,6 +24,7 @@ import org.openelisglobal.dataexchange.common.ReportTransmission;
 import org.openelisglobal.dataexchange.common.ReportTransmission.HTTP_TYPE;
 import org.openelisglobal.dataexchange.service.aggregatereporting.ReportExternalExportService;
 import org.openelisglobal.dataexchange.service.aggregatereporting.ReportQueueTypeService;
+import org.openelisglobal.scheduler.coordination.ClusterTaskCoordinator;
 import org.openelisglobal.spring.util.SpringContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -35,6 +37,8 @@ public class MalariaResultExporter {
     private ReportQueueTypeService reportQueueTypeService;
     @Autowired
     private ReportExternalExportService reportExternalExportService;
+    @Autowired
+    private ClusterTaskCoordinator clusterTaskCoordinator;
 
     private String resultReportTypeId;
 
@@ -46,19 +50,24 @@ public class MalariaResultExporter {
     @Scheduled(fixedRateString = "#{resultsResendTime}")
     void exportResults() {
         if (shouldReportResults()) {
-            List<ReportExternalExport> reportList = reportExternalExportService
-                    .getUnsentReportExports(resultReportTypeId);
+            clusterTaskCoordinator.executeOnce("malaria-result-export", Duration.ofMinutes(1), Duration.ofMinutes(2),
+                    this::exportClaimedResults);
+        }
+    }
 
-            ReportTransmission transmitter = new ReportTransmission();
-            String url = ConfigurationProperties.getInstance().getPropertyValue(Property.malariaCaseReportURL);
-            boolean sendAsychronously = false;
+    private void exportClaimedResults(ClusterTaskCoordinator.Lease lease) {
+        List<ReportExternalExport> reportList = reportExternalExportService.getUnsentReportExports(resultReportTypeId);
 
-            for (ReportExternalExport report : reportList) {
-                IRowTransmissionResponseHandler responseHandler = (IRowTransmissionResponseHandler) SpringContext
-                        .getBean("malariaSuccessReportHandler");
-                responseHandler.setRowId(report.getId());
-                transmitter.sendRawReport(report.getData(), url, sendAsychronously, responseHandler, HTTP_TYPE.POST);
-            }
+        ReportTransmission transmitter = new ReportTransmission();
+        String url = ConfigurationProperties.getInstance().getPropertyValue(Property.malariaCaseReportURL);
+        boolean sendAsychronously = false;
+
+        for (ReportExternalExport report : reportList) {
+            lease.assertOwned();
+            IRowTransmissionResponseHandler responseHandler = (IRowTransmissionResponseHandler) SpringContext
+                    .getBean("malariaSuccessReportHandler");
+            responseHandler.setRowId(report.getId());
+            transmitter.sendRawReport(report.getData(), url, sendAsychronously, responseHandler, HTTP_TYPE.POST);
         }
     }
 

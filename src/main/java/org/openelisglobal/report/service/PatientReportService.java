@@ -1,6 +1,9 @@
 package org.openelisglobal.report.service;
 
+import java.util.List;
+import org.openelisglobal.patient.valueholder.Patient;
 import org.openelisglobal.report.ReportingData;
+import org.openelisglobal.test.beanItems.TestResultItem;
 
 /**
  * Service for generating patient-centered report data.
@@ -31,4 +34,7 @@ public interface PatientReportService {
      * @return PDF bytes, or {@code null} if the patient does not exist
      */
     byte[] buildPatientResultsPdf(String patientId, String sysUserId);
+
+    /** Builds the fixed clinical document projection from an already authorized snapshot scope. */
+    ReportingData buildDocumentReportFromResults(List<TestResultItem> results, Patient patient);
 }

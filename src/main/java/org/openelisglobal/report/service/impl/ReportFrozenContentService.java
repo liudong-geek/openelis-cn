@@ -12,6 +12,7 @@ import org.openelisglobal.common.services.StatusService.AnalysisStatus;
 import org.openelisglobal.report.dao.ReportClinicalSourceDAO;
 import org.openelisglobal.report.form.*;
 import org.openelisglobal.report.service.ReportDocumentService;
+import org.openelisglobal.report.service.PatientReportService;
 import org.openelisglobal.report.valueholder.PatientReportRelease;
 import org.openelisglobal.result.valueholder.Result;
 import org.openelisglobal.test.beanItems.TestResultItem;
@@ -28,7 +29,7 @@ public class ReportFrozenContentService {
     @Autowired
     private DocumentReportProjectionService projection;
     @Autowired
-    private PatientReportServiceImpl reportBuilder;
+    private PatientReportService reportBuilder;
     @Autowired
     private IStatusService statuses;
     @Autowired

@@ -36,6 +36,7 @@ import org.openelisglobal.statusofsample.valueholder.StatusOfSample;
 import org.openelisglobal.systemuser.service.UserService;
 import org.springframework.beans.BeanUtils;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,6 +54,7 @@ public class SpecimenIntakeDecisionService {
     private final AuditTrailService audit;
     private final DefaultConfigurationProperties configuration;
 
+    @Autowired
     public SpecimenIntakeDecisionService(SpecimenReceiptDAO graphDao, SpecimenIntakeDecisionWriteDAO decisions,
             OrderEntryActorGuard actors, SampleItemService items, UserService users, AuditTrailService audit,
             DefaultConfigurationProperties configuration) {
