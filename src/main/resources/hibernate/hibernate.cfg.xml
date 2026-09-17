@@ -19,6 +19,11 @@
         <property name="hibernate.jdbc.batch_versioned_data">true</property>
         <property name="hibernate.order_inserts">true</property>
         <property name="hibernate.order_updates">true</property>
+        <!-- Spring's HibernateJpaDialect can apply per-transaction isolation only
+             while Hibernate holds the JDBC connection until the persistence
+             context closes. This keeps REPEATABLE_READ/SERIALIZABLE services
+             usable and lets Spring restore the connection state safely. -->
+        <property name="hibernate.connection.handling_mode">DELAYED_ACQUISITION_AND_HOLD</property>
         <!-- <property name="transaction.factory_class">org.hibernate.transaction.JDBCTransactionFactory</property>
             <property name="current_session_context_class">thread</property> -->
         <property name="hibernate.cache.provider_class">org.hibernate.cache.NoCacheProvider</property>

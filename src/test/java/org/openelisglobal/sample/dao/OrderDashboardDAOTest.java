@@ -123,6 +123,8 @@ public class OrderDashboardDAOTest {
             assertTrue(hql.contains("from BarcodeLabelInfo label"));
             assertTrue(hql.contains("label.numPrinted > 0"));
             assertTrue(hql.contains("other.sortOrder = si.sortOrder"));
+            assertFalse("sort_order is numeric in PostgreSQL even though the legacy user type exposes a String",
+                    hql.contains("trim(si.sortOrder)"));
             assertFalse(hql.contains("SampleStorageAssignment"));
         }
     }

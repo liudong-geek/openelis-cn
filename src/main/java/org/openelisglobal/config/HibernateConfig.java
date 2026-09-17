@@ -9,6 +9,7 @@ import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Primary;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
+import org.springframework.orm.jpa.vendor.HibernateJpaDialect;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 
@@ -42,6 +43,7 @@ public class HibernateConfig {
         if (transactionManager == null) {
             transactionManager = new JpaTransactionManager();
             transactionManager.setEntityManagerFactory(entityManagerFactory);
+            transactionManager.setJpaDialect(new HibernateJpaDialect());
         }
         return transactionManager;
     }

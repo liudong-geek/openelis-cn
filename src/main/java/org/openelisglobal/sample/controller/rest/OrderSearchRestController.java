@@ -184,7 +184,7 @@ public class OrderSearchRestController extends BaseRestController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } catch (Exception e) {
-            LogEvent.logError(getClass().getName(), "getDashboard", "Error fetching dashboard");
+            LogEvent.logError("Error fetching dashboard", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "dashboard.load.failed"));
         }

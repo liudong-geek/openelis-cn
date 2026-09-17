@@ -31,7 +31,7 @@ public class OrderDashboardDAOImpl extends BaseDAOImpl<Sample, String> implement
     private static final String COLLECTED = SpecimenIntakeQueryFacts.collected();
     private static final String LABELLED = "(exists (select si.id from SampleItem si where si.sample.id = s.id and coalesce(si.voided, false) = false)"
             + " and not exists (select si.id from SampleItem si where si.sample.id = s.id and coalesce(si.voided, false) = false"
-            + " and (si.sortOrder is null or trim(si.sortOrder) = '' or si.rejected = true"
+            + " and (si.sortOrder is null or si.rejected = true"
             + " or (select count(other.id) from SampleItem other where other.sample.id = s.id and other.sortOrder = si.sortOrder) <> 1"
             + " or (select count(counter.id) from BarcodeLabelInfo counter where counter.code = concat(concat(s.accessionNumber, '.'), si.sortOrder)) <> 1"
             + " or not exists (select label.id from BarcodeLabelInfo label where label.code = concat(concat(s.accessionNumber, '.'), si.sortOrder)"

@@ -29,13 +29,12 @@ import org.openelisglobal.sample.service.OrderEntryActorGuard;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.orm.jpa.DefaultJpaDialect;
 import org.springframework.orm.jpa.EntityManagerHolder;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
+import org.springframework.orm.jpa.vendor.HibernateJpaDialect;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.CannotCreateTransactionException;
-import org.springframework.transaction.InvalidIsolationLevelException;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import org.springframework.transaction.interceptor.TransactionInterceptor;
@@ -85,6 +84,7 @@ public class EntryRecoveryTransactionManagerTest {
         configuration.setProperty("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
         configuration.setProperty("hibernate.temp.use_jdbc_metadata_defaults", "false");
         configuration.setProperty("hibernate.hbm2ddl.auto", "none");
+        configuration.setProperty("hibernate.connection.handling_mode", "DELAYED_ACQUISITION_AND_HOLD");
         configuration.getProperties().put("hibernate.connection.datasource", dataSource);
         factory = configuration.buildSessionFactory();
         assertTrue("Bootstrap must not connect to any database", connections.isEmpty());
@@ -168,22 +168,32 @@ public class EntryRecoveryTransactionManagerTest {
     }
 
     @Test
-    public void ordinaryConfigurationStillRejectsCustomIsolationWithoutChangingItsDialect() {
-        assertEquals(DefaultJpaDialect.class, ordinary.getJpaDialect().getClass());
+    public void ordinaryConfigurationSupportsCustomIsolationAndRestoresConnectionState() throws Exception {
+        assertEquals(HibernateJpaDialect.class, ordinary.getJpaDialect().getClass());
         assertNull("The default factory must not acquire a global Hibernate dialect",
                 new HibernateConfig().entityManagerFactory().getJpaDialect());
-        TransactionTemplate unsupported = new TransactionTemplate(ordinary);
-        unsupported.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
-        assertThrows(InvalidIsolationLevelException.class,
-                () -> unsupported.execute(status -> { fail("Unsupported boundary ran business code"); return null; }));
-        assertTrue(connections.isEmpty());
+        TransactionTemplate supported = new TransactionTemplate(ordinary);
+        supported.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        supported.setReadOnly(true);
+        supported.execute(status -> {
+            SessionImplementor session = current().unwrap(SessionImplementor.class);
+            assertEquals(PhysicalConnectionHandlingMode.DELAYED_ACQUISITION_AND_HOLD,
+                    session.getJdbcCoordinator().getLogicalConnection().getConnectionHandlingMode());
+            return null;
+        });
+        Connection connection = connections.get(0);
+        verify(connection).setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+        verify(connection).setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+        verify(connection).setReadOnly(true);
+        verify(connection).setReadOnly(false);
+        verify(connection).close();
     }
 
     @Test
     public void ordinaryWriteStillUsesItsOriginalConnectionAndFlushPolicies() throws Exception {
         new TransactionTemplate(ordinary).execute(status -> {
             SessionImplementor session = current().unwrap(SessionImplementor.class);
-            assertEquals(PhysicalConnectionHandlingMode.DELAYED_ACQUISITION_AND_RELEASE_AFTER_TRANSACTION,
+            assertEquals(PhysicalConnectionHandlingMode.DELAYED_ACQUISITION_AND_HOLD,
                     session.getJdbcCoordinator().getLogicalConnection().getConnectionHandlingMode());
             assertEquals(FlushMode.AUTO, session.getHibernateFlushMode());
             assertFalse(session.isDefaultReadOnly());
