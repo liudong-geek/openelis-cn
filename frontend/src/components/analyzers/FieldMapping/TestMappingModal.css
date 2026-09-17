@@ -30,6 +30,13 @@
   margin-bottom: 1.5rem;
 }
 
+.test-mapping-replay-config {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
 .test-mapping-character-counter {
   margin-top: 0.5rem;
   text-align: right;
@@ -64,6 +71,24 @@
   margin-bottom: 1rem;
   font-size: 1rem;
   font-weight: 600;
+}
+
+.test-mapping-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  align-items: center;
+  margin: 1rem 0 1.5rem;
+}
+
+.test-mapping-summary code {
+  color: var(--cds-text-secondary);
+}
+
+@media (max-width: 42rem) {
+  .test-mapping-replay-config {
+    grid-template-columns: 1fr;
+  }
 }
 
 .test-mapping-section {

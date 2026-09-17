@@ -1,7 +1,7 @@
 /**
  * TestMappingModal Component
  *
- * Modal for testing field mappings with sample ASTM messages
+ * Modal for replaying ASTM and HL7 messages against active mappings
  *
  * Per FR-007 specification:
  * - Medium size ComposedModal (~600-700px)
@@ -31,12 +31,27 @@ import {
   InlineNotification,
   Loading,
   CodeSnippet,
+  Select,
+  SelectItem,
+  Tile,
 } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
 import * as analyzerService from "../../../services/analyzerService";
 import "./TestMappingModal.css";
 
 const MAX_MESSAGE_SIZE = 10240; // 10KB
+const REPLAY_SAMPLES = {
+  ASTM_CHEMISTRY: {
+    protocol: "ASTM",
+    message:
+      "H|\\^&|||LIS-SIM|||||P|1\rP|1||SIM-001\rO|1|SIM-20260917||^^^GLU\rR|1|^^^GLU|5.6|mmol/L|||N\rL|1|N",
+  },
+  HL7_ORU: {
+    protocol: "HL7",
+    message:
+      "MSH|^~\\&|ANALYZER-SIM|LAB|OPENELIS|LAB|202609171030||ORU^R01|SIM-001|P|2.3.1\rPID|1||SIM-PATIENT\rOBR|1|SIM-20260917||GLU^Glucose\rOBX|1|NM|GLU^Glucose||5.6|mmol/L|3.9-6.1|N|||F",
+  },
+};
 
 const TestMappingModal = ({
   open,
@@ -48,6 +63,8 @@ const TestMappingModal = ({
 }) => {
   const intl = useIntl();
   const [astmMessage, setAstmMessage] = useState("");
+  const [protocol, setProtocol] = useState("AUTO");
+  const [sampleKey, setSampleKey] = useState("");
   const [includeDetailedParsing, setIncludeDetailedParsing] = useState(false);
   const [validateAllMappings, setValidateAllMappings] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -58,6 +75,8 @@ const TestMappingModal = ({
   useEffect(() => {
     if (!open) {
       setAstmMessage("");
+      setProtocol("AUTO");
+      setSampleKey("");
       setIncludeDetailedParsing(false);
       setValidateAllMappings(false);
       setPreviewResult(null);
@@ -99,7 +118,8 @@ const TestMappingModal = ({
     setPreviewResult(null);
 
     const previewData = {
-      astmMessage: astmMessage.trim(),
+      message: astmMessage.trim(),
+      protocol,
       includeDetailedParsing,
       validateAllMappings,
     };
@@ -109,9 +129,9 @@ const TestMappingModal = ({
       previewData,
       (response, extraParams) => {
         setLoading(false);
-        if (response.error) {
+        if (!response || response.error) {
           setError(
-            response.error ||
+            response?.error ||
               intl.formatMessage({
                 id: "analyzer.testMapping.validation.invalidFormat",
               }),
@@ -126,6 +146,8 @@ const TestMappingModal = ({
 
   const handleTestAnother = () => {
     setAstmMessage("");
+    setProtocol("AUTO");
+    setSampleKey("");
     setIncludeDetailedParsing(false);
     setValidateAllMappings(false);
     setPreviewResult(null);
@@ -214,6 +236,57 @@ const TestMappingModal = ({
             </span>
             <span>{activeMappingsCount}</span>
           </div>
+        </div>
+
+        <div className="test-mapping-replay-config">
+          <Select
+            id="protocol-replay-protocol"
+            labelText={intl.formatMessage({
+              id: "analyzer.testMapping.protocol",
+            })}
+            value={protocol}
+            onChange={(event) => setProtocol(event.target.value)}
+            data-testid="test-mapping-protocol"
+          >
+            <SelectItem value="AUTO" text="AUTO" />
+            <SelectItem value="ASTM" text="ASTM LIS2-A2" />
+            <SelectItem value="HL7" text="HL7 v2 ORU" />
+          </Select>
+          <Select
+            id="protocol-replay-sample"
+            labelText={intl.formatMessage({
+              id: "analyzer.testMapping.sample",
+            })}
+            value={sampleKey}
+            onChange={(event) => {
+              const key = event.target.value;
+              setSampleKey(key);
+              if (REPLAY_SAMPLES[key]) {
+                setProtocol(REPLAY_SAMPLES[key].protocol);
+                setAstmMessage(REPLAY_SAMPLES[key].message);
+              }
+            }}
+            data-testid="test-mapping-sample"
+          >
+            <SelectItem
+              value=""
+              text={intl.formatMessage({
+                id: "analyzer.testMapping.sample.none",
+              })}
+            />
+            <SelectItem
+              value="ASTM_CHEMISTRY"
+              text={intl.formatMessage({
+                id: "analyzer.testMapping.sample.astm",
+              })}
+            />
+            <SelectItem
+              value="HL7_ORU"
+              text={intl.formatMessage({
+                id: "analyzer.testMapping.sample.hl7",
+              })}
+            />
+          </Select>
         </div>
 
         {/* Sample Message Input Section */}
@@ -320,6 +393,51 @@ const TestMappingModal = ({
             <h3>
               <FormattedMessage id="analyzer.testMapping.results" />
             </h3>
+
+            {previewResult.dryRun && (
+              <InlineNotification
+                kind="success"
+                title={intl.formatMessage({
+                  id: "analyzer.testMapping.dryRun.title",
+                })}
+                subtitle={intl.formatMessage({
+                  id: "analyzer.testMapping.dryRun.subtitle",
+                })}
+                lowContrast
+                hideCloseButton
+                data-testid="test-mapping-dry-run"
+              />
+            )}
+
+            {previewResult.replaySummary && (
+              <Tile
+                className="test-mapping-summary"
+                data-testid="test-mapping-summary"
+              >
+                <strong>{previewResult.protocol}</strong>
+                <span>
+                  {intl.formatMessage(
+                    { id: "analyzer.testMapping.summary.parsed" },
+                    { count: previewResult.replaySummary.parsedFieldCount },
+                  )}
+                </span>
+                <span>
+                  {intl.formatMessage(
+                    { id: "analyzer.testMapping.summary.mapped" },
+                    { count: previewResult.replaySummary.appliedMappingCount },
+                  )}
+                </span>
+                <span>
+                  {intl.formatMessage(
+                    { id: "analyzer.testMapping.summary.writes" },
+                    { count: previewResult.replaySummary.clinicalWrites },
+                  )}
+                </span>
+                {previewResult.messageHash && (
+                  <code>{previewResult.messageHash.slice(0, 16)}…</code>
+                )}
+              </Tile>
+            )}
 
             {/* Parsed Fields Table */}
             {previewResult.parsedFields &&

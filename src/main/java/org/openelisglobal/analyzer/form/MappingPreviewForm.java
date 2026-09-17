@@ -1,6 +1,5 @@
 package org.openelisglobal.analyzer.form;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 /**
@@ -9,9 +8,13 @@ import jakarta.validation.constraints.Size;
  */
 public class MappingPreviewForm {
 
-    @NotBlank(message = "ASTM message is required")
-    @Size(max = 10240, message = "ASTM message must not exceed 10KB")
+    /** Legacy request field retained for existing clients. */
     private String astmMessage;
+
+    @Size(max = 10240, message = "Protocol message must not exceed 10KB")
+    private String message;
+
+    private String protocol = "AUTO";
 
     private boolean includeDetailedParsing = false;
     private boolean validateAllMappings = false;
@@ -22,6 +25,22 @@ public class MappingPreviewForm {
 
     public void setAstmMessage(String astmMessage) {
         this.astmMessage = astmMessage;
+    }
+
+    public String getMessage() {
+        return message == null || message.isBlank() ? astmMessage : message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
+    }
+
+    public String getProtocol() {
+        return protocol;
+    }
+
+    public void setProtocol(String protocol) {
+        this.protocol = protocol;
     }
 
     public boolean isIncludeDetailedParsing() {

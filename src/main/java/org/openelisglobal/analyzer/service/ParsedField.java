@@ -9,6 +9,8 @@ public class ParsedField {
     private String astmRef;
     private String rawValue;
     private String fieldType;
+    private String mappedTo;
+    private String interpretation;
 
     public String getFieldName() {
         return fieldName;
@@ -40,5 +42,21 @@ public class ParsedField {
 
     public void setFieldType(String fieldType) {
         this.fieldType = fieldType;
+    }
+
+    public String getMappedTo() {
+        return mappedTo;
+    }
+
+    public void setMappedTo(String mappedTo) {
+        this.mappedTo = mappedTo;
+    }
+
+    public String getInterpretation() {
+        return interpretation;
+    }
+
+    public void setInterpretation(String interpretation) {
+        this.interpretation = interpretation;
     }
 }

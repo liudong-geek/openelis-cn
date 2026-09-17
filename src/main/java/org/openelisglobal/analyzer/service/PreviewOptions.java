@@ -7,6 +7,7 @@ package org.openelisglobal.analyzer.service;
 public class PreviewOptions {
     private boolean includeDetailedParsing = false;
     private boolean validateAllMappings = false;
+    private String protocol = "AUTO";
 
     public boolean isIncludeDetailedParsing() {
         return includeDetailedParsing;
@@ -22,5 +23,13 @@ public class PreviewOptions {
 
     public void setValidateAllMappings(boolean validateAllMappings) {
         this.validateAllMappings = validateAllMappings;
+    }
+
+    public String getProtocol() {
+        return protocol;
+    }
+
+    public void setProtocol(String protocol) {
+        this.protocol = protocol;
     }
 }

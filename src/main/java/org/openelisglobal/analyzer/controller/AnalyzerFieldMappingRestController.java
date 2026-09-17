@@ -269,8 +269,9 @@ public class AnalyzerFieldMappingRestController extends BaseRestController {
     }
 
     /**
-     * POST /rest/analyzer/analyzers/{id}/preview-mapping Preview how a sample ASTM
-     * message will be interpreted with current mappings
+     * POST /rest/analyzer/analyzers/{id}/preview-mapping Preview how an ASTM or
+     * HL7 message will be interpreted with current mappings. This is always a dry
+     * run and never writes clinical results.
      * 
      * 
      * Request body: { astmMessage: String (max 10KB), includeDetailedParsing:
@@ -284,15 +285,16 @@ public class AnalyzerFieldMappingRestController extends BaseRestController {
             @Valid @RequestBody MappingPreviewForm form) {
         try {
             // Size check first — reject oversized payloads before any processing
-            if (form.getAstmMessage() != null && form.getAstmMessage().length() > 10 * 1024) {
+            String protocolMessage = form.getMessage();
+            if (protocolMessage != null && protocolMessage.length() > 10 * 1024) {
                 return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
-                        .body(AnalyzerControllerHelper.wrapError("ASTM message exceeds maximum size of 10KB"));
+                        .body(AnalyzerControllerHelper.wrapError("Protocol message exceeds maximum size of 10KB"));
             }
 
             // Null/empty message check
-            if (form.getAstmMessage() == null || form.getAstmMessage().trim().isEmpty()) {
+            if (protocolMessage == null || protocolMessage.trim().isEmpty()) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(AnalyzerControllerHelper.wrapError("ASTM message is required"));
+                        .body(AnalyzerControllerHelper.wrapError("Protocol message is required"));
             }
 
             if (analyzerMappingPreviewService == null) {
@@ -303,14 +305,19 @@ public class AnalyzerFieldMappingRestController extends BaseRestController {
             PreviewOptions options = new PreviewOptions();
             options.setIncludeDetailedParsing(form.isIncludeDetailedParsing());
             options.setValidateAllMappings(form.isValidateAllMappings());
+            options.setProtocol(form.getProtocol());
 
-            MappingPreviewResult result = analyzerMappingPreviewService.previewMapping(id, form.getAstmMessage(),
-                    options);
+            MappingPreviewResult result = analyzerMappingPreviewService.previewMapping(id, protocolMessage, options);
 
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("parsedFields", result.getParsedFields());
             response.put("appliedMappings", result.getAppliedMappings());
             response.put("entityPreview", result.getEntityPreview());
+            response.put("pluginConfigSnapshot", result.getPluginConfigSnapshot());
+            response.put("replaySummary", result.getReplaySummary());
+            response.put("protocol", result.getProtocol());
+            response.put("messageHash", result.getMessageHash());
+            response.put("dryRun", result.isDryRun());
             response.put("warnings", result.getWarnings());
             response.put("errors", result.getErrors());
 

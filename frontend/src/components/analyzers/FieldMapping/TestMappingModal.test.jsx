@@ -206,7 +206,9 @@ describe("TestMappingModal", () => {
     expect(errorElement).toBeTruthy();
 
     // Assert: Error message should indicate message too large
-    expect(screen.getByText(/ASTM message exceeds maximum size/i)).toBeTruthy();
+    expect(
+      screen.getByText(/Protocol message exceeds maximum size/i),
+    ).toBeTruthy();
   });
 
   /**
@@ -350,5 +352,48 @@ describe("TestMappingModal", () => {
     );
     expect(snapshotSection).toBeTruthy();
     expect(screen.getByText(/aggregationMode/i)).toBeTruthy();
+  });
+
+  test("testSyntheticHl7Replay_SubmitsProtocolAndShowsZeroWriteEvidence", async () => {
+    previewMapping.mockImplementation((analyzerId, data, callback) => {
+      callback(
+        {
+          protocol: "HL7",
+          dryRun: true,
+          messageHash: "a".repeat(64),
+          replaySummary: {
+            parsedFieldCount: 12,
+            appliedMappingCount: 3,
+            clinicalWrites: 0,
+          },
+          parsedFields: [],
+          appliedMappings: [],
+          entityPreview: {},
+          warnings: [],
+          errors: [],
+        },
+        null,
+      );
+    });
+
+    renderWithIntl(<TestMappingModal {...defaultProps} />);
+
+    fireEvent.change(await screen.findByTestId("test-mapping-sample"), {
+      target: { value: "HL7_ORU" },
+    });
+    await userEvent.click(
+      await screen.findByTestId("test-mapping-preview-button"),
+    );
+
+    expect(previewMapping).toHaveBeenCalledWith(
+      "analyzer-1",
+      expect.objectContaining({ protocol: "HL7" }),
+      expect.any(Function),
+      null,
+    );
+    expect(await screen.findByTestId("test-mapping-dry-run")).toBeTruthy();
+    expect(screen.getByTestId("test-mapping-summary")).toHaveTextContent(
+      "0 clinical writes",
+    );
   });
 });

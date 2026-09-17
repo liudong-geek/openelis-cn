@@ -13,6 +13,10 @@ public class MappingPreviewResult {
     private List<AppliedMapping> appliedMappings;
     private EntityPreview entityPreview;
     private Map<String, Object> pluginConfigSnapshot;
+    private Map<String, Object> replaySummary;
+    private String protocol;
+    private String messageHash;
+    private boolean dryRun = true;
     private List<String> warnings;
     private List<String> errors;
 
@@ -53,6 +57,38 @@ public class MappingPreviewResult {
 
     public void setPluginConfigSnapshot(Map<String, Object> pluginConfigSnapshot) {
         this.pluginConfigSnapshot = pluginConfigSnapshot;
+    }
+
+    public Map<String, Object> getReplaySummary() {
+        return replaySummary;
+    }
+
+    public void setReplaySummary(Map<String, Object> replaySummary) {
+        this.replaySummary = replaySummary;
+    }
+
+    public String getProtocol() {
+        return protocol;
+    }
+
+    public void setProtocol(String protocol) {
+        this.protocol = protocol;
+    }
+
+    public String getMessageHash() {
+        return messageHash;
+    }
+
+    public void setMessageHash(String messageHash) {
+        this.messageHash = messageHash;
+    }
+
+    public boolean isDryRun() {
+        return dryRun;
+    }
+
+    public void setDryRun(boolean dryRun) {
+        this.dryRun = dryRun;
     }
 
     public List<String> getWarnings() {

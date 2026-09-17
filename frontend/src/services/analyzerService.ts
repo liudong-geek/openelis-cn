@@ -47,6 +47,9 @@ export interface AnalyzersResponse {
 }
 
 export interface PreviewMappingRequest {
+  message?: string;
+  protocol?: "AUTO" | "ASTM" | "HL7";
+  /** Legacy field accepted by the backend for older clients. */
   astmMessage?: string;
   includeDetailedParsing?: boolean;
   validateAllMappings?: boolean;
@@ -69,7 +72,7 @@ export interface AnalyzerTypeFilters {
 /**
  * Preview mapping for analyzer
  * @param {String} analyzerId - Analyzer ID
- * @param {Object} previewData - Preview data { astmMessage, includeDetailedParsing, validateAllMappings }
+ * @param {Object} previewData - Read-only replay data { message, protocol, includeDetailedParsing, validateAllMappings }
  * @param {Function} callback - Callback function (response, extraParams) => void
  * @param {*} extraParams - Optional extra parameters passed to callback
  */

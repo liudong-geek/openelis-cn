@@ -2,6 +2,7 @@ package org.openelisglobal.analyzer.service;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
@@ -206,5 +207,60 @@ public class AnalyzerMappingPreviewServiceTest {
         // Assert: Entity preview constructed
         assertNotNull("Entity preview should not be null", entityPreview);
         assertNotNull("Test entities should not be null", entityPreview.getTests());
+    }
+
+    @Test
+    public void testReplayAstm_UsesConfiguredProtocolReferenceWithoutClinicalWrite() {
+        testField.setAstmRef("R|1|^^^GLU");
+        testField.setFieldName("Glucose result");
+        testMapping.setOpenelisFieldType(AnalyzerFieldMapping.OpenELISFieldType.RESULT);
+        testMapping.setMappingType(AnalyzerFieldMapping.MappingType.RESULT_LEVEL);
+
+        when(analyzerFieldMappingDAO.findActiveMappingsByAnalyzerId("1")).thenReturn(List.of(testMapping));
+
+        PreviewOptions options = new PreviewOptions();
+        options.setProtocol("ASTM");
+        MappingPreviewResult result = analyzerMappingPreviewService.previewMapping("1",
+                "H|\\^&|||SIM\rR|1|^^^GLU|5.6|mmol/L\rL|1|N", options);
+
+        assertEquals("ASTM", result.getProtocol());
+        assertTrue(result.isDryRun());
+        assertEquals(64, result.getMessageHash().length());
+        assertEquals(1, result.getAppliedMappings().size());
+        assertEquals("5.6", result.getAppliedMappings().get(0).getMappedValue());
+        assertEquals(0, result.getReplaySummary().get("clinicalWrites"));
+    }
+
+    @Test
+    public void testReplayHl7_AutoDetectsProtocolAndAppliesConfiguredPosition() {
+        testField.setAstmRef("OBX-5");
+        testField.setFieldName("Glucose result");
+        testMapping.setOpenelisFieldType(AnalyzerFieldMapping.OpenELISFieldType.RESULT);
+        testMapping.setMappingType(AnalyzerFieldMapping.MappingType.RESULT_LEVEL);
+
+        when(analyzerFieldMappingDAO.findActiveMappingsByAnalyzerId("1")).thenReturn(List.of(testMapping));
+
+        PreviewOptions options = new PreviewOptions();
+        options.setProtocol("AUTO");
+        MappingPreviewResult result = analyzerMappingPreviewService.previewMapping("1",
+                "MSH|^~\\&|SIM|LAB|LIS|LAB|20260917||ORU^R01|1|P|2.3.1\r"
+                        + "OBX|1|NM|GLU^Glucose||5.6|mmol/L|||N|||F",
+                options);
+
+        assertEquals("HL7", result.getProtocol());
+        assertEquals(1, result.getAppliedMappings().size());
+        assertEquals("5.6", result.getAppliedMappings().get(0).getMappedValue());
+        assertEquals(0, result.getErrors().size());
+    }
+
+    @Test
+    public void testReplay_UnsupportedProtocolReturnsErrorBeforeDaoAccess() {
+        PreviewOptions options = new PreviewOptions();
+        options.setProtocol("CUSTOM");
+
+        MappingPreviewResult result = analyzerMappingPreviewService.previewMapping("1", "X|1|value", options);
+
+        assertEquals(1, result.getErrors().size());
+        assertTrue(result.getErrors().get(0).contains("Unsupported protocol"));
     }
 }
