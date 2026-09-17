@@ -85,7 +85,12 @@ beforeEach(() => {
   putToOpenElisServer.mockReset();
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (_, options) => {
+    vi.fn(async (url, options = {}) => {
+      if (
+        options.method === "GET" &&
+        String(url).includes("/rest/specimen-recollections/current?")
+      )
+        return response({ code: "RECOLLECTION_NOT_FOUND" }, 404);
       const c = JSON.parse(options.body);
       current = intakeRecorded(c, current);
       return response(intakeAck(c));
@@ -100,6 +105,18 @@ afterEach(() => {
 });
 const region = () =>
   screen.getByRole("region", { name: "逐管标本验收", exact: true });
+const intakeWrites = () =>
+  fetch.mock.calls.filter(
+    ([url, options]) =>
+      String(url).endsWith("/rest/specimen-intake-decisions") &&
+      options?.method === "POST",
+  );
+const recollectionReads = () =>
+  fetch.mock.calls.filter(
+    ([url, options]) =>
+      String(url).includes("/rest/specimen-recollections/current?") &&
+      options?.method === "GET",
+  );
 const query = async () => {
   fireEvent.click(
     screen.getByRole("button", { name: "查询当前状态", exact: true }),
@@ -148,9 +165,10 @@ it.each(["ACCEPTED", "REJECTED"])(
     await waitFor(() =>
       expect(within(region()).getAllByText("已记录（只读）")).toHaveLength(1),
     );
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(intakeWrites()).toHaveLength(1);
+    expect(recollectionReads()).toHaveLength(decision === "REJECTED" ? 1 : 0);
     expect(readOpenElisResponse).toHaveBeenCalledTimes(2);
-    const [url, options] = fetch.mock.calls[0];
+    const [url, options] = intakeWrites()[0];
     expect(url).toMatch(/\/rest\/specimen-intake-decisions$/);
     expect(options.headers["X-CSRF-Token"]).toBe("SIM-CSRF");
     expect(JSON.parse(options.body)).toMatchObject({
@@ -196,7 +214,8 @@ it("收录第一管后可明确选第二管，不串用原决定", async () => {
   await waitFor(() =>
     expect(within(region()).getAllByText("已记录（只读）")).toHaveLength(2),
   );
-  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(intakeWrites()).toHaveLength(2);
+  expect(recollectionReads()).toHaveLength(1);
 });
 it.each([400, 409, 500])(
   "HTTP %i不伪报成功、不允许盲重发，独立查不到也不解除",

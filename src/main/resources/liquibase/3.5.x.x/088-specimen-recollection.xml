@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+  <changeSet id="3.5.0-088-specimen-recollection" author="local-chinese-edition" runInTransaction="true">
+    <preConditions onFail="HALT" onError="HALT">
+      <dbms type="postgresql"/>
+      <not><tableExists schemaName="clinlims" tableName="specimen_recollection"/></not>
+      <not><sequenceExists schemaName="clinlims" sequenceName="specimen_recollection_seq"/></not>
+      <tableExists schemaName="clinlims" tableName="specimen_intake_decision"/>
+      <tableExists schemaName="clinlims" tableName="sample_type_request"/>
+      <tableExists schemaName="clinlims" tableName="reference_tables"/>
+      <sequenceExists schemaName="clinlims" sequenceName="reference_tables_seq"/>
+    </preConditions>
+    <createSequence schemaName="clinlims" sequenceName="specimen_recollection_seq" startValue="1" incrementBy="1" maxValue="2147483647"/>
+    <createTable schemaName="clinlims" tableName="specimen_recollection">
+      <column name="id" type="NUMERIC(10)"><constraints nullable="false" primaryKey="true" primaryKeyName="pk_specimen_recollection"/></column>
+      <column name="operation_id" type="VARCHAR(36)"><constraints nullable="false"/></column>
+      <column name="sample_id" type="NUMERIC(10)"><constraints nullable="false"/></column>
+      <column name="lab_no" type="VARCHAR(25)"><constraints nullable="false"/></column>
+      <column name="patient_id" type="NUMERIC(10)"><constraints nullable="false"/></column>
+      <column name="source_request_id" type="NUMERIC(10)"><constraints nullable="false"/></column>
+      <column name="source_sample_item_id" type="NUMERIC(10)"><constraints nullable="false"/></column>
+      <column name="source_decision_id" type="NUMERIC(10)"><constraints nullable="false"/></column>
+      <column name="request_id" type="NUMERIC(10)"><constraints nullable="false"/></column>
+      <column name="created_by" type="NUMERIC(10)"><constraints nullable="false"/></column>
+      <column name="evidence_digest" type="VARCHAR(64)"><constraints nullable="false"/></column>
+      <column name="receipt_json" type="TEXT"><constraints nullable="false"/></column>
+      <column name="receipt_digest" type="VARCHAR(64)"><constraints nullable="false"/></column>
+      <column name="created_at" type="TIMESTAMP WITH TIME ZONE"><constraints nullable="false"/></column>
+      <column name="last_updated" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
+    </createTable>
+    <addUniqueConstraint schemaName="clinlims" tableName="specimen_recollection" columnNames="operation_id" constraintName="uq_recollection_operation"/>
+    <addUniqueConstraint schemaName="clinlims" tableName="specimen_recollection" columnNames="source_sample_item_id" constraintName="uq_recollection_source"/>
+    <addUniqueConstraint schemaName="clinlims" tableName="specimen_recollection" columnNames="request_id" constraintName="uq_recollection_request"/>
+    <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="specimen_recollection"
+        baseColumnNames="sample_id" constraintName="fk_recollection_sample" referencedTableSchemaName="clinlims"
+        referencedTableName="sample" referencedColumnNames="id" onDelete="RESTRICT" onUpdate="RESTRICT"/>
+    <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="specimen_recollection"
+        baseColumnNames="patient_id" constraintName="fk_recollection_patient" referencedTableSchemaName="clinlims"
+        referencedTableName="patient" referencedColumnNames="id" onDelete="RESTRICT" onUpdate="RESTRICT"/>
+    <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="specimen_recollection"
+        baseColumnNames="source_request_id" constraintName="fk_recollection_source_request" referencedTableSchemaName="clinlims"
+        referencedTableName="sample_type_request" referencedColumnNames="id" onDelete="RESTRICT" onUpdate="RESTRICT"/>
+    <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="specimen_recollection"
+        baseColumnNames="source_sample_item_id" constraintName="fk_recollection_source_item" referencedTableSchemaName="clinlims"
+        referencedTableName="sample_item" referencedColumnNames="id" onDelete="RESTRICT" onUpdate="RESTRICT"/>
+    <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="specimen_recollection"
+        baseColumnNames="source_decision_id" constraintName="fk_recollection_decision" referencedTableSchemaName="clinlims"
+        referencedTableName="specimen_intake_decision" referencedColumnNames="id" onDelete="RESTRICT" onUpdate="RESTRICT"/>
+    <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="specimen_recollection"
+        baseColumnNames="request_id" constraintName="fk_recollection_request" referencedTableSchemaName="clinlims"
+        referencedTableName="sample_type_request" referencedColumnNames="id" onDelete="RESTRICT" onUpdate="RESTRICT"/>
+    <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="specimen_recollection"
+        baseColumnNames="created_by" constraintName="fk_recollection_actor" referencedTableSchemaName="clinlims"
+        referencedTableName="system_user" referencedColumnNames="id" onDelete="RESTRICT" onUpdate="RESTRICT"/>
+    <sql splitStatements="false"><![CDATA[
+      ALTER TABLE clinlims.specimen_recollection
+      ADD CONSTRAINT ck_recollection_ids CHECK (
+        id BETWEEN 1 AND 2147483647 AND sample_id BETWEEN 1 AND 2147483647
+        AND patient_id BETWEEN 1 AND 2147483647 AND source_request_id BETWEEN 1 AND 2147483647
+        AND source_sample_item_id BETWEEN 1 AND 2147483647 AND source_decision_id BETWEEN 1 AND 2147483647
+        AND request_id BETWEEN 1 AND 2147483647 AND created_by BETWEEN 1 AND 2147483647
+        AND request_id <> source_request_id),
+      ADD CONSTRAINT ck_recollection_operation CHECK (operation_id ~ '^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$'),
+      ADD CONSTRAINT ck_recollection_evidence CHECK (evidence_digest ~ '^[a-f0-9]{64}$'
+        AND receipt_digest ~ '^[a-f0-9]{64}$' AND length(receipt_json) BETWEEN 1 AND 1048576);
+    ]]></sql>
+    <sql splitStatements="false"><![CDATA[
+      CREATE FUNCTION clinlims.guard_specimen_recollection() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        RAISE EXCEPTION 'Replacement request provenance cannot be updated, deleted or truncated' USING ERRCODE = '55000';
+      END $$;
+    ]]></sql>
+    <sql>
+      CREATE TRIGGER recollection_no_mutation BEFORE UPDATE OR DELETE ON clinlims.specimen_recollection
+        FOR EACH ROW EXECUTE FUNCTION clinlims.guard_specimen_recollection();
+      CREATE TRIGGER recollection_no_truncate BEFORE TRUNCATE ON clinlims.specimen_recollection
+        FOR EACH STATEMENT EXECUTE FUNCTION clinlims.guard_specimen_recollection();
+    </sql>
+    <sql splitStatements="false"><![CDATA[
+      DO $$ DECLARE audit_name text; BEGIN
+        LOCK TABLE clinlims.reference_tables IN SHARE ROW EXCLUSIVE MODE;
+        FOREACH audit_name IN ARRAY ARRAY['sample_type_request', 'specimen_recollection'] LOOP
+          IF (SELECT count(*) FROM clinlims.reference_tables WHERE trim(lower(name)) = audit_name) > 1
+            OR EXISTS (SELECT 1 FROM clinlims.reference_tables WHERE trim(lower(name)) = audit_name
+              AND (keep_history IS DISTINCT FROM 'Y' OR is_hl7_encoded IS DISTINCT FROM 'N')) THEN
+            RAISE EXCEPTION 'Replacement request audit registration requires explicit reconciliation';
+          END IF;
+          INSERT INTO clinlims.reference_tables (id, name, keep_history, is_hl7_encoded, lastupdated)
+            SELECT nextval('clinlims.reference_tables_seq'), audit_name, 'Y', 'N', CURRENT_TIMESTAMP
+            WHERE NOT EXISTS (SELECT 1 FROM clinlims.reference_tables WHERE trim(lower(name)) = audit_name);
+        END LOOP;
+      END $$;
+    ]]></sql>
+    <!-- Down-grade must keep clinical provenance; no automatic destruction. -->
+    <rollback><sql splitStatements="false">DO $$ BEGIN RAISE EXCEPTION 'Replacement provenance downgrade requires an authorized evidence-preserving migration'; END $$;</sql></rollback>
+  </changeSet>
+</databaseChangeLog>
