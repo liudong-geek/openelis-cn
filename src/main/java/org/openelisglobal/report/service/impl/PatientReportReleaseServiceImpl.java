@@ -39,6 +39,12 @@ public class PatientReportReleaseServiceImpl extends AuditableBaseObjectServiceI
     private ReportDocumentService documents;
     @Autowired
     private SystemUserService systemUserService;
+    @Autowired
+    private ReportFrozenContentService frozenContent;
+    @Autowired
+    private ChinesePatientReportPdfRenderer renderer;
+    @Autowired
+    private org.openelisglobal.esig.service.ElectronicSignatureService signatures;
 
     public PatientReportReleaseServiceImpl() {
         super(PatientReportRelease.class);
@@ -84,6 +90,176 @@ public class PatientReportReleaseServiceImpl extends AuditableBaseObjectServiceI
         release.setSysUserId(actor);
         insert(release);
         return toSummary(release);
+    }
+
+    @Override
+    @Transactional
+    public org.openelisglobal.report.form.ReportFrozenResponse freeze(String documentId, Long releaseId, String actor) {
+        AuthorizedRelease authorized = authorizeRelease(documentId, releaseId, actor, true);
+        PatientReportRelease release = authorized.release();
+        requireDraft(release);
+        var snapshot = frozenContent.capture(release, authorized.scope(), actor);
+        String json = frozenContent.encode(snapshot);
+        release.setFrozenContentJson(json);
+        release.setFrozenContentSha256(DigestUtils.sha256Hex(json));
+        release.setFrozenAt(Timestamp.from(Instant.now()));
+        release.setSysUserId(actor);
+        update(release);
+        return frozenResponse(release, snapshot);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public org.openelisglobal.report.form.ReportFrozenResponse getSnapshot(String documentId, Long releaseId,
+            String actor) {
+        AuthorizedRelease authorized = authorizeRelease(documentId, releaseId, actor, false);
+        return frozenResponse(authorized.release(), requireFrozen(authorized));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] previewFrozen(String documentId, Long releaseId, String actor) {
+        AuthorizedRelease authorized = authorizeRelease(documentId, releaseId, actor, false);
+        requireDraft(authorized.release());
+        var snapshot = requireFrozen(authorized);
+        return renderer.renderFrozenPreview(snapshot.report(), snapshot.template(), snapshot.reportNumber(),
+                snapshot.reportVersion(), snapshot.amendmentReason(),
+                authorized.release().getFrozenAt().toLocalDateTime());
+    }
+
+    @Override
+    @Transactional
+    public PatientReportReleaseSummary issueDocument(String documentId, Long releaseId, String expectedHash,
+            String password, String actor, String clientIp, String userAgent) {
+        AuthorizedRelease authorized = authorizeRelease(documentId, releaseId, actor, true);
+        PatientReportRelease release = authorized.release();
+        requireDraft(release);
+        var snapshot = requireFrozen(authorized);
+        if (!hashMatches(expectedHash, release.getFrozenContentSha256()))
+            throw new IllegalStateException("Report preview changed; reopen the frozen snapshot before signing");
+        String current = frozenContent.encode(frozenContent.capture(release, authorized.scope(), actor));
+        if (!hashMatches(release.getFrozenContentSha256(), DigestUtils.sha256Hex(current)))
+            throw new IllegalStateException("Report source changed after preview; freeze and review again");
+        PatientReportRelease prior = patientReportReleaseDAO.getLatestReleased(documentId);
+        if (!Objects.equals(release.getSupersedesReleaseId(), prior == null ? null : prior.getId()))
+            throw new IllegalStateException("Report predecessor changed after draft creation");
+        if (prior != null) {
+            requireScope(prior);
+            if (!Objects.equals(prior.getReportDocumentId(), documentId))
+                throw new IllegalStateException("Report predecessor ownership mismatch");
+        }
+        var signature = sign(release, actor, password,
+                org.openelisglobal.esig.valueholder.SignatureMeaning.VALIDATED_AND_RELEASED, null, clientIp, userAgent,
+                release.getFrozenContentJson());
+        // Content-bound signing and PDF persistence share this transaction. Any later
+        // rendering/storage/state failure rolls back the signature as well.
+        byte[] pdf = renderer.renderFrozenOfficial(snapshot.report(),
+                new org.openelisglobal.report.PatientReportPdfMetadata(snapshot.reportNumber(),
+                        snapshot.reportVersion(), signature.getSignerNamePrinted(),
+                        signature.getSignedAt().toLocalDateTime(), snapshot.amendmentReason()),
+                snapshot.template());
+        if (pdf == null || pdf.length == 0)
+            throw new IllegalStateException("Report original generation failed");
+        documents.authorizePersistedScope(documentId, authorized.scope().authorizationScope(), actor, false);
+        if (prior != null && prior.getStatus() == PatientReportReleaseStatus.ISSUED) {
+            prior.setStatus(PatientReportReleaseStatus.SUPERSEDED);
+            prior.setSysUserId(actor);
+            update(prior);
+            // The database permits only one ISSUED row per document. Force the
+            // predecessor transition before the new release can acquire that slot.
+            patientReportReleaseDAO.flush();
+        }
+        release.setStatus(PatientReportReleaseStatus.ISSUED);
+        release.setIssuedBy(actor);
+        release.setIssuerNamePrinted(signature.getSignerNamePrinted());
+        release.setIssuedAt(signature.getSignedAt());
+        release.setIssuedSignatureId(signature.getId());
+        release.setPdfContent(pdf);
+        release.setPdfSha256(DigestUtils.sha256Hex(pdf));
+        release.setAccessionNumbers(snapshot.report().getRows().stream()
+                .map(row -> row.getDataMap().get("accessionNumber")).filter(Objects::nonNull).map(Object::toString)
+                .distinct().collect(java.util.stream.Collectors.joining(",")));
+        release.setSysUserId(actor);
+        update(release);
+        return toSummary(release);
+    }
+
+    @Override
+    @Transactional
+    public PatientReportReleaseSummary voidDocument(String documentId, Long releaseId, String expectedPdfSha256,
+            String password, String reason, String actor, String clientIp, String userAgent) {
+        AuthorizedRelease authorized = authorizeRelease(documentId, releaseId, actor, true);
+        PatientReportRelease release = authorized.release();
+        requireFrozen(authorized);
+        requireOriginal(release);
+        if (!isCurrent(release) || !hashMatches(expectedPdfSha256, release.getPdfSha256()))
+            throw new IllegalStateException("Only the unchanged current report can be voided");
+        String normalizedReason = normalize(reason);
+        if (normalizedReason == null)
+            throw new IllegalArgumentException("Void reason is required");
+        String content;
+        try {
+            content = mapper.writeValueAsString(
+                    new VoidContent("VOID_REPORT", documentId, releaseId, release.getReportVersion(),
+                            release.getFrozenContentSha256(), release.getPdfSha256(), normalizedReason));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException error) {
+            throw new IllegalStateException("Cannot create report void signature content", error);
+        }
+        var signature = sign(release, actor, password, org.openelisglobal.esig.valueholder.SignatureMeaning.REJECTED,
+                normalizedReason, clientIp, userAgent, content);
+        documents.authorizePersistedScope(documentId, authorized.scope().authorizationScope(), actor, false);
+        release.setStatus(PatientReportReleaseStatus.VOIDED);
+        release.setVoidedBy(actor);
+        release.setVoidedAt(signature.getSignedAt());
+        release.setVoidSignatureId(signature.getId());
+        release.setVoidReason(normalizedReason);
+        release.setSysUserId(actor);
+        update(release);
+        return toSummary(release);
+    }
+
+    private record VoidContent(String action, String documentId, Long releaseId, int reportVersion,
+            String snapshotSha256, String pdfSha256, String reason) {
+    }
+
+    private org.openelisglobal.esig.valueholder.ElectronicSignature sign(PatientReportRelease release, String actor,
+            String password, org.openelisglobal.esig.valueholder.SignatureMeaning meaning, String reason,
+            String clientIp, String userAgent, String content) {
+        if (password == null || password.isBlank())
+            throw new IllegalArgumentException("Signing password is required");
+        var user = systemUserService.getUserById(actor);
+        if (user == null || !Objects.equals(actor, user.getId()) || !"Y".equals(user.getIsActive())
+                || user.getLoginName() == null || user.getLoginName().isBlank())
+            throw new org.springframework.security.access.AccessDeniedException("Report signer is unavailable");
+        var signature = signatures.executeSignatureForSnapshot(user.getLoginName(), password, meaning, "REPORT",
+                release.getId(), reason, clientIp, userAgent, content);
+        if (signature == null || signature.getId() == null || signature.getSignerId() == null
+                || !actor.equals(signature.getSignerId().toString()) || !"REPORT".equals(signature.getRecordType())
+                || !Objects.equals(release.getId(), signature.getRecordId())
+                || signature.getSignatureMeaning() != meaning || !Objects.equals(content, signature.getSignedContent())
+                || !hashMatches(signature.getContentSha256(), DigestUtils.sha256Hex(content))
+                || signature.getSignedAt() == null || signature.getSignerNamePrinted() == null
+                || signature.getSignerNamePrinted().isBlank())
+            throw new IllegalStateException("Report content signature binding failed");
+        return signature;
+    }
+
+    private org.openelisglobal.report.form.ReportFrozenSnapshot requireFrozen(AuthorizedRelease authorized) {
+        var snapshot = frozenContent.require(authorized.release());
+        if (!snapshot.scope().equals(authorized.scope()))
+            throw new IllegalStateException("Frozen report membership mismatch");
+        return snapshot;
+    }
+
+    private void requireDraft(PatientReportRelease release) {
+        if (release.getStatus() != PatientReportReleaseStatus.DRAFT)
+            throw new IllegalStateException("Only a draft report can be frozen or signed");
+    }
+
+    private org.openelisglobal.report.form.ReportFrozenResponse frozenResponse(PatientReportRelease release,
+            org.openelisglobal.report.form.ReportFrozenSnapshot snapshot) {
+        return new org.openelisglobal.report.form.ReportFrozenResponse(release.getId(), release.getReportDocumentId(),
+                release.getFrozenContentSha256(), release.getFrozenAt(), snapshot);
     }
 
     @Override
@@ -265,8 +441,8 @@ public class PatientReportReleaseServiceImpl extends AuditableBaseObjectServiceI
     }
 
     private PatientReportReleaseSummary toSummary(PatientReportRelease release) {
-        String name = "";
-        if (release.getIssuedBy() != null) {
+        String name = release.getIssuerNamePrinted() == null ? "" : release.getIssuerNamePrinted();
+        if (name.isBlank() && release.getIssuedBy() != null) {
             var user = systemUserService.getUserById(release.getIssuedBy());
             if (user != null)
                 name = java.util.stream.Stream.of(user.getLastName(), user.getFirstName()).filter(Objects::nonNull)

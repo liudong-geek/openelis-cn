@@ -78,4 +78,9 @@ public class PatientReportReleaseDAOImpl extends BaseDAOImpl<PatientReportReleas
                         + "ORDER BY r.reportVersion DESC", PatientReportRelease.class)
                 .setParameter("documentId", documentId).list();
     }
+
+    @Override
+    public void flush() {
+        entityManager.flush();
+    }
 }

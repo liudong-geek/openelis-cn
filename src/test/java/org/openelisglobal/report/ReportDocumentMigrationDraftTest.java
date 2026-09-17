@@ -35,8 +35,11 @@ import org.w3c.dom.Node;
 public class ReportDocumentMigrationDraftTest {
     private static final Path DRAFT = Path
             .of("src/main/resources/liquibase/3.5.x.x/081-report-document-foundation.xml");
+    private static final Path FROZEN_CONTENT = Path
+            .of("src/main/resources/liquibase/3.5.x.x/087-report-frozen-content.xml");
     private static final String NS = "http://www.liquibase.org/xml/ns/dbchangelog";
     private static Document document;
+    private static Document frozenContentDocument;
 
     @BeforeClass
     public static void parseWithoutExternalResources() throws Exception {
@@ -46,6 +49,7 @@ public class ReportDocumentMigrationDraftTest {
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
         document = factory.newDocumentBuilder().parse(DRAFT.toFile());
+        frozenContentDocument = factory.newDocumentBuilder().parse(FROZEN_CONTENT.toFile());
     }
 
     @Test
@@ -73,7 +77,9 @@ public class ReportDocumentMigrationDraftTest {
 
     @Test
     public void draftTablesAgreeWithAllMappedScalarAndRelationshipColumns() {
-        assertEquals(mappedColumns(ReportDocument.class), columns("report_document").keySet());
+        Map<String, Element> documentColumns = columns("report_document");
+        documentColumns.putAll(addedColumns(frozenContentDocument, "report_document"));
+        assertEquals(mappedColumns(ReportDocument.class), documentColumns.keySet());
         assertEquals(mappedColumns(ReportDocumentMember.class), columns("report_document_member").keySet());
     }
 
@@ -227,6 +233,23 @@ public class ReportDocumentMigrationDraftTest {
             for (Node node = table.getFirstChild(); node != null; node = node.getNextSibling()) {
                 if (node instanceof Element element && "column".equals(element.getLocalName())) {
                     assertEquals("No duplicate columns", null, columns.put(element.getAttribute("name"), element));
+                }
+            }
+        }
+        return columns;
+    }
+
+    private static Map<String, Element> addedColumns(Document migration, String tableName) {
+        Map<String, Element> columns = new LinkedHashMap<>();
+        var nodes = migration.getElementsByTagNameNS(NS, "addColumn");
+        for (int i = 0; i < nodes.getLength(); i++) {
+            Element addColumn = (Element) nodes.item(i);
+            if (!tableName.equals(addColumn.getAttribute("tableName")))
+                continue;
+            for (Node node = addColumn.getFirstChild(); node != null; node = node.getNextSibling()) {
+                if (node instanceof Element element && "column".equals(element.getLocalName())) {
+                    assertEquals("No duplicate cumulative columns", null,
+                            columns.put(element.getAttribute("name"), element));
                 }
             }
         }

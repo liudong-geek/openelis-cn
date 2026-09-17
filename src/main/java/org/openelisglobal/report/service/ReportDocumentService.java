@@ -5,6 +5,8 @@ import org.openelisglobal.report.form.ReportDocumentSummary;
 import org.openelisglobal.reports.service.ReportScopeDefinition;
 
 public interface ReportDocumentService {
+    List<org.openelisglobal.report.form.ReportApplicationSummary> getApplications(String patientId, String actor);
+
     ReportDocumentSummary prepare(String sampleId, String groupKey, String actor);
 
     List<ReportDocumentSummary> getBySample(String sampleId, String actor);

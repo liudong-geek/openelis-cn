@@ -97,6 +97,30 @@ public class ReportDocument extends BaseObject<String> {
         }
     }
 
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @Column(name = "group_rules_json", columnDefinition = "TEXT", updatable = false)
+    private String groupRulesJson;
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @Column(name = "group_rules_sha256", length = 64, updatable = false)
+    private String groupRulesSha256;
+
+    public String getGroupRulesJson() {
+        return groupRulesJson;
+    }
+
+    public void setGroupRulesJson(String value) {
+        groupRulesJson = value;
+    }
+
+    public String getGroupRulesSha256() {
+        return groupRulesSha256;
+    }
+
+    public void setGroupRulesSha256(String value) {
+        groupRulesSha256 = value;
+    }
+
     @Override
     public String getId() {
         return id;

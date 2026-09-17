@@ -42,7 +42,10 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/** Internal SIM scope contracts only; no report release, database or network access. */
+/**
+ * Internal SIM scope contracts only; no report release, database or network
+ * access.
+ */
 public class ReportExplicitScopeAuthorizationServiceTest {
 
     private static final String USER_ID = "7";
@@ -154,9 +157,8 @@ public class ReportExplicitScopeAuthorizationServiceTest {
     @Test
     public void definition_rejectsNonCanonicalAnalysisIds() {
         for (String id : invalidIds()) {
-            assertThrows(IllegalArgumentException.class,
-                    () -> new ReportScopeDefinition(PATIENT_ID, SAMPLE_ID, GROUP_KEY, RULE_VERSION,
-                            Arrays.asList("101", id)));
+            assertThrows(IllegalArgumentException.class, () -> new ReportScopeDefinition(PATIENT_ID, SAMPLE_ID,
+                    GROUP_KEY, RULE_VERSION, Arrays.asList("101", id)));
         }
     }
 
@@ -175,8 +177,7 @@ public class ReportExplicitScopeAuthorizationServiceTest {
     @Test
     public void definition_rejectsDuplicateMembersInsteadOfSilentlyDeduplicating() {
         assertThrows(IllegalArgumentException.class,
-                () -> new ReportScopeDefinition(PATIENT_ID, SAMPLE_ID, GROUP_KEY, RULE_VERSION,
-                        List.of("101", "101")));
+                () -> new ReportScopeDefinition(PATIENT_ID, SAMPLE_ID, GROUP_KEY, RULE_VERSION, List.of("101", "101")));
     }
 
     @Test
@@ -205,11 +206,14 @@ public class ReportExplicitScopeAuthorizationServiceTest {
         verify(roleService).getRoleByName(Constants.ROLE_REPORTS);
         verify(userService).getUserTestSections(USER_ID, "77");
         verify(userService, never()).getUserTestSections(USER_ID, Constants.ROLE_REPORTS);
-        // No argument combination may silently filter unauthorized members out of this complete scope.
+        // No argument combination may silently filter unauthorized members out of this
+        // complete scope.
         verify(userService, never()).filterAnalysesByLabUnitRoles(anyString(), anyList(), anyString());
-        // No analysis selection may widen the explicit definition into the legacy whole-application scope.
+        // No analysis selection may widen the explicit definition into the legacy
+        // whole-application scope.
         verify(sampleService, never()).getSamplesByAnalysisIds(anyList());
-        // No application ID may trigger a whole-application member reload instead of the exact definition.
+        // No application ID may trigger a whole-application member reload instead of
+        // the exact definition.
         verify(analysisService, never()).getAnalysesBySampleId(anyString());
     }
 
@@ -228,9 +232,11 @@ public class ReportExplicitScopeAuthorizationServiceTest {
 
     @Test
     public void authorize_allowsMembersFromSeveralExplicitlyAuthorizedActualSections() {
-        second.setTestSection(section("302"));
-        when(userService.getUserTestSections(USER_ID, "77")).thenReturn(
-                List.of(new IdValuePair("301", "SIM-A"), new IdValuePair("302", "SIM-B")));
+        TestSection forbidden = new TestSection();
+        forbidden.setId("302");
+        second.setTestSection(forbidden);
+        when(userService.getUserTestSections(USER_ID, "77"))
+                .thenReturn(List.of(new IdValuePair("301", "SIM-A"), new IdValuePair("302", "SIM-B")));
 
         service.authorizeExplicitScope(scope(), USER_ID);
 
@@ -249,8 +255,8 @@ public class ReportExplicitScopeAuthorizationServiceTest {
         when(sampleHumanService.getPatientForSample(other)).thenReturn(patient(PATIENT_ID));
         when(analysisService.get(List.of("103"))).thenReturn(List.of(analysis("103", "403", other, "301")));
 
-        service.authorizeExplicitScope(new ReportScopeDefinition(PATIENT_ID, "202", GROUP_KEY, RULE_VERSION,
-                List.of("103")), USER_ID);
+        service.authorizeExplicitScope(
+                new ReportScopeDefinition(PATIENT_ID, "202", GROUP_KEY, RULE_VERSION, List.of("103")), USER_ID);
 
         verify(analysisService).get(MEMBER_IDS);
         verify(analysisService).get(List.of("103"));
@@ -265,7 +271,8 @@ public class ReportExplicitScopeAuthorizationServiceTest {
 
     @Test
     public void authorize_rejectsUnauthenticatedPrincipalBeforeLookup() {
-        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("SIM-user", "N/A"));
+        SecurityContextHolder.getContext()
+                .setAuthentication(new UsernamePasswordAuthenticationToken("SIM-user", "N/A"));
 
         assertDeniedBeforeLookup(scope(), USER_ID);
     }
@@ -398,7 +405,8 @@ public class ReportExplicitScopeAuthorizationServiceTest {
         Analysis duplicate = analysis("101", "403", selectedSample, "302");
         when(analysisService.get(MEMBER_IDS)).thenReturn(List.of(first, duplicate));
 
-        // Cardinality alone cannot establish membership; neither object may overwrite the other by ID.
+        // Cardinality alone cannot establish membership; neither object may overwrite
+        // the other by ID.
         assertDeniedBeforeSectionLookup();
     }
 
@@ -484,18 +492,23 @@ public class ReportExplicitScopeAuthorizationServiceTest {
 
     @Test
     public void authorize_rejectsMixedAuthorizedAndUnauthorizedMembersInFull() {
-        second.setTestSection(section("302"));
+        TestSection forbidden = new TestSection();
+        forbidden.setId("302");
+        second.setTestSection(forbidden);
 
         assertDenied();
 
-        // Reject the full definition; no user, member list or role may invoke a partial-result filter.
+        // Reject the full definition; no user, member list or role may invoke a
+        // partial-result filter.
         verify(userService, never()).filterAnalysesByLabUnitRoles(anyString(), anyList(), anyString());
     }
 
     @Test
     public void authorize_doesNotGrantGlobalAdministratorAnImplicitSectionBypass() {
         authenticate("ROLE_REPORTS", "ROLE_GLOBAL_ADMIN");
-        second.setTestSection(section("302"));
+        TestSection forbidden = new TestSection();
+        forbidden.setId("302");
+        second.setTestSection(forbidden);
 
         assertDenied();
     }
@@ -591,13 +604,62 @@ public class ReportExplicitScopeAuthorizationServiceTest {
         verifyZeroInteractions(sampleService, sampleHumanService, analysisService, roleService, userService);
     }
 
+    @Test
+    public void wholeGroupVisibilityAllowsCompleteGroupAndRejectsMixedPermissionWithoutTruncation() {
+        org.junit.Assert.assertTrue(service.isCompleteScopeVisible(scope(), USER_ID));
+        TestSection forbidden = new TestSection();
+        forbidden.setId("302");
+        second.setTestSection(forbidden);
+        org.junit.Assert.assertFalse(service.isCompleteScopeVisible(scope(), USER_ID));
+        assertThrows(AccessDeniedException.class, () -> service.authorizeExplicitScope(scope(), USER_ID));
+    }
+
+    @Test public void wholeGroupListingTreatsMissingMemberEvidenceAsConflict() {
+        when(analysisService.get(MEMBER_IDS)).thenReturn(List.of(first));
+        assertThrows(IllegalStateException.class, () -> service.isCompleteScopeVisible(scope(), USER_ID));
+    }
+
+    @Test
+    public void wholeGroupListingTreatsWrongOwnershipAsConflict() {
+        second.getSampleItem().setSample(sample("999"));
+        assertThrows(IllegalStateException.class, () -> service.isCompleteScopeVisible(scope(), USER_ID));
+    }
+
+    @Test
+    public void wholeGroupListingDoesNotCallMissingActualSectionAnOrdinaryDenial() {
+        second.setTestSection(null);
+        assertThrows(IllegalStateException.class, () -> service.isCompleteScopeVisible(scope(), USER_ID));
+    }
+
+    @Test public void wholeGroupListingNeverConvertsDatabaseFailureToFalse() {
+        when(analysisService.get(MEMBER_IDS)).thenThrow(new IllegalStateException("SIM database unavailable"));
+        assertThrows(IllegalStateException.class, () -> service.isCompleteScopeVisible(scope(), USER_ID));
+    }
+
+    @Test
+    public void actorGuardBindsSameSessionAcrossWholeList() {
+        var guard = service.beginActorCheck(USER_ID);
+        service.endActorCheck(guard);
+        authenticate("ROLE_REPORTS");
+        assertThrows(AccessDeniedException.class, () -> service.endActorCheck(guard));
+    }
+
+    @Test
+    public void actorGuardRejectsLostReportRoleAndDifferentActor() {
+        var guard = service.beginActorCheck(USER_ID);
+        authenticate("ROLE_RESULTS");
+        assertThrows(AccessDeniedException.class, () -> service.endActorCheck(guard));
+        authenticate("ROLE_REPORTS");
+        assertThrows(AccessDeniedException.class, () -> service.beginActorCheck("999"));
+    }
+
     private ReportScopeDefinition scope() {
         return new ReportScopeDefinition(PATIENT_ID, SAMPLE_ID, GROUP_KEY, RULE_VERSION, MEMBER_IDS);
     }
 
     private List<String> invalidIds() {
-        return Arrays.asList(null, "", " ", "0", "00", "01", "-1", "+1", "1.0", "1e2", " 1", "1 ", "1\n",
-                "\u0661", "1/2");
+        return Arrays.asList(null, "", " ", "0", "00", "01", "-1", "+1", "1.0", "1e2", " 1", "1 ", "1\n", "\u0661",
+                "1/2");
     }
 
     private List<String> invalidLabels() {

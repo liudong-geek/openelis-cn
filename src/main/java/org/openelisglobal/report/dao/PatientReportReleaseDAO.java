@@ -16,4 +16,6 @@ public interface PatientReportReleaseDAO extends BaseDAO<PatientReportRelease, L
     PatientReportRelease getLatestReleased(String documentId);
 
     List<PatientReportRelease> getByDocument(String documentId);
+
+    void flush();
 }

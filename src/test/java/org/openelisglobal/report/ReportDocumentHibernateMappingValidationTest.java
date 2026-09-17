@@ -309,7 +309,7 @@ public class ReportDocumentHibernateMappingValidationTest {
     @Test
     public void foundationTablesDoNotIntroduceResultSnapshotsOrAParallelReleaseLifecycle() {
         assertEquals(names("id", "patient_id", "sample_id", "report_group_key", "group_rule_version", "report_number",
-                "fhir_uuid", "created_by", "created_at", "last_updated"),
+                "fhir_uuid", "created_by", "created_at", "group_rules_json", "group_rules_sha256", "last_updated"),
                 columnNames(entity(ReportDocument.class).getTable().getColumnIterator()));
         assertEquals(names("id", "report_document_id", "analysis_id", "member_position", "last_updated"),
                 columnNames(entity(ReportDocumentMember.class).getTable().getColumnIterator()));
@@ -364,16 +364,20 @@ public class ReportDocumentHibernateMappingValidationTest {
                 Timestamp.valueOf("2026-09-10 09:01:01")));
         List<ReportDocumentMember> secondMembers = List.of(simMember("5102", new ReportDocument(), "6102", 4,
                 Timestamp.valueOf("2026-09-10 10:02:02")));
-        Map<String, Object> firstValues = Map.of("patientId", "2101", "sampleId", "3101", "reportGroupKey", "SIM_HEM",
+        Map<String, Object> firstValues = new LinkedHashMap<>(Map.of("patientId", "2101", "sampleId", "3101", "reportGroupKey", "SIM_HEM",
                 "groupRuleVersion", "SIM_RULE_A", "reportNumber", "SIM-RPT-A", "fhirUuid",
                 UUID.fromString("ddf79c96-7b0e-434f-94a8-3d8d62c7c080"), "createdBy", "4101", "createdAt",
                 Timestamp.valueOf("2026-09-10 09:00:00"), "members", firstMembers, "lastupdated",
-                Timestamp.valueOf("2026-09-10 09:01:00"));
-        Map<String, Object> secondValues = Map.of("patientId", "2102", "sampleId", "3102", "reportGroupKey", "SIM_CHEM",
+                Timestamp.valueOf("2026-09-10 09:01:00")));
+        firstValues.put("groupRulesJson", "{\"ruleVersion\":\"SIM_RULE_A\"}");
+        firstValues.put("groupRulesSha256", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        Map<String, Object> secondValues = new LinkedHashMap<>(Map.of("patientId", "2102", "sampleId", "3102", "reportGroupKey", "SIM_CHEM",
                 "groupRuleVersion", "SIM_RULE_B", "reportNumber", "SIM-RPT-B", "fhirUuid",
                 UUID.fromString("4025d4e5-7d6c-4a2b-8876-454a7fa192d9"), "createdBy", "4102", "createdAt",
                 Timestamp.valueOf("2026-09-10 10:00:00"), "members", secondMembers, "lastupdated",
-                Timestamp.valueOf("2026-09-10 10:02:00"));
+                Timestamp.valueOf("2026-09-10 10:02:00")));
+        secondValues.put("groupRulesJson", "{\"ruleVersion\":\"SIM_RULE_B\"}");
+        secondValues.put("groupRulesSha256", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 
         ReportDocument first = simDocument("1101", firstValues);
         ReportDocument second = simDocument("1102", secondValues);
@@ -412,11 +416,14 @@ public class ReportDocumentHibernateMappingValidationTest {
     }
 
     private static ReportDocument simCallbackDocument() {
-        return simDocument("1101", Map.of("patientId", "2101", "sampleId", "3101", "reportGroupKey", "SIM_HEM",
+        Map<String, Object> values = new LinkedHashMap<>(Map.of("patientId", "2101", "sampleId", "3101", "reportGroupKey", "SIM_HEM",
                 "groupRuleVersion", "SIM_RULE_A", "reportNumber", "SIM-CALLBACK-001", "fhirUuid",
                 UUID.fromString("caf2536b-c991-4281-92e3-654f976be07a"), "createdBy", "4101", "createdAt",
                 Timestamp.valueOf("2026-09-10 09:00:00"), "members", List.of(), "lastupdated",
                 Timestamp.valueOf("2026-09-10 09:01:00")));
+        values.put("groupRulesJson", "{\"ruleVersion\":\"SIM_RULE_A\"}");
+        values.put("groupRulesSha256", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        return simDocument("1101", values);
     }
 
     private static ReportDocument simDocument(String id, Map<String, Object> values) {
@@ -426,6 +433,8 @@ public class ReportDocumentHibernateMappingValidationTest {
         document.setSampleId((String) values.get("sampleId"));
         document.setReportGroupKey((String) values.get("reportGroupKey"));
         document.setGroupRuleVersion((String) values.get("groupRuleVersion"));
+        document.setGroupRulesJson((String) values.get("groupRulesJson"));
+        document.setGroupRulesSha256((String) values.get("groupRulesSha256"));
         document.setReportNumber((String) values.get("reportNumber"));
         document.setFhirUuid((UUID) values.get("fhirUuid"));
         document.setCreatedBy((String) values.get("createdBy"));
@@ -457,6 +466,8 @@ public class ReportDocumentHibernateMappingValidationTest {
         accessors.put("sampleId", document.getSampleId());
         accessors.put("reportGroupKey", document.getReportGroupKey());
         accessors.put("groupRuleVersion", document.getGroupRuleVersion());
+        accessors.put("groupRulesJson", document.getGroupRulesJson());
+        accessors.put("groupRulesSha256", document.getGroupRulesSha256());
         accessors.put("reportNumber", document.getReportNumber());
         accessors.put("fhirUuid", document.getFhirUuid());
         accessors.put("createdBy", document.getCreatedBy());

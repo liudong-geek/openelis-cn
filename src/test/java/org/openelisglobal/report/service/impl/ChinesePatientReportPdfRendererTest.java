@@ -81,6 +81,40 @@ public class ChinesePatientReportPdfRendererTest {
         reader.close();
     }
 
+    @Test
+    public void frozenPreviewAndOfficialKeepSameClinicalBodyTemplateAndAmendment() throws Exception {
+        var data = new ReportingData();
+        var row = resultRow("SIM葡萄糖", "5.5", "正常");
+        row.addData("remarks", "SIM备注原文");
+        data.setRows(List.of(row));
+        var template = new org.openelisglobal.report.form.ReportFrozenTemplate("SIM-T1", "SIM机构检验报告", "SIM检验科",
+                "SIM模板页脚");
+        var time = LocalDateTime.of(2026, 9, 16, 12, 30);
+        var renderer = new ChinesePatientReportPdfRenderer();
+        byte[] preview = renderer.renderFrozenPreview(data, template, "BG-SIM", 2, "SIM更正原因", time);
+        byte[] official = renderer.renderFrozenOfficial(data,
+                new PatientReportPdfMetadata("BG-SIM", 2, "SIM签发人", time, "SIM更正原因"), template);
+        PdfReader p = new PdfReader(preview);
+        PdfReader o = new PdfReader(official);
+        try {
+            String pt = PdfTextExtractor.getTextFromPage(p, 1), ot = PdfTextExtractor.getTextFromPage(o, 1);
+            for (String text : List.of("SIM机构检验报告", "SIM检验科", "BG-SIM", "V2", "张三", "SIM葡萄糖", "5.5", "mmol/L",
+                    "3.9-6.1", "SIM备注原文", "SIM模板页脚", "SIM更正原因")) {
+                assertTrue("preview: " + text, pt.contains(text));
+                assertTrue("official: " + text, ot.contains(text));
+            }
+            assertTrue(pt.contains("未签发"));
+            assertTrue(ot.contains("SIM签发人"));
+        } finally {
+            p.close();
+            o.close();
+        }
+        Path output = Path.of("target", "test-output");
+        Files.createDirectories(output);
+        Files.write(output.resolve("r03-sim-frozen-preview.pdf"), preview);
+        Files.write(output.resolve("r03-sim-issued-original.pdf"), official);
+    }
+
     private ReportRow resultRow(String testName, String resultValue, String resultFlag) {
         ReportRow row = new ReportRow();
         row.addData("patientName", "张三");

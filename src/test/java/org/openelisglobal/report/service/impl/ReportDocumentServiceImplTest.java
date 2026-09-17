@@ -129,18 +129,22 @@ public class ReportDocumentServiceImplTest {
         verify(documents, never()).insertMember(any());
     }
 
-    @Test public void newRuleVersionDoesNotOverwriteOldDocumentEvenWithSameMembers() {
+    @Test public void newGlobalRuleVersionDoesNotBlockDocumentUsingFrozenOriginalRules() {
         when(documents.findBySampleAndGroup("301", "SIM-CHEM")).thenReturn(document("SIM-OLD", List.of("401", "402")));
-        assertThrows(IllegalStateException.class, () -> service.prepare("301", "SIM-CHEM", "7"));
+        assertEquals("SIM-OLD", service.prepare("301", "SIM-CHEM", "7").ruleVersion());
+        verify(configuration, never()).getRules();
         verify(documents, never()).update(any());
     }
 
-    @Test public void draftPreparationLocksAndRevalidatesMembership() {
-        when(documents.getWithMembers("201", true)).thenReturn(document("SIM-1", List.of("401", "402")));
+    @Test
+    public void draftPreparationLocksAndRevalidatesMembership() {
+        var persisted = document("SIM-1", List.of("401", "402"));
+        when(documents.getWithMembers("201", true)).thenReturn(persisted);
+        when(documents.getWithMembers("201", false)).thenReturn(persisted);
         var result = service.lockCurrent("201", "7");
         assertEquals(List.of("401", "402"), result.analysisIds());
         verify(documents).getWithMembers("201", true);
-        verify(authorization, times(2)).authorizeExplicitScope(any(), anyString());
+        verify(authorization, times(3)).authorizeExplicitScope(any(), anyString());
     }
 
     @Test public void historyAuthorizationUsesPersistedFullMembersWithoutCurrentConfig() {
@@ -175,6 +179,81 @@ public class ReportDocumentServiceImplTest {
         verify(authorization, never()).authorizeExplicitScope(any(), anyString());
     }
 
+    @Test
+    public void legacyDocumentWithoutRuleEvidenceCannotPrepareNewDraft() {
+        var persisted = document("SIM-1", List.of("401", "402"));
+        persisted.setGroupRulesJson(null);
+        when(documents.getWithMembers("201", false)).thenReturn(persisted);
+        when(documents.getWithMembers("201", true)).thenReturn(persisted);
+        assertThrows(IllegalStateException.class, () -> service.lockCurrent("201", "7"));
+    }
+
+    @Test
+    public void changedFrozenRuleHashCannotBeTrusted() {
+        var persisted = document("SIM-1", List.of("401", "402"));
+        persisted.setGroupRulesJson(persisted.getGroupRulesJson().replace("11", "13"));
+        when(documents.findBySampleAndGroup("301", "SIM-CHEM")).thenReturn(persisted);
+        assertThrows(IllegalStateException.class, () -> service.prepare("301", "SIM-CHEM", "7"));
+    }
+
+    @Test
+    public void applicationSelectorKeepsWholeAuthorizedGroupOnMixedSectionApplication() {
+        Sample sample = new Sample();
+        sample.setId("301");
+        sample.setAccessionNumber("SIM-301");
+        when(samples.getSamplesForPatient("101")).thenReturn(List.of(sample));
+        when(documents.getBySample("301")).thenReturn(List.of());
+        var chemistry = new ReportScopeDefinition("101", "301", "SIM-CHEM", "SIM-1", List.of("401", "402"));
+        var hematology = new ReportScopeDefinition("101", "301", "SIM-HEM", "SIM-1", List.of("403"));
+        when(authorization.isCompleteScopeVisible(chemistry, "7")).thenReturn(true);
+        when(authorization.isCompleteScopeVisible(hematology, "7")).thenReturn(false);
+        assertEquals("301", service.getApplications("101", "7").get(0).sampleId());
+        verify(authorization).isCompleteScopeVisible(chemistry, "7");
+        verify(authorization).isCompleteScopeVisible(hematology, "7");
+        when(authorization.isCompleteScopeVisible(chemistry, "7")).thenReturn(false);
+        assertTrue(service.getApplications("101", "7").isEmpty());
+        verify(authorization, times(2)).beginActorCheck("7");
+        verify(authorization, times(2)).endActorCheck(any());
+    }
+
+    @Test
+    public void documentListFiltersWholeUnauthorizedDocumentWithoutExposingItsIdentity() {
+        var chemistry = document("SIM-1", List.of("401", "402"));
+        var hematology = document("SIM-1", List.of("403"));
+        hematology.setId("202");
+        hematology.setReportGroupKey("SIM-HEM");
+        when(documents.getBySample("301")).thenReturn(List.of(chemistry, hematology));
+        when(authorization.isCompleteScopeVisible(
+                new ReportScopeDefinition("101", "301", "SIM-CHEM", "SIM-1", List.of("401", "402")), "7"))
+                .thenReturn(true);
+        var visible = service.getBySample("301", "7");
+        assertEquals(1, visible.size());
+        assertEquals("201", visible.get(0).id());
+        assertEquals(List.of("401", "402"), visible.get(0).analysisIds());
+        verify(authorization).beginActorCheck("7");
+        verify(authorization).endActorCheck(any());
+    }
+
+    @Test public void listEvidenceFailureIsNotHiddenAsAnEmptyList() {
+        when(documents.getBySample("301")).thenReturn(List.of(document("SIM-1", List.of("401", "402"))));
+        when(authorization.isCompleteScopeVisible(any(), anyString())).thenThrow(new IllegalStateException("SIM incomplete member evidence"));
+        assertThrows(IllegalStateException.class, () -> service.getBySample("301", "7"));
+    }
+
+    @Test public void listAccountRevocationAtEndCannotReturnPreviouslyAuthorizedRows() {
+        when(documents.getBySample("301")).thenReturn(List.of(document("SIM-1", List.of("401", "402"))));
+        when(authorization.isCompleteScopeVisible(any(), anyString())).thenReturn(true);
+        doThrow(new AccessDeniedException("SIM revoked")).when(authorization).endActorCheck(any());
+        assertThrows(AccessDeniedException.class, () -> service.getBySample("301", "7"));
+    }
+
+    @Test
+    public void applicationSelectorRejectsAliasesAndIncompleteLookup() {
+        assertThrows(IllegalArgumentException.class, () -> service.getApplications("FHIR-ALIAS", "7"));
+        when(samples.getSamplesForPatient("101")).thenReturn(null);
+        assertThrows(IllegalStateException.class, () -> service.getApplications("101", "7"));
+    }
+
     private Analysis analysis(String id, String testId) {
         Analysis analysis = new Analysis();
         analysis.setId(id);
@@ -191,6 +270,14 @@ public class ReportDocumentServiceImplTest {
         document.setSampleId("301");
         document.setReportGroupKey("SIM-CHEM");
         document.setGroupRuleVersion(version);
+        try {
+            String json = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(new ReportGroupingRules(
+                    version, List.of(new ReportGroupingRules.Group("SIM-CHEM", "SIM chemistry", List.of("11", "12")))));
+            document.setGroupRulesJson(json);
+            document.setGroupRulesSha256(org.apache.commons.codec.digest.DigestUtils.sha256Hex(json));
+        } catch (Exception error) {
+            throw new AssertionError(error);
+        }
         document.setReportNumber("BG-PERSISTED");
         document.setMembers(ids.stream().map(id -> {
             var member = new ReportDocumentMember();

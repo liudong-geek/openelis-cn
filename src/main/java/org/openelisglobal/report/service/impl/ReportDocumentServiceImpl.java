@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ReportDocumentServiceImpl extends AuditableBaseObjectServiceImpl<ReportDocument, String>
         implements ReportDocumentService {
+    private final com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
     @Autowired
     private ReportDocumentDAO documents;
     @Autowired
@@ -52,23 +53,86 @@ public class ReportDocumentServiceImpl extends AuditableBaseObjectServiceImpl<Re
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<org.openelisglobal.report.form.ReportApplicationSummary> getApplications(String patientId,
+            String actor) {
+        requireId(patientId);
+        var actorContext = authorization.beginActorCheck(actor);
+        var rules = configuration.getRules();
+        var found = samples.getSamplesForPatient(patientId);
+        if (found == null || found.stream().anyMatch(Objects::isNull) || found.stream()
+                .map(org.openelisglobal.sample.valueholder.Sample::getId).distinct().count() != found.size())
+            throw new IllegalStateException("Report applications could not be resolved completely");
+        List<org.openelisglobal.report.form.ReportApplicationSummary> visible = new ArrayList<>();
+        for (var sample : found) {
+            requireId(sample.getId());
+            List<Analysis> members = analyses.getAnalysesBySampleId(sample.getId());
+            if (members == null
+                    || members.stream()
+                            .anyMatch(member -> member == null || member.getTest() == null || member.getId() == null
+                                    || !member.getId().matches("[1-9][0-9]*"))
+                    || members.stream().map(Analysis::getId).distinct().count() != members.size())
+                throw new IllegalStateException("Report application members could not be resolved completely");
+            boolean accessible = false;
+            List<ReportDocument> existing = documents.getBySample(sample.getId());
+            if (existing == null)
+                throw new IllegalStateException("Report documents could not be loaded completely");
+            for (ReportDocument document : existing) {
+                if (document == null || !sample.getId().equals(document.getSampleId())
+                        || !patientId.equals(document.getPatientId()))
+                    throw new IllegalStateException("Report document application ownership mismatch");
+                if (authorization.isCompleteScopeVisible(scope(document), actor))
+                    accessible = true;
+            }
+            for (var group : rules.groups()) {
+                var ids = members.stream().filter(member -> group.testIds().contains(member.getTest().getId()))
+                        .map(Analysis::getId).sorted(Comparator.comparing(java.math.BigInteger::new)).toList();
+                if (ids.isEmpty())
+                    continue;
+                var scope = new ReportScopeDefinition(patientId, sample.getId(), group.key(), rules.ruleVersion(), ids);
+                if (authorization.isCompleteScopeVisible(scope, actor))
+                    accessible = true;
+            }
+            if (!accessible)
+                continue;
+            if (sample.getAccessionNumber() == null || sample.getAccessionNumber().isBlank())
+                throw new IllegalStateException("Report application has no accession number");
+            visible.add(new org.openelisglobal.report.form.ReportApplicationSummary(patientId, sample.getId(),
+                    sample.getAccessionNumber()));
+        }
+        authorization.endActorCheck(actorContext);
+        return List.copyOf(visible);
+    }
+
+    @Override
     @Transactional
     public ReportDocumentSummary prepare(String sampleId, String groupKey, String actor) {
-        // Authorize before taking a write lock; then resolve again inside the locked
-        // application scope.
-        resolveAuthorized(sampleId, groupKey, actor);
+        requireId(sampleId);
+        ReportDocument observed = documents.findBySampleAndGroup(sampleId, groupKey);
+        if (observed == null)
+            resolveAuthorized(sampleId, groupKey, actor, configuration.getRules());
+        else
+            authorization.authorizeExplicitScope(scope(observed), actor);
         documents.lockSample(sampleId);
-        ReportScopeDefinition scope = resolveAuthorized(sampleId, groupKey, actor);
         ReportDocument existing = documents.findBySampleAndGroup(sampleId, groupKey);
         if (existing != null) {
-            requireUnchanged(existing, scope);
+            requireUnchanged(existing, resolveAuthorized(sampleId, groupKey, actor, frozenRules(existing)));
             return summary(existing);
         }
+        ReportGroupingRules rules = configuration.getRules();
+        ReportScopeDefinition scope = resolveAuthorized(sampleId, groupKey, actor, rules);
         ReportDocument document = new ReportDocument();
         document.setPatientId(scope.patientId());
         document.setSampleId(scope.sampleId());
         document.setReportGroupKey(scope.groupKey());
         document.setGroupRuleVersion(scope.ruleVersion());
+        try {
+            String json = mapper.writeValueAsString(rules);
+            document.setGroupRulesJson(json);
+            document.setGroupRulesSha256(org.apache.commons.codec.digest.DigestUtils.sha256Hex(json));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException error) {
+            throw new IllegalStateException("Cannot freeze document grouping rules", error);
+        }
         document.setReportNumber("BG-" + UUID.randomUUID().toString().replace("-", "").toUpperCase());
         document.setCreatedBy(actor);
         document.setCreatedAt(Timestamp.from(Instant.now()));
@@ -92,12 +156,19 @@ public class ReportDocumentServiceImpl extends AuditableBaseObjectServiceImpl<Re
     @Transactional(readOnly = true)
     public List<ReportDocumentSummary> getBySample(String sampleId, String actor) {
         requireId(sampleId);
+        var actorContext = authorization.beginActorCheck(actor);
         List<ReportDocument> found = documents.getBySample(sampleId);
-        // Reject a mixed-scope application as a whole; never silently truncate a
-        // document.
-        for (ReportDocument document : found)
-            authorization.authorizeExplicitScope(scope(document), actor);
-        return found.stream().map(this::summary).toList();
+        if (found == null || found.stream().anyMatch(Objects::isNull))
+            throw new IllegalStateException("Report document list could not be loaded completely");
+        List<ReportDocumentSummary> visible = new ArrayList<>();
+        for (ReportDocument document : found) {
+            if (!sampleId.equals(document.getSampleId()))
+                throw new IllegalStateException("Report document application mismatch");
+            if (authorization.isCompleteScopeVisible(scope(document), actor))
+                visible.add(summary(document));
+        }
+        authorization.endActorCheck(actorContext);
+        return List.copyOf(visible);
     }
 
     @Override
@@ -109,8 +180,10 @@ public class ReportDocumentServiceImpl extends AuditableBaseObjectServiceImpl<Re
     @Override
     @Transactional
     public ReportDocumentSummary lockCurrent(String documentId, String actor) {
+        requireAuthorized(documentId, actor, false);
         ReportDocument document = requireAuthorized(documentId, actor, true);
-        requireUnchanged(document, resolveAuthorized(document.getSampleId(), document.getReportGroupKey(), actor));
+        requireUnchanged(document,
+                resolveAuthorized(document.getSampleId(), document.getReportGroupKey(), actor, frozenRules(document)));
         return summary(document);
     }
 
@@ -149,9 +222,9 @@ public class ReportDocumentServiceImpl extends AuditableBaseObjectServiceImpl<Re
         return document;
     }
 
-    private ReportScopeDefinition resolveAuthorized(String sampleId, String groupKey, String actor) {
+    private ReportScopeDefinition resolveAuthorized(String sampleId, String groupKey, String actor,
+            ReportGroupingRules rules) {
         requireId(sampleId);
-        ReportGroupingRules rules = configuration.getRules();
         var group = rules.requireGroup(groupKey);
         var sample = samples.get(sampleId);
         if (sample == null || !sampleId.equals(sample.getId()))
@@ -174,6 +247,22 @@ public class ReportDocumentServiceImpl extends AuditableBaseObjectServiceImpl<Re
                 rules.ruleVersion(), ordered);
         authorization.authorizeExplicitScope(scope, actor);
         return scope;
+    }
+
+    private ReportGroupingRules frozenRules(ReportDocument document) {
+        if (document.getGroupRulesJson() == null || document.getGroupRulesSha256() == null
+                || !document.getGroupRulesSha256()
+                        .equals(org.apache.commons.codec.digest.DigestUtils.sha256Hex(document.getGroupRulesJson())))
+            throw new IllegalStateException("REPORT_DOCUMENT_RULE_EVIDENCE_REQUIRED");
+        try {
+            ReportGroupingRules rules = mapper.readValue(document.getGroupRulesJson(), ReportGroupingRules.class);
+            if (!Objects.equals(document.getGroupRuleVersion(), rules.ruleVersion()))
+                throw new IllegalStateException("Report rule version evidence mismatch");
+            rules.requireGroup(document.getReportGroupKey());
+            return rules;
+        } catch (com.fasterxml.jackson.core.JsonProcessingException error) {
+            throw new IllegalStateException("Invalid frozen document grouping rules", error);
+        }
     }
 
     private ReportScopeDefinition scope(ReportDocument document) {

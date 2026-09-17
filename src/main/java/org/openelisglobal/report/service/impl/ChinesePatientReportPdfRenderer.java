@@ -26,10 +26,13 @@ import java.util.Map;
 import org.openelisglobal.report.PatientReportPdfMetadata;
 import org.openelisglobal.report.ReportRow;
 import org.openelisglobal.report.ReportingData;
+import org.openelisglobal.report.form.ReportFrozenTemplate;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
-/** Renders a compact Chinese clinical result report with an embedded CJK font. */
+/**
+ * Renders a compact Chinese clinical result report with an embedded CJK font.
+ */
 @Component
 public class ChinesePatientReportPdfRenderer {
 
@@ -61,18 +64,50 @@ public class ChinesePatientReportPdfRenderer {
         }
     }
 
+    public byte[] renderFrozenPreview(ReportingData data, ReportFrozenTemplate template, String reportNumber,
+            int version, String amendmentReason, LocalDateTime frozenAt) {
+        try {
+            return render(data, loadBaseFont(), frozenAt,
+                    new PatientReportPdfMetadata(reportNumber, version, "待签发", frozenAt, amendmentReason), template,
+                    false);
+        } catch (DocumentException | IOException error) {
+            throw new IllegalStateException("Cannot render frozen preview", error);
+        }
+    }
+
+    public byte[] renderFrozenOfficial(ReportingData data, PatientReportPdfMetadata metadata,
+            ReportFrozenTemplate template) {
+        if (metadata == null || metadata.issuedAt() == null)
+            throw new IllegalArgumentException("Missing report signoff");
+        try {
+            return render(data, loadBaseFont(), metadata.issuedAt(), metadata, template);
+        } catch (DocumentException | IOException error) {
+            throw new IllegalStateException("Cannot render frozen original", error);
+        }
+    }
+
     byte[] render(ReportingData data, BaseFont baseFont, LocalDateTime reportTime) throws DocumentException {
         return render(data, baseFont, reportTime, null);
     }
 
     private byte[] render(ReportingData data, BaseFont baseFont, LocalDateTime reportTime,
             PatientReportPdfMetadata metadata) throws DocumentException {
-        boolean official = metadata != null;
+        return render(data, baseFont, reportTime, metadata, ReportFrozenTemplate.current());
+    }
+
+    private byte[] render(ReportingData data, BaseFont baseFont, LocalDateTime reportTime,
+            PatientReportPdfMetadata metadata, ReportFrozenTemplate template) throws DocumentException {
+        return render(data, baseFont, reportTime, metadata, template, metadata != null);
+    }
+
+    private byte[] render(ReportingData data, BaseFont baseFont, LocalDateTime reportTime,
+            PatientReportPdfMetadata metadata, ReportFrozenTemplate template, boolean official)
+            throws DocumentException {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         Document document = new Document(PageSize.A4, 34, 34, 42, 48);
         PdfWriter writer = PdfWriter.getInstance(document, output);
-        writer.setPageEvent(new ReportFooter(baseFont, official ? "V" + metadata.version() : "PREVIEW-1"));
-        document.addTitle("检验结果报告");
+        writer.setPageEvent(new ReportFooter(baseFont, metadata != null ? "V" + metadata.version() : "PREVIEW-1"));
+        document.addTitle(template.title());
         document.addSubject(official ? "正式患者检验结果报告" : "患者检验结果报告预览");
         document.addCreator("临床检验信息系统");
         document.open();
@@ -86,18 +121,18 @@ public class ChinesePatientReportPdfRenderer {
         Font tableFont = font(baseFont, 8, Font.NORMAL, BaseColor.BLACK);
         Font noteFont = font(baseFont, 8, Font.NORMAL, MUTED);
 
-        Paragraph title = new Paragraph("检验结果报告", titleFont);
+        Paragraph title = new Paragraph(template.title(), titleFont);
         title.setAlignment(Element.ALIGN_CENTER);
         title.setSpacingAfter(3);
         document.add(title);
 
-        Paragraph subtitle = new Paragraph(official ? "临床检验信息系统 · 正式检验报告" : "临床检验信息系统 · 中文报告预览版",
+        Paragraph subtitle = new Paragraph(template.laboratoryName() + (official ? " · 正式检验报告" : " · 冻结内容预览（未签发）"),
                 subtitleFont);
         subtitle.setAlignment(Element.ALIGN_CENTER);
         subtitle.setSpacingAfter(13);
         document.add(subtitle);
 
-        if (official) {
+        if (metadata != null) {
             PdfPTable identity = new PdfPTable(new float[] { 1, 2, 1, 1 });
             identity.setWidthPercentage(100);
             addInfoRow(identity, "报告编号", metadata.reportNumber(), "报告版本", "V" + metadata.version(), labelFont,
@@ -110,14 +145,14 @@ public class ChinesePatientReportPdfRenderer {
         addSectionHeader(document, "患者与标本信息", sectionFont);
         PdfPTable patientTable = new PdfPTable(new float[] { 1.1f, 2.1f, 1.1f, 2.1f });
         patientTable.setWidthPercentage(100);
-        addInfoRow(patientTable, "患者姓名", value(firstRow, "patientName"), "患者编号",
-                value(firstRow, "patientExternalId"), labelFont, valueFont);
-        addInfoRow(patientTable, "性别", value(firstRow, "patientGender"), "出生日期",
-                value(firstRow, "patientDateOfBirth"), labelFont, valueFont);
+        addInfoRow(patientTable, "患者姓名", value(firstRow, "patientName"), "患者编号", value(firstRow, "patientExternalId"),
+                labelFont, valueFont);
+        addInfoRow(patientTable, "性别", value(firstRow, "patientGender"), "出生日期", value(firstRow, "patientDateOfBirth"),
+                labelFont, valueFont);
         addInfoRow(patientTable, "实验室编号", value(firstRow, "accessionNumber"), "送检机构",
                 value(firstRow, "organizationName"), labelFont, valueFont);
-        addInfoRow(patientTable, "申请医生", value(firstRow, "clinicianName"), "标本类型",
-                value(firstRow, "sampleType"), labelFont, valueFont);
+        addInfoRow(patientTable, "申请医生", value(firstRow, "clinicianName"), "标本类型", value(firstRow, "sampleType"),
+                labelFont, valueFont);
         addInfoRow(patientTable, "采集时间", value(firstRow, "sampleCollectionDate"), "接收时间",
                 value(firstRow, "sampleReceivedDate"), labelFont, valueFont);
         patientTable.setSpacingAfter(12);
@@ -152,11 +187,16 @@ public class ChinesePatientReportPdfRenderer {
                 addResultCell(resultsTable, value(values, "testName"), tableFont, critical, Element.ALIGN_LEFT);
                 addResultCell(resultsTable, value(values, "resultValue"), tableFont, critical, Element.ALIGN_CENTER);
                 addResultCell(resultsTable, value(values, "resultFlag"), tableFont, critical, Element.ALIGN_CENTER);
-                addResultCell(resultsTable, value(values, "unitsOfMeasure"), tableFont, critical,
-                        Element.ALIGN_CENTER);
-                addResultCell(resultsTable, value(values, "referenceRange"), tableFont, critical,
-                        Element.ALIGN_CENTER);
+                addResultCell(resultsTable, value(values, "unitsOfMeasure"), tableFont, critical, Element.ALIGN_CENTER);
+                addResultCell(resultsTable, value(values, "referenceRange"), tableFont, critical, Element.ALIGN_CENTER);
                 addResultCell(resultsTable, value(values, "testMethod"), tableFont, critical, Element.ALIGN_CENTER);
+                if (!value(values, "remarks").isBlank()) {
+                    PdfPCell remarks = new PdfPCell(new Phrase("备注：" + value(values, "remarks"), tableFont));
+                    remarks.setColspan(6);
+                    remarks.setPadding(5);
+                    remarks.setBorderColor(BORDER);
+                    resultsTable.addCell(remarks);
+                }
             }
         }
         resultsTable.setSpacingAfter(12);
@@ -167,22 +207,24 @@ public class ChinesePatientReportPdfRenderer {
         addSignoffCell(signoff, "检验人员", value(firstRow, "technician"), labelFont, valueFont);
         addSignoffCell(signoff, official ? "审核/发布人" : "审核状态",
                 official ? metadata.issuerName() : value(firstRow, "analysisStatus"), labelFont, valueFont);
-        addSignoffCell(signoff, official ? "发布时间" : "报告生成时间", reportTime.format(REPORT_TIME_FORMAT),
-                labelFont, valueFont);
+        addSignoffCell(signoff, official ? "发布时间" : "报告生成时间", reportTime.format(REPORT_TIME_FORMAT), labelFont,
+                valueFont);
         signoff.setSpacingAfter(10);
         document.add(signoff);
 
         Paragraph warning = new Paragraph();
         warning.add(new Chunk("说明：", font(baseFont, 8, Font.BOLD, MUTED)));
         if (official) {
-            String note = "本报告仅对本次送检标本负责；报告编号、版本和电子签名共同构成可追溯的正式报告记录。";
+            String note = template.footerText();
             if (metadata.version() > 1 && metadata.amendmentReason() != null) {
                 note += " 本版更正原因：" + metadata.amendmentReason();
             }
             warning.add(new Chunk(note, noteFont));
         } else {
-            warning.add(new Chunk("本文件为中文报告预览版；正式发布前仍须完成审核人签名、报告版本号、发布/撤回状态和医院打印样张验收。",
-                    noteFont));
+            String note = template.footerText();
+            if (metadata != null && metadata.version() > 1 && metadata.amendmentReason() != null)
+                note += " 本版更正原因：" + metadata.amendmentReason();
+            warning.add(new Chunk(note + " 本文件为未签发预览，不构成正式报告。", noteFont));
         }
         warning.setLeading(13);
         document.add(warning);
@@ -223,8 +265,8 @@ public class ChinesePatientReportPdfRenderer {
         document.add(header);
     }
 
-    private static void addInfoRow(PdfPTable table, String labelOne, String valueOne, String labelTwo,
-            String valueTwo, Font labelFont, Font valueFont) {
+    private static void addInfoRow(PdfPTable table, String labelOne, String valueOne, String labelTwo, String valueTwo,
+            Font labelFont, Font valueFont) {
         addInfoCell(table, labelOne, labelFont, LIGHT_BACKGROUND);
         addInfoCell(table, valueOne, valueFont, BaseColor.WHITE);
         addInfoCell(table, labelTwo, labelFont, LIGHT_BACKGROUND);

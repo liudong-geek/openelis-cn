@@ -211,4 +211,5 @@
   <include relativeToChangelogFile="true" file="081-report-document-foundation.xml"/>
   <include relativeToChangelogFile="true" file="085-report-document-release-scope.xml"/>
   <include relativeToChangelogFile="true" file="086-report-release-member-scope.xml"/>
+  <include relativeToChangelogFile="true" file="087-report-frozen-content.xml"/>
 </databaseChangeLog>

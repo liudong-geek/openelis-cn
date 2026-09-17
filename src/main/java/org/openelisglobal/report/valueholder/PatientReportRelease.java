@@ -121,6 +121,48 @@ public class PatientReportRelease extends BaseObject<Long> {
     @Column(name = "last_printed_at")
     private Timestamp lastPrintedAt;
 
+    @JsonIgnore
+    @Column(name = "frozen_content_json", columnDefinition = "TEXT")
+    private String frozenContentJson;
+    @Column(name = "frozen_content_sha256", length = 64)
+    private String frozenContentSha256;
+    @Column(name = "frozen_at")
+    private Timestamp frozenAt;
+    @Column(name = "issuer_name_printed", length = 512)
+    private String issuerNamePrinted;
+
+    public String getFrozenContentJson() {
+        return frozenContentJson;
+    }
+
+    public void setFrozenContentJson(String value) {
+        frozenContentJson = value;
+    }
+
+    public String getFrozenContentSha256() {
+        return frozenContentSha256;
+    }
+
+    public void setFrozenContentSha256(String value) {
+        frozenContentSha256 = value;
+    }
+
+    public Timestamp getFrozenAt() {
+        return frozenAt;
+    }
+
+    public void setFrozenAt(Timestamp value) {
+        frozenAt = value;
+    }
+
+    public String getIssuerNamePrinted() {
+        return issuerNamePrinted;
+    }
+
+    public void setIssuerNamePrinted(String value) {
+        issuerNamePrinted = value;
+    }
+
     @Override
     public Long getId() {
         return id;

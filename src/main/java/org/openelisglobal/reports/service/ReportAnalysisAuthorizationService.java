@@ -68,10 +68,11 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>
  * Patient-result reports are identified by a capability implemented by the
- * concrete creator returned by {@code ReportImplementationFactory}; the caller's
- * report-name string is never used as the security allow-list. Every analysis in
- * the resolved result set must be visible through the caller's Reports lab-unit
- * assignments. Mixed authorized/unauthorized selections are rejected in full.
+ * concrete creator returned by {@code ReportImplementationFactory}; the
+ * caller's report-name string is never used as the security allow-list. Every
+ * analysis in the resolved result set must be visible through the caller's
+ * Reports lab-unit assignments. Mixed authorized/unauthorized selections are
+ * rejected in full.
  */
 @Service
 public class ReportAnalysisAuthorizationService {
@@ -81,11 +82,7 @@ public class ReportAnalysisAuthorizationService {
     private static final long ONE_DAY_MILLIS = 24L * 60L * 60L * 1000L;
 
     private enum LegacySelectionMode {
-        ANALYSES,
-        ACCESSION_RANGE,
-        PATIENT_ID,
-        PATIENT_NUMBER,
-        SITE_DATE_RANGE
+        ANALYSES, ACCESSION_RANGE, PATIENT_ID, PATIENT_NUMBER, SITE_DATE_RANGE
     }
 
     @Autowired
@@ -136,10 +133,10 @@ public class ReportAnalysisAuthorizationService {
     /**
      * Validates a complete server-defined group without issuing or preparing a
      * report. The supplied user ID must match the current principal's unique,
-     * active database identity; it cannot select another user's permissions.
-     * This is not a durable permission grant: every later operation must authorize
-     * again within its own transaction, using persisted complete group membership.
-     * This internal foundation must not be exposed directly as a request handler.
+     * active database identity; it cannot select another user's permissions. This
+     * is not a durable permission grant: every later operation must authorize again
+     * within its own transaction, using persisted complete group membership. This
+     * internal foundation must not be exposed directly as a request handler.
      */
     @Transactional(readOnly = true)
     public void authorizeExplicitScope(ReportScopeDefinition scope, String systemUserId) {
@@ -148,34 +145,7 @@ public class ReportAnalysisAuthorizationService {
         }
         ReportPrincipal principal = requireBoundReportPrincipal(systemUserId);
 
-        Sample sample = sampleService.get(scope.sampleId());
-        if (sample == null || !scope.sampleId().equals(sample.getId())) {
-            throw accessDenied();
-        }
-        Patient patient = sampleHumanService.getPatientForSample(sample);
-        if (patient == null || !scope.patientId().equals(patient.getId())) {
-            throw accessDenied();
-        }
-
-        Set<String> expectedIds = new LinkedHashSet<>(scope.analysisIds());
-        List<Analysis> analyses = analysisService.get(new ArrayList<>(scope.analysisIds()));
-        if (analyses == null || analyses.size() != expectedIds.size()) {
-            throw accessDenied();
-        }
-        Set<String> resolvedIds = new LinkedHashSet<>();
-        for (Analysis analysis : analyses) {
-            if (analysis == null || !expectedIds.contains(analysis.getId()) || !resolvedIds.add(analysis.getId())) {
-                throw accessDenied();
-            }
-            SampleItem specimen = analysis.getSampleItem();
-            if (specimen == null || !ReportScopeDefinition.isCanonicalId(specimen.getId())
-                    || specimen.getSample() == null || !scope.sampleId().equals(specimen.getSample().getId())) {
-                throw accessDenied();
-            }
-        }
-        if (!resolvedIds.equals(expectedIds)) {
-            throw accessDenied();
-        }
+        List<Analysis> analyses = requireExplicitScopeEvidence(scope, false);
 
         // Reuse Reports role + actual analysis section checks. Never filter the
         // definition to a caller-visible subset or broaden it to all patient results.
@@ -183,7 +153,100 @@ public class ReportAnalysisAuthorizationService {
         requireUnchangedReportPrincipal(principal);
     }
 
-    /** Identity captured for this invocation only, never cached as an authorization grant. */
+    /**
+     * Listing permits omitting a whole group only for insufficient section access.
+     * Missing or inconsistent persisted evidence is a conflict, never a fake empty
+     * list.
+     */
+    @Transactional(readOnly = true)
+    public boolean isCompleteScopeVisible(ReportScopeDefinition scope, String systemUserId) {
+        if (scope == null || !ReportScopeDefinition.isCanonicalId(systemUserId))
+            throw accessDenied();
+        ReportPrincipal principal = requireBoundReportPrincipal(systemUserId);
+        List<Analysis> analyses = requireExplicitScopeEvidence(scope, true);
+        Set<String> sectionIds = getAuthorizedReportSectionIds(systemUserId);
+        boolean visible = true;
+        for (Analysis analysis : analyses) {
+            if (analysis.getTestSection() == null
+                    || !ReportScopeDefinition.isCanonicalId(analysis.getTestSection().getId()))
+                throw scopeEvidenceFailure(true);
+            if (!sectionIds.contains(analysis.getTestSection().getId()))
+                visible = false;
+        }
+        requireUnchangedReportPrincipal(principal);
+        return visible;
+    }
+
+    public static final class ReportActorContext {
+        private final String actor;
+        private final ReportPrincipal principal;
+
+        private ReportActorContext(String actor, ReportPrincipal principal) {
+            this.actor = actor;
+            this.principal = principal;
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public ReportActorContext beginActorCheck(String actor) {
+        if (!ReportScopeDefinition.isCanonicalId(actor))
+            throw accessDenied();
+        return new ReportActorContext(actor, requireBoundReportPrincipal(actor));
+    }
+
+    @Transactional(readOnly = true)
+    public void endActorCheck(ReportActorContext context) {
+        if (context == null)
+            throw accessDenied();
+        requireUnchangedReportPrincipal(context.principal);
+        ReportPrincipal now = requireBoundReportPrincipal(context.actor);
+        if (now.authentication() != context.principal.authentication()
+                || now.principal() != context.principal.principal())
+            throw accessDenied();
+    }
+
+    private List<Analysis> requireExplicitScopeEvidence(ReportScopeDefinition scope, boolean listing) {
+        Sample sample = sampleService.get(scope.sampleId());
+        if (sample == null || !scope.sampleId().equals(sample.getId())) {
+            throw scopeEvidenceFailure(listing);
+        }
+        Patient patient = sampleHumanService.getPatientForSample(sample);
+        if (patient == null || !scope.patientId().equals(patient.getId())) {
+            throw scopeEvidenceFailure(listing);
+        }
+
+        Set<String> expectedIds = new LinkedHashSet<>(scope.analysisIds());
+        List<Analysis> analyses = analysisService.get(new ArrayList<>(scope.analysisIds()));
+        if (analyses == null || analyses.size() != expectedIds.size()) {
+            throw scopeEvidenceFailure(listing);
+        }
+        Set<String> resolvedIds = new LinkedHashSet<>();
+        for (Analysis analysis : analyses) {
+            if (analysis == null || !expectedIds.contains(analysis.getId()) || !resolvedIds.add(analysis.getId())) {
+                throw scopeEvidenceFailure(listing);
+            }
+            SampleItem specimen = analysis.getSampleItem();
+            if (specimen == null || !ReportScopeDefinition.isCanonicalId(specimen.getId())
+                    || specimen.getSample() == null || !scope.sampleId().equals(specimen.getSample().getId())) {
+                throw scopeEvidenceFailure(listing);
+            }
+        }
+        if (!resolvedIds.equals(expectedIds)) {
+            throw scopeEvidenceFailure(listing);
+        }
+
+        return analyses;
+    }
+
+    private RuntimeException scopeEvidenceFailure(boolean listing) {
+        return listing ? new IllegalStateException("Report group evidence is incomplete or inconsistent")
+                : accessDenied();
+    }
+
+    /**
+     * Identity captured for this invocation only, never cached as an authorization
+     * grant.
+     */
     private record ReportPrincipal(Authentication authentication, Object principal, String loginName) {
     }
 
@@ -192,7 +255,8 @@ public class ReportAnalysisAuthorizationService {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             if (authentication instanceof AnonymousAuthenticationToken
                     || authentication instanceof RememberMeAuthenticationToken
-                    || authentication instanceof DaemonAuthenticationToken || !hasExplicitReportsAuthority(authentication)) {
+                    || authentication instanceof DaemonAuthenticationToken
+                    || !hasExplicitReportsAuthority(authentication)) {
                 throw accessDenied();
             }
             Object principal = authentication.getPrincipal();
@@ -245,7 +309,8 @@ public class ReportAnalysisAuthorizationService {
         try {
             Authentication authentication = captured.authentication();
             if (SecurityContextHolder.getContext().getAuthentication() != authentication
-                    || authentication.getPrincipal() != captured.principal() || !hasExplicitReportsAuthority(authentication)
+                    || authentication.getPrincipal() != captured.principal()
+                    || !hasExplicitReportsAuthority(authentication)
                     || !captured.loginName().equals(reportLoginName(captured.principal()))
                     || !captured.loginName().equals(authentication.getName())) {
                 throw accessDenied();
@@ -455,8 +520,8 @@ public class ReportAnalysisAuthorizationService {
             if (projectIds == null || projectIds.isEmpty() || statusIds == null || statusIds.isEmpty()) {
                 throw accessDenied();
             }
-            return nullSafeSamples(sampleService.getSamplesByProjectAndStatusIDAndAccessionRange(projectIds, statusIds,
-                    lower, upper));
+            return nullSafeSamples(
+                    sampleService.getSamplesByProjectAndStatusIDAndAccessionRange(projectIds, statusIds, lower, upper));
         }
         if (lower.compareToIgnoreCase(upper) > 0) {
             String swap = lower;
@@ -511,14 +576,12 @@ public class ReportAnalysisAuthorizationService {
         Map<String, Patient> patientsById = new LinkedHashMap<>();
         addPatients(patientsById, patientService.getPatientsByNationalId(patientNumber));
         if (patientsById.isEmpty()) {
-            addPatientsFromIdentities(patientsById,
-                    patientIdentityService.getPatientIdentitiesByValueAndType(patientNumber,
-                            PatientServiceImpl.getPatientSTIdentity()));
+            addPatientsFromIdentities(patientsById, patientIdentityService
+                    .getPatientIdentitiesByValueAndType(patientNumber, PatientServiceImpl.getPatientSTIdentity()));
         }
         if (patientsById.isEmpty()) {
-            addPatientsFromIdentities(patientsById,
-                    patientIdentityService.getPatientIdentitiesByValueAndType(patientNumber,
-                            PatientServiceImpl.getPatientSubjectIdentity()));
+            addPatientsFromIdentities(patientsById, patientIdentityService
+                    .getPatientIdentitiesByValueAndType(patientNumber, PatientServiceImpl.getPatientSubjectIdentity()));
         }
 
         List<Sample> samples = new ArrayList<>();
@@ -545,8 +608,8 @@ public class ReportAnalysisAuthorizationService {
         List<Sample> samples = new ArrayList<>();
         if (ReportForm.DateType.ORDER_DATE.equals(form.getDateType())) {
             if (studyReport) {
-                samples.addAll(nullSafeSamples(sampleService.getStudySamplesForSiteBetweenOrderDates(requesterId,
-                        range[0], range[1])));
+                samples.addAll(nullSafeSamples(
+                        sampleService.getStudySamplesForSiteBetweenOrderDates(requesterId, range[0], range[1])));
             } else {
                 samples.addAll(nullSafeSamples(
                         sampleService.getSamplesForSiteBetweenOrderDates(requesterId, range[0], range[1])));
@@ -593,8 +656,7 @@ public class ReportAnalysisAuthorizationService {
         }
         Date[] range = sqlDateRange(form.getLowerDateRange(), form.getUpperDateRange());
         Date highDateAtEndOfDay = new Date(range[1].getTime() + ONE_DAY_MILLIS);
-        List<Referral> referrals = referralService.getReferralsByOrganization(locationId, range[0],
-                highDateAtEndOfDay);
+        List<Referral> referrals = referralService.getReferralsByOrganization(locationId, range[0], highDateAtEndOfDay);
         if (referrals == null) {
             return List.of();
         }

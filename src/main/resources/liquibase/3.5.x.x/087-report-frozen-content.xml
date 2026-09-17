@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+    <changeSet id="lis-cn-087-report-frozen-content" author="codex" runInTransaction="true">
+        <preConditions onFail="HALT" onError="HALT"><dbms type="postgresql"/>
+            <columnExists schemaName="clinlims" tableName="patient_report_release" columnName="member_scope_json"/>
+            <not><columnExists schemaName="clinlims" tableName="patient_report_release" columnName="frozen_content_json"/></not>
+        </preConditions>
+        <!-- Historical rules/content/signatures are never guessed or synthesized. -->
+        <addColumn schemaName="clinlims" tableName="report_document">
+            <column name="group_rules_json" type="TEXT"/><column name="group_rules_sha256" type="VARCHAR(64)"/>
+        </addColumn>
+        <addColumn schemaName="clinlims" tableName="patient_report_release">
+            <column name="frozen_content_json" type="TEXT"/><column name="frozen_content_sha256" type="VARCHAR(64)"/>
+            <column name="frozen_at" type="TIMESTAMP"/><column name="issuer_name_printed" type="VARCHAR(512)"/>
+        </addColumn>
+        <sql>ALTER TABLE clinlims.report_document ADD CONSTRAINT ck_report_document_rules CHECK ((group_rules_json IS NULL AND group_rules_sha256 IS NULL) OR (group_rules_json IS NOT NULL AND group_rules_sha256 ~ '^[a-f0-9]{64}$' AND group_rules_sha256 IS NOT NULL))</sql>
+        <sql>ALTER TABLE clinlims.patient_report_release ADD CONSTRAINT ck_report_release_frozen_content CHECK ((frozen_content_json IS NULL AND frozen_content_sha256 IS NULL AND frozen_at IS NULL) OR (frozen_content_json IS NOT NULL AND frozen_content_sha256 IS NOT NULL AND frozen_content_sha256 ~ '^[a-f0-9]{64}$' AND frozen_at IS NOT NULL AND member_scope_json IS NOT NULL))</sql>
+        <rollback><sql splitStatements="false"><![CDATA[
+DO $report_content_rollback$
+BEGIN
+    LOCK TABLE clinlims.report_document, clinlims.patient_report_release IN ACCESS EXCLUSIVE MODE;
+    IF EXISTS (SELECT 1 FROM clinlims.report_document WHERE group_rules_json IS NOT NULL OR group_rules_sha256 IS NOT NULL)
+       OR EXISTS (SELECT 1 FROM clinlims.patient_report_release WHERE frozen_content_json IS NOT NULL OR frozen_content_sha256 IS NOT NULL OR frozen_at IS NOT NULL OR issuer_name_printed IS NOT NULL) THEN
+        RAISE EXCEPTION 'Frozen report evidence exists; retain it and use a forward migration';
+    END IF;
+    ALTER TABLE clinlims.report_document DROP CONSTRAINT ck_report_document_rules;
+    ALTER TABLE clinlims.report_document DROP COLUMN group_rules_json, DROP COLUMN group_rules_sha256;
+    ALTER TABLE clinlims.patient_report_release DROP CONSTRAINT ck_report_release_frozen_content;
+    ALTER TABLE clinlims.patient_report_release DROP COLUMN frozen_content_json, DROP COLUMN frozen_content_sha256, DROP COLUMN frozen_at, DROP COLUMN issuer_name_printed;
+END;
+$report_content_rollback$;
+        ]]></sql></rollback>
+    </changeSet>
+</databaseChangeLog>
