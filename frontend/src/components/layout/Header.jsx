@@ -1004,19 +1004,36 @@ function OEHeader({
               className={isClinicalWorkspace ? "oe-workspace-brand" : undefined}
               style={{ padding: "0px" }}
             >
-              <span id="header-logo">{logo()}</span>
-              <div className="banner">
-                <h5>{configurationProperties?.BANNER_TEXT}</h5>
-                <p>
-                  <FormattedMessage id="header.label.version" /> &nbsp;{" "}
-                  {configurationProperties?.releaseNumber}
-                  {isTrainingInstallation && (
-                    <span className="training-installation-badge">
-                      <FormattedMessage id="training.installation.message" />
-                    </span>
-                  )}
-                </p>
-              </div>
+              {isClinicalWorkspace ? (
+                <span className="oe-product-brand" aria-label="LIS 检验工作台">
+                  <span className="oe-product-brand__mark" aria-hidden="true">
+                    L
+                  </span>
+                  <span className="oe-product-brand__copy">
+                    <strong>LIS 检验工作台</strong>
+                    <small>
+                      <FormattedMessage id="header.label.version" /> {" "}
+                      {configurationProperties?.releaseNumber}
+                    </small>
+                  </span>
+                </span>
+              ) : (
+                <>
+                  <span id="header-logo">{logo()}</span>
+                  <div className="banner">
+                    <h5>{configurationProperties?.BANNER_TEXT}</h5>
+                    <p>
+                      <FormattedMessage id="header.label.version" /> &nbsp;{" "}
+                      {configurationProperties?.releaseNumber}
+                      {isTrainingInstallation && (
+                        <span className="training-installation-badge">
+                          <FormattedMessage id="training.installation.message" />
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </>
+              )}
             </HeaderName>
             {isClinicalWorkspace && userSessionDetails.authenticated && (
               <div className="oe-header-workspace">

@@ -1,17 +1,12 @@
-// Define a cache name for versioning your cache
-const CACHE_NAME = "my-cache-v1";
+// Push notifications need a service worker, but the application shell must
+// always come from nginx. Caching index.html here can pin users to an old UI
+// after a container/image replacement.
+const LEGACY_APP_SHELL_CACHES = ["my-cache-v1"];
 
 // Cache assets during the install phase
 self.addEventListener("install", (event) => {
   console.log("[Service Worker] Install");
-  event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => {
-        return cache.addAll(["/", "/index.html"]);
-      })
-      .then(() => self.skipWaiting()), // Skip waiting to activate new service worker immediately
-  );
+  event.waitUntil(self.skipWaiting());
 });
 
 // Clean up old caches during the activate phase
@@ -22,12 +17,16 @@ self.addEventListener("activate", (event) => {
       .keys()
       .then((cacheNames) => {
         return Promise.all(
-          cacheNames.map((cacheName) => {
-            if (cacheName !== CACHE_NAME) {
-              console.log("[Service Worker] Deleting old cache:", cacheName);
+          cacheNames
+            .filter(
+              (cacheName) =>
+                LEGACY_APP_SHELL_CACHES.includes(cacheName) ||
+                cacheName.startsWith("lis-app-shell-"),
+            )
+            .map((cacheName) => {
+              console.log("[Service Worker] Deleting stale app cache:", cacheName);
               return caches.delete(cacheName);
-            }
-          }),
+            }),
         );
       })
       .then(() => self.clients.claim()), // Take control of all clients as soon as active

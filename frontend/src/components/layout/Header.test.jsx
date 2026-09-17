@@ -470,10 +470,14 @@ describe("Header Component - M2b Enhancement Tests", () => {
       expect(
         container.querySelector(".oe-header-workspace__lab"),
       ).toHaveTextContent("Test Lab");
-      expect(container.querySelector("#header-logo img")).toHaveAttribute(
-        "src",
-        "/images/openelis_logo.png",
+      expect(container.querySelector("#header-logo img")).toBeNull();
+      expect(container.querySelector(".oe-product-brand")).toHaveAttribute(
+        "aria-label",
+        "LIS 检验工作台",
       );
+      expect(
+        container.querySelector(".oe-product-brand__copy strong"),
+      ).toHaveTextContent("LIS 检验工作台");
     });
 
     test("keeps the global profile free of clinical navigation decoration", async () => {

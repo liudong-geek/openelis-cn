@@ -78,6 +78,90 @@
       border-inline-start: 1px solid var(--oe-border);
     }
 
+    #mainHeader .oe-product-brand {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: var(--cds-spacing-03, 0.5rem);
+      color: #ffffff;
+    }
+
+    #mainHeader .oe-product-brand__mark {
+      display: grid;
+      flex: 0 0 2rem;
+      width: 2rem;
+      height: 2rem;
+      place-items: center;
+      border-radius: 0.5rem;
+      color: #ffffff;
+      background: #2b817f;
+      font-size: 1rem;
+      font-weight: 650;
+    }
+
+    #mainHeader .oe-product-brand__copy {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      line-height: 1.2;
+    }
+
+    #mainHeader .oe-product-brand__copy strong {
+      overflow: hidden;
+      color: #ffffff;
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #mainHeader .oe-product-brand__copy small {
+      margin-block-start: 0.125rem;
+      color: #a9bac7;
+      font-size: 0.625rem;
+      font-weight: 400;
+    }
+
+    .oe-login-product-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.875rem;
+      color: var(--oe-text);
+      text-align: left;
+    }
+
+    .oe-login-product-brand__mark {
+      display: grid;
+      flex: 0 0 3rem;
+      width: 3rem;
+      height: 3rem;
+      place-items: center;
+      border-radius: 0.75rem;
+      color: #ffffff;
+      background: var(--oe-brand);
+      box-shadow: 0 0.5rem 1.25rem rgb(24 130 125 / 22%);
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    .oe-login-product-brand__copy {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .oe-login-product-brand__copy strong {
+      font-size: 1.375rem;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+
+    .oe-login-product-brand__copy small {
+      color: var(--oe-text-muted);
+      font-size: 0.625rem;
+      letter-spacing: 0.08em;
+    }
+
     #mainHeader nav.oe-app-sidenav {
       --cds-background: var(--oe-workspace-nav);
       --cds-background-hover: var(--oe-workspace-nav-hover);
@@ -284,6 +368,26 @@
 @media screen and (max-width: 1055px) {
   .oe-app-shell[data-navigation-profile="china"] {
     #mainHeader .oe-header-workspace__lab {
+      display: none;
+    }
+  }
+}
+
+@media screen and (max-width: 1023px) {
+  .oe-app-shell[data-navigation-profile="china"] {
+    #mainHeader
+      .oe-app-sidenav.cds--side-nav--hidden:not(.cds--side-nav--expanded) {
+      visibility: hidden !important;
+      transform: translateX(-100%) !important;
+      pointer-events: none;
+    }
+
+    #mainHeader .oe-workspace-brand {
+      min-width: 0;
+      padding-inline: var(--cds-spacing-03, 0.5rem) !important;
+    }
+
+    #mainHeader .oe-workspace-brand .oe-product-brand__copy {
       display: none;
     }
   }

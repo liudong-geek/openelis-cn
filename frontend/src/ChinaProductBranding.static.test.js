@@ -41,4 +41,21 @@ describe("中国版静态品牌外壳", () => {
       /Message Received from OpenELIS|OpenELIS Message Received/,
     );
   });
+
+  test("Service Worker 不缓存应用入口，部署后不会继续显示旧界面", () => {
+    const serviceWorker = readFrontendFile("../public/service-worker.js");
+
+    expect(serviceWorker).not.toContain("cache.addAll");
+    expect(serviceWorker).toContain('LEGACY_APP_SHELL_CACHES = ["my-cache-v1"]');
+    expect(serviceWorker).toContain('cacheName.startsWith("lis-app-shell-")');
+  });
+
+  test("中国版登录入口使用 LIS 产品标识", () => {
+    const login = readFrontendFile("./components/Login.jsx");
+
+    expect(login).toContain('className="oe-login-product-brand"');
+    expect(login).toContain("LIS 检验工作台");
+    expect(login).toContain("LABORATORY INFORMATION SYSTEM");
+    expect(login).toMatch(/isClinicalWorkspace\s*\?/);
+  });
 });

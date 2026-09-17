@@ -26,11 +26,18 @@ import UserSessionDetailsContext from "../UserSessionDetailsContext";
 import { ConfigurationContext, NotificationContext } from "./layout/Layout";
 import { getBranding } from "./utils/BrandingUtils";
 import { getRequestLocale } from "./utils/LocaleUtils";
+import { MENU_PROFILES } from "./layout/taskFocusedMenu";
+import { resolveNavigationProfile } from "./layout/navigationProfile";
 
 function Login(props) {
   const { notificationVisible, addNotification, setNotificationVisible } =
     useContext(NotificationContext);
   const { configurationProperties } = useContext(ConfigurationContext);
+  const isClinicalWorkspace =
+    resolveNavigationProfile(
+      configurationProperties?.NAVIGATION_PROFILE,
+      config.navigationProfile,
+    ) === MENU_PROFILES.CHINA;
 
   const { userSessionDetails, refresh } = useContext(UserSessionDetailsContext);
   const [submitting, setSubmitting] = useState(false);
@@ -126,15 +133,27 @@ function Login(props) {
 
     return (
       <div className="oe-login-brand">
-        <picture>
-          <img
-            src={logoSrc}
-            alt={props.intl.formatMessage({ id: "login.logo.alt" })}
-            onError={(e) => {
-              e.target.src = `images/openelis_logo_full.png`;
-            }}
-          />
-        </picture>
+        {isClinicalWorkspace ? (
+          <div className="oe-login-product-brand" aria-label="LIS 检验工作台">
+            <span className="oe-login-product-brand__mark" aria-hidden="true">
+              L
+            </span>
+            <span className="oe-login-product-brand__copy">
+              <strong>LIS 检验工作台</strong>
+              <small>LABORATORY INFORMATION SYSTEM</small>
+            </span>
+          </div>
+        ) : (
+          <picture>
+            <img
+              src={logoSrc}
+              alt={props.intl.formatMessage({ id: "login.logo.alt" })}
+              onError={(e) => {
+                e.target.src = `images/openelis_logo_full.png`;
+              }}
+            />
+          </picture>
+        )}
         <p className="oe-login-notice">
           <FormattedMessage id="login.notice.message" />
         </p>
