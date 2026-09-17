@@ -13,10 +13,10 @@ import TabletOverlay from "../tablet-overlay";
 interface TreeViewProps {
   patientUuid: string;
   basePath: string;
-  testUuid: string;
+  testUuid?: string;
   loading: boolean;
   expanded: boolean;
-  type: string;
+  type?: string;
 }
 
 const TreeView: React.FC<TreeViewProps> = ({

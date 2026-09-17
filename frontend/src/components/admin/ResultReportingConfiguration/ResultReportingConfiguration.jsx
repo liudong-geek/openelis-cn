@@ -19,6 +19,7 @@ import {
   NotificationKinds,
 } from "../../common/CustomNotification";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
+import ReportGroupingConfiguration from "./ReportGroupingConfiguration";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 
@@ -189,6 +190,7 @@ function ResultReportingConfiguration() {
           </Column>
         </Grid>
         <div className="orderLegendBody">
+          <ReportGroupingConfiguration />
           {reportsShow &&
             reportsShow.map((report, index) => (
               <div key={index}>

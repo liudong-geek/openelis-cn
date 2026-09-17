@@ -46,9 +46,10 @@ interface Patient {
   subjectNumber?: string;
   nationalId?: string;
   patientPK?: string | number;
+  requestedPatientId?: string;
 }
 const RoutedResultsViewer: React.FC<ResultsViewerProps> = () => {
-  const { patientId } = useParams();
+  const { patientId } = useParams<{ patientId: string }>();
   const location = useLocation();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [patientLoading, setPatientLoading] = useState(true);
@@ -66,13 +67,19 @@ const RoutedResultsViewer: React.FC<ResultsViewerProps> = () => {
     getFromOpenElisServer(
       "/rest/patient-details?patientID=" + patientId,
       (response: Patient | undefined) => {
-        if (!response || !response.patientPK) {
+        if (controller.signal.aborted) return;
+        if (
+          !response ||
+          !response.patientPK ||
+          (/^[1-9][0-9]*$/.test(String(patientId)) &&
+            String(response.patientPK) !== String(patientId))
+        ) {
           setPatientError(new Error("Patient details request failed"));
           setPatientLoading(false);
           return;
         }
 
-        setPatient(response);
+        setPatient({ ...response, requestedPatientId: String(patientId) });
         setPatientLoading(false);
       },
       controller.signal,
@@ -102,7 +109,11 @@ const RoutedResultsViewer: React.FC<ResultsViewerProps> = () => {
     );
   }
 
-  if (loading || patientLoading) {
+  if (
+    loading ||
+    patientLoading ||
+    patient?.requestedPatientId !== String(patientId)
+  ) {
     return (
       <Grid fullWidth={true}>
         <Column lg={16} md={8} sm={4}>
@@ -162,9 +173,9 @@ const RoutedResultsViewer: React.FC<ResultsViewerProps> = () => {
         )}
       </Grid>
       {patient && <PatientIdentity patient={patient} />}
-      {canPreviewReport && patientId && (
+      {canManageReport && patient?.patientPK && (
         <PatientReportReleasePanel
-          patientId={String(patientId)}
+          patientId={String(patient.patientPK)}
           canManage={canManageReport}
         />
       )}
@@ -275,7 +286,7 @@ const ResultsViewer: React.FC<ResultsViewerProps> = ({
   basePath,
   roots = [],
 }) => {
-  const { type, testUuid } = useParams();
+  const { type, testUuid } = useParams<{ type?: string; testUuid?: string }>();
   return (
     <div className="resultsContainer">
       <div className="flex">

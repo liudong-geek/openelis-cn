@@ -7,9 +7,9 @@ import TreeView from "./tree-view.component";
 interface TreeViewWrapperProps {
   patientUuid: string;
   basePath: string;
-  testUuid: string;
+  testUuid?: string;
   expanded: boolean;
-  type: string;
+  type?: string;
   roots: unknown[];
   loading: boolean;
   error?: unknown;
