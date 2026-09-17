@@ -1,4 +1,5 @@
 const ALERT_TYPE_MESSAGE_IDS = Object.freeze({
+  CRITICAL_RESULT: "alerts.type.critical_result",
   CRITICAL_UNACKNOWLEDGED: "alerts.type.critical_unacknowledged",
   EQUIPMENT_FAILURE: "alerts.type.equipment_failure",
   EQA_DEADLINE: "alerts.type.eqa_deadline",
@@ -12,6 +13,7 @@ const ALERT_TYPE_MESSAGE_IDS = Object.freeze({
 });
 
 const ALERT_MESSAGE_IDS = Object.freeze({
+  CRITICAL_RESULT: "alerts.message.critical_result",
   CRITICAL_UNACKNOWLEDGED: "alerts.message.critical_unacknowledged",
   EQUIPMENT_FAILURE: "alerts.message.equipment_failure",
   EQA_DEADLINE: "alerts.message.eqa_deadline",

@@ -15,7 +15,7 @@ const AlertAcknowledgeModal = ({ open, alert, onClose, onSubmit }) => {
     if (isCritical && !comment.trim()) {
       return;
     }
-    onSubmit(alert.id, comment);
+    onSubmit(alert.id, comment.trim());
     setComment("");
   };
 

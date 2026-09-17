@@ -136,6 +136,10 @@ const AlertsDashboard = () => {
               text={intl.formatMessage({ id: "alerts.type.stat_overdue" })}
             />
             <SelectItem
+              value="CRITICAL_RESULT"
+              text={intl.formatMessage({ id: "alerts.type.critical_result" })}
+            />
+            <SelectItem
               value="CRITICAL_UNACKNOWLEDGED"
               text={intl.formatMessage({
                 id: "alerts.type.critical_unacknowledged",

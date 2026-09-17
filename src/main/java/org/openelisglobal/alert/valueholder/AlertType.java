@@ -49,5 +49,10 @@ public enum AlertType {
     /**
      * Critical alert unacknowledged for more than 4 hours
      */
-    CRITICAL_UNACKNOWLEDGED
+    CRITICAL_UNACKNOWLEDGED,
+
+    /**
+     * Numeric laboratory result outside its configured critical range
+     */
+    CRITICAL_RESULT
 }

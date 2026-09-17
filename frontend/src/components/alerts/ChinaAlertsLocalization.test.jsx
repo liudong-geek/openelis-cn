@@ -80,4 +80,19 @@ describe("China quality-alert workflow", () => {
     expect(screen.getByRole("button", { name: "关闭" })).toBeTruthy();
     expect(screen.queryByText("EQA deadline approaching")).toBeNull();
   });
+
+  test("shows a critical laboratory result with the configured Chinese wording", () => {
+    renderInChinese(
+      <AlertAcknowledgeModal
+        open
+        alert={{ ...rawAlert, alertType: "CRITICAL_RESULT" }}
+        onClose={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText("检验结果命中已配置的危急值范围，请立即确认并处理"),
+    ).toBeTruthy();
+  });
 });

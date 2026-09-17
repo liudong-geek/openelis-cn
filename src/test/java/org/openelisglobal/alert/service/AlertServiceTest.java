@@ -105,4 +105,42 @@ public class AlertServiceTest extends BaseWebContextSensitiveTest {
         assertEquals("Duplicate count should be 1", Integer.valueOf(1), alert.getDuplicateCount());
         assertNotNull("Last duplicate time should be set", alert.getLastDuplicateTime());
     }
+
+    @Test
+    public void criticalResultAlert_RequiresAndPersistsAcknowledgmentNotes() {
+        Alert alert = alertService.createAlert(AlertType.CRITICAL_RESULT, "Result", 88001L, AlertSeverity.CRITICAL,
+                "Critical result requires acknowledgment", criticalContext("6.5"));
+
+        try {
+            alertService.acknowledgeAlert(alert.getId(), 1, "  ");
+            fail("Blank critical-result acknowledgment must be rejected");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("required"));
+        }
+
+        Alert acknowledged = alertService.acknowledgeAlert(alert.getId(), 1, "Called ward; read-back confirmed");
+        assertEquals(AlertStatus.ACKNOWLEDGED, acknowledged.getStatus());
+        assertEquals("Called ward; read-back confirmed", acknowledged.getAcknowledgmentNotes());
+    }
+
+    @Test
+    public void criticalResultAlert_ReevaluationReturnsFrozenAlertAcrossLifecycle() {
+        Alert original = alertService.createAlert(AlertType.CRITICAL_RESULT, "Result", 88002L, AlertSeverity.CRITICAL,
+                "Original", criticalContext("6.5"));
+        alertService.acknowledgeAlert(original.getId(), 1, "Read-back confirmed");
+        alertService.resolveAlert(original.getId(), 1, "Clinical action recorded");
+
+        Alert replay = alertService.createAlert(AlertType.CRITICAL_RESULT, "Result", 88002L, AlertSeverity.CRITICAL,
+                "Changed", criticalContext("9.9"));
+
+        assertEquals(original.getId(), replay.getId());
+        assertEquals("Original", replay.getMessage());
+        assertEquals(criticalContext("6.5"), replay.getContextData());
+        assertEquals(Integer.valueOf(0), replay.getDuplicateCount());
+    }
+
+    private String criticalContext(String threshold) {
+        return "{\"threshold\":\"" + threshold + "\",\"evidenceDigest\":\""
+                + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}";
+    }
 }

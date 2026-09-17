@@ -114,6 +114,22 @@ describe("AlertAcknowledgeModal", () => {
     expect(textarea).toBeTruthy();
   });
 
+  test("submits a trimmed operator note for a critical alert", () => {
+    renderWithIntl(
+      <AlertAcknowledgeModal
+        open={true}
+        alert={criticalAlert}
+        onClose={mockOnClose}
+        onSubmit={mockOnSubmit}
+      />,
+    );
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "Read-back confirmed" },
+    });
+    fireEvent.click(screen.getByText("Acknowledge"));
+    expect(mockOnSubmit).toHaveBeenCalledWith(2, "Read-back confirmed");
+  });
+
   test("calls onClose when cancel button is clicked", () => {
     renderWithIntl(
       <AlertAcknowledgeModal

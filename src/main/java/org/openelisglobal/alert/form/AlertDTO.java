@@ -20,6 +20,7 @@ public class AlertDTO {
     private String contextData;
     private OffsetDateTime acknowledgedAt;
     private Integer acknowledgedBy;
+    private String acknowledgmentNotes;
     private OffsetDateTime resolvedAt;
     private Integer resolvedBy;
     private String resolutionNotes;

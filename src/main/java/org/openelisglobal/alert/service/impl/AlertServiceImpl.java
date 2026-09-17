@@ -53,6 +53,15 @@ public class AlertServiceImpl extends BaseObjectServiceImpl<Alert, Long> impleme
     public Alert createAlert(AlertType alertType, String entityType, Long entityId, AlertSeverity severity,
             String message, String contextDataJson) {
 
+        if (alertType == AlertType.CRITICAL_RESULT) {
+            Alert existingCriticalResult = findAlertAcrossLifecycle(alertType, entityType, entityId);
+            if (existingCriticalResult != null) {
+                // Result evidence is immutable. Re-evaluation and exact HTTP retries return
+                // the original alert without changing its context or duplicate counter.
+                return existingCriticalResult;
+            }
+        }
+
         Alert existingAlert = findDuplicateAlert(alertType, entityType, entityId);
         if (existingAlert != null) {
             existingAlert.setDuplicateCount(existingAlert.getDuplicateCount() + 1);
@@ -81,8 +90,33 @@ public class AlertServiceImpl extends BaseObjectServiceImpl<Alert, Long> impleme
     @Override
     @Transactional
     public Alert acknowledgeAlert(Long alertId, Integer userId) {
+        return acknowledgeAlert(alertId, userId, null);
+    }
+
+    @Override
+    @Transactional
+    public Alert acknowledgeAlert(Long alertId, Integer userId, String acknowledgmentNotes) {
         Alert alert = alertDAO.get(alertId)
                 .orElseThrow(() -> new IllegalArgumentException("Alert not found: " + alertId));
+
+        String normalizedNotes = acknowledgmentNotes == null ? null : acknowledgmentNotes.trim();
+        if (alert.getAlertType() == AlertType.CRITICAL_RESULT
+                && (normalizedNotes == null || normalizedNotes.isEmpty())) {
+            throw new IllegalArgumentException("Acknowledgment notes are required for critical results");
+        }
+
+        if (alert.getStatus() == AlertStatus.ACKNOWLEDGED) {
+            boolean sameUser = alert.getAcknowledgedBy() != null
+                    && alert.getAcknowledgedBy().getId().equals(String.valueOf(userId));
+            boolean sameNotes = java.util.Objects.equals(alert.getAcknowledgmentNotes(), normalizedNotes);
+            if (sameUser && sameNotes) {
+                return alert;
+            }
+            throw new IllegalArgumentException("Alert is already acknowledged");
+        }
+        if (alert.getStatus() != AlertStatus.OPEN) {
+            throw new IllegalArgumentException("Only open alerts can be acknowledged");
+        }
 
         SystemUser user = systemUserService.get(userId.toString());
         if (user == null) {
@@ -92,6 +126,7 @@ public class AlertServiceImpl extends BaseObjectServiceImpl<Alert, Long> impleme
         alert.setStatus(AlertStatus.ACKNOWLEDGED);
         alert.setAcknowledgedAt(OffsetDateTime.now());
         alert.setAcknowledgedBy(user);
+        alert.setAcknowledgmentNotes(normalizedNotes);
 
         Alert updatedAlert = alertDAO.update(alert);
         eventPublisher.publishEvent(new AlertAcknowledgedEvent(this, updatedAlert, userId.longValue()));
@@ -104,6 +139,14 @@ public class AlertServiceImpl extends BaseObjectServiceImpl<Alert, Long> impleme
         Alert alert = alertDAO.get(alertId)
                 .orElseThrow(() -> new IllegalArgumentException("Alert not found: " + alertId));
 
+        if (alert.getStatus() != AlertStatus.ACKNOWLEDGED) {
+            throw new IllegalArgumentException("Only acknowledged alerts can be resolved");
+        }
+        if (alert.getAlertType() == AlertType.CRITICAL_RESULT
+                && (resolutionNotes == null || resolutionNotes.trim().isEmpty())) {
+            throw new IllegalArgumentException("Resolution notes are required for critical results");
+        }
+
         SystemUser user = systemUserService.get(userId.toString());
         if (user == null) {
             throw new IllegalArgumentException("User not found: " + userId);
@@ -112,7 +155,7 @@ public class AlertServiceImpl extends BaseObjectServiceImpl<Alert, Long> impleme
         alert.setStatus(AlertStatus.RESOLVED);
         alert.setResolvedAt(OffsetDateTime.now());
         alert.setResolvedBy(user);
-        alert.setResolutionNotes(resolutionNotes);
+        alert.setResolutionNotes(resolutionNotes == null ? null : resolutionNotes.trim());
         alert.setEndTime(OffsetDateTime.now());
 
         Alert updatedAlert = alertDAO.update(alert);
@@ -157,6 +200,15 @@ public class AlertServiceImpl extends BaseObjectServiceImpl<Alert, Long> impleme
         for (Alert existingAlert : existingAlerts) {
             if (existingAlert.getAlertType() == alertType && (existingAlert.getStatus() == AlertStatus.OPEN
                     || existingAlert.getStatus() == AlertStatus.ACKNOWLEDGED)) {
+                return existingAlert;
+            }
+        }
+        return null;
+    }
+
+    private Alert findAlertAcrossLifecycle(AlertType alertType, String entityType, Long entityId) {
+        for (Alert existingAlert : alertDAO.getAlertsByEntity(entityType, entityId)) {
+            if (existingAlert.getAlertType() == alertType) {
                 return existingAlert;
             }
         }

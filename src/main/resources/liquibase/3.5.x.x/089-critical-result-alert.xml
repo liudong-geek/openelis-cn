@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.5.xsd">
+
+    <!--
+      Q01: make a configured critical-result match a durable, exactly-once
+      alert lifecycle.  Thresholds are still authored in result_limit; this
+      change stores the acknowledgement note and prevents a saved Result from
+      receiving more than one CRITICAL_RESULT alert.
+    -->
+    <changeSet id="q01-critical-result-alert-1" author="openelis-cn">
+        <preConditions onFail="HALT">
+            <tableExists schemaName="clinlims" tableName="alert"/>
+        </preConditions>
+
+        <addColumn schemaName="clinlims" tableName="alert">
+            <column name="acknowledgment_notes" type="TEXT"/>
+        </addColumn>
+
+        <sql>
+            ALTER TABLE clinlims.alert DROP CONSTRAINT IF EXISTS chk_alert_type;
+            ALTER TABLE clinlims.alert ADD CONSTRAINT chk_alert_type
+            CHECK (alert_type IN (
+                'FREEZER_TEMPERATURE', 'EQUIPMENT_FAILURE', 'INVENTORY_LOW',
+                'SAMPLE_TRACKING', 'OTHER', 'EQA_DEADLINE', 'SAMPLE_EXPIRATION',
+                'STAT_UPCOMING', 'STAT_OVERDUE', 'CRITICAL_UNACKNOWLEDGED',
+                'CRITICAL_RESULT'
+            ));
+        </sql>
+
+        <sql>
+            CREATE UNIQUE INDEX uq_alert_critical_result_once
+            ON clinlims.alert (alert_entity_id)
+            WHERE alert_type = 'CRITICAL_RESULT' AND alert_entity_type = 'Result';
+
+            ALTER TABLE clinlims.alert ADD CONSTRAINT chk_alert_critical_result_shape
+            CHECK (alert_type &lt;&gt; 'CRITICAL_RESULT' OR (
+                alert_entity_type = 'Result'
+                AND severity = 'CRITICAL'
+                AND context_data IS NOT NULL
+                AND jsonb_exists(context_data, 'evidenceDigest')
+                AND context_data-&gt;&gt;'evidenceDigest' ~ '^[0-9a-f]{64}$'
+            ));
+
+            ALTER TABLE clinlims.alert ADD CONSTRAINT chk_alert_critical_ack_note
+            CHECK (alert_type &lt;&gt; 'CRITICAL_RESULT' OR status = 'OPEN'
+                OR (acknowledgment_notes IS NOT NULL
+                    AND length(btrim(acknowledgment_notes)) &gt; 0));
+        </sql>
+
+        <sql splitStatements="false">
+            CREATE OR REPLACE FUNCTION clinlims.guard_critical_result_alert_evidence()
+            RETURNS trigger AS $guard$
+            BEGIN
+                IF OLD.alert_type = 'CRITICAL_RESULT' AND (
+                    NEW.alert_type IS DISTINCT FROM OLD.alert_type
+                    OR NEW.alert_entity_type IS DISTINCT FROM OLD.alert_entity_type
+                    OR NEW.alert_entity_id IS DISTINCT FROM OLD.alert_entity_id
+                    OR NEW.severity IS DISTINCT FROM OLD.severity
+                    OR NEW.start_time IS DISTINCT FROM OLD.start_time
+                    OR NEW.message IS DISTINCT FROM OLD.message
+                    OR NEW.context_data IS DISTINCT FROM OLD.context_data
+                ) THEN
+                    RAISE EXCEPTION 'critical result alert evidence is immutable'
+                        USING ERRCODE = '55000';
+                END IF;
+                RETURN NEW;
+            END;
+            $guard$ LANGUAGE plpgsql;
+        </sql>
+
+        <sql>
+            CREATE TRIGGER trg_guard_critical_result_alert_evidence
+            BEFORE UPDATE ON clinlims.alert
+            FOR EACH ROW EXECUTE FUNCTION clinlims.guard_critical_result_alert_evidence();
+        </sql>
+
+        <rollback>
+            <sql>
+                DROP TRIGGER IF EXISTS trg_guard_critical_result_alert_evidence ON clinlims.alert;
+                DROP FUNCTION IF EXISTS clinlims.guard_critical_result_alert_evidence();
+                ALTER TABLE clinlims.alert DROP CONSTRAINT IF EXISTS chk_alert_critical_ack_note;
+                ALTER TABLE clinlims.alert DROP CONSTRAINT IF EXISTS chk_alert_critical_result_shape;
+                DROP INDEX IF EXISTS clinlims.uq_alert_critical_result_once;
+                ALTER TABLE clinlims.alert DROP CONSTRAINT IF EXISTS chk_alert_type;
+                ALTER TABLE clinlims.alert ADD CONSTRAINT chk_alert_type
+                CHECK (alert_type IN (
+                    'FREEZER_TEMPERATURE', 'EQUIPMENT_FAILURE', 'INVENTORY_LOW',
+                    'SAMPLE_TRACKING', 'OTHER', 'EQA_DEADLINE', 'SAMPLE_EXPIRATION',
+                    'STAT_UPCOMING', 'STAT_OVERDUE', 'CRITICAL_UNACKNOWLEDGED'
+                ));
+            </sql>
+            <dropColumn schemaName="clinlims" tableName="alert"
+                        columnName="acknowledgment_notes"/>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

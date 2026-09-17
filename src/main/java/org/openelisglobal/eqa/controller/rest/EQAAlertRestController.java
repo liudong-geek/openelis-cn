@@ -14,9 +14,6 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -90,36 +87,4 @@ public class EQAAlertRestController {
         return ResponseEntity.ok(summary);
     }
 
-    @PutMapping(value = "/alerts/{id}/acknowledge", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<?> acknowledgeAlert(@PathVariable Long id,
-            @RequestBody(required = false) Map<String, String> body) {
-
-        Alert target;
-        try {
-            target = alertService.get(id);
-        } catch (Exception e) {
-            target = null;
-        }
-
-        if (target == null) {
-            return ResponseEntity.notFound().build();
-        }
-
-        if (target.getSeverity() == AlertSeverity.CRITICAL) {
-            if (body == null || body.get("comment") == null || body.get("comment").trim().isEmpty()) {
-                return ResponseEntity.badRequest()
-                        .body(Map.of("error", "Resolution comment is required for critical alerts"));
-            }
-        }
-
-        String comment = body != null ? body.get("comment") : null;
-        if (target.getStatus() == AlertStatus.OPEN) {
-            alertService.acknowledgeAlert(id, null);
-        }
-        if (comment != null && !comment.trim().isEmpty()) {
-            alertService.resolveAlert(id, null, comment);
-        }
-
-        return ResponseEntity.ok(Map.of("status", "acknowledged"));
-    }
 }
