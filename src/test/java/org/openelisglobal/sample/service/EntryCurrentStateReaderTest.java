@@ -265,10 +265,19 @@ public class EntryCurrentStateReaderTest {
         collect(0, "801");
         var decisions = List.of(new SpecimenIntakeDecisionReader.Tube("801", "NOT_RECORDED", null, null, null, null,
                 null, false, null));
-        when(intakeDecisions.read(eq("301"), eq("SIM-CURRENT"), eq("601"), anyList())).thenReturn(decisions);
+        when(intakeDecisions.read(eq("301"), eq("SIM-CURRENT"), eq("601"), anyList(), eq("7"), anyList()))
+                .thenReturn(decisions);
         var current = read();
         assertSame(decisions, current.specimenDecisions());
-        verify(intakeDecisions).read("301", "SIM-CURRENT", "601", current.physicalSpecimens());
+        @SuppressWarnings({ "unchecked", "rawtypes" })
+        var actual = (org.mockito.ArgumentCaptor<List<Analysis>>) (org.mockito.ArgumentCaptor) org.mockito.ArgumentCaptor
+                .forClass(List.class);
+        verify(intakeDecisions).read(eq("301"), eq("SIM-CURRENT"), eq("601"), eq(current.physicalSpecimens()), eq("7"),
+                actual.capture());
+        assertEquals(current.physicalSpecimens().get(0).analyses().stream()
+                .map(EntryCurrentStateReader.AnalysisView::id).toList(),
+                actual.getValue().stream().map(Analysis::getId).toList());
+        assertEquals("801", actual.getValue().get(0).getSampleItem().getId());
         var json = new ObjectMapper().valueToTree(current);
         assertFalse(json.path("specimenDecisions").get(0).path("currentAcceptanceVerified").asBoolean());
         assertFalse(json.path("specimenDecisions").get(0).has("evidenceJson"));

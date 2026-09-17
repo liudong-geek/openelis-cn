@@ -1,6 +1,7 @@
 import { entrySubmissionError } from "./orderEntryReceipt";
 import { receiptInstant } from "./specimenReceipt";
 import { collectionMaster } from "./collectionRecovery";
+import { verifyIntakeAdmission } from "./intakeAdmission";
 
 export const intakeFailure = (key = "unknown") =>
   entrySubmissionError(`order.intakeDecision.${key}`);
@@ -124,7 +125,14 @@ export function verifyIntakeDecisions(values, current) {
           (row.state === "LEGACY_REJECTION" && !tube.rejected)
         )
           return fail();
-        return unreadable(row.sampleItemId, row.state);
+        return {
+          ...unreadable(row.sampleItemId, row.state),
+          resultEntryAdmission: verifyIntakeAdmission(
+            row.resultEntryAdmission,
+            current,
+            tube,
+          ),
+        };
       }
       if (
         !intakeUuid(row.operationId) ||
@@ -150,6 +158,11 @@ export function verifyIntakeDecisions(values, current) {
         decidedBy: row.decidedBy,
         decidedAt: row.decidedAt,
         evidenceDigest: row.evidenceDigest,
+        resultEntryAdmission: verifyIntakeAdmission(
+          row.resultEntryAdmission,
+          current,
+          tube,
+        ),
       };
     });
   } catch {

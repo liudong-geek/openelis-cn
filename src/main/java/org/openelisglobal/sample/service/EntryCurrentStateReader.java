@@ -277,7 +277,7 @@ public class EntryCurrentStateReader {
                 collectionContext(sample, ordered, specimens),
                 qaReviews.read(sample, patient == null ? null : patient.id(), rows, physicalRows, qaAnalyses),
                 intakeDecisions.read(sampleId, sample.getAccessionNumber(), patient == null ? null : patient.id(),
-                        specimens),
+                        specimens, actorId, qaAnalyses),
                 patient == null ? null : intakeDecisions.reasons());
     }
 

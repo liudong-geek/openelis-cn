@@ -1,6 +1,8 @@
 import React from "react";
 import { act, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { webcrypto } from "node:crypto";
+import { createEntrySubmissionSim } from "./testUtils/entrySubmissionSim";
 vi.mock("../layout/Layout", () => ({
   ConfigurationContext: React.createContext({}),
 }));
@@ -32,81 +34,134 @@ function View({ child = 0 }) {
     </MemoryRouter>
   );
 }
-const json = (value, status = 200) =>
-  new Response(JSON.stringify(value), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => {
+  sessionStorage.clear();
+  vi.stubGlobal("crypto", webcrypto);
+});
+afterEach(() => {
+  sessionStorage.clear();
+  vi.unstubAllGlobals();
+});
 
 test.each(["missing", "wrong-order", "valid"])(
-  "真实提交适配器及Provider处理%s标本回执（无业务网络）",
+  "真实提交适配器及Provider处理%s整单回执，并通过独立GET核对（无业务网络）",
   async (mode) => {
-    const fetchMock = vi.fn().mockImplementation(async (url, options) => {
-      if (url.endsWith("/rest/SamplePatientEntry")) return json({});
-      if (url.includes("/rest/order/search?"))
-        return json({
-          id: "701",
-          labNumber: "SIM-RECEIPT-001",
-          patientProperties: { patientPK: "801" },
-        });
-      if (url.endsWith("/rest/sample-type-requests")) {
-        const sent = JSON.parse(options.body);
-        return json(
-          mode === "missing"
-            ? {}
-            : {
-                ...sent,
-                id: String(901 + sent.sortOrder),
-                sampleId: mode === "wrong-order" ? "702" : sent.sampleId,
-                status: "REQUESTED",
-                sampleItemId: null,
-              },
-          201,
-        );
-      }
-      throw new Error("Unexpected SIM endpoint");
+    const sim = createEntrySubmissionSim({
+      damageResponse: (response) => {
+        if (mode === "missing") return {};
+        if (mode === "wrong-order")
+          response.receipt.requestedSpecimens[1].sampleId = "702";
+        return response;
+      },
     });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", sim.fetch);
     const view = render(<View />);
+    await act(async () => {});
     act(() => {
-      context.setOrderData({
+      context.setOrderData((previous) => ({
+        ...previous,
         patientProperties: {
           patientPK: "801",
           patientUpdateStatus: "NO_ACTION",
         },
-        sampleOrderItems: { labNo: "SIM-RECEIPT-001", referringSiteId: "301" },
-      });
+        sampleOrderItems: {
+          ...previous.sampleOrderItems,
+          labNo: "SIM-RECEIPT-001",
+          referringSiteId: "301",
+        },
+      }));
       context.setSamples([
         { sampleTypeId: "2", tests: [{ id: "11" }] },
         { sampleTypeId: "3", tests: [{ id: "12" }] },
       ]);
     });
-    let error;
+    let result, error;
     await act(async () => {
       try {
-        await context.saveOrderEntry();
+        result = await context.saveOrderEntry();
       } catch (caught) {
         error = caught;
       }
     });
+    expect(sim.writes).toHaveLength(1);
+    const write = sim.writes[0];
+    expect(JSON.parse(write.options.body)).toMatchObject({
+      orderEntryOnly: true,
+      sampleXML: "",
+      sampleOrderItems: { labNo: "SIM-RECEIPT-001", modified: false },
+      requestedSpecimens: [
+        { typeOfSampleId: "2", sortOrder: 0, requestedTests: "11" },
+        { typeOfSampleId: "3", sortOrder: 1, requestedTests: "12" },
+      ],
+    });
+    expect(write.submissionId).toMatch(/^[a-f0-9-]{36}$/);
     if (mode === "valid") {
       expect(error).toBeUndefined();
+      expect(result).toEqual({ success: true, sampleId: "701" });
+      expect(context.orderId).toBe("701");
       expect(context.isSaveUnconfirmed).toBe(false);
-      // Includes the Provider's initial GET of the entry form defaults.
-      expect(fetchMock).toHaveBeenCalledTimes(5);
-      return;
-    }
-    expect(error).toMatchObject({ errorKey: "order.save.readbackUnconfirmed" });
-    expect(screen.getByLabelText("保存状态")).toHaveTextContent("unconfirmed");
-    expect(context.unconfirmedLabNumber).toBe("SIM-RECEIPT-001");
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    view.rerender(<View child={1} />);
-    await act(async () => {
-      await expect(context.saveOrderEntry()).rejects.toMatchObject({
+      expect(sessionStorage.getItem("lis.entry.pending.v1")).toBeNull();
+      // Continuing an unchanged confirmed draft must not duplicate its tubes.
+      await act(async () => {
+        expect(await context.saveOrderEntry()).toEqual(result);
+      });
+    } else {
+      expect(error).toMatchObject({
         errorKey: "order.save.readbackUnconfirmed",
       });
+      expect(screen.getByLabelText("保存状态")).toHaveTextContent(
+        "unconfirmed",
+      );
+      expect(context.orderId).toBeNull();
+      expect(context.unconfirmedLabNumber).toBe("SIM-RECEIPT-001");
+      expect(context.unconfirmedSubmissionId).toBe(write.submissionId);
+      expect(
+        JSON.parse(sessionStorage.getItem("lis.entry.pending.v1")),
+      ).toEqual({
+        version: 1,
+        submissionId: write.submissionId,
+        requestHash: sim.receipts.get(write.submissionId).receipt.requestHash,
+      });
+      view.rerender(<View child={1} />);
+      await act(async () => {
+        await expect(context.saveOrderEntry()).rejects.toMatchObject({
+          errorKey: "order.save.readbackUnconfirmed",
+        });
+      });
+    }
+    const before = JSON.stringify({
+      orderData: context.orderData,
+      samples: context.samples,
+      orderId: context.orderId,
     });
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    let recovered;
+    await act(async () => {
+      recovered = await context.queryEntryRecovery(write.submissionId);
+    });
+    expect(recovered.sampleId).toBe("701");
+    expect(recovered.requestedSpecimens.map((tube) => tube.id)).toEqual([
+      "901",
+      "902",
+    ]);
+    expect(
+      JSON.stringify({
+        orderData: context.orderData,
+        samples: context.samples,
+        orderId: context.orderId,
+      }),
+    ).toBe(before);
+    expect(sim.reads.at(-1)).toMatchObject({
+      path: expect.stringContaining(`/submissions/${write.submissionId}`),
+      options: { method: "GET", cache: "no-store", redirect: "manual" },
+    });
+    if (mode !== "valid") {
+      expect(context.isSaveUnconfirmed).toBe(true);
+      expect(context.orderId).toBeNull();
+      expect(sessionStorage.getItem("lis.entry.pending.v1")).toContain(
+        write.submissionId,
+      );
+    }
+    expect(sim.writes).toHaveLength(1);
+    expect(sim.unexpected).toEqual([]);
   },
 );

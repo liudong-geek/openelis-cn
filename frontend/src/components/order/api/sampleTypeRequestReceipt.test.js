@@ -13,6 +13,8 @@ import {
   postToOpenElisServerFullResponse,
 } from "../../utils/Utils";
 import { submitOrderEntry } from "../orderEntrySubmission";
+import { webcrypto } from "node:crypto";
+import { entryReceiptResponse } from "../testUtils/entrySubmissionSim";
 
 const request = () => ({
   sampleId: "701",
@@ -30,7 +32,9 @@ const receipt = (input = request(), overrides = {}) => ({
   sampleItemId: null,
   ...overrides,
 });
+afterEach(() => vi.unstubAllGlobals());
 beforeEach(() => {
+  vi.stubGlobal("crypto", webcrypto);
   postToOpenElisServer.mockReset();
   postToOpenElisServerFullResponse
     .mockReset()
@@ -143,35 +147,51 @@ describe("标本申请创建回执（仅内存SIM）", () => {
     );
     await expect(createRequest(request())).rejects.toBe(error);
   });
-  test("单管错误回执停止后续写入并将开单保留为待确认", async () => {
-    postToOpenElisServer.mockImplementation((_url, _input, finish) =>
-      finish(201, {}),
-    );
+  test("整单回执缺少一管时保持待确认，不降级为逐管补写或普通订单查询", async () => {
+    const post = vi.fn((_url, body, finish, _extra, headers) => {
+      const response = entryReceiptResponse(body, headers["Idempotency-Key"]);
+      response.receipt.requestedSpecimens.pop();
+      finish({ status: 201, json: async () => response });
+    });
+    const read = vi.fn();
+    const createRequests = vi.fn(createRequestsForSamples);
     const onUnknown = vi.fn();
+    const operation = { labNo: "SIM-RECEIPT-001" };
     await expect(
       submitOrderEntry({
-        operation: { labNo: "SIM-RECEIPT-001" },
-        body: "{}",
+        operation,
+        body: JSON.stringify({
+          orderEntryOnly: true,
+          sampleOrderItems: { labNo: operation.labNo, modified: false },
+          patientProperties: {
+            patientPK: "801",
+            patientUpdateStatus: "NO_ACTION",
+          },
+        }),
         samples: [
           { sampleTypeId: "2", tests: [{ id: "11" }] },
           { sampleTypeId: "3", tests: [{ id: "12" }] },
         ],
-        patientId: "801",
-        post: (_url, _body, finish) => finish({ status: 200 }),
-        read: (_url, finish) =>
-          finish({
-            id: "701",
-            labNumber: "SIM-RECEIPT-001",
-            patientProperties: { patientPK: "801" },
-          }),
-        createRequests: createRequestsForSamples,
+        post,
+        // Legacy collaborators must remain unused even when the atomic response
+        // is incomplete. It is unsafe to infer that its missing tube rolled back.
+        read,
+        createRequests,
         isCurrent: () => true,
         canContinue: () => true,
         onUnknown,
       }),
     ).rejects.toMatchObject({ errorKey: "order.save.readbackUnconfirmed" });
-    expect(postToOpenElisServer).toHaveBeenCalledTimes(1);
-    expect(onUnknown).toHaveBeenCalledTimes(1);
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(post.mock.calls[0][1]).requestedSpecimens).toHaveLength(
+      2,
+    );
+    expect(operation.dispatched).toBe(true);
+    expect(operation.command.body).toBe(post.mock.calls[0][1]);
+    expect(onUnknown).toHaveBeenCalledExactlyOnceWith(operation);
+    expect(read).not.toHaveBeenCalled();
+    expect(createRequests).not.toHaveBeenCalled();
+    expect(postToOpenElisServer).not.toHaveBeenCalled();
   });
   test("同批两管收到同一请求ID时停止，不再派发第三管", async () => {
     postToOpenElisServer.mockImplementation((_url, body, finish) =>

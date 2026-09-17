@@ -13,17 +13,26 @@ import {
   Tag,
 } from "@carbon/react";
 import { useIntl } from "react-intl";
+import { useHistory } from "react-router-dom";
 import { useOrderContext } from "./OrderContext";
 import { intakeOptions } from "./intakeDecision";
+import { intakeAdmissionPath, verifyIntakeAdmission } from "./intakeAdmission";
 import { collectionMaster } from "./collectionRecovery";
 import { localizeSampleType } from "./sampleTypeIntl";
+import { readEntryCheckpoint } from "./orderEntryRecovery";
+import { readCollectionCheckpoint } from "./collectionCheckpoint";
+import { readReceiptCheckpoint } from "./receiptCheckpoint";
+import { readQaCheckpoint } from "./qaCheckpoint";
+import { readIntakeCheckpoint } from "./intakeCheckpoint";
+import { hasPendingLabels } from "./labelCheckpoint";
 import "./recovered-specimen-decision.scss";
 
-// This records the first decision on one actual tube, never whole-order QA or
-// permission to enter results. All write identities stay private in the provider.
+// The historical first decision and current result-entry checks are independent.
+// All write identities stay private in the provider; this only opens an entry query.
 export default function RecoveredSpecimenDecision({ result, onSaved }) {
   const intl = useIntl(),
-    context = useOrderContext();
+    context = useOrderContext(),
+    history = useHistory();
   const t = (key, values) =>
     intl.formatMessage({ id: `order.intakeDecision.${key}` }, values);
   const [selected, setSelected] = useState(""),
@@ -80,6 +89,41 @@ export default function RecoveredSpecimenDecision({ result, onSaved }) {
     pending ||
     (operation.current && !operation.current.isCurrent()),
   );
+  const entryMessage = (key, values) =>
+    intl.formatMessage({ id: `order.intakeAdmission.${key}` }, values);
+  const entryPath = () => {
+    try {
+      const entryPending = readEntryCheckpoint();
+      if (
+        context.isRecoveryCurrent?.() !== true ||
+        context.isDirty ||
+        context.isSubmitting ||
+        context.isLoading ||
+        context.isSaveUnconfirmed ||
+        pending ||
+        context.entryRecovery?.checkpoint ||
+        context.entryRecovery?.error ||
+        preparing ||
+        sent ||
+        preview ||
+        selected ||
+        operation.current ||
+        sending.current ||
+        entryPending.checkpoint ||
+        entryPending.error ||
+        readCollectionCheckpoint() ||
+        readReceiptCheckpoint() ||
+        readQaCheckpoint() ||
+        readIntakeCheckpoint() ||
+        hasPendingLabels()
+      )
+        return null;
+      context.assertQaIdle?.();
+      return intakeAdmissionPath(result);
+    } catch {
+      return null;
+    }
+  };
   const patient =
     [current.patient.lastName, current.patient.firstName]
       .filter(Boolean)
@@ -162,17 +206,29 @@ export default function RecoveredSpecimenDecision({ result, onSaved }) {
         <Table size="md">
           <TableHead>
             <TableRow>
-              {["barcode", "sampleType", "received", "record", "action"].map(
-                (k) => (
-                  <TableHeader key={k}>{t(k)}</TableHeader>
-                ),
-              )}
+              {[
+                "barcode",
+                "sampleType",
+                "received",
+                "record",
+                "admission",
+                "action",
+              ].map((k) => (
+                <TableHeader key={k}>
+                  {k === "admission" ? entryMessage("title") : t(k)}
+                </TableHeader>
+              ))}
             </TableRow>
           </TableHead>
           <TableBody>
             {rows.map((row) => {
               const item = current.physicalSpecimens.find(
                 (v) => v.id === row.sampleItemId,
+              );
+              const admission = verifyIntakeAdmission(
+                row.resultEntryAdmission,
+                current,
+                item,
               );
               return (
                 <TableRow key={row.sampleItemId}>
@@ -198,6 +254,40 @@ export default function RecoveredSpecimenDecision({ result, onSaved }) {
                         </p>
                       </div>
                     )}
+                  </TableCell>
+                  <TableCell>
+                    <Tag
+                      type={
+                        admission.state === "READY"
+                          ? "green"
+                          : admission.state === "PARTIAL"
+                            ? "blue"
+                            : "gray"
+                      }
+                    >
+                      {entryMessage(admission.state)}
+                    </Tag>
+                    {admission.analyses.length > 0 && (
+                      <p>
+                        {entryMessage("count", {
+                          allowed: admission.analyses.filter(
+                            (analysis) => analysis.allowed,
+                          ).length,
+                          total: admission.analyses.length,
+                        })}
+                      </p>
+                    )}
+                    {admission.analyses
+                      .filter((analysis) => !analysis.allowed)
+                      .map((analysis) => (
+                        <p key={analysis.analysisId}>
+                          {collectionMaster(current, "TEST", analysis.testId)
+                            ?.name ||
+                            entryMessage("test", { id: analysis.testId })}
+                          {"："}
+                          {intl.formatMessage({ id: analysis.blockedReason })}
+                        </p>
+                      ))}
                   </TableCell>
                   <TableCell>
                     {selected === item.id ? (
@@ -229,6 +319,19 @@ export default function RecoveredSpecimenDecision({ result, onSaved }) {
             })}
           </TableBody>
         </Table>
+      </div>
+      <div>
+        <p>{entryMessage("boundary")}</p>
+        <Button
+          kind="tertiary"
+          disabled={!entryPath()}
+          onClick={() => {
+            const path = entryPath();
+            if (path) history.push(path);
+          }}
+        >
+          {entryMessage("open")}
+        </Button>
       </div>
       {!options.length && <p>{t("noEligible")}</p>}
       {tube && (

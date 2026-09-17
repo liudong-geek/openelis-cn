@@ -16,6 +16,9 @@ import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.audittrail.dao.AuditTrailService;
 import org.openelisglobal.common.action.IActionConstants;
 import org.openelisglobal.common.constants.Constants;
+import org.openelisglobal.common.services.IStatusService;
+import org.openelisglobal.common.services.StatusService.AnalysisStatus;
+import org.openelisglobal.common.services.StatusService.SampleStatus;
 import org.openelisglobal.common.util.DefaultConfigurationProperties;
 import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.dictionary.valueholder.Dictionary;
@@ -24,10 +27,17 @@ import org.openelisglobal.login.service.LoginUserService;
 import org.openelisglobal.login.valueholder.LoginUser;
 import org.openelisglobal.login.valueholder.UserSessionData;
 import org.openelisglobal.referencetables.valueholder.ReferenceTables;
+import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO;
+import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO.*;
+import org.openelisglobal.result.service.ResultSpecimenAvailabilityService;
+import org.openelisglobal.result.service.SpecimenResultAdmissionReader;
 import org.openelisglobal.sample.controller.rest.SpecimenIntakeDecisionRestController;
+import org.openelisglobal.sample.dao.SpecimenIntakeDecisionDAO;
 import org.openelisglobal.sample.dao.SpecimenIntakeDecisionWriteDAO;
 import org.openelisglobal.sample.dao.SpecimenReceiptDAO;
 import org.openelisglobal.sample.form.SpecimenIntakeEvidence;
+import org.openelisglobal.sample.service.EntryCurrentStateReader.AnalysisView;
+import org.openelisglobal.sample.service.EntryCurrentStateReader.SpecimenView;
 import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.sample.valueholder.SpecimenIntakeDecision;
 import org.openelisglobal.sampleitem.service.SampleItemService;
@@ -37,6 +47,7 @@ import org.openelisglobal.statusofsample.valueholder.StatusOfSample;
 import org.openelisglobal.systemuser.service.SystemUserService;
 import org.openelisglobal.systemuser.service.UserService;
 import org.openelisglobal.systemuser.valueholder.SystemUser;
+import org.openelisglobal.test.valueholder.TestSection;
 import org.openelisglobal.typeofsample.valueholder.TypeOfSample;
 import org.openelisglobal.userrole.service.UserRoleService;
 import org.springframework.aop.framework.ProxyFactory;
@@ -892,6 +903,134 @@ public class SpecimenIntakeDecisionServiceTest {
             assertEquals(409, expected.getStatus());
         }
         nothingWritten();
+    }
+
+    /**
+     * Reads the actual records committed by the real writer above; no fabricated
+     * acceptance receipt.
+     */
+    private List<SpecimenIntakeDecisionReader.Tube> currentAdmissions(boolean resultPermission) {
+        var section = new TestSection();
+        section.setId("61");
+        analyses.forEach(a -> {
+            a.setTestSection(section);
+            a.setSampleItem(tubes.get(a.getSampleItem().getId()));
+        });
+        var states = mock(OrdinaryResultSaveStateDAO.class);
+        var statuses = mock(IStatusService.class);
+        for (AnalysisStatus status : AnalysisStatus.values()) {
+            when(statuses.getStatusID(status))
+                    .thenReturn(status == AnalysisStatus.NotStarted ? "3" : Integer.toString(100 + status.ordinal()));
+        }
+        when(statuses.getStatusID(SampleStatus.Entered)).thenReturn("2");
+        when(statuses.getStatusID(SampleStatus.SampleRejected)).thenReturn("4");
+        when(statuses.getStatusID(SampleStatus.Canceled)).thenReturn("6");
+        when(statuses.getStatusID(SampleStatus.Disposed)).thenReturn("8");
+        when(states.findSpecimenState(anyString())).thenAnswer(c -> {
+            var a = analyses.stream().filter(v -> v.getId().equals(c.getArgument(0))).findFirst().orElseThrow();
+            var t = a.getSampleItem();
+            return new SpecimenState(a.getId(), a.getTest().getId(), t.getId(), sample.getId(), t.getStatusId(),
+                    t.isRejected(), t.isVoided());
+        });
+        when(states.findState(anyString())).thenAnswer(c -> {
+            var a = analyses.stream().filter(v -> v.getId().equals(c.getArgument(0))).findFirst().orElseThrow();
+            return new State(a.getId(), a.getStatusId(), a.getReleasedDate(), a.getPrintedDate());
+        });
+        when(states.findIntakeState(anyString())).thenAnswer(c -> {
+            var t = tubes.get(c.getArgument(0));
+            var r = requests.stream().filter(v -> v.getSampleItem().getId().equals(t.getId())).findFirst()
+                    .orElseThrow();
+            var tube = new IntakeTube(t.getId(), sample.getId(), sample.getAccessionNumber(), "2026-09-01T00:00:00Z",
+                    type.getId(), type.getIsActive(), t.getCollectionDate().toInstant().toString(),
+                    t.getReceivedDate().toInstant().toString(), t.getLastupdated().toInstant().toString(), null,
+                    t.getRejectReasonId(), "H", "H");
+            var request = new IntakeRequest(r.getId().toString(), sample.getId(), t.getId(), type.getId(),
+                    r.getStatus(), r.getRequestedTests(), r.getLastupdated().toInstant().toString());
+            return new IntakeState(tube, List.of("801"), List.of(request),
+                    analyses.stream().filter(a -> a.getSampleItem().getId().equals(t.getId()))
+                            .map(a -> new IntakeTest(a.getId(), a.getTest().getId(), a.getTest().getIsActive()))
+                            .toList(),
+                    records.containsKey(t.getId()) ? List.of(records.get(t.getId())) : List.of());
+        });
+        var resultsUsers = mock(UserService.class);
+        when(resultsUsers.filterAnalysesByLabUnitRoles("7", analyses, Constants.ROLE_RESULTS))
+                .thenReturn(resultPermission ? analyses : List.of());
+        when(resultsUsers.getAllDisplayUserTestsByLabUnit("7", Constants.ROLE_RESULTS))
+                .thenReturn(List.of(new IdValuePair("31", "SIM test")));
+        var decisionDao = mock(SpecimenIntakeDecisionDAO.class);
+        when(decisionDao.findForTubes(anyList())).thenReturn(new ArrayList<>(records.values()));
+        var reader = new SpecimenIntakeDecisionReader(decisionDao, new SpecimenResultAdmissionReader(
+                new ResultSpecimenAvailabilityService(states, statuses), resultsUsers));
+        List<SpecimenView> views = tubes.values().stream().map(t -> {
+            var r = requests.stream().filter(v -> v.getSampleItem().getId().equals(t.getId())).findFirst()
+                    .orElseThrow();
+            return new SpecimenView(t.getId(), r.getId().toString(), t.getSortOrder(), type.getId(), t.getQuantity(),
+                    null, t.getStatusId(), t.isVoided(), t.isRejected(), t.getCollectionDate().toInstant().toString(),
+                    t.getReceivedDate().toInstant().toString(), t.getCollector(),
+                    t.getLastupdated().toInstant().toString(),
+                    analyses.stream().filter(a -> a.getSampleItem().getId().equals(t.getId()))
+                            .map(a -> new AnalysisView(a.getId(), a.getTest().getId(), a.getStatusId(),
+                                    a.getLastupdated().toInstant().toString()))
+                            .toList());
+        }).toList();
+        var read = new TransactionTemplate(transactions);
+        read.setReadOnly(true);
+        read.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        return read.execute(
+                status -> reader.read(sample.getId(), sample.getAccessionNumber(), "801", views, "7", analyses));
+    }
+
+    @Test
+    public void committedPerTubeAcceptanceIsReadThroughCurrentResultGateWithoutBorrowingOtherTube() throws Exception {
+        send(body(false, 0), 200);
+        var current = currentAdmissions(true);
+        assertEquals("ACCEPTED", current.get(0).recordedDecision());
+        assertFalse(current.get(0).currentAcceptanceVerified());
+        assertEquals("READY", current.get(0).resultEntryAdmission().state());
+        assertEquals("1101", current.get(0).resultEntryAdmission().analyses().get(0).analysisId());
+        assertEquals("NOT_RECORDED", current.get(1).state());
+        assertEquals("BLOCKED", current.get(1).resultEntryAdmission().state());
+        assertEquals("error.results.specimenIntakeMissing",
+                current.get(1).resultEntryAdmission().analyses().get(0).blockedReason());
+        assertEquals(1, records.size());
+        assertEquals(List.of("decision:1001:7"), audits);
+    }
+
+    @Test
+    public void committedRejectionIsVisibleAndCannotEnterResultsWhileAnotherTubeIsAccepted() throws Exception {
+        send(body(true, 0), 200);
+        send(body(false, 1), 200);
+        var current = currentAdmissions(true);
+        assertEquals("REJECTED", current.get(0).recordedDecision());
+        assertEquals("BLOCKED", current.get(0).resultEntryAdmission().state());
+        assertEquals("error.results.specimenRejected",
+                current.get(0).resultEntryAdmission().analyses().get(0).blockedReason());
+        assertEquals("READY", current.get(1).resultEntryAdmission().state());
+        assertEquals(2, records.size());
+    }
+
+    @Test
+    public void laterEvidenceChangeKeepsAcceptedHistoryButBlocksCurrentResultEntry() throws Exception {
+        send(body(false, 0), 200);
+        var digest = records.get("1001").getEvidenceDigest();
+        tubes.get("1001").setReceivedDate(ts("2026-09-01T02:00:00Z"));
+        tubes.get("1001").setLastupdated(ts("2026-09-01T02:00:00Z"));
+        var current = currentAdmissions(true).get(0);
+        assertEquals("ACCEPTED", current.recordedDecision());
+        assertEquals(digest, current.evidenceDigest());
+        assertEquals("BLOCKED", current.resultEntryAdmission().state());
+        assertEquals("error.results.specimenIntakeChanged",
+                current.resultEntryAdmission().analyses().get(0).blockedReason());
+    }
+
+    @Test
+    public void intakeOperatorWithoutActualResultsRoleSeesHistoryButCannotEnter() throws Exception {
+        send(body(false, 0), 200);
+        var current = currentAdmissions(false).get(0);
+        assertEquals("ACCEPTED", current.recordedDecision());
+        assertEquals("BLOCKED", current.resultEntryAdmission().state());
+        assertEquals(SpecimenResultAdmissionReader.PERMISSION,
+                current.resultEntryAdmission().analyses().get(0).blockedReason());
     }
 
     private class MemoryTransactions extends AbstractPlatformTransactionManager {

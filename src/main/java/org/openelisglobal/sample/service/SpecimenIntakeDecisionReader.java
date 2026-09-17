@@ -7,9 +7,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.openelisglobal.analysis.valueholder.Analysis;
+import org.openelisglobal.result.form.SpecimenResultAdmission;
+import org.openelisglobal.result.service.SpecimenResultAdmissionReader;
 import org.openelisglobal.sample.dao.SpecimenIntakeDecisionDAO;
 import org.openelisglobal.sample.service.EntryCurrentStateReader.SpecimenView;
 import org.openelisglobal.sample.valueholder.SpecimenIntakeDecision;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,13 +26,27 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class SpecimenIntakeDecisionReader {
     private final SpecimenIntakeDecisionDAO dao;
 
-    public SpecimenIntakeDecisionReader(SpecimenIntakeDecisionDAO dao) {
+    private final SpecimenResultAdmissionReader admissions;
+
+    @Autowired
+    public SpecimenIntakeDecisionReader(SpecimenIntakeDecisionDAO dao, SpecimenResultAdmissionReader admissions) {
         this.dao = dao;
+        this.admissions = admissions;
+    }
+
+    public SpecimenIntakeDecisionReader(SpecimenIntakeDecisionDAO dao) {
+        this(dao, null);
     }
 
     public record Tube(String sampleItemId, String state, String recordedDecision, String operationId,
             SpecimenIntakeDecision.Reason reason, String decidedBy, String decidedAt, boolean currentAcceptanceVerified,
-            String evidenceDigest) {
+            String evidenceDigest, SpecimenResultAdmission resultEntryAdmission) {
+        public Tube(String sampleItemId, String state, String recordedDecision, String operationId,
+                SpecimenIntakeDecision.Reason reason, String decidedBy, String decidedAt,
+                boolean currentAcceptanceVerified, String evidenceDigest) {
+            this(sampleItemId, state, recordedDecision, operationId, reason, decidedBy, decidedAt,
+                    currentAcceptanceVerified, evidenceDigest, null);
+        }
     }
 
     public record Reasons(int schema, String state, List<SpecimenIntakeDecision.Reason> items) {
@@ -97,6 +115,24 @@ public class SpecimenIntakeDecisionReader {
             }
         }
         return List.copyOf(result);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+    public List<Tube> read(String sampleId, String labNo, String patientId, List<SpecimenView> physical, String actorId,
+            List<Analysis> actual) {
+        var history = read(sampleId, labNo, patientId, physical);
+        if (admissions == null || patientId == null) {
+            return history;
+        }
+        var current = admissions.read(sampleId, actorId, physical, actual);
+        return history.stream().map(row -> {
+            var admission = current.get(row.sampleItemId());
+            if (admission != null && List.of("INVALID_RECORD", "REVIEW_REQUIRED").contains(row.state())) {
+                admission = SpecimenResultAdmission.unavailable(sampleId, row.sampleItemId(), admission.itemVersion());
+            }
+            return new Tube(row.sampleItemId(), row.state(), row.recordedDecision(), row.operationId(), row.reason(),
+                    row.decidedBy(), row.decidedAt(), false, row.evidenceDigest(), admission);
+        }).toList();
     }
 
     private void requireReadTransaction() {
