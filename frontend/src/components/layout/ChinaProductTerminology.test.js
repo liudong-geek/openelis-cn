@@ -74,8 +74,9 @@ const expectedBusinessTerms = {
   "app.session.error.title": "系统连接失败",
   "banner.menu.administration": "系统管理",
   "sidenav.label.admin": "系统管理",
-  "admin.dashboard.title": "系统管理",
-  "admin.dashboard.subtitle": "请选择需要维护的系统配置模块。",
+  "admin.dashboard.title": "管理中心",
+  "admin.dashboard.subtitle":
+    "按业务领域查找和维护配置。修改关键配置前请先核对生效范围。",
 };
 
 describe.each([

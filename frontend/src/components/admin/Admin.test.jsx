@@ -52,13 +52,13 @@ describe("Admin", () => {
       expect(
         screen.getByText(messages["master.lists.page.test.management"]),
       ).toBeInTheDocument();
-      expect(screen.getAllByTestId("admin-dashboard-tile")).toHaveLength(12);
+      expect(screen.getAllByTestId("admin-dashboard-domain")).toHaveLength(6);
       expect(
         container.querySelectorAll(".admin-dashboard__tile-icon"),
-      ).toHaveLength(12);
+      ).toHaveLength(6);
       expect(
-        container.querySelectorAll(".admin-dashboard__tile-arrow"),
-      ).toHaveLength(12);
+        container.querySelectorAll(".admin-dashboard__domain-links a"),
+      ).toHaveLength(13);
       expect(document.querySelector(".cds--side-nav")).not.toBeInTheDocument();
     },
   );
@@ -85,5 +85,33 @@ describe("Admin", () => {
     expect(screen.getByTestId("current-path")).toHaveTextContent(
       "/MasterListsPage/userManagement",
     );
+  });
+
+  test("searches configuration links and keeps their business domain context", () => {
+    render(
+      <MemoryRouter initialEntries={["/MasterListsPage"]}>
+        <IntlProvider locale="en" messages={messages}>
+          <AdminDashboard basePath="/MasterListsPage" />
+        </IntlProvider>
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(
+      screen.getByPlaceholderText(
+        messages["admin.dashboard.search.placeholder"],
+      ),
+      { target: { value: "barcode" } },
+    );
+
+    expect(screen.getAllByTestId("admin-dashboard-domain")).toHaveLength(1);
+    expect(
+      screen.getByText(messages["admin.dashboard.domain.workflow"]),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(messages["sidenav.label.admin.barcodeconfiguration"]),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(messages["unifiedSystemUser.browser.title"]),
+    ).not.toBeInTheDocument();
   });
 });
