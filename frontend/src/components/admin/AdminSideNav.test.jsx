@@ -40,33 +40,47 @@ const renderNav = () =>
 beforeEach(() => vi.clearAllMocks());
 
 describe("AdminSideNav — Test Catalog Management entry", () => {
-  it("lists all 9 sections but DISABLED (not navigable) off an editor route", () => {
+  it("shows only the current configuration domain off an editor route", () => {
     mockLocation = { pathname: "/MasterListsPage/reflex", search: "" };
     const { container } = renderNav();
 
     V1_SECTIONS.forEach((key) => {
-      const item = container.querySelector(`[data-cy="section-${key}"]`);
-      // present (breadth is always visible) ...
-      expect(item).not.toBeNull();
-      // ... but disabled and not a link to anywhere
-      expect(item.getAttribute("aria-disabled")).toBe("true");
-      expect(item.getAttribute("href")).toBeNull();
-      expect(item.getAttribute("aria-describedby")).toBe(
-        "testCatalogSectionsHelp",
-      );
+      expect(container.querySelector(`[data-cy="section-${key}"]`)).toBeNull();
     });
 
-    // the helper caption explains how to enable them
-    const help = container.querySelector(
-      '[data-cy="testCatalogSectionsContext"]',
-    );
-    expect(help).not.toBeNull();
-    expect(help.textContent).toBe("Select a test to edit its sections");
+    expect(
+      screen.getByRole("button", { name: "Test catalog" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(
+      container.querySelectorAll('[data-cy^="admin-domain-"]'),
+    ).toHaveLength(3);
+    expect(
+      container.querySelector('[data-cy="admin-domain-reflex"]'),
+    ).toHaveAttribute("aria-current", "page");
+    expect(
+      screen.getByTestId("admin-back-to-management-center"),
+    ).toHaveAttribute("href", "/MasterListsPage");
+  });
 
-    // the list item is present and labelled as the entry (not "back")
-    const list = container.querySelector('[data-cy="testCatalogList"]');
-    expect(list).not.toBeNull();
-    expect(list.textContent).toBe("Test Catalog Editor");
+  it("keeps organization details within their two-item domain", () => {
+    mockLocation = {
+      pathname: "/MasterListsPage/userManagement",
+      search: "",
+    };
+    const { container } = renderNav();
+
+    expect(
+      screen.getByRole("button", { name: "Organizations & people" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(
+      container.querySelectorAll('[data-cy^="admin-domain-"]'),
+    ).toHaveLength(2);
+    expect(
+      container.querySelector('[data-cy="admin-domain-userManagement"]'),
+    ).toHaveAttribute("aria-current", "page");
+    expect(
+      container.querySelector('[data-cy="admin-domain-reflex"]'),
+    ).toBeNull();
   });
 
   it("makes the 9 sections live routed links when editing a test", () => {
@@ -197,6 +211,9 @@ describe("AdminSideNav — Test Catalog Management entry", () => {
     expect(
       screen.getByRole("button", { name: "Test Catalog Management" }),
     ).toHaveAttribute("aria-expanded", "true");
+    expect(
+      first.container.querySelector('[data-cy="testCatalogSectionsContext"]'),
+    ).toBeNull();
     first.unmount();
 
     mockLocation = { pathname: "/MasterListsPage/TestCatalogList", search: "" };
@@ -206,12 +223,16 @@ describe("AdminSideNav — Test Catalog Management entry", () => {
     ).toHaveAttribute("aria-expanded", "true");
     second.unmount();
 
-    // ...but stays collapsed by default outside the Test Catalog area
+    // Outside an editor, the shorter business-domain menu replaces editor
+    // sections and remains open so sibling configuration is one click away.
     mockLocation = { pathname: "/MasterListsPage/reflex", search: "" };
     renderNav();
     expect(
-      screen.getByRole("button", { name: "Test Catalog Management" }),
-    ).toHaveAttribute("aria-expanded", "false");
+      screen.queryByRole("button", { name: "Test Catalog Management" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Test catalog" }),
+    ).toHaveAttribute("aria-expanded", "true");
   });
 
   it("uses the /admin base prefix when on an /admin editor route", () => {

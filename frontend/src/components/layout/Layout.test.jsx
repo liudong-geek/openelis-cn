@@ -462,8 +462,11 @@ describe("Layout", () => {
       expect(sideNavs[0]).toHaveClass("cds--side-nav--expanded");
       expect(sideNavs[0]).toHaveClass("admin-shell-side-nav");
       expect(
-        screen.getByText(enMessages["sidenav.label.admin.testmgt"]),
+        screen.getByText(enMessages["admin.dashboard.domain.organization"]),
       ).toBeInTheDocument();
+      expect(
+        screen.queryByText(enMessages["admin.dashboard.domain.catalog"]),
+      ).not.toBeInTheDocument();
     });
 
     // Stale legacy "close" preference must not hide the desktop nav
@@ -482,7 +485,7 @@ describe("Layout", () => {
         expect(sideNav).toHaveClass("cds--side-nav--expanded");
       });
       expect(
-        screen.getByText(enMessages["sidenav.label.admin.testmgt"]),
+        screen.getByText(enMessages["admin.dashboard.domain.workflow"]),
       ).toBeInTheDocument();
     });
   });

@@ -238,6 +238,8 @@
   "admin.dashboard.domain.security.description": "Maintain menus, system properties, and access controls.",
   "admin.dashboard.domain.data": "Data maintenance",
   "admin.dashboard.domain.data.description": "Maintain master-data identities and program data.",
+  "admin.navigation.backToCenter": "Back to management center",
+  "admin.navigation.useCenter": "Return to the management center to choose another configuration.",
   "masterData.action.edit": "Edit identity",
   "masterData.canonicalCode": "Canonical code",
   "masterData.editor.title": "Maintain master data identity",

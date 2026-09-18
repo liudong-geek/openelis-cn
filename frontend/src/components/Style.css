@@ -1192,3 +1192,10 @@ nav.cds--side-nav .cds--side-nav__link::before {
   padding: 1rem;
   background-color: #f4f4f4;
 }
+.adminSideNav__sectionsContext,
+.adminSideNav__unknownRoute {
+  padding: 0.5rem 1rem;
+  color: var(--cds-text-secondary, #525252);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}

@@ -2,77 +2,10 @@ import React, { useMemo, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { useHistory } from "react-router-dom";
 import { Column, Grid, Search } from "@carbon/react";
-import {
-  ArrowRight,
-  Catalog,
-  DataReference,
-  Flow,
-  Network_3,
-  Security,
-  UserMultiple,
-} from "@carbon/icons-react";
+import { ArrowRight } from "@carbon/icons-react";
+import { ADMIN_NAVIGATION_DOMAINS } from "./adminNavigation";
 
-export const ADMIN_DASHBOARD_DOMAINS = [
-  {
-    id: "catalog",
-    titleId: "admin.dashboard.domain.catalog",
-    descriptionId: "admin.dashboard.domain.catalog.description",
-    icon: Catalog,
-    links: [
-      ["master.lists.page.test.management", "testManagementConfigMenu"],
-      ["sidenav.label.admin.testmgt.reflex", "reflex"],
-      ["dictionary.label.modify", "DictionaryMenu"],
-    ],
-  },
-  {
-    id: "organization",
-    titleId: "admin.dashboard.domain.organization",
-    descriptionId: "admin.dashboard.domain.organization.description",
-    icon: UserMultiple,
-    links: [
-      ["unifiedSystemUser.browser.title", "userManagement"],
-      ["organization.main.title", "organizationManagement"],
-    ],
-  },
-  {
-    id: "workflow",
-    titleId: "admin.dashboard.domain.workflow",
-    descriptionId: "admin.dashboard.domain.workflow.description",
-    icon: Flow,
-    links: [
-      ["admin.formEntryConfig", "SiteInformationMenu"],
-      ["sidenav.label.admin.labNumber", "labNumber"],
-      ["sidenav.label.admin.barcodeconfiguration", "barcodeConfiguration"],
-    ],
-  },
-  {
-    id: "interfaces",
-    titleId: "admin.dashboard.domain.interfaces",
-    descriptionId: "admin.dashboard.domain.interfaces.description",
-    icon: Network_3,
-    links: [["externalconnections.browse.title", "externalConnections"]],
-  },
-  {
-    id: "security",
-    titleId: "admin.dashboard.domain.security",
-    descriptionId: "admin.dashboard.domain.security.description",
-    icon: Security,
-    links: [
-      ["sidenav.label.admin.menu", "globalMenuManagement"],
-      ["sidenav.label.admin.commonproperties", "commonproperties"],
-    ],
-  },
-  {
-    id: "data",
-    titleId: "admin.dashboard.domain.data",
-    descriptionId: "admin.dashboard.domain.data.description",
-    icon: DataReference,
-    links: [
-      ["masterData.title", "masterDataIdentity"],
-      ["sidenav.label.admin.program", "program"],
-    ],
-  },
-];
+export const ADMIN_DASHBOARD_DOMAINS = ADMIN_NAVIGATION_DOMAINS;
 
 const normalizeSearchText = (value) =>
   String(value || "")

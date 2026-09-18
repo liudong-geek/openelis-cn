@@ -238,6 +238,8 @@
   "admin.dashboard.domain.security.description": "维护菜单、系统参数与访问控制。",
   "admin.dashboard.domain.data": "数据维护",
   "admin.dashboard.domain.data.description": "维护主数据编码及专项业务数据。",
+  "admin.navigation.backToCenter": "返回管理中心",
+  "admin.navigation.useCenter": "请返回管理中心选择其他配置。",
   "masterData.action.edit": "维护编码",
   "masterData.canonicalCode": "标准编码",
   "masterData.editor.title": "维护主数据编码",
