@@ -27,6 +27,7 @@ import PageBreadCrumb from "../common/PageBreadCrumb";
 import EQABadge from "../eqa/EQABadge";
 import ProductPageHeader from "../common/ProductPageHeader";
 import { useHistory } from "react-router-dom";
+import WorkplanModeSwitcher from "./WorkplanModeSwitcher";
 
 export const getWorkplanResultRoute = (accessionNumber) =>
   `/Results?accessionNumber=${encodeURIComponent(accessionNumber)}`;
@@ -49,29 +50,6 @@ export default function Workplan(props) {
   const [pageSize, setPageSize] = useState(100);
 
   const type = props.type;
-  let title = "";
-  switch (type) {
-    case "test": {
-      title = <FormattedMessage id="workplan.test.title" />;
-      break;
-    }
-    case "panel": {
-      title = <FormattedMessage id="workplan.panel.title" />;
-      break;
-    }
-    case "unit": {
-      title = <FormattedMessage id="workplan.unit.title" />;
-      break;
-    }
-    case "priority": {
-      title = <FormattedMessage id="workplan.priority.title" />;
-      break;
-    }
-    default: {
-      title = "";
-    }
-  }
-
   useEffect(() => {
     setSubjectOnWorkplan(configurationProperties.SUBJECT_ON_WORKPLAN);
     setNextVisitOnWorkplan(configurationProperties.NEXT_VISIT_DATE_ON_WORKPLAN);
@@ -178,11 +156,12 @@ export default function Workplan(props) {
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
       {notificationVisible === true ? <AlertDialog /> : ""}
       <ProductPageHeader
-        title={title}
+        title={<FormattedMessage id="banner.menu.workplan" />}
         subtitle={<FormattedMessage id="workplan.subtitle" />}
         titleId="workplan-page-title"
       />
       <main className="oe-workplan-page" aria-labelledby="workplan-page-title">
+        <WorkplanModeSwitcher type={type} />
         <div className="orderLegendBody oe-workplan-surface">
           <Grid fullWidth={true}>
             <Column lg={16} md={8} sm={4}>

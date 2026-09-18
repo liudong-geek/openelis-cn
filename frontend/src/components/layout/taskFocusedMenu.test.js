@@ -353,6 +353,40 @@ describe("taskFocusedMenu", () => {
     expect(ids).toHaveLength(new Set(ids).size);
   });
 
+  test("keeps one workplan destination and moves its four views into the page", () => {
+    const result = buildTaskFocusedMenu(
+      [
+        item("menu_results", "", [
+          item("menu_results_unified", "/Results"),
+          item("menu_results_referred", "/ReferredOutTests"),
+        ]),
+        item("menu_workplan", "", [
+          item("menu_workplan_test", "/WorkPlanByTest?type=test"),
+          item("menu_workplan_panel", "/WorkPlanByPanel?type=panel"),
+          item("menu_workplan_bench", "/WorkPlanByTestSection?type=unit"),
+          item("menu_workplan_priority", "/WorkPlanByPriority?type=priority"),
+        ]),
+      ],
+      { roles: [ROLE_NAMES.RESULTS] },
+    );
+    const testing = findById(result, "menu_testing_workspace");
+
+    expect(testing.childMenus.map((entry) => entry.menu.elementId)).toEqual([
+      "menu_results_unified",
+      "menu_results_referred",
+      "menu_workplan_test",
+    ]);
+    expect(
+      findById(testing.childMenus, "menu_workplan_test").menu,
+    ).toMatchObject({
+      displayKey: "banner.menu.workplan",
+      actionURL: "/WorkPlanByTest?type=test",
+    });
+    expect(findById(testing.childMenus, "menu_workplan_panel")).toBeNull();
+    expect(findById(testing.childMenus, "menu_workplan_bench")).toBeNull();
+    expect(findById(testing.childMenus, "menu_workplan_priority")).toBeNull();
+  });
+
   test("keeps review search modes and report categories inside their workbenches", () => {
     const result = buildTaskFocusedMenu(
       [

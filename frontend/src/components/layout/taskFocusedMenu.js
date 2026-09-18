@@ -85,6 +85,9 @@ const MANAGEMENT_ANALYZER_SECONDARY_PATHS = new Set([
   "/analyzers/types",
 ]);
 
+const WORKPLAN_PATH_PATTERN =
+  /^\/WorkPlanBy(?:Test|Panel|TestSection|Priority)(?:[?#]|$)/i;
+
 const CHINA_TOP_LEVEL_DISPLAY_KEYS = Object.freeze({
   workspace: "banner.menu.home",
   orders: "banner.menu.sample",
@@ -674,6 +677,27 @@ const compactManagementDestinations = (destinations) => {
   });
 };
 
+const compactTestingDestinations = (destinations) => {
+  const workplanEntries = destinations.filter((entry) =>
+    WORKPLAN_PATH_PATTERN.test(getActionURL(entry)),
+  );
+  if (workplanEntries.length === 0) return destinations;
+
+  const primary =
+    workplanEntries.find((entry) =>
+      /^\/WorkPlanByTest(?:[?#]|$)/i.test(getActionURL(entry)),
+    ) || workplanEntries[0];
+  const workspaceEntry = withDisplayKey(primary, "banner.menu.workplan");
+  let inserted = false;
+
+  return destinations.flatMap((entry) => {
+    if (!WORKPLAN_PATH_PATTERN.test(getActionURL(entry))) return [entry];
+    if (inserted) return [];
+    inserted = true;
+    return [workspaceEntry];
+  });
+};
+
 const organizeChinaWorkspaces = (items) => {
   const byId = new Map(items.map((entry) => [getElementId(entry), entry]));
   const output = [];
@@ -705,6 +729,9 @@ const organizeChinaWorkspaces = (items) => {
       if (reviewEntry && reportEntry) {
         destinations = [reviewEntry, reportEntry];
       }
+    }
+    if (elementId === "menu_testing_workspace") {
+      destinations = compactTestingDestinations(destinations);
     }
     if (elementId === "menu_quality_workspace") {
       destinations = compactQualityDestinations(destinations);
