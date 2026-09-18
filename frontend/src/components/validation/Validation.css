@@ -1,3 +1,51 @@
+.validation-search-panel {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--oe-border, #e4e8ef);
+  border-radius: var(--oe-surface-radius, 0.625rem);
+  background: #f8fafc;
+}
+
+.validation-search-panel__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.validation-search-panel__heading h2 {
+  margin: 0;
+  color: var(--oe-text, #172033);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.validation-search-panel__heading p {
+  margin: 0.25rem 0 0;
+  color: var(--oe-text-muted, #667085);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.validation-search-modes {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+@media (max-width: 47.9375rem) {
+  .validation-search-panel__heading {
+    flex-direction: column;
+  }
+
+  .validation-search-modes,
+  .validation-search-modes .cds--btn {
+    width: 100%;
+    max-width: none;
+  }
+}
+
 .validation-empty-state {
   margin-top: 1.25rem;
   padding: 2rem clamp(1rem, 4vw, 3rem);

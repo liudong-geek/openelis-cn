@@ -25,6 +25,13 @@ import {
   reviewContextErrorKey,
 } from "./reviewTransport";
 
+const REVIEW_MODES = [
+  ["routine", "validation.search.mode.section"],
+  ["order", "validation.search.mode.order"],
+  ["range", "validation.search.mode.range"],
+  ["testDate", "validation.search.mode.date"],
+];
+
 const SearchForm = (props) => {
   const { setNotificationVisible, addNotification } =
     useContext(NotificationContext);
@@ -51,6 +58,51 @@ const SearchForm = (props) => {
   const [totalApiPages, setTotalApiPages] = useState(null);
   const [url, setUrl] = useState("");
   const queryId = useRef(null);
+
+  const loadTestSections = (testSectionId = "") => {
+    getFromOpenElisServer(
+      "/rest/user-test-sections/" + Roles.VALIDATION,
+      (fetchedTestSections) => {
+        const availableTestSections = Array.isArray(fetchedTestSections)
+          ? fetchedTestSections
+          : [];
+        const testSection = availableTestSections.find(
+          (section) => section.id === testSectionId,
+        );
+        setDefaultTestSectionId(testSectionId);
+        setDefaultTestSectionLabel(testSection?.value || "");
+        fetchTestSections(availableTestSections);
+      },
+    );
+  };
+
+  const activateReviewMode = (mode) => {
+    if (
+      props.disabled ||
+      mode === searchBy ||
+      props.beforeQuery?.() === false
+    ) {
+      return;
+    }
+    resultRequest.current.controller?.abort();
+    resultRequest.current.generation += 1;
+    queryId.current = null;
+    setIsLoading(false);
+    setPagination(false);
+    setCurrentApiPage(null);
+    setTotalApiPages(null);
+    setNextPage(null);
+    setPreviousPage(null);
+    setUrl("");
+    setTestDate("");
+    setSearchFormValues(ValidationSearchFormValues);
+    setSearchBy(mode);
+    setDoRagnge(mode !== "order");
+    props.setParams("");
+    props.setResults({ resultList: [] });
+    window.history.pushState({}, "", `/validation?type=${mode}`);
+    if (mode === "routine") loadTestSections();
+  };
 
   const validationResults = (data, status, expectedQueryId, expectedPage) => {
     setPagination(false);
@@ -308,21 +360,7 @@ const SearchForm = (props) => {
           "testSectionId",
         );
         testSectionId = testSectionId ? testSectionId : "";
-        getFromOpenElisServer(
-          "/rest/user-test-sections/" + Roles.VALIDATION,
-          (fetchedTestSections) => {
-            const availableTestSections = Array.isArray(fetchedTestSections)
-              ? fetchedTestSections
-              : [];
-            let testSection = availableTestSections.find(
-              (testSection) => testSection.id === testSectionId,
-            );
-            let testSectionLabel = testSection ? testSection.value : "";
-            setDefaultTestSectionId(testSectionId);
-            setDefaultTestSectionLabel(testSectionLabel);
-            fetchTestSections(availableTestSections);
-          },
-        );
+        loadTestSections(testSectionId);
         if (testSectionId) {
           let values = { unitType: testSectionId };
           handleSubmit(values, param, rangeSearch);
@@ -362,6 +400,41 @@ const SearchForm = (props) => {
   }, []);
   return (
     <>
+      <section
+        className="validation-search-panel"
+        aria-labelledby="validation-search-title"
+      >
+        <div className="validation-search-panel__heading">
+          <div>
+            <h2 id="validation-search-title">
+              <FormattedMessage id="validation.search.mode.title" />
+            </h2>
+            <p>
+              <FormattedMessage id="validation.search.mode.helper" />
+            </p>
+          </div>
+          <div
+            className="validation-search-modes"
+            role="group"
+            aria-label={intl.formatMessage({
+              id: "validation.search.mode.title",
+            })}
+          >
+            {REVIEW_MODES.map(([mode, messageId]) => (
+              <Button
+                key={mode}
+                type="button"
+                size="sm"
+                kind={searchBy === mode ? "primary" : "ghost"}
+                disabled={props.disabled}
+                onClick={() => activateReviewMode(mode)}
+              >
+                <FormattedMessage id={messageId} />
+              </Button>
+            ))}
+          </div>
+        </div>
+      </section>
       {isLoading && <Loading></Loading>}
       <Formik
         initialValues={searchFormValues}

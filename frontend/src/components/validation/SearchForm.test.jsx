@@ -42,6 +42,27 @@ describe("validation SearchForm", () => {
     expect(screen.queryByTestId("Search-btn")).not.toBeInTheDocument();
   });
 
+  test("switches review search modes inside one workbench", async () => {
+    renderSearch();
+    await screen.findByLabelText("Select Test Unit");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: messages["validation.search.mode.order"],
+      }),
+    );
+
+    expect(window.location.pathname).toBe("/validation");
+    expect(new URLSearchParams(window.location.search).get("type")).toBe(
+      "order",
+    );
+    expect(
+      await screen.findByLabelText(messages["search.label.accession"]),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("Search-btn")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Select Test Unit")).not.toBeInTheDocument();
+  });
+
   const renderSearch = (format = "NUMERIC") => {
     const setParams = vi.fn();
     render(

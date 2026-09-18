@@ -167,7 +167,7 @@ describe("taskFocusedMenu", () => {
     ]);
     expect(
       findById(reviewer, "menu_resultvalidation_routine").menu.actionURL,
-    ).toBe("/ResultValidation");
+    ).toBe("/validation?type=routine");
     expect(findById(reviewer, "menu_results_unified")).toBeNull();
     expect(source).toEqual(snapshot);
   });
@@ -195,6 +195,7 @@ describe("taskFocusedMenu", () => {
       route: "/order",
       related: "menu_patient",
       relatedRoute: "/PatientManagement",
+      expectedRelatedRoute: "/PatientManagement",
       roles: [ROLE_NAMES.RECEPTION],
     },
     {
@@ -202,11 +203,19 @@ describe("taskFocusedMenu", () => {
       route: "/Results",
       related: "menu_resultvalidation",
       relatedRoute: "/ResultValidation",
+      expectedRelatedRoute: "/validation?type=routine",
       roles: [ROLE_NAMES.RESULTS, ROLE_NAMES.VALIDATION],
     },
   ])(
     "preserves a clickable $primary root when combining workspaces",
-    ({ primary, route, related, relatedRoute, roles }) => {
+    ({
+      primary,
+      route,
+      related,
+      relatedRoute,
+      expectedRelatedRoute,
+      roles,
+    }) => {
       const result = buildTaskFocusedMenu(
         [item(primary, route), item(related, relatedRoute)],
         { roles },
@@ -214,7 +223,9 @@ describe("taskFocusedMenu", () => {
       const sourceLeaf = findById(result, primary);
       expect(sourceLeaf.menu.actionURL).toBe(route);
       expect(sourceLeaf.childMenus).toEqual([]);
-      expect(findById(result, related).menu.actionURL).toBe(relatedRoute);
+      expect(findById(result, related).menu.actionURL).toBe(
+        expectedRelatedRoute,
+      );
       expect(result).toHaveLength(primary === "menu_results" ? 2 : 1);
       expect(allIds(result)).toHaveLength(new Set(allIds(result)).size);
     },
@@ -337,6 +348,45 @@ describe("taskFocusedMenu", () => {
 
     const ids = allIds(result);
     expect(ids).toHaveLength(new Set(ids).size);
+  });
+
+  test("keeps review search modes and report categories inside their workbenches", () => {
+    const result = buildTaskFocusedMenu(
+      [
+        item("menu_resultvalidation", "/ResultValidation", [
+          item("menu_resultvalidation_routine", "/ResultValidation"),
+          item("menu_accession_validation", "/AccessionValidation"),
+          item("menu_accession_validation_range", "/AccessionValidationRange"),
+          item("menu_resultvalidation_date", "/ResultValidationByTestDate"),
+        ]),
+        item("menu_reports", "", [
+          item("menu_reports_routine", "/RoutineReports"),
+          item(
+            "menu_reports_aggregate_statistics",
+            "/Report?type=indicator&report=statisticsReport",
+          ),
+          item(
+            "menu_reports_referred",
+            "/Report?type=patient&report=referredOut",
+          ),
+        ]),
+      ],
+      { roles: [ROLE_NAMES.VALIDATION, ROLE_NAMES.REPORTS] },
+    );
+    const workspace = findById(result, "menu_review_report_workspace");
+
+    expect(allIds(workspace.childMenus)).toEqual([
+      "menu_resultvalidation_routine",
+      "menu_reports_routine",
+    ]);
+    expect(workspace.childMenus[0].menu).toMatchObject({
+      actionURL: "/validation?type=routine",
+      displayKey: "review.workspace.queue",
+    });
+    expect(workspace.childMenus[1].menu).toMatchObject({
+      actionURL: "/RoutineReports",
+      displayKey: "review.workspace.reports",
+    });
   });
 
   test("removes the legacy standalone aliquot page because aliquoting is available in specimen management", () => {

@@ -118,7 +118,8 @@ const CHINA_ITEM_DISPLAY_KEYS = Object.freeze({
   menu_patient_history: "banner.menu.patienthistory",
   menu_patient_merge: "banner.menu.patient.merge",
   menu_results_unified: "banner.menu.results.unified",
-  menu_resultvalidation_routine: "sidenav.label.validation.routine",
+  menu_resultvalidation_routine: "review.workspace.queue",
+  menu_reports_routine: "review.workspace.reports",
   menu_reports_tatreport: "sideNav.title.tatreport",
   menu_reports_audittrail: "sideNav.label.audittrail",
   menu_reports_auditTrail: "sideNav.label.audittrail",
@@ -130,6 +131,12 @@ const CHINA_ITEM_DISPLAY_KEYS = Object.freeze({
 const CHINA_ITEM_ACTION_URLS = Object.freeze({
   menu_sample_shipment: "/SampleShipment/boxes",
   menu_sample_print_barcode: "/PrintBarcode?mode=preprint",
+  menu_resultvalidation: "/validation?type=routine",
+  menu_resultvalidation_routine: "/validation?type=routine",
+  menu_accession_validation: "/validation?type=order",
+  menu_accession_validation_range: "/validation?type=range",
+  menu_resultvalidation_date: "/validation?type=testDate",
+  menu_reports_routine: "/RoutineReports",
 });
 
 /**
@@ -590,6 +597,21 @@ const organizeChinaWorkspaces = (items) => {
       destinations = destinations.filter(
         (entry) => !INTAKE_WORKBENCH_REDUNDANT_IDS.has(getElementId(entry)),
       );
+    }
+    if (elementId === "menu_review_report_workspace") {
+      const reviewEntry =
+        destinations.find(
+          (entry) => getElementId(entry) === "menu_resultvalidation_routine",
+        ) ||
+        destinations.find(
+          (entry) => getElementId(entry) === "menu_resultvalidation",
+        );
+      const reportEntry = destinations.find(
+        (entry) => getElementId(entry) === "menu_reports_routine",
+      );
+      if (reviewEntry && reportEntry) {
+        destinations = [reviewEntry, reportEntry];
+      }
     }
     const workspace = directItem || createGroup(elementId, key, destinations);
     if (hasNavigableContent(workspace)) output.push(workspace);
