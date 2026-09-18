@@ -468,7 +468,7 @@ const allowedQualityRoles = (item) => {
 const allowedSystemRoles = (item) => {
   const elementId = getElementId(item);
   if (/analyzers?/i.test(elementId)) {
-    return [ROLE_NAMES.ANALYSER_IMPORT, ROLE_NAMES.GLOBAL_ADMIN];
+    return [ROLE_NAMES.ANALYSER_IMPORT];
   }
   return [ROLE_NAMES.GLOBAL_ADMIN];
 };
@@ -647,7 +647,7 @@ const compactManagementDestinations = (destinations) => {
     (entry) => getActionURL(entry) === "/MasterListsPage",
   );
 
-  return destinations.filter((entry) => {
+  const compacted = destinations.filter((entry) => {
     const actionURL = getActionURL(entry);
     if (
       systemAudit &&
@@ -678,6 +678,23 @@ const compactManagementDestinations = (destinations) => {
     }
     return true;
   });
+
+  const managementEntry =
+    compacted.find((entry) => getActionURL(entry) === "/MasterListsPage") ||
+    compacted.find((entry) => getActionURL(entry) === "/TATReport") ||
+    compacted.find(
+      (entry) => getActionURL(entry) === "/AuditTrailReport?type=system",
+    ) ||
+    compacted.find((entry) => getActionURL(entry) === "/analyzers");
+
+  return managementEntry
+    ? [
+        withDisplayKey(
+          managementEntry,
+          CHINA_WORKSPACE_DISPLAY_KEYS.configuration,
+        ),
+      ]
+    : compacted;
 };
 
 const compactTestingDestinations = (destinations) => {

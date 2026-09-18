@@ -7,6 +7,7 @@ import PageBreadCrumb from "../../common/PageBreadCrumb";
 import AuditTrailReport from "./AuditTrailReport";
 import SystemAuditEvents from "./SystemAuditEvents";
 import { useIntl } from "react-intl";
+import ManagementWorkspaceSwitcher from "../../management/ManagementWorkspaceSwitcher";
 
 const AuditTrailReportIndex = () => {
   const { notificationVisible } = useContext(NotificationContext);
@@ -41,6 +42,7 @@ const AuditTrailReportIndex = () => {
         ]}
       />
       <div className="orderLegendBody">
+        <ManagementWorkspaceSwitcher activeView="audit" />
         {notificationVisible === true && <AlertDialog />}
         {isLoading && (
           <Loading

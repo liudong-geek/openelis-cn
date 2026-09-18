@@ -314,8 +314,8 @@ describe("taskFocusedMenu", () => {
     expect(findById(result, "menu_results_unified").menu.actionURL).toBe(
       "/Results",
     );
-    expect(findById(result, "menu_reports_tatreport").menu.actionURL).toBe(
-      "/TATReport",
+    expect(findById(result, "menu_administration").menu.actionURL).toBe(
+      "/MasterListsPage",
     );
   });
 
@@ -508,20 +508,38 @@ describe("taskFocusedMenu", () => {
       ],
     });
     const management = findById(result, "menu_management_workspace");
-    const urls = management.childMenus.map((entry) => entry.menu.actionURL);
-
-    expect(urls).toEqual([
-      "/TATReport",
-      "/AuditTrailReport?type=system",
-      "/MasterListsPage",
-      "/analyzers",
-    ]);
+    expect(management.childMenus).toHaveLength(1);
+    expect(management.childMenus[0].menu).toMatchObject({
+      actionURL: "/MasterListsPage",
+      displayKey: "sidenav.workspace.configuration",
+    });
     expect(
       findById(management.childMenus, "menu_reports_order_audit"),
     ).toBeNull();
     expect(findById(management.childMenus, "menu_analyzers_errors")).toBeNull();
     expect(findById(management.childMenus, "menu_analyzers_types")).toBeNull();
   });
+
+  test.each([
+    [ROLE_NAMES.REPORTS, "/TATReport"],
+    [ROLE_NAMES.AUDIT_TRAIL, "/AuditTrailReport?type=system"],
+    [ROLE_NAMES.GLOBAL_ADMIN, "/MasterListsPage"],
+    [ROLE_NAMES.ANALYSER_IMPORT, "/analyzers"],
+  ])(
+    "uses the authorized management landing page for the %s role",
+    (role, expectedPath) => {
+      const result = buildTaskFocusedMenu(chinaMenuFixture(), {
+        roles: [role],
+      });
+      const management = findById(result, "menu_management_workspace");
+
+      expect(management.childMenus).toHaveLength(1);
+      expect(management.childMenus[0].menu).toMatchObject({
+        actionURL: expectedPath,
+        displayKey: "sidenav.workspace.configuration",
+      });
+    },
+  );
 
   test.each([
     {
@@ -537,7 +555,7 @@ describe("taskFocusedMenu", () => {
     {
       role: ROLE_NAMES.GLOBAL_ADMIN,
       hasQc: false,
-      hasAnalyzerConfiguration: true,
+      hasAnalyzerConfiguration: false,
     },
     {
       role: ROLE_NAMES.RECEPTION,
@@ -636,7 +654,10 @@ describe("taskFocusedMenu", () => {
     qcRoot.menu.isActive = false;
 
     const result = buildTaskFocusedMenu(source, {
-      roles: [ROLE_NAMES.LAB_SUPERVISOR, ROLE_NAMES.GLOBAL_ADMIN],
+      roles: [
+        ROLE_NAMES.LAB_SUPERVISOR,
+        ROLE_NAMES.ANALYSER_IMPORT,
+      ],
     });
 
     expect(findById(result, "menu_analyzers_qc")).toBeNull();
@@ -837,7 +858,6 @@ describe("taskFocusedMenu", () => {
         "menu_home",
         "menu_management_workspace",
         "menu_administration",
-        "menu_reports_audittrail",
       ],
       hidden: [
         "menu_sample",

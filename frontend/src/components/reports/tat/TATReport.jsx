@@ -10,6 +10,7 @@ import TATExport from "./TATExport";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import { ConfigurationContext } from "../../layout/Layout";
 import { formatReportApiDateForLocale } from "../reportDateUtils";
+import ManagementWorkspaceSwitcher from "../../management/ManagementWorkspaceSwitcher";
 
 function TATReport() {
   const intl = useIntl();
@@ -66,6 +67,7 @@ function TATReport() {
     <div data-testid="tat-report">
       <PageBreadCrumb breadcrumbs={breadcrumb} />
       <div style={{ padding: "0 1rem" }}>
+        <ManagementWorkspaceSwitcher activeView="tat" />
         <div
           style={{
             display: "flex",

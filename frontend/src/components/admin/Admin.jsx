@@ -76,266 +76,285 @@ import ExternalConnectionAddModify from "./externalConnections/ExternalConnectio
 import DatabaseCleaning from "./databaseCleaning/DatabaseCleaning";
 import AdminDashboard from "./AdminDashboard";
 import MasterDataIdentityManagement from "./masterDataIdentity/MasterDataIdentityManagement";
+import ManagementWorkspaceSwitcher from "../management/ManagementWorkspaceSwitcher";
 
 function Admin() {
   const { path } = useRouteMatch();
 
   return (
-    <Switch>
-      <Route
-        path={`${path}/calendarManagement`}
-        component={CalendarManagement}
-      />
-      <Route path={`${path}/reflex`} component={ReflexTestManagement} />
-      <Route path={`${path}/calculatedValue`} component={CalculatedValue} />
-      <Route path={`${path}/TestCatalog`} component={TestCatalog} />
-      <Route path={`${path}/TestCatalogList`} component={TestCatalogList} />
-      <Route
-        path={`${path}/TestCatalogEditor/group/:ids/:section?`}
-        component={CombinedTestEditor}
-      />
-      <Route
-        path={`${path}/TestCatalogEditor/:testId?/:section?`}
-        component={TestCatalogEditor}
-      />
-      <Route path={`${path}/MethodManagement`} component={ManageMethod} />
-      <Route path={`${path}/AnalyzerTestName`} component={AnalyzerTestName} />
-      <Route path={`${path}/labNumber`} component={LabNumberManagement} />
-      <Route path={`${path}/labelPresets`} component={LabelPresetList} />
-      <Route path={`${path}/program`} component={ProgramManagement} />
-      <Route path={`${path}/providerMenu`} component={ProviderMenu} />
-      <Route path={`${path}/dataExportStatus`} component={DataExportStatus} />
-      <Route path={`${path}/NotifyUser`} component={PushNotificationPage} />
-      <Redirect
-        from={`${path}/barcodeConfiguration`}
-        to={`${path}/labelPresets`}
-      />
-      <Route
-        path={`${path}/organizationManagement`}
-        component={OrganizationManagement}
-      />
-      <Route
-        path={`${path}/organizationEdit`}
-        component={OrganizationAddModify}
-      />
-      <Route
-        path={`${path}/resultReportingConfiguration`}
-        component={ResultReportingConfiguration}
-      />
-      <Route path={`${path}/userManagement`} component={UserManagement} />
-      <Route
-        path={`${path}/batchTestReassignment`}
-        component={BatchTestReassignmentAndCancelation}
-      />
-      <Route path={`${path}/userEdit`} component={UserAddModify} />
-      <Route
-        path={`${path}/globalMenuManagement`}
-        component={GlobalMenuManagement}
-      />
-      <Route
-        path={`${path}/billingMenuManagement`}
-        component={BillingMenuManagement}
-      />
-      <Route path={`${path}/SiteBrandingMenu`} component={SiteBrandingConfig} />
-      <Route
-        path={`${path}/nonConformityMenuManagement`}
-        component={NonConformityMenuManagement}
-      />
-      <Route
-        path={`${path}/patientMenuManagement`}
-        component={PatientMenuManagement}
-      />
-      <Route
-        path={`${path}/studyMenuManagement`}
-        component={StudyMenuManagement}
-      />
-      <Route path={`${path}/commonproperties`} component={CommonProperties} />
-      <Route
-        path={`${path}/testManagementConfigMenu`}
-        component={TestManagementConfigMenu}
-      />
-      <Route
-        path={`${path}/ResultSelectListAdd`}
-        component={ResultSelectListAdd}
-      />
-      {/* OGC-1112 FR-38: the unified New test flow (TestCatalogEditor/new) is the
+    <>
+      <ManagementWorkspaceSwitcher activeView="configuration" />
+      <Switch>
+        <Route
+          path={`${path}/calendarManagement`}
+          component={CalendarManagement}
+        />
+        <Route path={`${path}/reflex`} component={ReflexTestManagement} />
+        <Route path={`${path}/calculatedValue`} component={CalculatedValue} />
+        <Route path={`${path}/TestCatalog`} component={TestCatalog} />
+        <Route path={`${path}/TestCatalogList`} component={TestCatalogList} />
+        <Route
+          path={`${path}/TestCatalogEditor/group/:ids/:section?`}
+          component={CombinedTestEditor}
+        />
+        <Route
+          path={`${path}/TestCatalogEditor/:testId?/:section?`}
+          component={TestCatalogEditor}
+        />
+        <Route path={`${path}/MethodManagement`} component={ManageMethod} />
+        <Route path={`${path}/AnalyzerTestName`} component={AnalyzerTestName} />
+        <Route path={`${path}/labNumber`} component={LabNumberManagement} />
+        <Route path={`${path}/labelPresets`} component={LabelPresetList} />
+        <Route path={`${path}/program`} component={ProgramManagement} />
+        <Route path={`${path}/providerMenu`} component={ProviderMenu} />
+        <Route path={`${path}/dataExportStatus`} component={DataExportStatus} />
+        <Route path={`${path}/NotifyUser`} component={PushNotificationPage} />
+        <Redirect
+          from={`${path}/barcodeConfiguration`}
+          to={`${path}/labelPresets`}
+        />
+        <Route
+          path={`${path}/organizationManagement`}
+          component={OrganizationManagement}
+        />
+        <Route
+          path={`${path}/organizationEdit`}
+          component={OrganizationAddModify}
+        />
+        <Route
+          path={`${path}/resultReportingConfiguration`}
+          component={ResultReportingConfiguration}
+        />
+        <Route path={`${path}/userManagement`} component={UserManagement} />
+        <Route
+          path={`${path}/batchTestReassignment`}
+          component={BatchTestReassignmentAndCancelation}
+        />
+        <Route path={`${path}/userEdit`} component={UserAddModify} />
+        <Route
+          path={`${path}/globalMenuManagement`}
+          component={GlobalMenuManagement}
+        />
+        <Route
+          path={`${path}/billingMenuManagement`}
+          component={BillingMenuManagement}
+        />
+        <Route
+          path={`${path}/SiteBrandingMenu`}
+          component={SiteBrandingConfig}
+        />
+        <Route
+          path={`${path}/nonConformityMenuManagement`}
+          component={NonConformityMenuManagement}
+        />
+        <Route
+          path={`${path}/patientMenuManagement`}
+          component={PatientMenuManagement}
+        />
+        <Route
+          path={`${path}/studyMenuManagement`}
+          component={StudyMenuManagement}
+        />
+        <Route path={`${path}/commonproperties`} component={CommonProperties} />
+        <Route
+          path={`${path}/testManagementConfigMenu`}
+          component={TestManagementConfigMenu}
+        />
+        <Route
+          path={`${path}/ResultSelectListAdd`}
+          component={ResultSelectListAdd}
+        />
+        {/* OGC-1112 FR-38: the unified New test flow (TestCatalogEditor/new) is the
           intended create path. The legacy 7-step Add Test and the legacy Modify Test
           are kept available in parallel temporarily during the transition. */}
-      <Route path={`${path}/TestAdd`} component={TestAdd} />
-      <Route path={`${path}/TestModifyEntry`} component={TestModifyEntry} />
-      <Route path={`${path}/TestOrderability`} component={TestOrderability} />
-      <Route path={`${path}/MethodCreate`} component={MethodCreate} />
-      <Route
-        path={`${path}/TestSectionManagement`}
-        component={TestSectionManagement}
-      />
-      <Route path={`${path}/TestSectionCreate`} component={TestSectionCreate} />
-      <Route path={`${path}/TestSectionOrder`} component={TestSectionOrder} />
-      <Route
-        path={`${path}/TestSectionTestAssign`}
-        component={TestSectionTestAssign}
-      />
-      <Route
-        path={`${path}/SampleTypeManagement/:sampleTypeId?/:section?`}
-        component={SampleTypeManagement}
-      />
-      <Route path={`${path}/SampleTypeCreate`} component={SampleTypeCreate} />
-      <Route path={`${path}/SampleTypeOrder`} component={SampleTypeOrder} />
-      <Route
-        path={`${path}/SampleTypeTestAssign`}
-        component={SampleTypeTestAssign}
-      />
-      <Route path={`${path}/UomManagement`} component={UomManagement} />
-      <Route path={`${path}/UomCreate`} component={UomCreate} />
-      <Route path={`${path}/PanelManagement`} component={PanelManagement} />
-      <Route path={`${path}/PanelCreate`} component={PanelCreate} />
-      <Route path={`${path}/PanelOrder`} component={PanelOrder} />
-      <Route path={`${path}/PanelTestAssign`} component={PanelTestAssign} />
-      <Route path={`${path}/TestActivation`} component={TestActivation} />
-      <Route path={`${path}/TestRenameEntry`} component={TestRenameEntry} />
-      <Route path={`${path}/PanelRenameEntry`} component={PanelRenameEntry} />
-      <Route
-        path={`${path}/TestSectionRenameEntry`}
-        component={TestSectionRenameEntry}
-      />
-      <Route path={`${path}/UomRenameEntry`} component={UomRenameEntry} />
-      <Route
-        path={`${path}/SelectListRenameEntry`}
-        component={SelectListRenameEntry}
-      />
-      <Route path={`${path}/MethodRenameEntry`} component={MethodRenameEntry} />
-      <Route
-        path={`${path}/languageManagement`}
-        component={LanguageManagement}
-      />
-      <Route
-        path={`${path}/translationManagement`}
-        component={TranslationManagement}
-      />
-      <Route
-        path={`${path}/NonConformityConfigurationMenu`}
-        component={() => (
-          <ConfigMenuDisplay
-            menuType="NonConformityConfigurationMenu"
-            label="Non Conformity Configuration Menu"
-            id="sidenav.label.admin.formEntry.nonconformityconfig"
-          />
-        )}
-      />
-      <Route
-        path={`${path}/MenuStatementConfigMenu`}
-        component={() => (
-          <ConfigMenuDisplay
-            menuType="MenuStatementConfigMenu"
-            label="Menu Statement Configuration Menu"
-            id="sidenav.label.admin.formEntry.menustatementconfig"
-          />
-        )}
-      />
-      <Route
-        path={`${path}/ValidationConfigurationMenu`}
-        component={() => (
-          <ConfigMenuDisplay
-            menuType="ValidationConfigurationMenu"
-            label="Validation Configuration Menu"
-            id="sidenav.label.admin.formEntry.validationconfig"
-          />
-        )}
-      />
-      <Route
-        path={`${path}/SampleEntryConfigurationMenu`}
-        component={() => (
-          <ConfigMenuDisplay
-            menuType="SampleEntryConfigMenu"
-            label="Sample Entry Configuration Menu"
-            id="sidenav.label.admin.formEntry.sampleEntryconfig"
-          />
-        )}
-      />
-      <Route
-        path={`${path}/WorkPlanConfigurationMenu`}
-        component={() => (
-          <ConfigMenuDisplay
-            menuType="WorkplanConfigurationMenu"
-            label="WorkPlan Configuration Menu"
-            id="sidenav.label.admin.formEntry.Workplanconfig"
-          />
-        )}
-      />
-      <Route
-        path={`${path}/SiteInformationMenu`}
-        component={() => (
-          <ConfigMenuDisplay
-            menuType="SiteInformationMenu"
-            label="Site Information Menu"
-            id="sidenav.label.admin.formEntry.siteInfoconfig"
-          />
-        )}
-      />
-      <Route
-        path={`${path}/ResultConfigurationMenu`}
-        component={() => (
-          <ConfigMenuDisplay
-            menuType="ResultConfigurationMenu"
-            label="Result Configuration Menu"
-            id="sidenav.label.admin.formEntry.resultConfig"
-          />
-        )}
-      />
-      <Route
-        path={`${path}/PatientConfigurationMenu`}
-        component={() => (
-          <ConfigMenuDisplay
-            menuType="PatientConfigurationMenu"
-            label="Patient Configuration Menu"
-            id="sidenav.label.admin.formEntry.patientconfig"
-          />
-        )}
-      />
-      <Route
-        path={`${path}/PrintedReportsConfigurationMenu`}
-        component={() => (
-          <ConfigMenuDisplay
-            menuType="PrintedReportsConfigurationMenu"
-            label="PrintedReports Configuration Menu"
-            id="sidenav.label.admin.formEntry.PrintedReportsconfig"
-          />
-        )}
-      />
-      <Route
-        path={`${path}/testNotificationConfigMenu`}
-        component={TestNotificationConfigMenu}
-      />
-      <Route
-        path={`${path}/testNotificationConfig`}
-        component={TestNotificationConfigEdit}
-      />
-      <Route path={`${path}/DictionaryMenu`} component={DictionaryManagement} />
-      <Route path={`${path}/PluginFile`} component={PluginList} />
-      <Route
-        path={`${path}/SearchIndexManagement`}
-        component={SearchIndexManagement}
-      />
-      <Route path={`${path}/loggingManagement`} component={LoggingManagement} />
-      <Route
-        path={`${path}/externalConnections`}
-        component={ExternalConnectionMenu}
-      />
-      <Route
-        path={`${path}/externalConnectionEdit`}
-        component={ExternalConnectionAddModify}
-      />
-      <Route path={`${path}/DatabaseCleaning`} component={DatabaseCleaning} />
-      <Route
-        path={`${path}/masterDataIdentity`}
-        component={MasterDataIdentityManagement}
-      />
-      <Route
-        path={path}
-        exact
-        render={() => <AdminDashboard basePath={path} />}
-      />
-    </Switch>
+        <Route path={`${path}/TestAdd`} component={TestAdd} />
+        <Route path={`${path}/TestModifyEntry`} component={TestModifyEntry} />
+        <Route path={`${path}/TestOrderability`} component={TestOrderability} />
+        <Route path={`${path}/MethodCreate`} component={MethodCreate} />
+        <Route
+          path={`${path}/TestSectionManagement`}
+          component={TestSectionManagement}
+        />
+        <Route
+          path={`${path}/TestSectionCreate`}
+          component={TestSectionCreate}
+        />
+        <Route path={`${path}/TestSectionOrder`} component={TestSectionOrder} />
+        <Route
+          path={`${path}/TestSectionTestAssign`}
+          component={TestSectionTestAssign}
+        />
+        <Route
+          path={`${path}/SampleTypeManagement/:sampleTypeId?/:section?`}
+          component={SampleTypeManagement}
+        />
+        <Route path={`${path}/SampleTypeCreate`} component={SampleTypeCreate} />
+        <Route path={`${path}/SampleTypeOrder`} component={SampleTypeOrder} />
+        <Route
+          path={`${path}/SampleTypeTestAssign`}
+          component={SampleTypeTestAssign}
+        />
+        <Route path={`${path}/UomManagement`} component={UomManagement} />
+        <Route path={`${path}/UomCreate`} component={UomCreate} />
+        <Route path={`${path}/PanelManagement`} component={PanelManagement} />
+        <Route path={`${path}/PanelCreate`} component={PanelCreate} />
+        <Route path={`${path}/PanelOrder`} component={PanelOrder} />
+        <Route path={`${path}/PanelTestAssign`} component={PanelTestAssign} />
+        <Route path={`${path}/TestActivation`} component={TestActivation} />
+        <Route path={`${path}/TestRenameEntry`} component={TestRenameEntry} />
+        <Route path={`${path}/PanelRenameEntry`} component={PanelRenameEntry} />
+        <Route
+          path={`${path}/TestSectionRenameEntry`}
+          component={TestSectionRenameEntry}
+        />
+        <Route path={`${path}/UomRenameEntry`} component={UomRenameEntry} />
+        <Route
+          path={`${path}/SelectListRenameEntry`}
+          component={SelectListRenameEntry}
+        />
+        <Route
+          path={`${path}/MethodRenameEntry`}
+          component={MethodRenameEntry}
+        />
+        <Route
+          path={`${path}/languageManagement`}
+          component={LanguageManagement}
+        />
+        <Route
+          path={`${path}/translationManagement`}
+          component={TranslationManagement}
+        />
+        <Route
+          path={`${path}/NonConformityConfigurationMenu`}
+          component={() => (
+            <ConfigMenuDisplay
+              menuType="NonConformityConfigurationMenu"
+              label="Non Conformity Configuration Menu"
+              id="sidenav.label.admin.formEntry.nonconformityconfig"
+            />
+          )}
+        />
+        <Route
+          path={`${path}/MenuStatementConfigMenu`}
+          component={() => (
+            <ConfigMenuDisplay
+              menuType="MenuStatementConfigMenu"
+              label="Menu Statement Configuration Menu"
+              id="sidenav.label.admin.formEntry.menustatementconfig"
+            />
+          )}
+        />
+        <Route
+          path={`${path}/ValidationConfigurationMenu`}
+          component={() => (
+            <ConfigMenuDisplay
+              menuType="ValidationConfigurationMenu"
+              label="Validation Configuration Menu"
+              id="sidenav.label.admin.formEntry.validationconfig"
+            />
+          )}
+        />
+        <Route
+          path={`${path}/SampleEntryConfigurationMenu`}
+          component={() => (
+            <ConfigMenuDisplay
+              menuType="SampleEntryConfigMenu"
+              label="Sample Entry Configuration Menu"
+              id="sidenav.label.admin.formEntry.sampleEntryconfig"
+            />
+          )}
+        />
+        <Route
+          path={`${path}/WorkPlanConfigurationMenu`}
+          component={() => (
+            <ConfigMenuDisplay
+              menuType="WorkplanConfigurationMenu"
+              label="WorkPlan Configuration Menu"
+              id="sidenav.label.admin.formEntry.Workplanconfig"
+            />
+          )}
+        />
+        <Route
+          path={`${path}/SiteInformationMenu`}
+          component={() => (
+            <ConfigMenuDisplay
+              menuType="SiteInformationMenu"
+              label="Site Information Menu"
+              id="sidenav.label.admin.formEntry.siteInfoconfig"
+            />
+          )}
+        />
+        <Route
+          path={`${path}/ResultConfigurationMenu`}
+          component={() => (
+            <ConfigMenuDisplay
+              menuType="ResultConfigurationMenu"
+              label="Result Configuration Menu"
+              id="sidenav.label.admin.formEntry.resultConfig"
+            />
+          )}
+        />
+        <Route
+          path={`${path}/PatientConfigurationMenu`}
+          component={() => (
+            <ConfigMenuDisplay
+              menuType="PatientConfigurationMenu"
+              label="Patient Configuration Menu"
+              id="sidenav.label.admin.formEntry.patientconfig"
+            />
+          )}
+        />
+        <Route
+          path={`${path}/PrintedReportsConfigurationMenu`}
+          component={() => (
+            <ConfigMenuDisplay
+              menuType="PrintedReportsConfigurationMenu"
+              label="PrintedReports Configuration Menu"
+              id="sidenav.label.admin.formEntry.PrintedReportsconfig"
+            />
+          )}
+        />
+        <Route
+          path={`${path}/testNotificationConfigMenu`}
+          component={TestNotificationConfigMenu}
+        />
+        <Route
+          path={`${path}/testNotificationConfig`}
+          component={TestNotificationConfigEdit}
+        />
+        <Route
+          path={`${path}/DictionaryMenu`}
+          component={DictionaryManagement}
+        />
+        <Route path={`${path}/PluginFile`} component={PluginList} />
+        <Route
+          path={`${path}/SearchIndexManagement`}
+          component={SearchIndexManagement}
+        />
+        <Route
+          path={`${path}/loggingManagement`}
+          component={LoggingManagement}
+        />
+        <Route
+          path={`${path}/externalConnections`}
+          component={ExternalConnectionMenu}
+        />
+        <Route
+          path={`${path}/externalConnectionEdit`}
+          component={ExternalConnectionAddModify}
+        />
+        <Route path={`${path}/DatabaseCleaning`} component={DatabaseCleaning} />
+        <Route
+          path={`${path}/masterDataIdentity`}
+          component={MasterDataIdentityManagement}
+        />
+        <Route
+          path={path}
+          exact
+          render={() => <AdminDashboard basePath={path} />}
+        />
+      </Switch>
+    </>
   );
 }
 
