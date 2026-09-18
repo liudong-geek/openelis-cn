@@ -1,80 +1,15 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Column, Grid, Select, SelectItem } from "@carbon/react";
-import { FormattedMessage, injectIntl, useIntl } from "react-intl";
-import "../Style.css";
-import { getFromOpenElisServer } from "../utils/Utils";
+import React from "react";
+import WorkplanFilterSelect from "./WorkplanFilterSelect";
 
-function PanelSelectForm(props) {
-  const mounted = useRef(false);
-  const [tests, setTests] = useState([]);
-  const [defaultPriorityId, setDefaultPriorityId] = useState("");
-  const [defaultPriorityLabel, setDefaultPriorityLabel] = useState("");
-
-  const handleChange = (e) => {
-    props.value(e.target.value, e.target.selectedOptions[0].text);
-  };
-
-  const getTests = (res) => {
-    if (mounted.current) {
-      setTests(res);
-    }
-  };
-
-  const intl = useIntl();
-
-  useEffect(() => {
-    mounted.current = true;
-    let priorityId = new URLSearchParams(window.location.search).get(
-      "priority",
-    );
-    priorityId = priorityId ? priorityId : "";
-    getFromOpenElisServer(
-      "/rest/displayList/ORDER_PRIORITY",
-      (fetchedPriorities) => {
-        let priority = fetchedPriorities.find(
-          (priority) => priority.id === priorityId,
-        );
-        let priorityLabel = priority
-          ? priority.value
-          : intl.formatMessage({ id: "input.placeholder.selectPriority" });
-        setDefaultPriorityId(priorityId);
-        setDefaultPriorityLabel(priorityLabel);
-        props.value(priorityId, priorityLabel);
-        getTests(fetchedPriorities);
-      },
-    );
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
+export default function PrioritySelectForm({ title, value }) {
   return (
-    <>
-      <Grid fullWidth={true}>
-        <Column sm={4} md={8} lg={16}>
-          <Select
-            defaultValue="placeholder-item"
-            id="select-1"
-            invalidText={
-              <FormattedMessage id="workplan.panel.selection.error.msg" />
-            }
-            helperText={props.title}
-            labelText=""
-            onChange={handleChange}
-          >
-            <SelectItem text={defaultPriorityLabel} value={defaultPriorityId} />
-            {tests
-              .filter((item) => item.id !== defaultPriorityId)
-              .map((item, idx) => {
-                return (
-                  <SelectItem key={idx} text={item.value} value={item.id} />
-                );
-              })}
-          </Select>
-        </Column>
-      </Grid>
-    </>
+    <WorkplanFilterSelect
+      id="workplan-priority-filter"
+      endpoint="/rest/displayList/ORDER_PRIORITY"
+      queryParameter="priority"
+      placeholderId="input.placeholder.selectPriority"
+      title={title}
+      value={value}
+    />
   );
 }
-
-export default injectIntl(PanelSelectForm);
