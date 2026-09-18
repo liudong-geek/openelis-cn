@@ -428,11 +428,25 @@ describe("Layout", () => {
       // Note: defaultMode is "lock" for /analyzers
     });
 
-    test.each([
-      "/admin",
-      "/MasterListsPage",
-      "/MasterListsPage/userManagement",
-    ])("testLayout_AdminRoute_DefaultsToExpandedShellAdminNav_%s", (route) => {
+    test.each(["/admin", "/MasterListsPage"])(
+      "testLayout_AdminLanding_UsesDomainDashboardWithoutLegacyNav_%s",
+      (route) => {
+        const { container } = renderWithProviders(
+          <Layout>
+            <Admin />
+          </Layout>,
+          { route },
+        );
+
+        expect(screen.getByTestId("content-wrapper")).not.toHaveClass(
+          "content-nav-locked",
+        );
+        expect(container.querySelector(".cds--side-nav")).toBeNull();
+      },
+    );
+
+    test("testLayout_AdminDetail_DefaultsToExpandedContextNav", () => {
+      const route = "/MasterListsPage/userManagement";
       const { container } = renderWithProviders(
         <Layout>
           <Admin />

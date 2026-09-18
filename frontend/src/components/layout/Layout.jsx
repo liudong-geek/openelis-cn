@@ -149,12 +149,18 @@ export default function Layout(props) {
   // Credential-change screens are login-adjacent and render focused (no sidenav),
   // matching /login regardless of auth state.
   const isFocusedAuthRoute = location.pathname === "/ChangePasswordLogin";
+  // The management landing page is the navigation for configuration work.
+  // Rendering the full legacy AdminSideNav beside its six domains duplicates
+  // every destination and recreates the long-menu problem this page solves.
+  const isAdminLandingRoute =
+    location.pathname === "/admin" || location.pathname === "/MasterListsPage";
+  const showAppSideNav = !isFocusedAuthRoute && !isAdminLandingRoute;
 
   // Only push content when the persistent sidenav is actually present
   // (authenticated desktop UX with the nav pinned). Unauthenticated pages
   // like /login have no sidenav to make room for.
   const isLocked =
-    userSessionDetails.authenticated && navPersistent && !isFocusedAuthRoute;
+    userSessionDetails.authenticated && navPersistent && showAppSideNav;
 
   const addNotification = (notificationBody) => {
     setNotifications([...notifications, notificationBody]);
@@ -272,12 +278,12 @@ export default function Layout(props) {
             closeSideNav={closeSideNav}
             storageKeyPrefix={storageKeyPrefix}
             navContext={navContext}
-            showSideNav={!isFocusedAuthRoute}
+            showSideNav={showAppSideNav}
           />
           {userSessionDetails.authenticated &&
             drawerOpen &&
             !navPersistent &&
-            !isFocusedAuthRoute && (
+            showAppSideNav && (
               <button
                 type="button"
                 className="oe-nav-scrim"
