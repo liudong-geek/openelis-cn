@@ -1655,3 +1655,71 @@ body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.workflow-report-workspace__filters {
+  display: grid;
+  grid-template-columns: minmax(16rem, 2fr) minmax(13rem, 1fr);
+  gap: 1rem;
+  align-items: end;
+  margin-bottom: 0.75rem;
+}
+.workflow-report-workspace__summary {
+  margin-bottom: 1rem;
+  color: #525252;
+  font-size: 0.875rem;
+}
+.workflow-report-workspace__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+.workflow-report-workspace__card {
+  padding: 1.25rem;
+  background: #fff;
+  border: 1px solid #e0e6ee;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.workflow-report-workspace__card > .cds--tag {
+  align-self: flex-start;
+  margin: 0;
+}
+.workflow-report-workspace__card h2 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.workflow-report-workspace__card p {
+  color: #64748b;
+  line-height: 1.6;
+  flex: 1;
+}
+.workflow-report-workspace__card > .cds--btn {
+  align-self: flex-start;
+}
+.workflow-report-workspace__empty {
+  padding: 2rem;
+  border: 1px solid #e0e6ee;
+  border-radius: 10px;
+  background: #fff;
+}
+.workflow-report-workspace__empty h2 {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+}
+.workflow-report-workspace__empty p {
+  margin-bottom: 1rem;
+  color: #64748b;
+}
+@media (max-width: 1055px) {
+  .workflow-report-workspace__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 850px) {
+  .workflow-report-workspace__filters,
+  .workflow-report-workspace__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

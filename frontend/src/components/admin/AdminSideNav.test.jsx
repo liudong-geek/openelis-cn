@@ -90,6 +90,26 @@ describe("AdminSideNav — Test Catalog Management entry", () => {
     ).toBeNull();
   });
 
+  it("keeps workflow and report settings within one workspace entry", () => {
+    mockLocation = {
+      pathname: "/MasterListsPage/PrintedReportsConfigurationMenu",
+      search: "",
+    };
+    const { container } = renderNav();
+
+    expect(
+      screen.getByRole("button", { name: "Workflow & reports" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(
+      container.querySelectorAll('[data-cy^="admin-domain-"]'),
+    ).toHaveLength(1);
+    expect(
+      container.querySelector(
+        '[data-cy="admin-domain-workflowReportWorkspace"]',
+      ),
+    ).toHaveAttribute("href", "/MasterListsPage/workflowReportWorkspace");
+  });
+
   it("makes the 9 sections live routed links when editing a test", () => {
     mockLocation = {
       pathname: "/MasterListsPage/TestCatalogEditor/7/methods",

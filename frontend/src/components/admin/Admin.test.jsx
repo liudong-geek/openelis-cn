@@ -57,7 +57,7 @@ describe("Admin", () => {
       ).toHaveLength(6);
       expect(
         container.querySelectorAll(".admin-dashboard__domain-links a"),
-      ).toHaveLength(10);
+      ).toHaveLength(8);
       expect(document.querySelector(".cds--side-nav")).not.toBeInTheDocument();
     },
   );
@@ -109,7 +109,9 @@ describe("Admin", () => {
       screen.getByText(messages["admin.dashboard.domain.workflow"]),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(messages["sidenav.label.admin.barcodeconfiguration"]),
+      screen.getByRole("link", {
+        name: messages["workspace.workflowReport.title"],
+      }),
     ).toBeInTheDocument();
     expect(
       screen.queryByText(messages["unifiedSystemUser.browser.title"]),

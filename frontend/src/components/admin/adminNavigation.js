@@ -64,12 +64,9 @@ export const ADMIN_NAVIGATION_DOMAINS = [
     titleId: "admin.dashboard.domain.workflow",
     descriptionId: "admin.dashboard.domain.workflow.description",
     icon: Flow,
-    links: [
-      ["admin.formEntryConfig", "SiteInformationMenu"],
-      ["sidenav.label.admin.labNumber", "labNumber"],
-      ["sidenav.label.admin.barcodeconfiguration", "barcodeConfiguration"],
-    ],
+    links: [["workspace.workflowReport.title", "workflowReportWorkspace"]],
     routeRoots: [
+      "workflowReportWorkspace",
       "SiteInformationMenu",
       "SiteBrandingMenu",
       "labNumber",
