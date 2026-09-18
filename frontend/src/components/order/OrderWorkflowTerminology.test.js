@@ -6,7 +6,15 @@ import { readFileSync } from "node:fs";
 const expectedWorkflowTerms = {
   "order.dashboard.title": "检验申请工作台",
   "order.dashboard.subtitle":
-    "查询进行中的检验申请、扫描条码，或新建检验申请。",
+    "查看申请、采集签收、标签生成与清单核对进度。清单已记录不代表当前验收、检验、审核或报告已完成。",
+  "intake.workspace.title": "申请与标本工作台",
+  "intake.workspace.patient": "患者档案",
+  "intake.workspace.specimen": "标本查询",
+  "intake.workspace.barcode": "条码预印",
+  "intake.workspace.query.title": "查询申请",
+  "intake.workspace.query.helper":
+    "先搜索申请，再按标本准备状态、优先级或日期缩小范围。",
+  "intake.workspace.query.reset": "重置筛选",
   "order.new": "新建检验申请",
   "order.search.placeholder": "搜索检验申请…",
   "order.requester": "送检方",

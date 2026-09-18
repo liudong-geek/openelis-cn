@@ -1237,9 +1237,11 @@ describe("Header Component - M2b Enhancement Tests", () => {
         navContext: "admin",
       });
 
-      expect(await screen.findByText("Back to main menu")).toBeInTheDocument();
       expect(
-        screen.getByText(messages["sidenav.label.admin.testmgt"]),
+        await screen.findByText(messages["admin.navigation.backToCenter"]),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(messages["admin.navigation.useCenter"]),
       ).toBeInTheDocument();
       expect(
         screen.queryByText(messages["banner.menu.home"]),
@@ -1250,33 +1252,35 @@ describe("Header Component - M2b Enhancement Tests", () => {
       expect(statusCalls).toHaveLength(1);
     });
 
-    test("admin nav items expose href and current-route state", async () => {
+    test("admin domain items expose href and current-route state", async () => {
       renderHeader({
-        initialRoute: "/MasterListsPage/billingMenuManagement",
+        initialRoute: "/MasterListsPage/globalMenuManagement",
         navContext: "admin",
       });
 
-      const billingLink = (
-        await screen.findByText(messages["sidenav.label.admin.menu.billing"])
+      const menuLink = (
+        await screen.findByText(messages["sidenav.label.admin.menu"])
       ).closest("a");
 
-      expect(billingLink).toHaveAttribute(
+      expect(menuLink).toHaveAttribute(
         "href",
-        "/MasterListsPage/billingMenuManagement",
+        "/MasterListsPage/globalMenuManagement",
       );
-      expect(billingLink).toHaveAttribute("aria-current", "page");
+      expect(menuLink).toHaveAttribute("aria-current", "page");
     });
 
-    test("admin back control navigates to /Dashboard", async () => {
+    test("admin back control navigates to the management center", async () => {
       renderHeader({
-        initialRoute: "/MasterListsPage",
+        initialRoute: "/MasterListsPage/globalMenuManagement",
         navContext: "admin",
       });
 
-      fireEvent.click(await screen.findByText("Back to main menu"));
+      fireEvent.click(
+        await screen.findByText(messages["admin.navigation.backToCenter"]),
+      );
 
       expect(screen.getByTestId("current-path")).toHaveTextContent(
-        "/Dashboard",
+        "/MasterListsPage",
       );
     });
   });

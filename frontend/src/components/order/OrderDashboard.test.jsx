@@ -92,6 +92,53 @@ test("restores the list filters and page and opens an identified request for edi
   expect(history.location.state.listState.searchQuery).toBe("DEMO-12");
 });
 
+test("keeps common intake tasks on the workbench and preserves the list origin", async () => {
+  const history = mount({
+    listState: { page: 2, pageSize: 25, statusFilter: "collection_pending" },
+  });
+  await screen.findByRole("row", { name: /DEMO-12/ });
+
+  fireEvent.click(
+    screen.getByRole("button", { name: messages["intake.workspace.patient"] }),
+  );
+
+  expect(history.location.pathname).toBe("/PatientManagement");
+  expect(history.location.state.listOrigin.pathname).toBe("/order");
+  expect(history.location.state.listOrigin.state.listState.page).toBe(2);
+});
+
+test("resets the consolidated request filters in one action", async () => {
+  mount({
+    listState: {
+      page: 2,
+      pageSize: 25,
+      searchQuery: "DEMO-12",
+      statusFilter: "collection_pending",
+      priorityFilter: "stat",
+    },
+  });
+  await screen.findByRole("row", { name: /DEMO-12/ });
+
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: messages["intake.workspace.query.reset"],
+    }),
+  );
+
+  expect(
+    screen.getByRole("searchbox", {
+      name: messages["order.search.placeholder"],
+    }),
+  ).toHaveValue("");
+  await waitFor(() => {
+    const latestUrl = mocks.get.mock.calls.at(-1)[0];
+    expect(latestUrl).toContain("page=1&pageSize=25");
+    expect(latestUrl).not.toContain("search=");
+    expect(latestUrl).not.toContain("specimenIntakeStatus=");
+    expect(latestUrl).not.toContain("priority=");
+  });
+});
+
 test("opens reprinting from a list row with its request number", async () => {
   const history = mount();
   const row = await screen.findByRole("row", { name: /DEMO-12/ });

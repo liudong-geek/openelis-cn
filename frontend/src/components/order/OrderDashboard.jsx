@@ -16,9 +16,6 @@ import {
   TableBody,
   TableCell,
   TableContainer,
-  TableToolbar,
-  TableToolbarContent,
-  TableToolbarSearch,
   Button,
   Tag,
   Dropdown,
@@ -26,6 +23,7 @@ import {
   DatePickerInput,
   Pagination,
   ProgressBar,
+  Search,
   Stack,
 } from "@carbon/react";
 import { Add, Renew, WarningAltFilled } from "@carbon/icons-react";
@@ -135,6 +133,21 @@ const OrderDashboardContent = () => {
   const [pageSize, setPageSize] = useState(initial.pageSize || 100);
   const [totalItems, setTotalItems] = useState(0);
   const requestSequence = useRef(0);
+  const hasActiveFilters =
+    searchQuery.trim().length > 0 ||
+    statusFilter !== "all" ||
+    priorityFilter !== "all" ||
+    Boolean(dateRange.start || dateRange.end);
+
+  const resetFilters = () => {
+    setSearchQuery("");
+    setDebouncedSearchQuery("");
+    setStatusFilter("all");
+    setPriorityFilter("all");
+    setDateRange({ start: null, end: null });
+    setPage(1);
+  };
+
   const openFromList = (target) => {
     const [pathname, search = ""] = target.split("?");
     const listState = {
@@ -569,17 +582,41 @@ const OrderDashboardContent = () => {
 
       <ProductPageHeader
         titleId="order-dashboard-title"
-        title={<FormattedMessage id="order.dashboard.title" />}
+        title={<FormattedMessage id="intake.workspace.title" />}
         subtitle={<FormattedMessage id="order.dashboard.subtitle" />}
         actions={
-          <Button
-            kind="primary"
-            renderIcon={Add}
-            onClick={handleNewOrder}
-            className="new-order-btn"
-          >
-            <FormattedMessage id="order.new" />
-          </Button>
+          <div className="intake-header-actions">
+            <Button
+              kind="ghost"
+              size="md"
+              onClick={() => openFromList("/PatientManagement")}
+            >
+              <FormattedMessage id="intake.workspace.patient" />
+            </Button>
+            <Button
+              kind="ghost"
+              size="md"
+              onClick={() => openFromList("/SampleManagement")}
+            >
+              <FormattedMessage id="intake.workspace.specimen" />
+            </Button>
+            <Button
+              kind="tertiary"
+              size="md"
+              onClick={() => openFromList("/PrintBarcode?mode=preprint")}
+            >
+              <FormattedMessage id="intake.workspace.barcode" />
+            </Button>
+            <Button
+              kind="primary"
+              size="md"
+              renderIcon={Add}
+              onClick={handleNewOrder}
+              className="new-order-btn"
+            >
+              <FormattedMessage id="order.new" />
+            </Button>
+          </div>
         }
       />
 
@@ -591,69 +628,107 @@ const OrderDashboardContent = () => {
             className="dashboard-barcode-section"
           />
 
-          {/* Filters Row */}
-          <div className="dashboard-filters">
-            <Dropdown
-              id="status-filter"
-              titleText={intl.formatMessage({ id: "order.filter.status" })}
-              label={intl.formatMessage({
-                id: "order.filter.status",
-                defaultMessage: "Status",
+          <section
+            className="intake-query-panel"
+            aria-labelledby="intake-query-title"
+          >
+            <div className="intake-query-panel__heading">
+              <div>
+                <h2 id="intake-query-title">
+                  <FormattedMessage id="intake.workspace.query.title" />
+                </h2>
+                <p>
+                  <FormattedMessage id="intake.workspace.query.helper" />
+                </p>
+              </div>
+              <Button
+                kind="ghost"
+                size="sm"
+                disabled={!hasActiveFilters}
+                onClick={resetFilters}
+              >
+                <FormattedMessage id="intake.workspace.query.reset" />
+              </Button>
+            </div>
+            <Search
+              id="intake-order-search"
+              size="lg"
+              value={searchQuery}
+              labelText={intl.formatMessage({
+                id: "order.search.placeholder",
               })}
-              items={statusOptions}
-              itemToString={(item) => item?.label || ""}
-              selectedItem={statusOptions.find((s) => s.id === statusFilter)}
-              onChange={({ selectedItem }) => {
-                setPage(1);
-                setStatusFilter(selectedItem?.id || "all");
+              placeholder={intl.formatMessage({
+                id: "order.search.placeholder",
+              })}
+              onChange={(event) => {
+                setSearchQuery(event?.target?.value || "");
               }}
             />
-            <Dropdown
-              id="priority-filter"
-              titleText={intl.formatMessage({ id: "order.filter.priority" })}
-              label={intl.formatMessage({
-                id: "order.filter.priority",
-                defaultMessage: "Priority",
-              })}
-              items={priorityOptions}
-              itemToString={(item) => item?.label || ""}
-              selectedItem={priorityOptions.find(
-                (p) => p.id === priorityFilter,
-              )}
-              onChange={({ selectedItem }) => {
-                setPage(1);
-                setPriorityFilter(selectedItem?.id || "all");
-              }}
-            />
-            <DatePicker
-              datePickerType="range"
-              dateFormat={getDatePickerFormat(dateLocale)}
-              value={[dateRange.start, dateRange.end].filter(Boolean)}
-              onChange={(dates) => {
-                setPage(1);
-                setDateRange({ start: dates[0], end: dates[1] });
-              }}
-            >
-              <DatePickerInput
-                id="date-start"
-                placeholder={intl.formatMessage(
-                  getDatePickerPlaceholderMessage(dateLocale),
-                )}
-                labelText={intl.formatMessage({
-                  id: "order.filter.dateFrom",
+            <div className="dashboard-filters">
+              <Dropdown
+                id="status-filter"
+                titleText={intl.formatMessage({ id: "order.filter.status" })}
+                label={intl.formatMessage({
+                  id: "order.filter.status",
+                  defaultMessage: "Status",
                 })}
-                size="md"
-              />
-              <DatePickerInput
-                id="date-end"
-                placeholder={intl.formatMessage(
-                  getDatePickerPlaceholderMessage(dateLocale),
+                items={statusOptions}
+                itemToString={(item) => item?.label || ""}
+                selectedItem={statusOptions.find(
+                  (status) => status.id === statusFilter,
                 )}
-                labelText={intl.formatMessage({ id: "order.filter.dateTo" })}
-                size="md"
+                onChange={({ selectedItem }) => {
+                  setPage(1);
+                  setStatusFilter(selectedItem?.id || "all");
+                }}
               />
-            </DatePicker>
-          </div>
+              <Dropdown
+                id="priority-filter"
+                titleText={intl.formatMessage({ id: "order.filter.priority" })}
+                label={intl.formatMessage({
+                  id: "order.filter.priority",
+                  defaultMessage: "Priority",
+                })}
+                items={priorityOptions}
+                itemToString={(item) => item?.label || ""}
+                selectedItem={priorityOptions.find(
+                  (priority) => priority.id === priorityFilter,
+                )}
+                onChange={({ selectedItem }) => {
+                  setPage(1);
+                  setPriorityFilter(selectedItem?.id || "all");
+                }}
+              />
+              <DatePicker
+                datePickerType="range"
+                dateFormat={getDatePickerFormat(dateLocale)}
+                value={[dateRange.start, dateRange.end].filter(Boolean)}
+                onChange={(dates) => {
+                  setPage(1);
+                  setDateRange({ start: dates[0], end: dates[1] });
+                }}
+              >
+                <DatePickerInput
+                  id="date-start"
+                  placeholder={intl.formatMessage(
+                    getDatePickerPlaceholderMessage(dateLocale),
+                  )}
+                  labelText={intl.formatMessage({
+                    id: "order.filter.dateFrom",
+                  })}
+                  size="md"
+                />
+                <DatePickerInput
+                  id="date-end"
+                  placeholder={intl.formatMessage(
+                    getDatePickerPlaceholderMessage(dateLocale),
+                  )}
+                  labelText={intl.formatMessage({ id: "order.filter.dateTo" })}
+                  size="md"
+                />
+              </DatePicker>
+            </div>
+          </section>
 
           {/* Orders Table */}
           <DataTable rows={rows} headers={headers}>
@@ -663,25 +738,8 @@ const OrderDashboardContent = () => {
               getTableProps,
               getHeaderProps,
               getRowProps,
-              getToolbarProps,
             }) => (
               <TableContainer className="order-dashboard-table">
-                <TableToolbar {...getToolbarProps()}>
-                  <TableToolbarContent>
-                    <TableToolbarSearch
-                      persistent
-                      value={searchQuery}
-                      placeholder={intl.formatMessage({
-                        id: "order.search.placeholder",
-                        defaultMessage:
-                          "Search by patient, lab number, or ID...",
-                      })}
-                      onChange={(e) => {
-                        setSearchQuery(e?.target?.value || "");
-                      }}
-                    />
-                  </TableToolbarContent>
-                </TableToolbar>
                 {isLoading || loadError || rows.length === 0 ? (
                   <div
                     className={`order-dashboard-state ${loadError ? "is-error" : ""}`}
