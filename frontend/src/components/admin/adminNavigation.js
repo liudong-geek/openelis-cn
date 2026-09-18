@@ -48,11 +48,12 @@ export const ADMIN_NAVIGATION_DOMAINS = [
     descriptionId: "admin.dashboard.domain.organization.description",
     icon: UserMultiple,
     links: [
-      ["unifiedSystemUser.browser.title", "userManagement"],
-      ["organization.main.title", "organizationManagement"],
+      ["workspace.organizationPeople.title", "organizationPeopleWorkspace"],
     ],
     routeRoots: [
+      "organizationPeopleWorkspace",
       "userManagement",
+      "userEdit",
       "organizationManagement",
       "organizationEdit",
       "providerMenu",

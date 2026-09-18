@@ -44,10 +44,9 @@ describe("Admin", () => {
         screen.getByText(messages["admin.dashboard.title"]),
       ).toBeInTheDocument();
       expect(
-        screen.getByText(messages["unifiedSystemUser.browser.title"]),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(messages["organization.main.title"]),
+        screen.getByRole("link", {
+          name: messages["workspace.organizationPeople.title"],
+        }),
       ).toBeInTheDocument();
       expect(
         screen.getByText(messages["workspace.masterData.title"]),
@@ -58,7 +57,7 @@ describe("Admin", () => {
       ).toHaveLength(6);
       expect(
         container.querySelectorAll(".admin-dashboard__domain-links a"),
-      ).toHaveLength(11);
+      ).toHaveLength(10);
       expect(document.querySelector(".cds--side-nav")).not.toBeInTheDocument();
     },
   );
@@ -79,11 +78,13 @@ describe("Admin", () => {
     );
 
     fireEvent.click(
-      screen.getByText(messages["unifiedSystemUser.browser.title"]),
+      screen.getByRole("link", {
+        name: messages["workspace.organizationPeople.title"],
+      }),
     );
 
     expect(screen.getByTestId("current-path")).toHaveTextContent(
-      "/MasterListsPage/userManagement",
+      "/MasterListsPage/organizationPeopleWorkspace",
     );
   });
 

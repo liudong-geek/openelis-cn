@@ -67,7 +67,7 @@ describe("AdminSideNav — Test Catalog Management entry", () => {
     ).toHaveAttribute("href", "/MasterListsPage");
   });
 
-  it("keeps organization details within their two-item domain", () => {
+  it("keeps organization details within one workspace entry", () => {
     mockLocation = {
       pathname: "/MasterListsPage/userManagement",
       search: "",
@@ -79,10 +79,12 @@ describe("AdminSideNav — Test Catalog Management entry", () => {
     ).toHaveAttribute("aria-expanded", "true");
     expect(
       container.querySelectorAll('[data-cy^="admin-domain-"]'),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     expect(
-      container.querySelector('[data-cy="admin-domain-userManagement"]'),
-    ).toHaveAttribute("aria-current", "page");
+      container.querySelector(
+        '[data-cy="admin-domain-organizationPeopleWorkspace"]',
+      ),
+    ).toHaveAttribute("href", "/MasterListsPage/organizationPeopleWorkspace");
     expect(
       container.querySelector('[data-cy="admin-domain-reflex"]'),
     ).toBeNull();

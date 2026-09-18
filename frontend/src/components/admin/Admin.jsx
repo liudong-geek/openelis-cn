@@ -77,6 +77,7 @@ import DatabaseCleaning from "./databaseCleaning/DatabaseCleaning";
 import AdminDashboard from "./AdminDashboard";
 import MasterDataIdentityManagement from "./masterDataIdentity/MasterDataIdentityManagement";
 import ManagementWorkspaceSwitcher from "../management/ManagementWorkspaceSwitcher";
+import OrganizationPeopleWorkspace from "./organizationPeopleWorkspace/OrganizationPeopleWorkspace";
 
 function Admin() {
   const { path } = useRouteMatch();
@@ -107,6 +108,10 @@ function Admin() {
         <Route path={`${path}/labelPresets`} component={LabelPresetList} />
         <Route path={`${path}/program`} component={ProgramManagement} />
         <Route path={`${path}/providerMenu`} component={ProviderMenu} />
+        <Route
+          path={`${path}/organizationPeopleWorkspace`}
+          component={OrganizationPeopleWorkspace}
+        />
         <Route path={`${path}/dataExportStatus`} component={DataExportStatus} />
         <Route path={`${path}/NotifyUser`} component={PushNotificationPage} />
         <Redirect
