@@ -1,0 +1,14 @@
+.review-report-workspace-switcher {
+  max-width: 28rem;
+  margin: 0 0 1.25rem;
+}
+
+.review-report-workspace-switcher .cds--content-switcher-btn {
+  min-height: 2.75rem;
+}
+
+@media (max-width: 671px) {
+  .review-report-workspace-switcher {
+    max-width: none;
+  }
+}

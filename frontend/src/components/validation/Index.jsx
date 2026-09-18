@@ -14,6 +14,7 @@ import PageBreadCrumb from "../common/PageBreadCrumb";
 import ProductPageHeader from "../common/ProductPageHeader";
 import "./Validation.css";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
+import ReviewReportWorkspaceSwitcher from "./ReviewReportWorkspaceSwitcher";
 
 let breadcrumbs = [{ label: "home.label", link: "/" }];
 
@@ -132,6 +133,7 @@ const Index = () => {
         subtitle={<FormattedMessage id="validation.page.subtitle" />}
       />
       <div className="orderLegendBody">
+        <ReviewReportWorkspaceSwitcher activeView="review" />
         {notificationVisible === true ? <AlertDialog /> : ""}
         <SearchForm
           key={sessionKey}

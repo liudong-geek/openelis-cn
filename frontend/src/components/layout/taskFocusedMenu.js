@@ -719,6 +719,19 @@ const compactTestingDestinations = (destinations) => {
   });
 };
 
+const compactReviewReportDestinations = (destinations) => {
+  const reviewEntry = destinations.find(
+    (entry) => getElementId(entry) === "menu_resultvalidation_routine",
+  );
+  const reportEntry = destinations.find(
+    (entry) => getElementId(entry) === "menu_reports_routine",
+  );
+  const primary = reviewEntry || reportEntry;
+  if (!primary) return destinations;
+
+  return [withDisplayKey(primary, CHINA_WORKSPACE_DISPLAY_KEYS.reports)];
+};
+
 const organizeChinaWorkspaces = (items) => {
   const byId = new Map(items.map((entry) => [getElementId(entry), entry]));
   const output = [];
@@ -750,6 +763,7 @@ const organizeChinaWorkspaces = (items) => {
       if (reviewEntry && reportEntry) {
         destinations = [reviewEntry, reportEntry];
       }
+      destinations = compactReviewReportDestinations(destinations);
     }
     if (elementId === "menu_testing_workspace") {
       destinations = compactTestingDestinations(destinations);

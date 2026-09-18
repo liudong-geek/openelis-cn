@@ -9,6 +9,7 @@ import {
 import config from "../../config.json";
 import PageBreadCrumb from "../common/PageBreadCrumb";
 import ProductPageHeader from "../common/ProductPageHeader";
+import ReviewReportWorkspaceSwitcher from "../validation/ReviewReportWorkspaceSwitcher";
 
 let breadcrumbs = [{ label: "home.label", link: "/" }];
 export const RoutineReportsMenu = {
@@ -142,6 +143,9 @@ const Routine = () => {
           </>
         }
       />
+      <div className="orderLegendBody">
+        <ReviewReportWorkspaceSwitcher activeView="reports" />
+      </div>
       <GlobalSideBar sideNav={RoutineReportsMenu} />
     </>
   );

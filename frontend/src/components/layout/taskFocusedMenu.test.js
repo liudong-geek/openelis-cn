@@ -387,7 +387,7 @@ describe("taskFocusedMenu", () => {
     expect(findById(testing.childMenus, "menu_workplan_priority")).toBeNull();
   });
 
-  test("keeps review search modes and report categories inside their workbenches", () => {
+  test("keeps review and report tasks inside one review workspace", () => {
     const result = buildTaskFocusedMenu(
       [
         item("menu_resultvalidation", "/ResultValidation", [
@@ -414,15 +414,31 @@ describe("taskFocusedMenu", () => {
 
     expect(allIds(workspace.childMenus)).toEqual([
       "menu_resultvalidation_routine",
-      "menu_reports_routine",
     ]);
     expect(workspace.childMenus[0].menu).toMatchObject({
       actionURL: "/validation?type=routine",
-      displayKey: "review.workspace.queue",
+      displayKey: "sidenav.workspace.reports",
     });
-    expect(workspace.childMenus[1].menu).toMatchObject({
+  });
+
+  test("uses the report route when report access is the only review workspace permission", () => {
+    const result = buildTaskFocusedMenu(
+      [
+        item("menu_resultvalidation", "/ResultValidation", [
+          item("menu_resultvalidation_routine", "/ResultValidation"),
+        ]),
+        item("menu_reports", "", [
+          item("menu_reports_routine", "/RoutineReports"),
+        ]),
+      ],
+      { roles: [ROLE_NAMES.REPORTS] },
+    );
+    const workspace = findById(result, "menu_review_report_workspace");
+
+    expect(allIds(workspace.childMenus)).toEqual(["menu_reports_routine"]);
+    expect(workspace.childMenus[0].menu).toMatchObject({
       actionURL: "/RoutineReports",
-      displayKey: "review.workspace.reports",
+      displayKey: "sidenav.workspace.reports",
     });
   });
 
