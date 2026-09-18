@@ -2,5 +2,14 @@
   "title": "Cote d'Ivoire Regional Laboratory LIS",
   "loginRedirect": "/login",
   "navigationProfile": "china",
+  "optionalModules": {
+    "pathology": false,
+    "immunohistochemistry": false,
+    "cytology": false,
+    "notebook": false,
+    "storage": false,
+    "shipment": false,
+    "eqa": false
+  },
   "serverBaseUrl": "/api/OpenELIS-Global"
 }

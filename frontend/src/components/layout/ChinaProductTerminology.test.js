@@ -2,14 +2,14 @@ import zh from "../../languages/zh.json";
 import zhCN from "../../languages/zh_CN.json";
 
 const expectedBusinessTerms = {
-  "sidenav.workspace.today": "今日待办",
-  "sidenav.workspace.orders": "申请与采样",
+  "sidenav.workspace.today": "工作台",
+  "sidenav.workspace.orders": "申请与标本",
   "sidenav.workspace.specimens": "标本签收",
-  "sidenav.workspace.results": "检验与审核",
-  "sidenav.workspace.quality": "质量与异常",
-  "sidenav.workspace.reports": "查询与报告",
+  "sidenav.workspace.results": "检验",
+  "sidenav.workspace.quality": "质量管理",
+  "sidenav.workspace.reports": "审核与报告",
   "sidenav.workspace.interfaces": "接口中心",
-  "sidenav.workspace.configuration": "基础配置",
+  "sidenav.workspace.configuration": "管理中心",
   "banner.menu.home": "工作台",
   "home.label": "工作台",
   "banner.menu.sample": "检验申请",

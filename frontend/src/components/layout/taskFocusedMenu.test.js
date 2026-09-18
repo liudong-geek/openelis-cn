@@ -148,26 +148,22 @@ describe("taskFocusedMenu", () => {
       "04",
       "05",
       "06",
-      "07",
-      "08",
     ]);
     expect(full.map((entry) => entry.menu.workspaceSection)).toEqual([
-      "clinical",
-      "clinical",
-      "clinical",
-      "clinical",
-      "clinical",
-      "clinical",
-      "operations",
-      "operations",
+      "core",
+      "core",
+      "core",
+      "core",
+      "core",
+      "core",
     ]);
     const reviewer = buildTaskFocusedMenu(source, {
       roles: [ROLE_NAMES.VALIDATION],
     });
     expect(reviewer.map((entry) => entry.menu.workspaceNumber)).toEqual([
       "01",
-      "04",
-      "05",
+      "02",
+      "03",
     ]);
     expect(
       findById(reviewer, "menu_resultvalidation_routine").menu.actionURL,
@@ -187,7 +183,7 @@ describe("taskFocusedMenu", () => {
       ],
       { roles: [ROLE_NAMES.RECEPTION] },
     );
-    expect(result.map((entry) => entry.menu.workspaceNumber)).toEqual(["02"]);
+    expect(result.map((entry) => entry.menu.workspaceNumber)).toEqual(["01"]);
     expect(findById(result, "menu_order_collect").menu.actionURL).toBe(
       "/order/collect",
     );
@@ -219,7 +215,7 @@ describe("taskFocusedMenu", () => {
       expect(sourceLeaf.menu.actionURL).toBe(route);
       expect(sourceLeaf.childMenus).toEqual([]);
       expect(findById(result, related).menu.actionURL).toBe(relatedRoute);
-      expect(result).toHaveLength(1);
+      expect(result).toHaveLength(primary === "menu_results" ? 2 : 1);
       expect(allIds(result)).toHaveLength(new Set(allIds(result)).size);
     },
   );
@@ -273,22 +269,18 @@ describe("taskFocusedMenu", () => {
 
     expect(result.map((menuItem) => menuItem.menu.elementId)).toEqual([
       "menu_home",
-      "menu_sample",
-      "menu_storage",
-      "menu_results",
-      "menu_quality_management",
-      "menu_reports",
-      "menu_interface_center",
-      "menu_administration",
+      "menu_intake_workspace",
+      "menu_testing_workspace",
+      "menu_review_report_workspace",
+      "menu_quality_workspace",
+      "menu_management_workspace",
     ]);
     expect(result.map((menuItem) => menuItem.menu.displayKey)).toEqual([
       "sidenav.workspace.today",
       "sidenav.workspace.orders",
-      "sidenav.workspace.specimens",
       "sidenav.workspace.results",
-      "sidenav.workspace.quality",
       "sidenav.workspace.reports",
-      "sidenav.workspace.interfaces",
+      "sidenav.workspace.quality",
       "sidenav.workspace.configuration",
     ]);
 
@@ -306,35 +298,30 @@ describe("taskFocusedMenu", () => {
     );
   });
 
-  test("places collection and labeling under orders, and acceptance and shipment under receiving", () => {
+  test("keeps order, patient and specimen destinations in one flat intake workspace", () => {
     const result = buildTaskFocusedMenu(chinaMenuFixture(), {
       roles: [ROLE_NAMES.RECEPTION, ROLE_NAMES.RESULTS],
+      optionalModules: { storage: true, shipment: true },
     });
-    const orderRoot = findById(result, "menu_sample");
-    const specimenRoot = findById(result, "menu_storage");
+    const intakeRoot = findById(result, "menu_intake_workspace");
 
-    expect(allIds(orderRoot.childMenus)).toEqual(
+    expect(allIds(intakeRoot.childMenus)).toEqual(
       expect.arrayContaining([
         "menu_order_dashboard",
         "menu_order_collect",
         "menu_order_label",
-        "menu_patient",
-      ]),
-    );
-    expect(allIds(orderRoot.childMenus)).not.toEqual(
-      expect.arrayContaining(["menu_order_qa", "menu_sample_shipment"]),
-    );
-    expect(allIds(specimenRoot.childMenus)).toEqual(
-      expect.arrayContaining([
         "menu_order_qa",
+        "menu_patient_add_or_edit",
         "menu_sample_shipment",
         "menu_storage_management",
-        "menu_inventory",
       ]),
     );
     expect(
-      findById(specimenRoot.childMenus, "menu_sample_shipment").menu.actionURL,
+      findById(intakeRoot.childMenus, "menu_sample_shipment").menu.actionURL,
     ).toBe("/SampleShipment/boxes");
+    expect(
+      intakeRoot.childMenus.every((entry) => entry.childMenus.length === 0),
+    ).toBe(true);
 
     const ids = allIds(result);
     expect(ids).toHaveLength(new Set(ids).size);
@@ -344,6 +331,7 @@ describe("taskFocusedMenu", () => {
     const source = chinaMenuFixture();
     const china = buildTaskFocusedMenu(source, {
       roles: [ROLE_NAMES.RECEPTION],
+      optionalModules: { storage: true },
     });
     const global = buildTaskFocusedMenu(source, {
       profile: MENU_PROFILES.GLOBAL,
@@ -359,28 +347,18 @@ describe("taskFocusedMenu", () => {
     const result = buildTaskFocusedMenu(chinaMenuFixture(), {
       roles: [ROLE_NAMES.ANALYSER_IMPORT, ROLE_NAMES.GLOBAL_ADMIN],
     });
-    const qualityRoot = findById(result, "menu_quality_management");
-    const systemRoot = findById(result, "menu_interface_center");
+    const qualityRoot = findById(result, "menu_quality_workspace");
+    const systemRoot = findById(result, "menu_management_workspace");
     const analyzerRoot = findById(systemRoot.childMenus, "menu_analyzers");
-    const analyzerQcRoot = findById(
-      qualityRoot.childMenus,
-      "menu_analyzers_qc",
-    );
 
-    expect(allIds(analyzerRoot.childMenus)).toEqual([
-      "menu_analyzers_list",
-      "menu_analyzers_errors",
-      "menu_analyzers_types",
-    ]);
-    expect(allIds(analyzerRoot.childMenus)).not.toContain("menu_analyzers_qc");
-    expect(allIds(analyzerQcRoot.childMenus)).toEqual([
+    expect(analyzerRoot.childMenus).toEqual([]);
+    expect(allIds(qualityRoot.childMenus)).toEqual([
       "menu_analyzers_qc_dashboard",
       "menu_analyzers_qc_alerts",
       "menu_analyzers_qc_corrective_actions",
       "menu_analyzers_qc_control_lots",
       "menu_analyzers_qc_rule_config",
     ]);
-    expect(analyzerQcRoot.menu.actionURL).toBe("");
     expect(
       findById(result, "menu_analyzers_qc_control_lots").menu.actionURL,
     ).toBe("/analyzers/qc/control-lots");
@@ -388,7 +366,7 @@ describe("taskFocusedMenu", () => {
     const ids = allIds(result);
     expect(
       ids.filter((elementId) => elementId === "menu_analyzers_qc"),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     expect(ids).toHaveLength(new Set(ids).size);
   });
 
@@ -435,7 +413,9 @@ describe("taskFocusedMenu", () => {
         roles: [role],
       });
 
-      expect(Boolean(findById(result, "menu_analyzers_qc"))).toBe(hasQc);
+      expect(Boolean(findById(result, "menu_analyzers_qc_dashboard"))).toBe(
+        hasQc,
+      );
       expect(Boolean(findById(result, "menu_analyzers"))).toBe(
         hasAnalyzerConfiguration,
       );
@@ -547,7 +527,7 @@ describe("taskFocusedMenu", () => {
       buildTaskFocusedMenu(source, { roles: [ROLE_NAMES.RESULTS] }),
     );
 
-    expect(chinaIds).toContain("menu_workplan");
+    expect(chinaIds).toContain("menu_workplan_test");
     expect(chinaIds).not.toEqual(
       expect.arrayContaining([
         "menu_pathology",
@@ -568,6 +548,24 @@ describe("taskFocusedMenu", () => {
         "menu_notebook",
       ]),
     );
+  });
+
+  test("exposes an optional specialist area only when its product module is enabled", () => {
+    const source = [
+      item("menu_home", "/Dashboard"),
+      item("menu_results", "", [item("menu_results_unified", "/Results")]),
+      item("menu_pathology", "/PathologyDashboard"),
+    ];
+
+    expect(findById(buildTaskFocusedMenu(source), "menu_pathology")).toBeNull();
+    expect(
+      findById(
+        buildTaskFocusedMenu(source, {
+          optionalModules: { pathology: true },
+        }),
+        "menu_pathology",
+      ).menu.actionURL,
+    ).toBe("/PathologyDashboard");
   });
 
   test("hides generic-sample menus and routes only in the China profile", () => {
@@ -620,10 +618,10 @@ describe("taskFocusedMenu", () => {
       role: ROLE_NAMES.RECEPTION,
       visible: [
         "menu_home",
-        "menu_sample",
-        "menu_patient",
-        "menu_storage",
-        "menu_quality_management",
+        "menu_intake_workspace",
+        "menu_order_dashboard",
+        "menu_patient_add_or_edit",
+        "menu_quality_workspace",
       ],
       hidden: [
         "menu_results",
@@ -636,9 +634,9 @@ describe("taskFocusedMenu", () => {
       role: ROLE_NAMES.RESULTS,
       visible: [
         "menu_home",
-        "menu_storage",
-        "menu_results",
-        "menu_quality_management",
+        "menu_testing_workspace",
+        "menu_results_unified",
+        "menu_quality_workspace",
       ],
       hidden: [
         "menu_sample",
@@ -652,9 +650,9 @@ describe("taskFocusedMenu", () => {
       role: ROLE_NAMES.VALIDATION,
       visible: [
         "menu_home",
-        "menu_results",
-        "menu_resultvalidation",
-        "menu_quality_management",
+        "menu_review_report_workspace",
+        "menu_resultvalidation_routine",
+        "menu_quality_workspace",
       ],
       hidden: [
         "menu_sample",
@@ -666,7 +664,11 @@ describe("taskFocusedMenu", () => {
     },
     {
       role: ROLE_NAMES.REPORTS,
-      visible: ["menu_home", "menu_reports", "menu_query_statistics"],
+      visible: [
+        "menu_home",
+        "menu_review_report_workspace",
+        "menu_management_workspace",
+      ],
       hidden: [
         "menu_sample",
         "menu_patient",
@@ -679,8 +681,7 @@ describe("taskFocusedMenu", () => {
       role: ROLE_NAMES.GLOBAL_ADMIN,
       visible: [
         "menu_home",
-        "menu_storage",
-        "menu_query_statistics",
+        "menu_management_workspace",
         "menu_administration",
         "menu_reports_audittrail",
       ],
@@ -707,7 +708,7 @@ describe("taskFocusedMenu", () => {
       role: ROLE_NAMES.AUDIT_TRAIL,
       visible: [
         "menu_home",
-        "menu_query_statistics",
+        "menu_management_workspace",
         "menu_reports_audittrail",
       ],
       hidden: [
@@ -721,7 +722,7 @@ describe("taskFocusedMenu", () => {
     },
     {
       role: ROLE_NAMES.LAB_SUPERVISOR,
-      visible: ["menu_home", "menu_quality_management"],
+      visible: ["menu_home", "menu_quality_workspace"],
       hidden: [
         "menu_sample",
         "menu_patient",
@@ -758,12 +759,9 @@ describe("taskFocusedMenu", () => {
       { roles: [ROLE_NAMES.GLOBAL_ADMIN] },
     );
 
-    expect(
-      result.filter((menuItem) =>
-        ["menu_admin", "menu_administration"].includes(menuItem.menu.elementId),
-      ),
-    ).toHaveLength(1);
-    expect(result.at(-1).menu.elementId).toBe("menu_administration");
+    expect(findById(result, "menu_admin")).toBeNull();
+    expect(findById(result, "menu_administration")).not.toBeNull();
+    expect(result.at(-1).menu.elementId).toBe("menu_management_workspace");
     expect(allIds(result.at(-1).childMenus)).toEqual(
       expect.arrayContaining(["menu_admin_users", "menu_administration_tests"]),
     );
@@ -776,12 +774,11 @@ describe("taskFocusedMenu", () => {
 
     expect(result.map((menuItem) => menuItem.menu.elementId)).toEqual([
       "menu_home",
-      "menu_sample",
-      "menu_storage",
-      "menu_results",
-      "menu_quality_management",
-      "menu_reports",
-      "menu_administration",
+      "menu_intake_workspace",
+      "menu_testing_workspace",
+      "menu_review_report_workspace",
+      "menu_quality_workspace",
+      "menu_management_workspace",
     ]);
   });
 

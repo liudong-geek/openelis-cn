@@ -72,12 +72,25 @@ const CHINA_TOP_LEVEL_DISPLAY_KEYS = Object.freeze({
 const CHINA_WORKSPACE_DISPLAY_KEYS = Object.freeze({
   today: "sidenav.workspace.today",
   orders: "sidenav.workspace.orders",
-  specimens: "sidenav.workspace.specimens",
   results: "sidenav.workspace.results",
   quality: "sidenav.workspace.quality",
   reports: "sidenav.workspace.reports",
-  interfaces: "sidenav.workspace.interfaces",
   configuration: "sidenav.workspace.configuration",
+});
+
+/**
+ * Optional product areas are off in the standard China LIS edition. Hospitals
+ * can enable a module in config.json without restoring the upstream catch-all
+ * navigation. Server authorization still applies after a module is enabled.
+ */
+export const CHINA_OPTIONAL_MODULES = Object.freeze({
+  pathology: [/^menu_pathology(?:_|$)/i],
+  immunohistochemistry: [/^menu_immunochem(?:_|$)/i],
+  cytology: [/^menu_cytology(?:_|$)/i],
+  notebook: [/^menu_notebook(?:_|$)/i],
+  storage: [/^menu_(?:storage|inventory)(?:_|$)/i],
+  shipment: [/^menu_(?:sample_)?shipment(?:_|$)/i],
+  eqa: [/^menu_eqa(?:_|$)/i],
 });
 
 const CHINA_ITEM_DISPLAY_KEYS = Object.freeze({
@@ -126,7 +139,6 @@ const CHINA_HIDDEN_ELEMENT_ID_PATTERNS = [
   // hierarchy and concurrency checks. Do not expose the superseded standalone
   // form as a second China-menu task.
   /^menu_aliquot(?:_|$)/i,
-  /^menu_(?:pathology|immunochem|cytology|notebook)(?:_|$)/i,
   /^menu_(?:sample|patient)_create(?:_|$)/i,
   /^menu_study_/i,
   /(?:^|[_.])(?:study|research|arv|eid|haiti|indeterminate|vl)(?:[_.]|$)/i,
@@ -161,14 +173,30 @@ const hasNavigableContent = (item) =>
   Boolean(item) &&
   (!isBlank(getActionURL(item)) || (item.childMenus || []).length > 0);
 
-const isChinaHidden = (item) => {
+const getEnabledOptionalModules = (options) =>
+  new Set(
+    Object.entries(options?.optionalModules || {})
+      .filter(([, enabled]) => enabled === true)
+      .map(([moduleId]) => moduleId),
+  );
+
+const isDisabledOptionalModule = (elementId, enabledOptionalModules) =>
+  Object.entries(CHINA_OPTIONAL_MODULES).some(
+    ([moduleId, patterns]) =>
+      !enabledOptionalModules.has(moduleId) &&
+      patterns.some((pattern) => pattern.test(elementId)),
+  );
+
+const isChinaHidden = (item, enabledOptionalModules = new Set()) => {
   const elementId = getElementId(item);
   const actionURL = getActionURL(item);
 
   return (
+    isDisabledOptionalModule(elementId, enabledOptionalModules) ||
     CHINA_HIDDEN_ELEMENT_ID_PATTERNS.some((pattern) =>
       pattern.test(elementId),
-    ) || CHINA_HIDDEN_ACTION_PATTERNS.some((pattern) => pattern.test(actionURL))
+    ) ||
+    CHINA_HIDDEN_ACTION_PATTERNS.some((pattern) => pattern.test(actionURL))
   );
 };
 
@@ -190,9 +218,17 @@ export const isBackendDocumentAction = (actionURL) =>
   typeof actionURL === "string" &&
   /(?:^|\/)ReportPrint(?:[?#]|$)/i.test(actionURL.trim());
 
-const cloneMenu = (item, profile = MENU_PROFILES.GLOBAL) => {
+const cloneMenu = (
+  item,
+  profile = MENU_PROFILES.GLOBAL,
+  enabledOptionalModules = new Set(),
+) => {
   if (!item?.menu || item.menu.isActive === false) return null;
-  if (profile === MENU_PROFILES.CHINA && isChinaHidden(item)) return null;
+  if (
+    profile === MENU_PROFILES.CHINA &&
+    isChinaHidden(item, enabledOptionalModules)
+  )
+    return null;
 
   const actionURL = getActionURL(item);
   const securityRestricted = isSecurityRestrictedReport(
@@ -228,7 +264,7 @@ const cloneMenu = (item, profile = MENU_PROFILES.GLOBAL) => {
           : item.menu.toolTipKey,
     },
     childMenus: (item.childMenus || [])
-      .map((child) => cloneMenu(child, profile))
+      .map((child) => cloneMenu(child, profile, enabledOptionalModules))
       .filter(Boolean),
   };
 
@@ -509,138 +545,83 @@ const buildGlobalTaskFocusedMenu = (items) => {
 };
 
 /**
- * Present the already-authorized China menu as the eight clinical workspaces.
+ * Collect actual destinations so each product area has one flat task list.
+ * Intermediate upstream group names belong inside pages as tabs or filters,
+ * rather than becoming a third navigation level.
  * This is an information-architecture adapter: it retains leaf ids, routes and
- * document handling, and creates a workspace only when it has visible content.
+ * document handling.
  */
+const collectWorkspaceDestinations = (item) => {
+  if (!item) return [];
+  const ownDestination = !isBlank(getActionURL(item))
+    ? [{ ...item, childMenus: [], expanded: false }]
+    : [];
+  return uniqueByElementId([
+    ...ownDestination,
+    ...(item.childMenus || []).flatMap(collectWorkspaceDestinations),
+  ]);
+};
+
 const organizeChinaWorkspaces = (items) => {
   const byId = new Map(items.map((entry) => [getElementId(entry), entry]));
   const output = [];
-  const addWorkspace = (
-    primary,
-    fallbackId,
-    key,
-    number,
-    extraChildren = [],
-  ) => {
-    if (!primary && extraChildren.length === 0) return;
-    const primaryIsLeaf = primary && !(primary.childMenus || []).length;
-    // Adding siblings must not turn an authorized clickable root into an
-    // accordion whose own route is unreachable. Keep that leaf, including its
-    // server id, under a separate presentation-only workspace container.
-    const workspace =
-      primaryIsLeaf && extraChildren.length > 0
-        ? createGroup(`${fallbackId}_workspace`, key, [
-            primary,
-            ...extraChildren,
-          ])
-        : primary
-          ? {
-              ...withDisplayKey(primary, key),
-              childMenus: uniqueByElementId([
-                ...(primary.childMenus || []),
-                ...extraChildren,
-              ]),
-            }
-          : createGroup(fallbackId, key, extraChildren);
-    if (!hasNavigableContent(workspace)) return;
-    workspace.menu = {
-      ...workspace.menu,
-      workspaceNumber: number,
-      workspaceSection: Number(number) <= 6 ? "clinical" : "operations",
-    };
-    output.push(workspace);
+  const addWorkspace = (elementId, key, sources, directItem = null) => {
+    const destinations = uniqueByElementId(
+      sources.flatMap(collectWorkspaceDestinations),
+    );
+    const workspace = directItem || createGroup(elementId, key, destinations);
+    if (hasNavigableContent(workspace)) output.push(workspace);
   };
 
-  const specimen =
-    byId.get("menu_storage") || byId.get("menu_specimen_management");
-  const collectionIds = new Set(["menu_order_collect", "menu_order_label"]);
-  const collection = (specimen?.childMenus || []).filter((entry) =>
-    collectionIds.has(getElementId(entry)),
-  );
-  const receiving = specimen
-    ? {
-        ...specimen,
-        childMenus: (specimen.childMenus || []).filter(
-          (entry) => !collectionIds.has(getElementId(entry)),
-        ),
-      }
-    : null;
   const administration =
     byId.get("menu_administration") ||
     byId.get("menu_admin") ||
     byId.get("menu_system_management");
-  const interfaces = (administration?.childMenus || []).filter(
-    (entry) => getElementId(entry) === "menu_analyzers",
-  );
-  const configuration = administration
-    ? {
-        ...administration,
-        childMenus: (administration.childMenus || []).filter(
-          (entry) => getElementId(entry) !== "menu_analyzers",
-        ),
-      }
-    : null;
 
+  const home = byId.get("menu_home");
   addWorkspace(
-    byId.get("menu_home"),
     "menu_home",
     CHINA_WORKSPACE_DISPLAY_KEYS.today,
-    "01",
+    [],
+    home ? withDisplayKey(home, CHINA_WORKSPACE_DISPLAY_KEYS.today) : null,
   );
-  addWorkspace(
+  addWorkspace("menu_intake_workspace", CHINA_WORKSPACE_DISPLAY_KEYS.orders, [
     byId.get("menu_sample"),
-    "menu_sample",
-    CHINA_WORKSPACE_DISPLAY_KEYS.orders,
-    "02",
-    [...collection, byId.get("menu_patient")].filter(Boolean),
-  );
-  addWorkspace(
-    receiving,
-    "menu_specimen_management",
-    CHINA_WORKSPACE_DISPLAY_KEYS.specimens,
-    "03",
-  );
-  addWorkspace(
+    byId.get("menu_patient"),
+    byId.get("menu_storage") || byId.get("menu_specimen_management"),
+  ]);
+  addWorkspace("menu_testing_workspace", CHINA_WORKSPACE_DISPLAY_KEYS.results, [
     byId.get("menu_results"),
-    "menu_results",
-    CHINA_WORKSPACE_DISPLAY_KEYS.results,
-    "04",
-    [byId.get("menu_resultvalidation")].filter(Boolean),
-  );
+  ]);
   addWorkspace(
-    byId.get("menu_quality_management"),
-    "menu_quality_management",
-    CHINA_WORKSPACE_DISPLAY_KEYS.quality,
-    "05",
-  );
-  addWorkspace(
-    byId.get("menu_reports"),
-    "menu_reports",
+    "menu_review_report_workspace",
     CHINA_WORKSPACE_DISPLAY_KEYS.reports,
-    "06",
-    [byId.get("menu_query_statistics")].filter(Boolean),
+    [byId.get("menu_resultvalidation"), byId.get("menu_reports")],
   );
+  addWorkspace("menu_quality_workspace", CHINA_WORKSPACE_DISPLAY_KEYS.quality, [
+    byId.get("menu_quality_management"),
+  ]);
   addWorkspace(
-    null,
-    "menu_interface_center",
-    CHINA_WORKSPACE_DISPLAY_KEYS.interfaces,
-    "07",
-    interfaces,
-  );
-  addWorkspace(
-    configuration,
-    "menu_system_management",
+    "menu_management_workspace",
     CHINA_WORKSPACE_DISPLAY_KEYS.configuration,
-    "08",
+    [byId.get("menu_query_statistics"), administration],
   );
+
+  output.forEach((workspace, index) => {
+    workspace.menu = {
+      ...workspace.menu,
+      workspaceNumber: String(index + 1).padStart(2, "0"),
+      workspaceSection: "core",
+    };
+  });
   return output;
 };
 
 const buildChinaMenu = (items, options) => {
   const roleSet = roleSetFromOptions(options);
+  const enabledOptionalModules = getEnabledOptionalModules(options);
   const roots = items
-    .map((item) => cloneMenu(item, MENU_PROFILES.CHINA))
+    .map((item) => cloneMenu(item, MENU_PROFILES.CHINA, enabledOptionalModules))
     .filter(Boolean);
   const byId = new Map(roots.map((item) => [getElementId(item), item]));
   const consumed = new Set();

@@ -464,9 +464,7 @@ describe("Header Component - M2b Enhancement Tests", () => {
         homeLink.querySelector(".oe-workspace-nav-number"),
       ).toHaveAttribute("aria-hidden", "true");
       expect(homeLink).toHaveAttribute("aria-current", "page");
-      expect(
-        container.querySelectorAll(".oe-workspace-nav-section").length,
-      ).toBeGreaterThan(0);
+      expect(container.querySelector(".oe-workspace-nav-section")).toBeNull();
       expect(
         container.querySelector(".oe-header-workspace__lab"),
       ).toHaveTextContent("Test Lab");
@@ -513,11 +511,13 @@ describe("Header Component - M2b Enhancement Tests", () => {
         });
         await waitFor(() => {
           expect(
-            container.querySelector("#menu_sample .cds--side-nav__submenu"),
+            container.querySelector(
+              "#menu_intake_workspace .cds--side-nav__submenu",
+            ),
           ).toBeTruthy();
         });
         const orderToggle = container.querySelector(
-          "#menu_sample .cds--side-nav__submenu",
+          "#menu_intake_workspace .cds--side-nav__submenu",
         );
         expect(orderToggle).toHaveAccessibleName(
           messages["sidenav.workspace.orders"],
@@ -943,9 +943,11 @@ describe("Header Component - M2b Enhancement Tests", () => {
       });
 
       await waitFor(() => {
-        expect(container.querySelector("#menu_sample button")).toBeTruthy();
+        expect(
+          container.querySelector("#menu_intake_workspace button"),
+        ).toBeTruthy();
       });
-      fireEvent.click(container.querySelector("#menu_sample button"));
+      fireEvent.click(container.querySelector("#menu_intake_workspace button"));
 
       expect(
         await screen.findByText(messages["sidenav.label.order.active"]),
@@ -1004,9 +1006,13 @@ describe("Header Component - M2b Enhancement Tests", () => {
       });
 
       await waitFor(() => {
-        expect(container.querySelector("#menu_reports button")).toBeTruthy();
+        expect(
+          container.querySelector("#menu_review_report_workspace button"),
+        ).toBeTruthy();
       });
-      fireEvent.click(container.querySelector("#menu_reports button"));
+      fireEvent.click(
+        container.querySelector("#menu_review_report_workspace button"),
+      );
 
       expect(
         container.querySelector("#menu_reports_export_routine_nav"),

@@ -212,6 +212,7 @@ function OEHeader({
           ? buildTaskFocusedMenu(res, {
               roles: userSessionDetails.roles,
               profile: menuProfile,
+              optionalModules: config.optionalModules,
             })
           : res,
       );
@@ -1012,7 +1013,7 @@ function OEHeader({
                   <span className="oe-product-brand__copy">
                     <strong>LIS 检验工作台</strong>
                     <small>
-                      <FormattedMessage id="header.label.version" /> {" "}
+                      <FormattedMessage id="header.label.version" />{" "}
                       {configurationProperties?.releaseNumber}
                     </small>
                   </span>
