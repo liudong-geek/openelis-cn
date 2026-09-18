@@ -91,6 +91,7 @@ import ResultSpecimenQueue, {
 import "./result-specimen-workspace.scss";
 import { hasRole, Roles } from "../../utils/Utils";
 import { resultReviewHandoffPath } from "./resultReviewHandoff";
+import TestingWorkspaceSwitcher from "../TestingWorkspaceSwitcher";
 
 /**
  * OGC-1020 (R1 of OGC-811) — unified /Results worklist.
@@ -1301,6 +1302,8 @@ const UnifiedResults: React.FC = () => {
             </Tag>
           }
         />
+
+        <TestingWorkspaceSwitcher activeView="results" />
 
         <Tile className="results-workbench__filters">
           <div className="results-workbench__section-heading">

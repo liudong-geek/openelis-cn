@@ -678,6 +678,27 @@ const compactManagementDestinations = (destinations) => {
 };
 
 const compactTestingDestinations = (destinations) => {
+  const resultEntry = destinations.find(
+    (entry) =>
+      getElementId(entry) === "menu_results_unified" ||
+      /^\/Results(?:[?#]|$)/i.test(getActionURL(entry)),
+  );
+  if (resultEntry) {
+    const workspaceEntry = withDisplayKey(resultEntry, "banner.menu.results");
+    let inserted = false;
+    return destinations.flatMap((entry) => {
+      const actionURL = getActionURL(entry);
+      const isDailyWorkspaceEntry =
+        entry === resultEntry ||
+        /^\/ReferredOutTests(?:[?#]|$)/i.test(actionURL) ||
+        WORKPLAN_PATH_PATTERN.test(actionURL);
+      if (!isDailyWorkspaceEntry) return [entry];
+      if (inserted) return [];
+      inserted = true;
+      return [workspaceEntry];
+    });
+  }
+
   const workplanEntries = destinations.filter((entry) =>
     WORKPLAN_PATH_PATTERN.test(getActionURL(entry)),
   );

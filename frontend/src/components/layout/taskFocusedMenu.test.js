@@ -353,7 +353,7 @@ describe("taskFocusedMenu", () => {
     expect(ids).toHaveLength(new Set(ids).size);
   });
 
-  test("keeps one workplan destination and moves its four views into the page", () => {
+  test("keeps one testing-workspace destination and moves daily views into the page", () => {
     const result = buildTaskFocusedMenu(
       [
         item("menu_results", "", [
@@ -373,15 +373,15 @@ describe("taskFocusedMenu", () => {
 
     expect(testing.childMenus.map((entry) => entry.menu.elementId)).toEqual([
       "menu_results_unified",
-      "menu_results_referred",
-      "menu_workplan_test",
     ]);
     expect(
-      findById(testing.childMenus, "menu_workplan_test").menu,
+      findById(testing.childMenus, "menu_results_unified").menu,
     ).toMatchObject({
-      displayKey: "banner.menu.workplan",
-      actionURL: "/WorkPlanByTest?type=test",
+      displayKey: "banner.menu.results",
+      actionURL: "/Results",
     });
+    expect(findById(testing.childMenus, "menu_results_referred")).toBeNull();
+    expect(findById(testing.childMenus, "menu_workplan_test")).toBeNull();
     expect(findById(testing.childMenus, "menu_workplan_panel")).toBeNull();
     expect(findById(testing.childMenus, "menu_workplan_bench")).toBeNull();
     expect(findById(testing.childMenus, "menu_workplan_priority")).toBeNull();
@@ -649,7 +649,8 @@ describe("taskFocusedMenu", () => {
       buildTaskFocusedMenu(source, { roles: [ROLE_NAMES.RESULTS] }),
     );
 
-    expect(chinaIds).toContain("menu_workplan_test");
+    expect(chinaIds).not.toContain("menu_workplan_test");
+    expect(chinaIds).toContain("menu_results_unified");
     expect(chinaIds).not.toEqual(
       expect.arrayContaining([
         "menu_pathology",

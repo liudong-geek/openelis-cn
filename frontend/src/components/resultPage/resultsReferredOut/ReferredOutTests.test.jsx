@@ -4,6 +4,7 @@ import { waitFor } from "@testing-library/dom";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
+import { MemoryRouter } from "react-router-dom";
 import zhMessages from "../../../languages/zh_CN.json";
 import ReferredOutTests from "./ReferredOutTests";
 import { getFromOpenElisServer } from "../../utils/Utils";
@@ -68,9 +69,11 @@ const makeReferral = (index) => ({
 
 const renderPage = () =>
   render(
-    <IntlProvider locale="zh-CN" messages={zhMessages}>
-      <ReferredOutTests />
-    </IntlProvider>,
+    <MemoryRouter initialEntries={["/ReferredOutTests"]}>
+      <IntlProvider locale="zh-CN" messages={zhMessages}>
+        <ReferredOutTests />
+      </IntlProvider>
+    </MemoryRouter>,
   );
 
 const configureServer = (referralResponse) => {
