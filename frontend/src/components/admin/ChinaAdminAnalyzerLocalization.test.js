@@ -108,7 +108,7 @@ describe("系统管理与分析仪中文资源", () => {
   });
 
   test("核心业务名称符合中国实验室使用习惯", () => {
-    expect(zh["admin.dashboard.title"]).toBe("系统管理");
+    expect(zh["admin.dashboard.title"]).toBe("管理中心");
     expect(zh["admin.labelPresets.title"]).toBe("标签模板");
     expect(zh["admin.labelPresets.scope.order"]).toBe("申请单");
     expect(zh["admin.labelPresets.scope.sample"]).toBe("标本");

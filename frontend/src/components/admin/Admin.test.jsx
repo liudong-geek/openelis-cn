@@ -50,7 +50,7 @@ describe("Admin", () => {
         screen.getByText(messages["organization.main.title"]),
       ).toBeInTheDocument();
       expect(
-        screen.getByText(messages["master.lists.page.test.management"]),
+        screen.getByText(messages["workspace.masterData.title"]),
       ).toBeInTheDocument();
       expect(screen.getAllByTestId("admin-dashboard-domain")).toHaveLength(6);
       expect(
@@ -58,7 +58,7 @@ describe("Admin", () => {
       ).toHaveLength(6);
       expect(
         container.querySelectorAll(".admin-dashboard__domain-links a"),
-      ).toHaveLength(13);
+      ).toHaveLength(11);
       expect(document.querySelector(".cds--side-nav")).not.toBeInTheDocument();
     },
   );

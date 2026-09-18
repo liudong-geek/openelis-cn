@@ -13,11 +13,7 @@ export const ADMIN_NAVIGATION_DOMAINS = [
     titleId: "admin.dashboard.domain.catalog",
     descriptionId: "admin.dashboard.domain.catalog.description",
     icon: Catalog,
-    links: [
-      ["master.lists.page.test.management", "testManagementConfigMenu"],
-      ["sidenav.label.admin.testmgt.reflex", "reflex"],
-      ["dictionary.label.modify", "DictionaryMenu"],
-    ],
+    links: [["workspace.masterData.title", "testManagementConfigMenu"]],
     routeRoots: [
       "testManagementConfigMenu",
       "reflex",

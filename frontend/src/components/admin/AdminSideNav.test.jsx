@@ -53,10 +53,15 @@ describe("AdminSideNav — Test Catalog Management entry", () => {
     ).toHaveAttribute("aria-expanded", "true");
     expect(
       container.querySelectorAll('[data-cy^="admin-domain-"]'),
-    ).toHaveLength(3);
+    ).toHaveLength(1);
+    expect(
+      container.querySelector(
+        '[data-cy="admin-domain-testManagementConfigMenu"]',
+      ),
+    ).toHaveAttribute("href", "/MasterListsPage/testManagementConfigMenu");
     expect(
       container.querySelector('[data-cy="admin-domain-reflex"]'),
-    ).toHaveAttribute("aria-current", "page");
+    ).toBeNull();
     expect(
       screen.getByTestId("admin-back-to-management-center"),
     ).toHaveAttribute("href", "/MasterListsPage");
