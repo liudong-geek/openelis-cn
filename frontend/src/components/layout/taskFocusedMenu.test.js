@@ -91,8 +91,10 @@ const chinaMenuFixture = () => [
       "/Report?type=patient&report=haitiNonConformityByDate",
     ),
   ]),
-  item("menu_nonconformity", "", [
+  item("menu_nonconformity", "/NceDashboard", [
+    item("menu_non_conforming_report", "/ReportNonConformingEvent"),
     item("menu_non_conforming_view", "/ViewNonConformingEvent"),
+    item("menu_non_conforming_corrective", "/NCECorrectiveAction"),
   ]),
   item("menu_eqa_tests", "", [item("menu_eqa_orders", "/EQAOrders")]),
   item("menu_alerts_standalone", "/Alerts"),
@@ -405,25 +407,23 @@ describe("taskFocusedMenu", () => {
     expect(findById(global, "menu_aliquot").menu.actionURL).toBe("/Aliquot");
   });
 
-  test("moves the complete analyzer QC subtree to quality management while keeping analyzer configuration in the interface center", () => {
+  test("keeps daily quality workspaces compact and moves QC setup into the QC page", () => {
     const result = buildTaskFocusedMenu(chinaMenuFixture(), {
-      roles: [ROLE_NAMES.ANALYSER_IMPORT, ROLE_NAMES.GLOBAL_ADMIN],
+      roles: [ROLE_NAMES.RECEPTION, ROLE_NAMES.LAB_SUPERVISOR],
     });
     const qualityRoot = findById(result, "menu_quality_workspace");
-    const systemRoot = findById(result, "menu_management_workspace");
-    const analyzerRoot = findById(systemRoot.childMenus, "menu_analyzers");
 
-    expect(analyzerRoot.childMenus).toEqual([]);
-    expect(allIds(qualityRoot.childMenus)).toEqual([
-      "menu_analyzers_qc_dashboard",
-      "menu_analyzers_qc_alerts",
-      "menu_analyzers_qc_corrective_actions",
-      "menu_analyzers_qc_control_lots",
-      "menu_analyzers_qc_rule_config",
-    ]);
-    expect(
-      findById(result, "menu_analyzers_qc_control_lots").menu.actionURL,
-    ).toBe("/analyzers/qc/control-lots");
+    expect(qualityRoot.childMenus.map((entry) => entry.menu.elementId)).toEqual(
+      [
+        "menu_nonconformity",
+        "menu_alerts_standalone",
+        "menu_analyzers_qc_dashboard",
+      ],
+    );
+    expect(findById(result, "menu_non_conforming_view")).toBeNull();
+    expect(findById(result, "menu_non_conforming_corrective")).toBeNull();
+    expect(findById(result, "menu_analyzers_qc_control_lots")).toBeNull();
+    expect(findById(result, "menu_analyzers_qc_rule_config")).toBeNull();
 
     const ids = allIds(result);
     expect(
@@ -440,12 +440,12 @@ describe("taskFocusedMenu", () => {
     },
     {
       role: ROLE_NAMES.ANALYSER_IMPORT,
-      hasQc: true,
+      hasQc: false,
       hasAnalyzerConfiguration: true,
     },
     {
       role: ROLE_NAMES.GLOBAL_ADMIN,
-      hasQc: true,
+      hasQc: false,
       hasAnalyzerConfiguration: true,
     },
     {

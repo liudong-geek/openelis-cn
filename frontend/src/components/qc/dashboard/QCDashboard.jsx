@@ -22,6 +22,7 @@ import {
 } from "@carbon/react";
 import { Renew } from "@carbon/icons-react";
 import { useIntl } from "react-intl";
+import { useHistory } from "react-router-dom";
 import { getFromOpenElisServer } from "../../utils/Utils";
 import QCSummaryTiles from "./QCSummaryTiles";
 import InstrumentsTab from "./InstrumentsTab";
@@ -66,6 +67,7 @@ const normalizeInstruments = (response) => {
 
 const QCDashboard = () => {
   const intl = useIntl();
+  const history = useHistory();
   const intlRef = useRef(intl);
   intlRef.current = intl;
 
@@ -178,6 +180,20 @@ const QCDashboard = () => {
           />
         </div>
         <div className="qc-dashboard-header-actions">
+          <Button
+            kind="tertiary"
+            size="sm"
+            onClick={() => history.push("/analyzers/qc/control-lots")}
+          >
+            {intl.formatMessage({ id: "qc.controlLots.title" })}
+          </Button>
+          <Button
+            kind="tertiary"
+            size="sm"
+            onClick={() => history.push("/analyzers/qc/rule-config")}
+          >
+            {intl.formatMessage({ id: "qc.ruleConfig.title" })}
+          </Button>
           {lastUpdated && (
             <span
               className="qc-dashboard-last-updated"

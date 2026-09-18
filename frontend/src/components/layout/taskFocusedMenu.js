@@ -68,6 +68,17 @@ const ANALYTICS_CHILD_IDS = new Set([
 
 const ANALYZER_QC_ELEMENT_ID = "menu_analyzers_qc";
 
+const QUALITY_NCE_SECONDARY_PATHS = new Set([
+  "/ReportNonConformingEvent",
+  "/ViewNonConformingEvent",
+  "/NCECorrectiveAction",
+]);
+
+const QUALITY_QC_CONFIGURATION_PATHS = new Set([
+  "/analyzers/qc/control-lots",
+  "/analyzers/qc/rule-config",
+]);
+
 const CHINA_TOP_LEVEL_DISPLAY_KEYS = Object.freeze({
   workspace: "banner.menu.home",
   orders: "banner.menu.sample",
@@ -449,11 +460,7 @@ const allowedQualityRoles = (item) => {
       ROLE_NAMES.LAB_SUPERVISOR,
     ];
   }
-  return [
-    ROLE_NAMES.ANALYSER_IMPORT,
-    ROLE_NAMES.LAB_SUPERVISOR,
-    ROLE_NAMES.GLOBAL_ADMIN,
-  ];
+  return [ROLE_NAMES.LAB_SUPERVISOR];
 };
 
 const allowedSystemRoles = (item) => {
@@ -581,6 +588,42 @@ const collectWorkspaceDestinations = (item) => {
   ]);
 };
 
+const compactQualityDestinations = (destinations) => {
+  const nceDashboard = destinations.find(
+    (entry) => getActionURL(entry) === "/NceDashboard",
+  );
+  const qcDashboard =
+    destinations.find(
+      (entry) => getElementId(entry) === "menu_analyzers_qc_dashboard",
+    ) ||
+    destinations.find((entry) => getActionURL(entry) === "/analyzers/qc/db");
+
+  return destinations.filter((entry) => {
+    const actionURL = getActionURL(entry);
+    if (nceDashboard && QUALITY_NCE_SECONDARY_PATHS.has(actionURL)) {
+      return false;
+    }
+    if (qcDashboard && QUALITY_QC_CONFIGURATION_PATHS.has(actionURL)) {
+      return false;
+    }
+    if (
+      qcDashboard &&
+      entry !== qcDashboard &&
+      getElementId(entry).startsWith("menu_analyzers_qc_")
+    ) {
+      return false;
+    }
+    if (
+      qcDashboard &&
+      entry !== qcDashboard &&
+      actionURL === getActionURL(qcDashboard)
+    ) {
+      return false;
+    }
+    return true;
+  });
+};
+
 const organizeChinaWorkspaces = (items) => {
   const byId = new Map(items.map((entry) => [getElementId(entry), entry]));
   const output = [];
@@ -612,6 +655,9 @@ const organizeChinaWorkspaces = (items) => {
       if (reviewEntry && reportEntry) {
         destinations = [reviewEntry, reportEntry];
       }
+    }
+    if (elementId === "menu_quality_workspace") {
+      destinations = compactQualityDestinations(destinations);
     }
     const workspace = directItem || createGroup(elementId, key, destinations);
     if (hasNavigableContent(workspace)) output.push(workspace);

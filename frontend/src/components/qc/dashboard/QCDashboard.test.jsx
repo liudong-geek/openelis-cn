@@ -59,6 +59,19 @@ describe("QCDashboard", () => {
     expect(screen.getByRole("button", { name: "刷新" })).toBeDisabled();
   });
 
+  test("从工作台页头进入质控品和规则配置", async () => {
+    getFromOpenElisServer.mockImplementation(() => undefined);
+    const user = userEvent.setup();
+    const { history } = renderDashboard();
+
+    await user.click(screen.getByRole("button", { name: "质控品批次" }));
+    expect(history.location.pathname).toBe("/analyzers/qc/control-lots");
+
+    history.push("/analyzers/qc/db");
+    await user.click(screen.getByRole("button", { name: "质控规则配置" }));
+    expect(history.location.pathname).toBe("/analyzers/qc/rule-config");
+  });
+
   test("无分析仪时显示业务指引，不显示无意义的空表和分页", async () => {
     respondWith({
       summary: {
