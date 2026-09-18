@@ -134,6 +134,20 @@ describe("AnalyzersList", () => {
     });
   });
 
+  test("keeps interface errors and analyzer types reachable from the workspace header", async () => {
+    getAnalyzers.mockImplementation((filters, callback) => {
+      callback({ analyzers: [] });
+    });
+    const user = userEvent.setup();
+    renderWithIntl(<AnalyzersList />);
+
+    await user.click(screen.getByRole("button", { name: "Error Dashboard" }));
+    expect(mockHistory.push).toHaveBeenCalledWith("/analyzers/errors");
+
+    await user.click(screen.getByRole("button", { name: "Analyzer Types" }));
+    expect(mockHistory.push).toHaveBeenCalledWith("/analyzers/types");
+  });
+
   /**
    * Test: Renders AnalyzersList with data displays table
    *

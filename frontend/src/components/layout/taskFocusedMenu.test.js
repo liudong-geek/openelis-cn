@@ -82,7 +82,8 @@ const chinaMenuFixture = () => [
       item("menu_reports_whonet", "/Report?report=ExportWHONETReportByDate"),
     ]),
     item("menu_reports_tatreport", "/TATReport"),
-    item("menu_reports_audittrail", "/AuditTrailReport"),
+    item("menu_reports_audittrail", "/AuditTrailReport?type=system"),
+    item("menu_reports_order_audit", "/AuditTrailReport?type=order"),
     item("menu_reports_study", "", [
       item("menu_reports_arv", "/Report?report=patientARV1"),
     ]),
@@ -430,6 +431,31 @@ describe("taskFocusedMenu", () => {
       ids.filter((elementId) => elementId === "menu_analyzers_qc"),
     ).toHaveLength(0);
     expect(ids).toHaveLength(new Set(ids).size);
+  });
+
+  test("keeps management navigation at workspace level and moves analyzer tools into the analyzer page", () => {
+    const result = buildTaskFocusedMenu(chinaMenuFixture(), {
+      roles: [
+        ROLE_NAMES.REPORTS,
+        ROLE_NAMES.AUDIT_TRAIL,
+        ROLE_NAMES.GLOBAL_ADMIN,
+        ROLE_NAMES.ANALYSER_IMPORT,
+      ],
+    });
+    const management = findById(result, "menu_management_workspace");
+    const urls = management.childMenus.map((entry) => entry.menu.actionURL);
+
+    expect(urls).toEqual([
+      "/TATReport",
+      "/AuditTrailReport?type=system",
+      "/MasterListsPage",
+      "/analyzers",
+    ]);
+    expect(
+      findById(management.childMenus, "menu_reports_order_audit"),
+    ).toBeNull();
+    expect(findById(management.childMenus, "menu_analyzers_errors")).toBeNull();
+    expect(findById(management.childMenus, "menu_analyzers_types")).toBeNull();
   });
 
   test.each([
@@ -807,7 +833,7 @@ describe("taskFocusedMenu", () => {
     },
   );
 
-  test("treats menu_admin and menu_administration as one system-management root", () => {
+  test("treats admin aliases as one configuration workspace without repeating its individual forms", () => {
     const result = buildTaskFocusedMenu(
       [
         item("menu_home", "/Dashboard"),
@@ -824,9 +850,7 @@ describe("taskFocusedMenu", () => {
     expect(findById(result, "menu_admin")).toBeNull();
     expect(findById(result, "menu_administration")).not.toBeNull();
     expect(result.at(-1).menu.elementId).toBe("menu_management_workspace");
-    expect(allIds(result.at(-1).childMenus)).toEqual(
-      expect.arrayContaining(["menu_admin_users", "menu_administration_tests"]),
-    );
+    expect(allIds(result.at(-1).childMenus)).toEqual(["menu_administration"]);
   });
 
   test("falls back to the server-authorized tree when no known session role is available", () => {

@@ -29,6 +29,24 @@
   min-width: 0; /* Allow title to shrink if needed */
 }
 
+.analyzers-list-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+@media (max-width: 671px) {
+  .analyzers-list-header {
+    flex-direction: column;
+  }
+
+  .analyzers-list-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
 .analyzers-list-stats {
   margin-bottom: 1rem;
 }

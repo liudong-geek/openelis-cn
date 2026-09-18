@@ -309,14 +309,28 @@ const AnalyzersList = () => {
             subtitle={intl.formatMessage({ id: "analyzer.list.subtitle" })}
           />
         </div>
-        <Button
-          kind="primary"
-          renderIcon={Add}
-          data-testid="add-analyzer-button"
-          onClick={() => history.push("/analyzers/new")}
-        >
-          {intl.formatMessage({ id: "analyzer.action.add" })}
-        </Button>
+        <div className="analyzers-list-header-actions">
+          <Button
+            kind="tertiary"
+            onClick={() => history.push("/analyzers/errors")}
+          >
+            {intl.formatMessage({ id: "analyzer.navigation.errorDashboard" })}
+          </Button>
+          <Button
+            kind="tertiary"
+            onClick={() => history.push("/analyzers/types")}
+          >
+            {intl.formatMessage({ id: "analyzer.navigation.analyzerTypes" })}
+          </Button>
+          <Button
+            kind="primary"
+            renderIcon={Add}
+            data-testid="add-analyzer-button"
+            onClick={() => history.push("/analyzers/new")}
+          >
+            {intl.formatMessage({ id: "analyzer.action.add" })}
+          </Button>
+        </div>
       </div>
 
       <Grid className="analyzers-list-stats" data-testid="analyzers-list-stats">

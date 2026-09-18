@@ -79,6 +79,12 @@ const QUALITY_QC_CONFIGURATION_PATHS = new Set([
   "/analyzers/qc/rule-config",
 ]);
 
+const MANAGEMENT_ANALYZER_SECONDARY_PATHS = new Set([
+  "/analyzers/list",
+  "/analyzers/errors",
+  "/analyzers/types",
+]);
+
 const CHINA_TOP_LEVEL_DISPLAY_KEYS = Object.freeze({
   workspace: "banner.menu.home",
   orders: "banner.menu.sample",
@@ -624,6 +630,50 @@ const compactQualityDestinations = (destinations) => {
   });
 };
 
+const compactManagementDestinations = (destinations) => {
+  const systemAudit = destinations.find(
+    (entry) => getActionURL(entry) === "/AuditTrailReport?type=system",
+  );
+  const analyzerWorkspace =
+    destinations.find((entry) => getElementId(entry) === "menu_analyzers") ||
+    destinations.find((entry) => getActionURL(entry) === "/analyzers");
+  const configurationWorkspace = destinations.find(
+    (entry) => getActionURL(entry) === "/MasterListsPage",
+  );
+
+  return destinations.filter((entry) => {
+    const actionURL = getActionURL(entry);
+    if (
+      systemAudit &&
+      entry !== systemAudit &&
+      /^\/AuditTrailReport(?:[?#]|$)/i.test(actionURL)
+    ) {
+      return false;
+    }
+    if (
+      analyzerWorkspace &&
+      MANAGEMENT_ANALYZER_SECONDARY_PATHS.has(actionURL)
+    ) {
+      return false;
+    }
+    if (
+      configurationWorkspace &&
+      entry !== configurationWorkspace &&
+      /^menu_(?:admin|administration)_/i.test(getElementId(entry))
+    ) {
+      return false;
+    }
+    if (
+      analyzerWorkspace &&
+      entry !== analyzerWorkspace &&
+      actionURL === getActionURL(analyzerWorkspace)
+    ) {
+      return false;
+    }
+    return true;
+  });
+};
+
 const organizeChinaWorkspaces = (items) => {
   const byId = new Map(items.map((entry) => [getElementId(entry), entry]));
   const output = [];
@@ -658,6 +708,9 @@ const organizeChinaWorkspaces = (items) => {
     }
     if (elementId === "menu_quality_workspace") {
       destinations = compactQualityDestinations(destinations);
+    }
+    if (elementId === "menu_management_workspace") {
+      destinations = compactManagementDestinations(destinations);
     }
     const workspace = directItem || createGroup(elementId, key, destinations);
     if (hasNavigableContent(workspace)) output.push(workspace);
