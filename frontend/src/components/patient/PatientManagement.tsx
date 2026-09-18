@@ -59,6 +59,7 @@ function PatientManagement() {
     });
   };
   const goToNewPatient = () => openFromList("/PatientManagement/new");
+  const goToPatientMerge = () => openFromList("/PatientMerge");
   const goToEditPatient = (selected: PatientRecord) =>
     openFromList(`/PatientManagement/${selected.patientPK}`);
   const goToPatientResults = (selected: PatientRecord) =>
@@ -89,9 +90,14 @@ function PatientManagement() {
         }
         actions={
           isSearchMode ? (
-            <Button renderIcon={Add} onClick={goToNewPatient}>
-              <FormattedMessage id="new.patient.label" />
-            </Button>
+            <>
+              <Button kind="tertiary" onClick={goToPatientMerge}>
+                <FormattedMessage id="banner.menu.patient.merge" />
+              </Button>
+              <Button renderIcon={Add} onClick={goToNewPatient}>
+                <FormattedMessage id="new.patient.label" />
+              </Button>
+            </>
           ) : (
             <Button kind="tertiary" renderIcon={ArrowLeft} onClick={goToSearch}>
               <FormattedMessage id="patient.management.backToList" />

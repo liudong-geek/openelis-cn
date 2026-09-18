@@ -47,6 +47,18 @@ const SPECIMEN_CHILD_IDS = new Set([
 
 const RESULT_CHILD_IDS = new Set(["menu_generic_sample_results"]);
 
+// Once the request workbench is authorized, these destinations are reached
+// from its header or from the request's current workflow step. Keeping the
+// same destinations in the side navigation makes one business task look like
+// several unrelated modules.
+const INTAKE_WORKBENCH_REDUNDANT_IDS = new Set([
+  "menu_order_label",
+  "menu_order_qa",
+  "menu_sample_print_barcode",
+  "menu_patient_add_or_edit",
+  "menu_patient_merge",
+]);
+
 const ANALYTICS_CHILD_IDS = new Set([
   "menu_reports_tatreport",
   "menu_reports_statistics",
@@ -98,7 +110,7 @@ const CHINA_ITEM_DISPLAY_KEYS = Object.freeze({
   menu_order_enter: "sidenav.label.order.new",
   menu_sample_edit: "sidenav.label.editorder",
   menu_sample_print_barcode: "workspace.barcode.preprint",
-  menu_order_collect: "sidenav.label.order.collect",
+  menu_order_collect: "intake.workspace.specimenFlow",
   menu_order_label: "sidenav.label.order.label",
   menu_order_qa: "sidenav.label.order.qa",
   menu_patient_add_or_edit: "banner.menu.patient.addOrEdit",
@@ -566,9 +578,19 @@ const organizeChinaWorkspaces = (items) => {
   const byId = new Map(items.map((entry) => [getElementId(entry), entry]));
   const output = [];
   const addWorkspace = (elementId, key, sources, directItem = null) => {
-    const destinations = uniqueByElementId(
+    let destinations = uniqueByElementId(
       sources.flatMap(collectWorkspaceDestinations),
     );
+    if (
+      elementId === "menu_intake_workspace" &&
+      destinations.some(
+        (entry) => getElementId(entry) === "menu_order_dashboard",
+      )
+    ) {
+      destinations = destinations.filter(
+        (entry) => !INTAKE_WORKBENCH_REDUNDANT_IDS.has(getElementId(entry)),
+      );
+    }
     const workspace = directItem || createGroup(elementId, key, destinations);
     if (hasNavigableContent(workspace)) output.push(workspace);
   };

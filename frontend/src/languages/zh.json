@@ -186,6 +186,7 @@
   "intake.workspace.patient": "患者档案",
   "intake.workspace.specimen": "标本查询",
   "intake.workspace.barcode": "条码预印",
+  "intake.workspace.specimenFlow": "标本处理",
   "intake.workspace.query.title": "查询申请",
   "intake.workspace.query.helper": "先搜索申请，再按标本准备状态、优先级或日期缩小范围。",
   "intake.workspace.query.reset": "重置筛选",

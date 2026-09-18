@@ -186,6 +186,7 @@
   "intake.workspace.patient": "Patient records",
   "intake.workspace.specimen": "Specimen lookup",
   "intake.workspace.barcode": "Preprint labels",
+  "intake.workspace.specimenFlow": "Specimen processing",
   "intake.workspace.query.title": "Find requests",
   "intake.workspace.query.helper": "Search first, then narrow the list by preparation status, priority, or date.",
   "intake.workspace.query.reset": "Reset filters",

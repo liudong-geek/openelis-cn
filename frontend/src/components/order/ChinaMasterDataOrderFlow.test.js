@@ -194,6 +194,13 @@ describe("China order entry uses governed master data", () => {
     expect(source).not.toContain('id="patientFirstName"');
   });
 
+  test("the patient list keeps duplicate-record merging available outside the main menu", () => {
+    const source = read("src/components/patient/PatientManagement.tsx");
+
+    expect(source).toContain('openFromList("/PatientMerge")');
+    expect(source).toContain('id="banner.menu.patient.merge"');
+  });
+
   test("routine order entry presents one numbered required path before optional fields", () => {
     const orderEntry = read("src/components/order/steps/OrderEnter.jsx");
     const patient = read(

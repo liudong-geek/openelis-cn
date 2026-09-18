@@ -289,6 +289,13 @@ describe("taskFocusedMenu", () => {
     expect(findById(result, "menu_order_collect").menu.actionURL).toBe(
       "/order/collect",
     );
+    expect(findById(result, "menu_order_collect").menu.displayKey).toBe(
+      "intake.workspace.specimenFlow",
+    );
+    expect(findById(result, "menu_order_label")).toBeNull();
+    expect(findById(result, "menu_order_qa")).toBeNull();
+    expect(findById(result, "menu_patient_add_or_edit")).toBeNull();
+    expect(findById(result, "menu_patient_merge")).toBeNull();
     expect(findById(result, "menu_patienthistory")).toBeNull();
     expect(findById(result, "menu_results_unified").menu.actionURL).toBe(
       "/Results",
@@ -298,7 +305,7 @@ describe("taskFocusedMenu", () => {
     );
   });
 
-  test("keeps order, patient and specimen destinations in one flat intake workspace", () => {
+  test("keeps one compact task list when the intake workbench is available", () => {
     const result = buildTaskFocusedMenu(chinaMenuFixture(), {
       roles: [ROLE_NAMES.RECEPTION, ROLE_NAMES.RESULTS],
       optionalModules: { storage: true, shipment: true },
@@ -309,11 +316,16 @@ describe("taskFocusedMenu", () => {
       expect.arrayContaining([
         "menu_order_dashboard",
         "menu_order_collect",
+        "menu_sample_shipment",
+        "menu_storage_management",
+      ]),
+    );
+    expect(allIds(intakeRoot.childMenus)).not.toEqual(
+      expect.arrayContaining([
         "menu_order_label",
         "menu_order_qa",
         "menu_patient_add_or_edit",
-        "menu_sample_shipment",
-        "menu_storage_management",
+        "menu_patient_merge",
       ]),
     );
     expect(
@@ -620,10 +632,10 @@ describe("taskFocusedMenu", () => {
         "menu_home",
         "menu_intake_workspace",
         "menu_order_dashboard",
-        "menu_patient_add_or_edit",
         "menu_quality_workspace",
       ],
       hidden: [
+        "menu_patient_add_or_edit",
         "menu_results",
         "menu_resultvalidation",
         "menu_reports",
