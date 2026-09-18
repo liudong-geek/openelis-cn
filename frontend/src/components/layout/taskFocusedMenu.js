@@ -157,6 +157,7 @@ const CHINA_ITEM_ACTION_URLS = Object.freeze({
   menu_accession_validation_range: "/validation?type=range",
   menu_resultvalidation_date: "/validation?type=testDate",
   menu_reports_routine: "/RoutineReports",
+  menu_analyzers_qc_dashboard: "/analyzers/qc/db",
 });
 
 /**
@@ -456,18 +457,10 @@ const allowedSpecimenRoles = (item) => {
 const allowedQualityRoles = (item) => {
   const elementId = getElementId(item);
   if (/non_?conform/i.test(elementId)) {
-    return [
-      ROLE_NAMES.RECEPTION,
-      ROLE_NAMES.VALIDATION,
-      ROLE_NAMES.LAB_SUPERVISOR,
-    ];
+    return [ROLE_NAMES.RECEPTION, ROLE_NAMES.VALIDATION];
   }
   if (/^(?:menu_)?(?:eqa|alerts?)/i.test(elementId)) {
-    return [
-      ROLE_NAMES.RECEPTION,
-      ROLE_NAMES.RESULTS,
-      ROLE_NAMES.LAB_SUPERVISOR,
-    ];
+    return [ROLE_NAMES.RECEPTION, ROLE_NAMES.RESULTS];
   }
   return [ROLE_NAMES.LAB_SUPERVISOR];
 };
@@ -607,7 +600,7 @@ const compactQualityDestinations = (destinations) => {
     ) ||
     destinations.find((entry) => getActionURL(entry) === "/analyzers/qc/db");
 
-  return destinations.filter((entry) => {
+  const compacted = destinations.filter((entry) => {
     const actionURL = getActionURL(entry);
     if (nceDashboard && QUALITY_NCE_SECONDARY_PATHS.has(actionURL)) {
       return false;
@@ -631,6 +624,16 @@ const compactQualityDestinations = (destinations) => {
     }
     return true;
   });
+
+  const qualityEntry =
+    compacted.find((entry) => getActionURL(entry) === "/NceDashboard") ||
+    compacted.find((entry) => getActionURL(entry) === "/Alerts") ||
+    compacted.find(
+      (entry) => getElementId(entry) === "menu_analyzers_qc_dashboard",
+    );
+  return qualityEntry
+    ? [withDisplayKey(qualityEntry, CHINA_WORKSPACE_DISPLAY_KEYS.quality)]
+    : compacted;
 };
 
 const compactManagementDestinations = (destinations) => {

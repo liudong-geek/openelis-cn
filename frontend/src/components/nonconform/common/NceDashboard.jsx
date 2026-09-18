@@ -1153,6 +1153,30 @@ export const NceDashboard = () => {
         pageSize={pageSize}
         pageSizes={[10, 25, 50, 100]}
         page={currentPage}
+        forwardText={intl.formatMessage({ id: "pagination.forward" })}
+        backwardText={intl.formatMessage({ id: "pagination.backward" })}
+        itemRangeText={(min, max, total) =>
+          intl.formatMessage(
+            { id: "pagination.item-range" },
+            { min, max, total },
+          )
+        }
+        itemsPerPageText={intl.formatMessage({
+          id: "pagination.items-per-page",
+        })}
+        itemText={(min, max) =>
+          intl.formatMessage({ id: "pagination.item" }, { min, max })
+        }
+        pageNumberText={intl.formatMessage({ id: "pagination.page-number" })}
+        pageRangeText={(_current, total) =>
+          intl.formatMessage({ id: "pagination.page-range" }, { total })
+        }
+        pageText={(page, pagesUnknown) =>
+          intl.formatMessage(
+            { id: "pagination.page" },
+            { page: pagesUnknown ? "" : page },
+          )
+        }
         onChange={({ page, pageSize: newPageSize }) => {
           setCurrentPage(page);
           setPageSize(newPageSize);

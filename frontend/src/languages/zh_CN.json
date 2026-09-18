@@ -410,6 +410,7 @@
   "alerts.table.severity": "预警级别",
   "alerts.table.status": "处理状态",
   "alerts.table.type": "预警类型",
+  "alerts.type.critical_result": "危急值结果",
   "alerts.type.critical_unacknowledged": "紧急预警未确认",
   "alerts.type.equipment_failure": "设备故障",
   "alerts.type.eqa_deadline": "室间质评截止提醒",

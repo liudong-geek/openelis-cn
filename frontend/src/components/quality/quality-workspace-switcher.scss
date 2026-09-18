@@ -1,0 +1,14 @@
+.quality-workspace-switcher {
+  max-width: 42rem;
+  margin: 0 0 1.25rem;
+}
+
+.quality-workspace-switcher .cds--content-switcher-btn {
+  min-height: 2.75rem;
+}
+
+@media (max-width: 671px) {
+  .quality-workspace-switcher {
+    max-width: none;
+  }
+}

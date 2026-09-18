@@ -3,6 +3,7 @@ import { NCECorrectiveAction } from "./common/NCECorrectiveAction";
 import { ReportNonConformingEvent } from "./common/ReportNonConformingEvent";
 import { ViewNonConformingEvent } from "./common/ViewNonConforming";
 import { NceDashboard } from "./common/NceDashboard";
+import QualityWorkspaceSwitcher from "../quality/QualityWorkspaceSwitcher";
 
 // Each NCE sub-page gets its own page-title breadcrumb in addition to "Home".
 // Use the existing menu translation keys so labels stay consistent with the
@@ -37,6 +38,7 @@ const NonConformIndex = ({ form }) => {
       <br />
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
       <div className="orderLegendBody">
+        <QualityWorkspaceSwitcher activeView="nonconformity" />
         {form == "NceDashboard" && <NceDashboard />}
         {form == "ReportNonConformingEvent" && <ReportNonConformingEvent />}
         {form == "ViewNonConformingEvent" && <ViewNonConformingEvent />}

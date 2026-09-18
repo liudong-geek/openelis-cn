@@ -465,12 +465,13 @@ describe("taskFocusedMenu", () => {
     const qualityRoot = findById(result, "menu_quality_workspace");
 
     expect(qualityRoot.childMenus.map((entry) => entry.menu.elementId)).toEqual(
-      [
-        "menu_nonconformity",
-        "menu_alerts_standalone",
-        "menu_analyzers_qc_dashboard",
-      ],
+      ["menu_nonconformity"],
     );
+    expect(qualityRoot.childMenus[0].menu).toMatchObject({
+      actionURL: "/NceDashboard",
+      displayKey: "sidenav.workspace.quality",
+    });
+    expect(findById(result, "menu_alerts_standalone")).toBeNull();
     expect(findById(result, "menu_non_conforming_view")).toBeNull();
     expect(findById(result, "menu_non_conforming_corrective")).toBeNull();
     expect(findById(result, "menu_analyzers_qc_control_lots")).toBeNull();
@@ -481,6 +482,20 @@ describe("taskFocusedMenu", () => {
       ids.filter((elementId) => elementId === "menu_analyzers_qc"),
     ).toHaveLength(0);
     expect(ids).toHaveLength(new Set(ids).size);
+  });
+
+  test("uses the registered QC dashboard route for a supervisor-only quality workspace", () => {
+    const result = buildTaskFocusedMenu(chinaMenuFixture(), {
+      roles: [ROLE_NAMES.LAB_SUPERVISOR],
+    });
+    const qualityRoot = findById(result, "menu_quality_workspace");
+
+    expect(qualityRoot.childMenus).toHaveLength(1);
+    expect(qualityRoot.childMenus[0].menu).toMatchObject({
+      elementId: "menu_analyzers_qc_dashboard",
+      actionURL: "/analyzers/qc/db",
+      displayKey: "sidenav.workspace.quality",
+    });
   });
 
   test("keeps management navigation at workspace level and moves analyzer tools into the analyzer page", () => {

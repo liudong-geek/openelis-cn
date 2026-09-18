@@ -499,6 +499,7 @@ const AlertsTab = ({ refreshToken = 0 }) => {
       </div>
       <Modal
         open={Boolean(resolvingViolation)}
+        closeButtonLabel={intl.formatMessage({ id: "button.close" })}
         modalHeading={intl.formatMessage({
           id: "qc.dashboard.alerts.resolve.title",
         })}

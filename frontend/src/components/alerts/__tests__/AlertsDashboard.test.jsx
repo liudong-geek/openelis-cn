@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
+import { MemoryRouter } from "react-router-dom";
 import messages from "../../../languages/en.json";
 import AlertsDashboard from "../AlertsDashboard";
 import { getFromOpenElisServer } from "../../utils/Utils";
@@ -21,7 +22,7 @@ vi.mock("../../utils/Utils", async (importOriginal) => {
 const renderWithIntl = (component) => {
   return render(
     <IntlProvider locale="en" messages={messages}>
-      {component}
+      <MemoryRouter>{component}</MemoryRouter>
     </IntlProvider>,
   );
 };

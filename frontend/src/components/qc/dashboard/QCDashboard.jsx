@@ -28,6 +28,7 @@ import QCSummaryTiles from "./QCSummaryTiles";
 import InstrumentsTab from "./InstrumentsTab";
 import AlertsTab from "./AlertsTab";
 import PageTitle from "../../common/PageTitle/PageTitle";
+import QualityWorkspaceSwitcher from "../../quality/QualityWorkspaceSwitcher";
 import "./QCDashboard.css";
 
 const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
@@ -161,6 +162,7 @@ const QCDashboard = () => {
 
   return (
     <div className="qc-dashboard" data-testid="qc-dashboard">
+      <QualityWorkspaceSwitcher activeView="qc" />
       {/* Header */}
       <div className="qc-dashboard-header" data-testid="qc-dashboard-header">
         <div className="qc-dashboard-header-title">
