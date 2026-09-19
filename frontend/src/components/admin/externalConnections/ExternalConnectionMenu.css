@@ -1,0 +1,183 @@
+.external-connections-page {
+  padding-bottom: 2rem;
+}
+
+.external-connections-page__overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.external-connections-page__overview article {
+  display: flex;
+  min-height: 5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  background: var(--oe-surface);
+  box-shadow: var(--oe-surface-shadow);
+}
+
+.external-connections-page__overview span {
+  color: var(--oe-text-muted);
+  font-size: 0.875rem;
+}
+
+.external-connections-page__overview strong {
+  color: var(--oe-text);
+  font-size: 1.75rem;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.external-connections-page__surface {
+  overflow: hidden;
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  background: var(--oe-surface);
+  box-shadow: var(--oe-surface-shadow);
+}
+
+.external-connections-page__section-heading {
+  display: flex;
+  min-height: 4.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--oe-border);
+}
+
+.external-connections-page__section-heading h2,
+.external-connections-page__empty h3 {
+  margin: 0;
+  color: var(--oe-text);
+  font-size: 1.125rem;
+  font-weight: 650;
+}
+
+.external-connections-page__section-heading p,
+.external-connections-page__empty p {
+  margin: 0.25rem 0 0;
+  color: var(--oe-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.external-connections-page__selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.external-connections-page__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--oe-surface-subtle);
+}
+
+.external-connections-page__toolbar .cds--search {
+  width: min(32rem, 100%);
+  border-radius: var(--oe-control-radius);
+}
+
+.external-connections-page__toolbar p {
+  flex-shrink: 0;
+  margin: 0;
+  color: var(--oe-text-muted);
+  font-size: 0.8125rem;
+}
+
+.external-connections-page__table {
+  margin: 0;
+}
+
+.external-connections-page__table .cds--data-table-header {
+  display: none;
+}
+
+.external-connections-page__table .cds--data-table th {
+  color: #475467;
+  background: #f8fafc;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.external-connections-page__table .cds--data-table td {
+  border-color: var(--oe-border);
+  color: var(--oe-text);
+}
+
+.external-connections-page__pagination {
+  border-top: 1px solid var(--oe-border);
+}
+
+.external-connections-page__empty {
+  display: flex;
+  min-height: 20rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.5rem;
+  text-align: center;
+}
+
+.external-connections-page__empty > div {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  margin-bottom: 1rem;
+  place-items: center;
+  border: 1px solid #cfe0f7;
+  border-radius: 50%;
+  color: var(--oe-brand);
+  background: var(--oe-brand-soft);
+  font-size: 1.25rem;
+  font-weight: 650;
+}
+
+.external-connections-page__empty p {
+  max-width: 30rem;
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 42rem) {
+  .external-connections-page .oe-page-header,
+  .external-connections-page__section-heading,
+  .external-connections-page__toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .external-connections-page .oe-page-header__actions,
+  .external-connections-page__selection-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .external-connections-page .oe-page-header__actions .cds--btn,
+  .external-connections-page__selection-actions .cds--btn {
+    width: 100%;
+    max-width: none;
+  }
+
+  .external-connections-page__overview {
+    grid-template-columns: 1fr;
+  }
+
+  .external-connections-page__overview article {
+    min-height: 3.75rem;
+  }
+
+  .external-connections-page__toolbar .cds--search {
+    width: 100%;
+  }
+}

@@ -148,6 +148,7 @@ export default function ExternalConnectionSimulation({ open, onClose }) {
 
   return (
     <ComposedModal
+      className="external-simulation"
       open={open}
       onClose={onClose}
       preventCloseOnClickOutside
@@ -176,124 +177,150 @@ export default function ExternalConnectionSimulation({ open, onClose }) {
           data-testid="external-simulation-safety"
         />
 
-        <div className="external-simulation__controls">
-          <Select
-            id="external-simulation-scenario"
-            labelText={intl.formatMessage({
-              id: "externalconnections.simulation.scenario",
-            })}
-            value={scenarioKey}
-            onChange={(event) => {
-              setScenarioKey(event.target.value);
-              resetResult();
-            }}
-            data-testid="external-simulation-scenario"
-          >
-            {Object.entries(EXTERNAL_SIMULATION_SCENARIOS).map(
-              ([key, option]) => (
-                <SelectItem
-                  key={key}
-                  value={key}
-                  text={intl.formatMessage({ id: option.labelId })}
-                />
-              ),
-            )}
-          </Select>
-          <Select
-            id="external-simulation-authentication"
-            labelText={intl.formatMessage({
-              id: "externalconnections.simulation.authentication",
-            })}
-            value={authentication}
-            onChange={(event) => {
-              setAuthentication(event.target.value);
-              resetResult();
-            }}
-            data-testid="external-simulation-authentication"
-          >
-            <SelectItem value="NONE" text="NONE" />
-            <SelectItem value="BASIC" text="BASIC" />
-            <SelectItem value="BEARER" text="BEARER TOKEN" />
-            <SelectItem value="MTLS" text="mTLS" />
-          </Select>
-          <Select
-            id="external-simulation-retry"
-            labelText={intl.formatMessage({
-              id: "externalconnections.simulation.retryPolicy",
-            })}
-            value={retryPolicy}
-            onChange={(event) => {
-              setRetryPolicy(event.target.value);
-              resetResult();
-            }}
-            data-testid="external-simulation-retry"
-          >
-            <SelectItem
-              value="NONE"
-              text={intl.formatMessage({
-                id: "externalconnections.simulation.retry.none",
-              })}
-            />
-            <SelectItem
-              value="3_TIMES_EXPONENTIAL"
-              text={intl.formatMessage({
-                id: "externalconnections.simulation.retry.exponential",
-              })}
-            />
-            <SelectItem
-              value="MANUAL_REVIEW"
-              text={intl.formatMessage({
-                id: "externalconnections.simulation.retry.manual",
-              })}
-            />
-          </Select>
-        </div>
-
-        <Tile
-          className="external-simulation__scenario"
-          data-testid="external-simulation-goal"
-        >
-          <div>
-            <strong>
-              <FormattedMessage id="externalconnections.simulation.goal" />
-            </strong>
-            <p>{intl.formatMessage({ id: scenario.purposeId })}</p>
+        <section className="external-simulation__section">
+          <div className="external-simulation__section-heading">
+            <span>1</span>
+            <div>
+              <h3>
+                <FormattedMessage id="externalconnections.simulation.configure.title" />
+              </h3>
+              <p>
+                <FormattedMessage id="externalconnections.simulation.configure.subtitle" />
+              </p>
+            </div>
           </div>
-          <div>
-            <strong>
-              <FormattedMessage id="externalconnections.simulation.expected" />
-            </strong>
-            <p>{intl.formatMessage({ id: scenario.expectedId })}</p>
+          <div className="external-simulation__controls">
+            <Select
+              id="external-simulation-scenario"
+              labelText={intl.formatMessage({
+                id: "externalconnections.simulation.scenario",
+              })}
+              value={scenarioKey}
+              onChange={(event) => {
+                setScenarioKey(event.target.value);
+                resetResult();
+              }}
+              data-testid="external-simulation-scenario"
+            >
+              {Object.entries(EXTERNAL_SIMULATION_SCENARIOS).map(
+                ([key, option]) => (
+                  <SelectItem
+                    key={key}
+                    value={key}
+                    text={intl.formatMessage({ id: option.labelId })}
+                  />
+                ),
+              )}
+            </Select>
+            <Select
+              id="external-simulation-authentication"
+              labelText={intl.formatMessage({
+                id: "externalconnections.simulation.authentication",
+              })}
+              value={authentication}
+              onChange={(event) => {
+                setAuthentication(event.target.value);
+                resetResult();
+              }}
+              data-testid="external-simulation-authentication"
+            >
+              <SelectItem value="NONE" text="NONE" />
+              <SelectItem value="BASIC" text="BASIC" />
+              <SelectItem value="BEARER" text="BEARER TOKEN" />
+              <SelectItem value="MTLS" text="mTLS" />
+            </Select>
+            <Select
+              id="external-simulation-retry"
+              labelText={intl.formatMessage({
+                id: "externalconnections.simulation.retryPolicy",
+              })}
+              value={retryPolicy}
+              onChange={(event) => {
+                setRetryPolicy(event.target.value);
+                resetResult();
+              }}
+              data-testid="external-simulation-retry"
+            >
+              <SelectItem
+                value="NONE"
+                text={intl.formatMessage({
+                  id: "externalconnections.simulation.retry.none",
+                })}
+              />
+              <SelectItem
+                value="3_TIMES_EXPONENTIAL"
+                text={intl.formatMessage({
+                  id: "externalconnections.simulation.retry.exponential",
+                })}
+              />
+              <SelectItem
+                value="MANUAL_REVIEW"
+                text={intl.formatMessage({
+                  id: "externalconnections.simulation.retry.manual",
+                })}
+              />
+            </Select>
           </div>
-        </Tile>
 
-        <div className="external-simulation__metadata">
-          <TextInput
-            id="external-simulation-endpoint"
-            labelText={intl.formatMessage({
-              id: "externalconnections.simulation.endpointTemplate",
-            })}
-            value={scenario.endpoint}
-            readOnly
-            data-testid="external-simulation-endpoint"
-          />
-          <TextInput
-            id="external-simulation-protocol"
-            labelText={intl.formatMessage({
-              id: "externalconnections.simulation.protocol",
-            })}
-            value={scenario.protocol}
-            readOnly
-          />
-        </div>
+          <Tile
+            className="external-simulation__scenario"
+            data-testid="external-simulation-goal"
+          >
+            <div>
+              <strong>
+                <FormattedMessage id="externalconnections.simulation.goal" />
+              </strong>
+              <p>{intl.formatMessage({ id: scenario.purposeId })}</p>
+            </div>
+            <div>
+              <strong>
+                <FormattedMessage id="externalconnections.simulation.expected" />
+              </strong>
+              <p>{intl.formatMessage({ id: scenario.expectedId })}</p>
+            </div>
+          </Tile>
+        </section>
 
-        <section className="external-simulation__preview">
-          <h3>
-            <FormattedMessage id="externalconnections.simulation.requestPreview" />
-          </h3>
-          <CodeSnippet type="multi" feedback="已复制到剪贴板">
-            {requestPreview}
-          </CodeSnippet>
+        <section className="external-simulation__section">
+          <div className="external-simulation__section-heading">
+            <span>2</span>
+            <div>
+              <h3>
+                <FormattedMessage id="externalconnections.simulation.preview.title" />
+              </h3>
+              <p>
+                <FormattedMessage id="externalconnections.simulation.preview.subtitle" />
+              </p>
+            </div>
+          </div>
+          <div className="external-simulation__metadata">
+            <TextInput
+              id="external-simulation-endpoint"
+              labelText={intl.formatMessage({
+                id: "externalconnections.simulation.endpointTemplate",
+              })}
+              value={scenario.endpoint}
+              readOnly
+              data-testid="external-simulation-endpoint"
+            />
+            <TextInput
+              id="external-simulation-protocol"
+              labelText={intl.formatMessage({
+                id: "externalconnections.simulation.protocol",
+              })}
+              value={scenario.protocol}
+              readOnly
+            />
+          </div>
+
+          <div className="external-simulation__preview">
+            <h4>
+              <FormattedMessage id="externalconnections.simulation.requestPreview" />
+            </h4>
+            <CodeSnippet type="multi" feedback="已复制到剪贴板">
+              {requestPreview}
+            </CodeSnippet>
+          </div>
         </section>
 
         {result && (
