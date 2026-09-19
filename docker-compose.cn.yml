@@ -7,26 +7,28 @@ services:
   db.openelis.org:
     container_name: openelis-cn-database
     image: openelis-cn-database:local
+    restart: "no"
     # Mid-size host assumption (~8-16GB RAM for the whole stack). Raise or
     # lower together with the webapp/-Xmx sizing in the Dockerfile.
     deploy:
       resources:
         limits:
           cpus: "2"
-          memory: 2g
+          memory: 1g
     ports: !override
       - "25432:5432"
 
   oe.openelis.org:
     container_name: openelis-cn-webapp
     image: openelis-cn-webapp:local
+    restart: "no"
     # Keep above -Xmx plus Tomcat thread stacks and metaspace; see the
     # CATALINA_OPTS -Xmx setting in the Dockerfile.
     deploy:
       resources:
         limits:
           cpus: "2"
-          memory: 3g
+          memory: 2g
     healthcheck:
       test: ["CMD", "/healthcheck.sh"]
       timeout: 10s
@@ -52,7 +54,11 @@ services:
     # override only if the fhir image stops deriving from the webapp image.
     environment:
       CATALINA_OPTS: "-Xms256m -Xmx512m"
-    restart: unless-stopped
+    # FHIR is optional for day-to-day LIS work. It is started only through the
+    # integration profile so Docker Desktop does not reserve its JVM memory by
+    # default on developer machines.
+    profiles: ["integration"]
+    restart: "no"
     deploy:
       resources:
         limits:
@@ -66,7 +72,7 @@ services:
   frontend.openelis.org:
     container_name: openelis-cn-frontend
     image: openelis-cn-frontend:local
-    restart: unless-stopped
+    restart: "no"
     deploy:
       resources:
         limits:
@@ -79,6 +85,7 @@ services:
   proxy:
     container_name: openelis-cn-proxy
     image: openelis-cn-proxy:local
+    restart: "no"
     deploy:
       resources:
         limits:
