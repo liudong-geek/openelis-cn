@@ -28,6 +28,7 @@ import { getBranding } from "./utils/BrandingUtils";
 import { getRequestLocale } from "./utils/LocaleUtils";
 import { MENU_PROFILES } from "./layout/taskFocusedMenu";
 import { resolveNavigationProfile } from "./layout/navigationProfile";
+import { navigateToInternalPath } from "./utils/NavigationUtils";
 
 function Login(props) {
   const { notificationVisible, addNotification, setNotificationVisible } =
@@ -117,7 +118,7 @@ function Login(props) {
 
   useEffect(() => {
     if (userSessionDetails.authenticated) {
-      window.location.href = "/";
+      navigateToInternalPath("/Dashboard", { replace: true });
     }
   }, [userSessionDetails]);
 
@@ -178,7 +179,8 @@ function Login(props) {
         // get json response here
         let data = await response.json();
         if (response.status === 200) {
-          window.location.href = "/";
+          await refresh();
+          navigateToInternalPath("/Dashboard", { replace: true });
         } else {
           addNotification({
             title: props.intl.formatMessage({
