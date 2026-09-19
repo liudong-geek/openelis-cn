@@ -16,6 +16,7 @@ import {
   TableContainer,
   Pagination,
   Search,
+  Button,
 } from "@carbon/react";
 import {
   getFromOpenElisServer,
@@ -30,6 +31,7 @@ import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import ActionPaginationButtonType from "../../common/ActionPaginationButtonType";
 import { refreshCurrentRoute } from "../../utils/NavigationUtils";
+import ExternalConnectionSimulation from "./ExternalConnectionSimulation";
 
 let breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -62,6 +64,7 @@ function ExternalConnectionMenu() {
   const [paging, setPaging] = useState(1);
   const [connectionList, setConnectionList] = useState();
   const [connectionListShow, setConnectionListShow] = useState([]);
+  const [simulationOpen, setSimulationOpen] = useState(false);
 
   function deactivateConnection(event) {
     event.preventDefault();
@@ -229,9 +232,26 @@ function ExternalConnectionMenu() {
         <Grid fullWidth={true}>
           <Column lg={16} md={8} sm={4}>
             <Section>
-              <Heading>
-                <FormattedMessage id="externalconnections.browse.title" />
-              </Heading>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "1rem",
+                }}
+              >
+                <Heading>
+                  <FormattedMessage id="externalconnections.browse.title" />
+                </Heading>
+                <Button
+                  kind="tertiary"
+                  size="sm"
+                  onClick={() => setSimulationOpen(true)}
+                  data-testid="external-connection-simulation-open"
+                >
+                  <FormattedMessage id="externalconnections.simulation.open" />
+                </Button>
+              </div>
             </Section>
           </Column>
         </Grid>
@@ -407,6 +427,10 @@ function ExternalConnectionMenu() {
           </Grid>
         </div>
       </div>
+      <ExternalConnectionSimulation
+        open={simulationOpen}
+        onClose={() => setSimulationOpen(false)}
+      />
     </>
   );
 }

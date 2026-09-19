@@ -1,0 +1,63 @@
+.external-simulation__body {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.external-simulation__controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.external-simulation__scenario,
+.external-simulation__metadata {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.external-simulation__scenario p {
+  margin-top: 0.35rem;
+  color: var(--cds-text-secondary);
+  line-height: 1.45;
+}
+
+.external-simulation__preview h3 {
+  margin-bottom: 0.75rem;
+  font-size: 1rem;
+}
+
+.external-simulation__result-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.external-simulation__result ul {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.external-simulation__result li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+@media (max-width: 66rem) {
+  .external-simulation__controls {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 42rem) {
+  .external-simulation__scenario,
+  .external-simulation__metadata {
+    grid-template-columns: 1fr;
+  }
+}
