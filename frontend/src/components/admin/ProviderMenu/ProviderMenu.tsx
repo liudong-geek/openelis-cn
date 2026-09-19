@@ -1,11 +1,7 @@
-import React, { useContext, useState, useEffect, useRef } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import type { ChangeEvent, ReactNode, SyntheticEvent } from "react";
 import {
-  Heading,
   Loading,
-  Grid,
-  Column,
-  Section,
   DataTable,
   Table,
   TableHead,
@@ -20,6 +16,8 @@ import {
   Modal,
   TextInput,
   Dropdown,
+  Button,
+  Tag,
 } from "@carbon/react";
 import {
   getFromOpenElisServer,
@@ -32,9 +30,10 @@ import {
 } from "../../common/CustomNotification";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
-import ActionPaginationButtonType from "../../common/ActionPaginationButtonType";
+import ProductPageHeader from "../../common/ProductPageHeader";
 import { getPhoneFormatHint } from "../../patient/phoneFormatHint";
 import { refreshCurrentRoute } from "../../utils/NavigationUtils";
+import "../AdminListWorkspace.css";
 
 interface ProviderPerson {
   lastName: string;
@@ -115,32 +114,26 @@ let breadcrumbs = [
 ];
 function ProviderMenu() {
   const { notificationVisible, setNotificationVisible, addNotification } =
-    useContext(NotificationContext) as NotificationContextValue;
+    useContext(NotificationContext) as unknown as NotificationContextValue;
   const { reloadConfiguration, configurationProperties } = useContext(
     ConfigurationContext,
-  ) as ConfigurationContextValue;
+  ) as unknown as ConfigurationContextValue;
 
   const intl = useIntl();
 
-  const componentMounted = useRef(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [modifyButton, setModifyButton] = useState(true);
   const [deactivateButton, setDeactivateButton] = useState(true);
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isSearching, setIsSearching] = useState(false);
   const [panelSearchTerm, setPanelSearchTerm] = useState("");
-  const [startingRecNo, setStartingRecNo] = useState<number | string>(1);
   const [providerMenuList, setProviderMenuList] =
     useState<ProviderMenuResponse>({});
   const [providerMenuListShow, setProviderMenuListShow] = useState<
     ProviderTableRow[]
   >([]);
-  const [fromRecordCount, setFromRecordCount] = useState("");
-  const [toRecordCount, setToRecordCount] = useState("");
   const [totalRecordCount, setTotalRecordCount] = useState("");
-  const [paging, setPaging] = useState(1);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [currentProvider, setCurrentProvider] =
@@ -171,37 +164,18 @@ function ProviderMenu() {
   ];
 
   const handleMenuItems = (res?: ProviderMenuResponse) => {
-    if (!res) {
-      setLoading(true);
-    } else {
-      setProviderMenuList(res);
-    }
+    setProviderMenuList(res || { providers: [], totalRecordCount: "0" });
+    setLoading(false);
   };
 
   useEffect(() => {
-    componentMounted.current = true;
     setLoading(true);
-    getFromOpenElisServer(
-      `/rest/ProviderMenu?paging=${paging}&startingRecNo=${startingRecNo}`,
-      handleMenuItems,
-    );
-    return () => {
-      componentMounted.current = false;
-      setLoading(false);
-    };
-  }, [paging, startingRecNo]);
-
-  const handleSearchedProviderMenuList = (res?: ProviderMenuResponse) => {
-    if (res) {
-      setProviderMenuList(res);
-    }
-  };
-
-  useEffect(() => {
-    getFromOpenElisServer(
-      `/rest/SearchProviderMenu?search=Y&startingRecNo=${startingRecNo}&searchString=${panelSearchTerm}`,
-      handleSearchedProviderMenuList,
-    );
+    const endpoint = panelSearchTerm
+      ? `/rest/SearchProviderMenu?search=Y&startingRecNo=1&searchString=${encodeURIComponent(
+          panelSearchTerm,
+        )}`
+      : "/rest/ProviderMenu?paging=1&startingRecNo=1";
+    getFromOpenElisServer(endpoint, handleMenuItems);
   }, [panelSearchTerm]);
 
   useEffect(() => {
@@ -218,9 +192,7 @@ function ProviderMenu() {
           email: item.person.email,
         };
       });
-      setFromRecordCount(providerMenuList.fromRecordCount!);
-      setToRecordCount(providerMenuList.toRecordCount!);
-      setTotalRecordCount(providerMenuList.totalRecordCount!);
+      setTotalRecordCount(providerMenuList.totalRecordCount || "0");
       setProviderMenuListShow(newProviderMenuList);
     }
   }, [providerMenuList]);
@@ -238,17 +210,9 @@ function ProviderMenu() {
     }
   }, [selectedRowIds]);
 
-  useEffect(() => {
-    if (isSearching && panelSearchTerm === "") {
-      setIsSearching(false);
-      setPaging(1);
-      setStartingRecNo(1);
-    }
-  }, [isSearching, panelSearchTerm]);
-
-  async function displayStatus(res: { status: string | number }) {
+  async function displayStatus(res?: Response) {
     setNotificationVisible(true);
-    if (res.status == "201" || res.status == "200") {
+    if (res?.status === 201 || res?.status === 200) {
       addNotification({
         kind: NotificationKinds.success,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -268,43 +232,30 @@ function ProviderMenu() {
     event.preventDefault();
     setLoading(true);
     postToOpenElisServerFullResponse(
-      `/rest/DeleteProvider?ID=${selectedRowIds.join(",")}&${startingRecNo}=1`,
-      providerMenuListShow,
-      setLoading(false),
-      setTimeout(() => {
+      `/rest/DeleteProvider?ID=${selectedRowIds.join(",")}&startingRecNo=1`,
+      JSON.stringify(providerMenuListShow),
+      () => {
+        setLoading(false);
         refreshCurrentRoute();
-      }, 1),
+      },
     );
   }
 
   const handlePageChange = ({
-    page,
-    pageSize,
+    page: nextPage,
+    pageSize: nextPageSize,
   }: {
     page: number;
     pageSize: number;
   }) => {
-    setPage(page);
-    setPageSize(pageSize);
-    setSelectedRowIds([]);
-  };
-
-  const handleNextPage = () => {
-    setPaging((pager) => Math.max(pager, 2));
-    setStartingRecNo(fromRecordCount);
-    setSelectedRowIds([]);
-  };
-
-  const handlePreviousPage = () => {
-    setPaging((pager) => Math.max(pager - 1, 1));
-    setStartingRecNo(Math.max(fromRecordCount as unknown as number, 1));
+    setPage(nextPage);
+    setPageSize(nextPageSize);
     setSelectedRowIds([]);
   };
 
   const handlePanelSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setIsSearching(true);
-    setPaging(1);
-    setStartingRecNo(1);
+    setLoading(true);
+    setPage(1);
     const query = event.target.value.toLowerCase();
     setPanelSearchTerm(query);
     setSelectedRowIds([]);
@@ -413,8 +364,13 @@ function ProviderMenu() {
     getFromOpenElisServer(
       "/rest/PhoneNumberValidationProvider?fieldId=patientPhone&value=" +
         encodeURIComponent(value),
-      (resp: ValidationResult) => {
-        setPhoneValidation(resp);
+      (resp?: ValidationResult) => {
+        setPhoneValidation(
+          resp || {
+            body: intl.formatMessage({ id: "server.error.msg" }),
+            status: false,
+          },
+        );
       },
     );
   };
@@ -462,17 +418,17 @@ function ProviderMenu() {
     } else if (cell.info.header === "active") {
       return (
         <TableCell key={cell.id}>
-          {cell.value
-            ? intl.formatMessage({ id: "label.yes" })
-            : intl.formatMessage({ id: "label.no" })}
+          <Tag type={cell.value ? "green" : "cool-gray"} size="sm">
+            <FormattedMessage id={cell.value ? "label.yes" : "label.no"} />
+          </Tag>
         </TableCell>
       );
     } else {
-      return <TableCell key={cell.id}>{cell.value}</TableCell>;
+      return <TableCell key={cell.id}>{cell.value || "—"}</TableCell>;
     }
   };
 
-  if (!loading) {
+  if (loading) {
     return (
       <>
         <Loading />
@@ -480,202 +436,138 @@ function ProviderMenu() {
     );
   }
 
+  const totalProviders = Number(
+    totalRecordCount || providerMenuListShow.length || 0,
+  );
+  const activeProviders = providerMenuListShow.filter(
+    (provider) => provider.active,
+  ).length;
+  const selectedCount = selectedRowIds.length;
+
   return (
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
-      <div className="adminPageContent">
+      <div className="adminPageContent admin-list-workspace provider-management-page">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
-        <Grid fullWidth={true}>
-          <Column lg={16} md={8} sm={4}>
-            <Section>
-              <Heading>
-                <FormattedMessage id="provider.browse.title" />
-              </Heading>
-            </Section>
-          </Column>
-        </Grid>
-        <br />
-        <ActionPaginationButtonType
-          selectedRowIds={selectedRowIds}
-          modifyButton={modifyButton}
-          deactivateButton={deactivateButton}
-          deleteDeactivate={deleteDeactivateProvider}
-          openUpdateModal={openUpdateModal}
-          openAddModal={openAddModal}
-          handlePreviousPage={handlePreviousPage}
-          handleNextPage={handleNextPage}
-          fromRecordCount={fromRecordCount}
-          toRecordCount={toRecordCount}
-          totalRecordCount={totalRecordCount}
-          type="type1"
+        <ProductPageHeader
+          title={<FormattedMessage id="provider.browse.title" />}
+          subtitle={<FormattedMessage id="provider.management.subtitle" />}
+          actions={
+            <Button size="sm" onClick={openAddModal}>
+              <FormattedMessage id="provider.management.action.add" />
+            </Button>
+          }
         />
-        <br />
-        <Modal
-          open={isAddModalOpen}
-          modalHeading={intl.formatMessage({
-            id: "provider.modal.add.heading",
-          })}
-          primaryButtonText={intl.formatMessage({ id: "label.button.add" })}
-          secondaryButtonText={intl.formatMessage({
-            id: "label.button.cancel",
-          })}
-          onRequestSubmit={handleAddProvider}
-          onRequestClose={closeAddModal}
-        >
-          <TextInput
-            id="lastName"
-            labelText={intl.formatMessage({ id: "provider.providerLastName" })}
-            value={lastName}
-            onChange={(e) => handleLastNameChange(e)}
-            required
-          />
-          <TextInput
-            id="firstName"
-            labelText={intl.formatMessage({ id: "provider.providerFirstName" })}
-            value={firstName}
-            onChange={(e) => handleFirstNameChange(e)}
-            required
-          />
-          <TextInput
-            id="telephone"
-            labelText={intl.formatMessage(
-              {
-                id: "patient.label.primaryphone",
-              },
-              { PHONE_FORMAT: "" },
-            )}
-            helperText={getPhoneFormatHint(intl, configurationProperties)}
-            value={telephone}
-            onChange={(e) => handleTelephoneChange(e)}
-            onBlur={(e) => handlePhoneValidation(e)}
-            invalid={!phoneValidation.status}
-            invalidText={phoneValidation.status ? "" : phoneValidation.body}
-          />
-          <TextInput
-            id="email"
-            labelText={intl.formatMessage({ id: "provider.email" })}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onBlur={(e) => handleEmailValidation(e)}
-            invalid={!emailValidation.status}
-            invalidText={emailValidation.status ? "" : emailValidation.body}
-          />
 
-          <Dropdown
-            className="dropdown-list"
-            id="isActive"
-            titleText={intl.formatMessage({ id: "label.active" })}
-            label={intl.formatMessage({ id: "provider.select" })}
-            items={yesOrNo}
-            itemToString={(item) => (item ? item.value : "")}
-            selectedItem={isActive}
-            onChange={({ selectedItem }) =>
-              setIsActive(selectedItem as YesNoOption)
-            }
-          />
-          <TextInput
-            id="fax"
-            labelText={intl.formatMessage({ id: "provider.fax" })}
-            value={fax}
-            onChange={(e) => setFax(e.target.value)}
-          />
-        </Modal>
+        <section className="admin-list-workspace__overview">
+          <article>
+            <span>
+              <FormattedMessage id="provider.management.metric.total" />
+            </span>
+            <strong>{totalProviders}</strong>
+          </article>
+          <article>
+            <span>
+              <FormattedMessage id="provider.management.metric.active" />
+            </span>
+            <strong>{activeProviders}</strong>
+          </article>
+          <article>
+            <span>
+              <FormattedMessage id="provider.management.metric.selected" />
+            </span>
+            <strong>{selectedCount}</strong>
+          </article>
+        </section>
 
-        <Modal
-          open={isUpdateModalOpen}
-          modalHeading={intl.formatMessage({
-            id: "provider.modal.update.heading",
-          })}
-          primaryButtonText={intl.formatMessage({ id: "label.button.update" })}
-          secondaryButtonText={intl.formatMessage({
-            id: "label.button.cancel",
-          })}
-          onRequestSubmit={handleUpdateProvider}
-          onRequestClose={closeUpdateModal}
-        >
-          <TextInput
-            id="lastName"
-            labelText={intl.formatMessage({ id: "provider.providerLastName" })}
-            value={lastName}
-            onChange={(e) => handleLastNameChange(e)}
-            required
-          />
-          <TextInput
-            id="firstName"
-            labelText={intl.formatMessage({ id: "provider.providerFirstName" })}
-            value={firstName}
-            onChange={(e) => handleFirstNameChange(e)}
-            required
-          />
-          <TextInput
-            id="telephone"
-            labelText={intl.formatMessage(
-              {
-                id: "patient.label.primaryphone",
-              },
-              { PHONE_FORMAT: "" },
-            )}
-            helperText={getPhoneFormatHint(intl, configurationProperties)}
-            value={telephone}
-            onChange={(e) => handleTelephoneChange(e)}
-            onBlur={(e) => handlePhoneValidation(e)}
-            invalid={!phoneValidation.status}
-            invalidText={phoneValidation.status ? "" : phoneValidation.body}
-          />
-          <TextInput
-            id="updateEmail"
-            labelText={intl.formatMessage({ id: "provider.email" })}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onBlur={(e) => handleEmailValidation(e)}
-            invalid={!emailValidation.status}
-            invalidText={emailValidation.status ? "" : emailValidation.body}
-          />
-          <Dropdown
-            id="isActive"
-            titleText={intl.formatMessage({ id: "label.active" })}
-            label={intl.formatMessage({ id: "provider.select" })}
-            items={yesOrNo}
-            itemToString={(item) => (item ? item.value : "")}
-            selectedItem={isActive}
-            onChange={({ selectedItem }) =>
-              setIsActive(selectedItem as YesNoOption)
-            }
-          />
-          <TextInput
-            id="fax"
-            labelText={intl.formatMessage({ id: "provider.fax" })}
-            value={fax}
-            onChange={(e) => setFax(e.target.value)}
-          />
-        </Modal>
+        <section className="admin-list-workspace__surface">
+          <div className="admin-list-workspace__section-heading">
+            <div>
+              <h2>
+                <FormattedMessage id="provider.management.list.title" />
+              </h2>
+              <p>
+                <FormattedMessage id="provider.management.list.subtitle" />
+              </p>
+            </div>
+            <div className="admin-list-workspace__selection-actions">
+              <span>
+                <FormattedMessage
+                  id="provider.management.selected"
+                  values={{ count: selectedCount }}
+                />
+              </span>
+              <Button
+                kind="ghost"
+                size="sm"
+                disabled={modifyButton}
+                onClick={() => openUpdateModal(selectedRowIds[0])}
+              >
+                <FormattedMessage id="externalconnections.action.edit" />
+              </Button>
+              <Button
+                kind="danger--ghost"
+                size="sm"
+                disabled={deactivateButton}
+                onClick={deleteDeactivateProvider}
+              >
+                <FormattedMessage id="externalconnections.action.deactivate" />
+              </Button>
+            </div>
+          </div>
 
-        <div className="orderLegendBody">
-          <Grid>
-            <Column lg={16} md={8} sm={4}>
-              <Section>
-                <Search
-                  size="lg"
-                  id="provider-search-bar"
-                  labelText={<FormattedMessage id="provider.search" />}
-                  placeholder={intl.formatMessage({
-                    id: "provider.search.placeholder",
-                  })}
-                  onChange={handlePanelSearchChange}
-                  value={(() => {
-                    if (panelSearchTerm) {
-                      return panelSearchTerm;
-                    }
-                    return "";
-                  })()}
-                ></Search>
-              </Section>
-            </Column>
-          </Grid>
-          <br />
-          <>
-            <Grid fullWidth={true} className="gridBoundary">
-              <Column lg={16} md={8} sm={4}>
+          <div className="admin-list-workspace__filters admin-list-workspace__filters--search-only">
+            <Search
+              size="lg"
+              id="provider-search-bar"
+              labelText={<FormattedMessage id="provider.search" />}
+              placeholder={intl.formatMessage({
+                id: "provider.search.placeholder",
+              })}
+              closeButtonLabelText={intl.formatMessage({
+                id: "provider.management.search.clear",
+              })}
+              onChange={handlePanelSearchChange}
+              value={panelSearchTerm}
+            />
+            <p role="status">
+              <FormattedMessage
+                id="provider.management.results"
+                values={{ count: providerMenuListShow.length }}
+              />
+            </p>
+          </div>
+
+          {providerMenuListShow.length === 0 ? (
+            <div className="admin-list-workspace__empty" role="status">
+              <div aria-hidden="true">0</div>
+              <h3>
+                <FormattedMessage
+                  id={
+                    panelSearchTerm
+                      ? "provider.management.empty.search.title"
+                      : "provider.management.empty.title"
+                  }
+                />
+              </h3>
+              <p>
+                <FormattedMessage
+                  id={
+                    panelSearchTerm
+                      ? "provider.management.empty.search.subtitle"
+                      : "provider.management.empty.subtitle"
+                  }
+                />
+              </p>
+              {!panelSearchTerm && (
+                <Button size="sm" onClick={openAddModal}>
+                  <FormattedMessage id="provider.management.action.add" />
+                </Button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="admin-list-workspace__table-scroll">
                 <DataTable
                   rows={providerMenuListShow.slice(
                     (page - 1) * pageSize,
@@ -684,9 +576,7 @@ function ProviderMenu() {
                   headers={[
                     {
                       key: "select",
-                      header: intl.formatMessage({
-                        id: "provider.select",
-                      }),
+                      header: intl.formatMessage({ id: "provider.select" }),
                     },
                     {
                       key: "lastName",
@@ -694,7 +584,6 @@ function ProviderMenu() {
                         id: "provider.providerLastName",
                       }),
                     },
-
                     {
                       key: "firstName",
                       header: intl.formatMessage({
@@ -703,39 +592,31 @@ function ProviderMenu() {
                     },
                     {
                       key: "active",
-                      header: intl.formatMessage({
-                        id: "provider.isActive",
-                      }),
+                      header: intl.formatMessage({ id: "provider.isActive" }),
                     },
                     {
                       key: "telephone",
-                      header: intl.formatMessage({
-                        id: "provider.telephone",
-                      }),
+                      header: intl.formatMessage({ id: "provider.telephone" }),
                     },
                     {
                       key: "fax",
-                      header: intl.formatMessage({
-                        id: "provider.fax",
-                      }),
+                      header: intl.formatMessage({ id: "provider.fax" }),
                     },
                     {
                       key: "email",
-                      header: intl.formatMessage({
-                        id: "provider.email",
-                      }),
+                      header: intl.formatMessage({ id: "provider.email" }),
                     },
                   ]}
                 >
                   {({ rows, headers, getHeaderProps, getTableProps }) => (
-                    <TableContainer>
+                    <TableContainer className="admin-list-workspace__table">
                       <Table {...getTableProps()}>
                         <TableHead>
                           <TableRow>
                             {headers.map((header) => (
                               <TableHeader
-                                key={header.key}
                                 {...getHeaderProps({ header })}
+                                key={header.key}
                               >
                                 {header.header}
                               </TableHeader>
@@ -743,78 +624,212 @@ function ProviderMenu() {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          <>
-                            {rows.map((row) => (
-                              <TableRow
-                                key={row.id}
-                                onClick={() => {
-                                  const id = row.id;
-                                  setSelectedRowIds(
-                                    selectedRowIds.includes(id)
-                                      ? selectedRowIds.filter(
-                                          (selectedId) => selectedId !== id,
-                                        )
-                                      : [...selectedRowIds, id],
-                                  );
-                                }}
-                              >
-                                {row.cells.map((cell) => renderCell(cell, row))}
-                              </TableRow>
-                            ))}
-                          </>
+                          {rows.map((row) => (
+                            <TableRow
+                              key={row.id}
+                              onClick={() => {
+                                const id = row.id;
+                                setSelectedRowIds(
+                                  selectedRowIds.includes(id)
+                                    ? selectedRowIds.filter(
+                                        (selectedId) => selectedId !== id,
+                                      )
+                                    : [...selectedRowIds, id],
+                                );
+                              }}
+                            >
+                              {row.cells.map((cell) => renderCell(cell, row))}
+                            </TableRow>
+                          ))}
                         </TableBody>
                       </Table>
                     </TableContainer>
                   )}
                 </DataTable>
-                <Pagination
-                  onChange={handlePageChange}
-                  page={page}
-                  pageSize={pageSize}
-                  pageSizes={[10, 20]}
-                  totalItems={providerMenuListShow.length}
-                  forwardText={intl.formatMessage({
-                    id: "pagination.forward",
-                  })}
-                  backwardText={intl.formatMessage({
-                    id: "pagination.backward",
-                  })}
-                  itemRangeText={(min, max, total) =>
-                    intl.formatMessage(
-                      { id: "pagination.item-range" },
-                      { min: min, max: max, total: total },
-                    )
-                  }
-                  itemsPerPageText={intl.formatMessage({
-                    id: "pagination.items-per-page",
-                  })}
-                  itemText={(min, max) =>
-                    intl.formatMessage(
-                      { id: "pagination.item" },
-                      { min: min, max: max },
-                    )
-                  }
-                  pageNumberText={intl.formatMessage({
-                    id: "pagination.page-number",
-                  })}
-                  pageRangeText={(_current, total) =>
-                    intl.formatMessage(
-                      { id: "pagination.page-range" },
-                      { total: total },
-                    )
-                  }
-                  pageText={(page, pagesUnknown) =>
-                    intl.formatMessage(
-                      { id: "pagination.page" },
-                      { page: pagesUnknown ? "" : page },
-                    )
-                  }
-                />
-              </Column>
-            </Grid>
-          </>
-        </div>
+              </div>
+              <Pagination
+                className="admin-list-workspace__pagination"
+                onChange={handlePageChange}
+                page={page}
+                pageSize={pageSize}
+                pageSizes={[10, 20]}
+                totalItems={totalProviders}
+                forwardText={intl.formatMessage({ id: "pagination.forward" })}
+                backwardText={intl.formatMessage({ id: "pagination.backward" })}
+                itemRangeText={(min, max, total) =>
+                  intl.formatMessage(
+                    { id: "pagination.item-range" },
+                    { min: min, max: max, total: total },
+                  )
+                }
+                itemsPerPageText={intl.formatMessage({
+                  id: "pagination.items-per-page",
+                })}
+                itemText={(min, max) =>
+                  intl.formatMessage(
+                    { id: "pagination.item" },
+                    { min: min, max: max },
+                  )
+                }
+                pageNumberText={intl.formatMessage({
+                  id: "pagination.page-number",
+                })}
+                pageRangeText={(_current, total) =>
+                  intl.formatMessage(
+                    { id: "pagination.page-range" },
+                    { total: total },
+                  )
+                }
+                pageText={(currentPage, pagesUnknown) =>
+                  intl.formatMessage(
+                    { id: "pagination.page" },
+                    { page: pagesUnknown ? "" : currentPage },
+                  )
+                }
+              />
+            </>
+          )}
+        </section>
       </div>
+      <Modal
+        open={isAddModalOpen}
+        modalHeading={intl.formatMessage({
+          id: "provider.modal.add.heading",
+        })}
+        primaryButtonText={intl.formatMessage({ id: "label.button.add" })}
+        secondaryButtonText={intl.formatMessage({
+          id: "label.button.cancel",
+        })}
+        onRequestSubmit={handleAddProvider}
+        onRequestClose={closeAddModal}
+      >
+        <TextInput
+          id="lastName"
+          labelText={intl.formatMessage({ id: "provider.providerLastName" })}
+          value={lastName}
+          onChange={(e) => handleLastNameChange(e)}
+          required
+        />
+        <TextInput
+          id="firstName"
+          labelText={intl.formatMessage({ id: "provider.providerFirstName" })}
+          value={firstName}
+          onChange={(e) => handleFirstNameChange(e)}
+          required
+        />
+        <TextInput
+          id="telephone"
+          labelText={intl.formatMessage(
+            {
+              id: "patient.label.primaryphone",
+            },
+            { PHONE_FORMAT: "" },
+          )}
+          helperText={getPhoneFormatHint(intl, configurationProperties)}
+          value={telephone}
+          onChange={(e) => handleTelephoneChange(e)}
+          onBlur={(e) => handlePhoneValidation(e)}
+          invalid={!phoneValidation.status}
+          invalidText={phoneValidation.status ? "" : phoneValidation.body}
+        />
+        <TextInput
+          id="email"
+          labelText={intl.formatMessage({ id: "provider.email" })}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onBlur={(e) => handleEmailValidation(e)}
+          invalid={!emailValidation.status}
+          invalidText={emailValidation.status ? "" : emailValidation.body}
+        />
+
+        <Dropdown
+          className="dropdown-list"
+          id="isActive"
+          titleText={intl.formatMessage({ id: "label.active" })}
+          label={intl.formatMessage({ id: "provider.select" })}
+          items={yesOrNo}
+          itemToString={(item) => (item ? item.value : "")}
+          selectedItem={isActive}
+          onChange={({ selectedItem }) =>
+            setIsActive(selectedItem as YesNoOption)
+          }
+        />
+        <TextInput
+          id="fax"
+          labelText={intl.formatMessage({ id: "provider.fax" })}
+          value={fax}
+          onChange={(e) => setFax(e.target.value)}
+        />
+      </Modal>
+
+      <Modal
+        open={isUpdateModalOpen}
+        modalHeading={intl.formatMessage({
+          id: "provider.modal.update.heading",
+        })}
+        primaryButtonText={intl.formatMessage({ id: "label.button.update" })}
+        secondaryButtonText={intl.formatMessage({
+          id: "label.button.cancel",
+        })}
+        onRequestSubmit={handleUpdateProvider}
+        onRequestClose={closeUpdateModal}
+      >
+        <TextInput
+          id="lastName"
+          labelText={intl.formatMessage({ id: "provider.providerLastName" })}
+          value={lastName}
+          onChange={(e) => handleLastNameChange(e)}
+          required
+        />
+        <TextInput
+          id="firstName"
+          labelText={intl.formatMessage({ id: "provider.providerFirstName" })}
+          value={firstName}
+          onChange={(e) => handleFirstNameChange(e)}
+          required
+        />
+        <TextInput
+          id="telephone"
+          labelText={intl.formatMessage(
+            {
+              id: "patient.label.primaryphone",
+            },
+            { PHONE_FORMAT: "" },
+          )}
+          helperText={getPhoneFormatHint(intl, configurationProperties)}
+          value={telephone}
+          onChange={(e) => handleTelephoneChange(e)}
+          onBlur={(e) => handlePhoneValidation(e)}
+          invalid={!phoneValidation.status}
+          invalidText={phoneValidation.status ? "" : phoneValidation.body}
+        />
+        <TextInput
+          id="updateEmail"
+          labelText={intl.formatMessage({ id: "provider.email" })}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onBlur={(e) => handleEmailValidation(e)}
+          invalid={!emailValidation.status}
+          invalidText={emailValidation.status ? "" : emailValidation.body}
+        />
+        <Dropdown
+          id="isActive"
+          titleText={intl.formatMessage({ id: "label.active" })}
+          label={intl.formatMessage({ id: "provider.select" })}
+          items={yesOrNo}
+          itemToString={(item) => (item ? item.value : "")}
+          selectedItem={isActive}
+          onChange={({ selectedItem }) =>
+            setIsActive(selectedItem as YesNoOption)
+          }
+        />
+        <TextInput
+          id="fax"
+          labelText={intl.formatMessage({ id: "provider.fax" })}
+          value={fax}
+          onChange={(e) => setFax(e.target.value)}
+        />
+      </Modal>
     </>
   );
 }

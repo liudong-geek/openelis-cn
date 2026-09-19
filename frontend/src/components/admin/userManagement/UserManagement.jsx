@@ -1,10 +1,6 @@
-import React, { useContext, useState, useEffect, useRef } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import {
-  Heading,
   Loading,
-  Grid,
-  Column,
-  Section,
   DataTable,
   Table,
   TableHead,
@@ -18,6 +14,8 @@ import {
   Search,
   Select,
   SelectItem,
+  Button,
+  Tag,
 } from "@carbon/react";
 import {
   getFromOpenElisServer,
@@ -31,8 +29,12 @@ import {
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import CustomCheckBox from "../../common/CustomCheckBox";
-import ActionPaginationButtonType from "../../common/ActionPaginationButtonType";
-import { refreshCurrentRoute } from "../../utils/NavigationUtils";
+import ProductPageHeader from "../../common/ProductPageHeader";
+import {
+  navigateToInternalPath,
+  refreshCurrentRoute,
+} from "../../utils/NavigationUtils";
+import "../AdminListWorkspace.css";
 
 let breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -43,13 +45,16 @@ let breadcrumbs = [
   },
 ];
 
+const isEnabledValue = (value) =>
+  value === true ||
+  ["true", "y", "yes", "1"].includes(String(value).toLowerCase());
+
 function UserManagement() {
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
 
   const intl = useIntl();
 
-  const componentMounted = useRef(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [deactivateButton, setDeactivateButton] = useState(true);
@@ -60,20 +65,13 @@ function UserManagement() {
   );
   const [selectedRowCombinedUserIDPost, setSelectedRowCombinedUserIDPost] =
     useState([]);
-  const [selectedRowIdsPost, setSelectedRowIdsPost] = useState();
   const [loading, setLoading] = useState(true);
-  const [isSearching, setIsSearching] = useState(false);
   const [panelSearchTerm, setPanelSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [filters, setFilters] = useState([]);
-  const [startingRecNo, setStartingRecNo] = useState(1);
   const [totalRecordCount, setTotalRecordCount] = useState("");
-  const [paging, setPaging] = useState(1);
-  const [fromRecordCount, setFromRecordCount] = useState("");
-  const [toRecordCount, setToRecordCount] = useState("");
   const [userManagementList, setUserManagementList] = useState();
   const [userManagementListShow, setUserManagementListShow] = useState([]);
-  const [testSectionsSelect, setTestSectionsSelect] = useState("");
   const [testSectionsShow, setTestSectionsShow] = useState({});
 
   function deleteDeactivateUserManagement(event) {
@@ -89,26 +87,6 @@ function UserManagement() {
       },
     );
   }
-
-  const handleNextPage = () => {
-    setPaging((pager) => Math.max(pager, 2));
-    setStartingRecNo(fromRecordCount);
-    setSelectedRowIds([]);
-  };
-
-  const handlePreviousPage = () => {
-    setPaging((pager) => Math.max(pager - 1, 1));
-    setStartingRecNo(Math.max(fromRecordCount, 1));
-    setSelectedRowIds([]);
-  };
-
-  useEffect(() => {
-    const selectedIDsObject = {
-      selectedIDs: selectedRowIds,
-    };
-
-    setSelectedRowIdsPost(selectedIDsObject);
-  }, [selectedRowIds, userManagementListShow]);
 
   useEffect(() => {
     const selectedRowCombinedUserIDObject = {
@@ -147,52 +125,31 @@ function UserManagement() {
     }
   }
 
-  const handlePageChange = ({ page, pageSize }) => {
-    setPage(page);
-    setPageSize(pageSize);
+  const handlePageChange = ({ page: nextPage, pageSize: nextPageSize }) => {
+    setPage(nextPage);
+    setPageSize(nextPageSize);
     setSelectedRowIds([]);
     setSelectedRowCombinedUserID([]);
   };
 
   const handleMenuItems = (res) => {
-    if (!res) {
-      setLoading(true);
-    } else {
-      setUserManagementList(res);
-    }
+    setUserManagementList(res || { menuList: [], testSections: [] });
+    setLoading(false);
   };
 
   useEffect(() => {
-    componentMounted.current = true;
     setLoading(true);
+    const searchMode = panelSearchTerm ? "Y" : "N";
+    const searchParameter = panelSearchTerm
+      ? `&searchString=${encodeURIComponent(panelSearchTerm)}`
+      : "";
     getFromOpenElisServer(
-      `/rest/SearchUnifiedSystemUserMenu?search=N&startingRecNo=${startingRecNo}&filter=${filters.join(
+      `/rest/SearchUnifiedSystemUserMenu?search=${searchMode}&startingRecNo=1${searchParameter}&filter=${filters.join(
         ",",
-      )}&roleFilter=${roleFilter}`,
+      )}&roleFilter=${encodeURIComponent(roleFilter)}`,
       handleMenuItems,
     );
-    return () => {
-      componentMounted.current = false;
-      setLoading(false);
-    };
-  }, [roleFilter, filters, startingRecNo]);
-
-  const handleSearchedProviderMenuList = (res) => {
-    if (!res) {
-      setLoading(true);
-    } else {
-      setUserManagementList(res);
-    }
-  };
-
-  useEffect(() => {
-    getFromOpenElisServer(
-      `/rest/SearchUnifiedSystemUserMenu?search=Y&startingRecNo=${startingRecNo}&searchString=${panelSearchTerm}&filter=${filters.join(
-        ",",
-      )}&roleFilter=${roleFilter}`,
-      handleSearchedProviderMenuList,
-    );
-  }, [panelSearchTerm, roleFilter, filters, startingRecNo]);
+  }, [filters, panelSearchTerm, roleFilter]);
 
   useEffect(() => {
     if (userManagementListShow) {
@@ -212,14 +169,7 @@ function UserManagement() {
 
   useEffect(() => {
     if (userManagementList) {
-      const pagination = {
-        totalRecordCount: userManagementList.totalRecordCount,
-        fromRecordCount: userManagementList.fromRecordCount,
-        toRecordCount: userManagementList.toRecordCount,
-      };
-      setFromRecordCount(pagination.fromRecordCount);
-      setToRecordCount(pagination.toRecordCount);
-      setTotalRecordCount(pagination.totalRecordCount);
+      setTotalRecordCount(userManagementList.totalRecordCount || "0");
 
       const newUserManagementList = userManagementList.menuList.map((item) => {
         return {
@@ -238,12 +188,14 @@ function UserManagement() {
       const newUserManagementListArray = Object.values(newUserManagementList);
       setUserManagementListShow(newUserManagementListArray);
 
-      const testSections = userManagementList.testSections.map((item) => {
-        return {
-          id: item.id,
-          value: item.value,
-        };
-      });
+      const testSections = (userManagementList.testSections || []).map(
+        (item) => {
+          return {
+            id: item.id,
+            value: item.value,
+          };
+        },
+      );
 
       setTestSectionsShow(testSections);
     }
@@ -272,10 +224,6 @@ function UserManagement() {
           name="selectRowCheckbox"
           ariaLabel="selectRows"
           onSelect={() => {
-            const isActiveCell = row.cells.find((cell) =>
-              cell.id.endsWith(":active"),
-            );
-
             if (selectedRowIds.includes(row.id)) {
               setSelectedRowIds(selectedRowIds.filter((id) => id !== row.id));
             } else {
@@ -284,34 +232,44 @@ function UserManagement() {
           }}
         />
       );
-    } else {
-      return <TableCell key={cell.id}>{cell.value}</TableCell>;
     }
+    if (["active", "locked", "disabled"].includes(cell.info.header)) {
+      const enabled = isEnabledValue(cell.value);
+      return (
+        <TableCell key={cell.id}>
+          <Tag
+            type={
+              cell.info.header === "active"
+                ? enabled
+                  ? "green"
+                  : "cool-gray"
+                : enabled
+                  ? "red"
+                  : "cool-gray"
+            }
+            size="sm"
+          >
+            <FormattedMessage id={enabled ? "label.yes" : "label.no"} />
+          </Tag>
+        </TableCell>
+      );
+    }
+    return <TableCell key={cell.id}>{cell.value || "—"}</TableCell>;
   };
 
   const handlePanelSearchChange = (event) => {
-    setIsSearching(true);
-    setPaging(1);
-    setStartingRecNo(1);
+    setLoading(true);
     const query = event.target.value;
     setPanelSearchTerm(query);
     setSelectedRowIds([]);
   };
 
-  useEffect(() => {
-    if (isSearching && panelSearchTerm === "") {
-      setIsSearching(false);
-      setPaging(1);
-      setStartingRecNo(1);
-    }
-  }, [isSearching, panelSearchTerm]);
-
   function handleTestSectionsSelectChange(e) {
-    setTestSectionsSelect(e.target.value);
+    setPage(1);
     setRoleFilter(e.target.value);
   }
 
-  if (!loading) {
+  if (loading) {
     return (
       <>
         <Loading />
@@ -319,149 +277,203 @@ function UserManagement() {
     );
   }
 
+  const totalUsers = Number(
+    totalRecordCount || userManagementListShow.length || 0,
+  );
+  const activeUsers = userManagementListShow.filter((user) =>
+    isEnabledValue(user.active),
+  ).length;
+  const lockedUsers = userManagementListShow.filter((user) =>
+    isEnabledValue(user.locked),
+  ).length;
+  const selectedCount = selectedRowIds.length;
+
+  const openAddUser = () =>
+    navigateToInternalPath(
+      "/MasterListsPage/userEdit?ID=0&startingRecNo=1&roleFilter=",
+    );
+
+  const openSelectedUser = () => {
+    if (selectedCount === 1 && selectedRowCombinedUserID[0]) {
+      navigateToInternalPath(
+        `/MasterListsPage/userEdit?ID=${selectedRowCombinedUserID[0]}&startingRecNo=1&roleFilter=`,
+      );
+    }
+  };
+
+  const updateFilter = (filterName, enabled) => {
+    setPage(1);
+    setFilters((currentFilters) =>
+      enabled
+        ? [...new Set([...currentFilters, filterName])]
+        : currentFilters.filter((filter) => filter !== filterName),
+    );
+  };
+
   return (
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
-      <div className="adminPageContent">
+      <div className="adminPageContent admin-list-workspace user-management-page">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
-        <Grid fullWidth={true}>
-          <Column lg={16} md={8} sm={4}>
-            <Section>
-              <Heading>
-                <FormattedMessage id="unifiedSystemUser.browser.title" />
-              </Heading>
-            </Section>
-            <br />
-            <Section>
-              <Section>
-                <Section>
-                  <Section>
-                    <Heading>
-                      <FormattedMessage id="user.select.instruction" />
-                    </Heading>
-                  </Section>
-                </Section>
-              </Section>
-            </Section>
-            <br />
-            <Section>
-              <Column lg={16} md={8} sm={4}>
-                <br />
-                <ActionPaginationButtonType
-                  selectedRowIds={selectedRowIds}
-                  modifyButton={modifyButton}
-                  deactivateButton={deactivateButton}
-                  fromRecordCount={fromRecordCount}
-                  toRecordCount={toRecordCount}
-                  totalRecordCount={totalRecordCount}
-                  handlePreviousPage={handlePreviousPage}
-                  handleNextPage={handleNextPage}
-                  deleteDeactivate={deleteDeactivateUserManagement}
-                  id={selectedRowCombinedUserID[0]}
-                  otherParmsInLink={`&startingRecNo=1&roleFilter=`}
-                  addButtonRedirectLink={`/MasterListsPage/userEdit?ID=0&startingRecNo=1&roleFilter=`}
-                  modifyButtonRedirectLink={`/MasterListsPage/userEdit?ID=`}
-                  type="type2"
+        <ProductPageHeader
+          title={<FormattedMessage id="unifiedSystemUser.browser.title" />}
+          subtitle={<FormattedMessage id="user.management.subtitle" />}
+          actions={
+            <Button size="sm" onClick={openAddUser}>
+              <FormattedMessage id="unifiedSystemUser.browser.button.add" />
+            </Button>
+          }
+        />
+
+        <section className="admin-list-workspace__overview">
+          <article>
+            <span>
+              <FormattedMessage id="user.management.metric.total" />
+            </span>
+            <strong>{totalUsers}</strong>
+          </article>
+          <article>
+            <span>
+              <FormattedMessage id="user.management.metric.active" />
+            </span>
+            <strong>{activeUsers}</strong>
+          </article>
+          <article>
+            <span>
+              <FormattedMessage id="user.management.metric.locked" />
+            </span>
+            <strong>{lockedUsers}</strong>
+          </article>
+        </section>
+
+        <section className="admin-list-workspace__surface">
+          <div className="admin-list-workspace__section-heading">
+            <div>
+              <h2>
+                <FormattedMessage id="user.management.list.title" />
+              </h2>
+              <p>
+                <FormattedMessage id="user.management.list.subtitle" />
+              </p>
+            </div>
+            <div className="admin-list-workspace__selection-actions">
+              <span>
+                <FormattedMessage
+                  id="user.management.selected"
+                  values={{ count: selectedCount }}
                 />
-                <br />
-              </Column>
-            </Section>
-          </Column>
-        </Grid>
-        <div className="orderLegendBody">
-          <Grid>
-            <Column lg={16} md={8} sm={4}>
-              <Section>
-                <Search
-                  size="lg"
-                  id="user-name-search-bar"
-                  labelText={
-                    <FormattedMessage id="unifiedSystemUser.browser.search" />
-                  }
-                  placeholder={intl.formatMessage({
-                    id: "unifiedSystemUser.browser.search.placeholder",
-                  })}
-                  onChange={handlePanelSearchChange}
-                  value={(() => {
-                    if (panelSearchTerm) {
-                      return panelSearchTerm;
-                    }
-                    return "";
-                  })()}
-                ></Search>
-              </Section>
-            </Column>
-          </Grid>
-          <br />
-          <Grid fullWidth={true}>
-            <Column lg={2} md={2} sm={1}>
-              <FormattedMessage id="menu.label.filter" />
-            </Column>
-            <Column lg={6} md={6} sm={3}>
-              <Select
-                id="filters"
-                labelText={<FormattedMessage id="menu.label.filter.role" />}
-                defaultValue={
-                  testSectionsShow && testSectionsShow.length > 0
-                    ? testSectionsShow[0].id
-                    : ""
-                }
-                onChange={handleTestSectionsSelectChange}
+              </span>
+              <Button
+                kind="ghost"
+                size="sm"
+                disabled={modifyButton}
+                onClick={openSelectedUser}
               >
-                <SelectItem key="" value="" text="" />
-                {testSectionsShow && testSectionsShow.length > 0 ? (
-                  testSectionsShow.map((section) => (
-                    <SelectItem
-                      key={section.id}
-                      value={section.id}
-                      text={section.value}
-                    />
-                  ))
-                ) : (
+                <FormattedMessage id="externalconnections.action.edit" />
+              </Button>
+              <Button
+                kind="danger--ghost"
+                size="sm"
+                disabled={deactivateButton}
+                onClick={deleteDeactivateUserManagement}
+              >
+                <FormattedMessage id="externalconnections.action.deactivate" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="admin-list-workspace__filters">
+            <Search
+              size="lg"
+              id="user-name-search-bar"
+              labelText={
+                <FormattedMessage id="unifiedSystemUser.browser.search" />
+              }
+              placeholder={intl.formatMessage({
+                id: "unifiedSystemUser.browser.search.placeholder",
+              })}
+              closeButtonLabelText={intl.formatMessage({
+                id: "user.management.search.clear",
+              })}
+              onChange={handlePanelSearchChange}
+              value={panelSearchTerm}
+            />
+            <Select
+              id="filters"
+              labelText={<FormattedMessage id="menu.label.filter.role" />}
+              value={roleFilter}
+              onChange={handleTestSectionsSelectChange}
+            >
+              <SelectItem
+                key=""
+                value=""
+                text={intl.formatMessage({ id: "user.management.role.all" })}
+              />
+              {testSectionsShow && testSectionsShow.length > 0 ? (
+                testSectionsShow.map((section) => (
                   <SelectItem
-                    key="no-option-available"
-                    value=""
-                    text={intl.formatMessage({
-                      id: "label.no.options.available",
-                    })}
+                    key={section.id}
+                    value={section.id}
+                    text={section.value}
                   />
-                )}
-              </Select>
-            </Column>
-            <Column lg={8} md={8} sm={4}>
+                ))
+              ) : (
+                <SelectItem
+                  key="no-option-available"
+                  value=""
+                  text={intl.formatMessage({
+                    id: "label.no.options.available",
+                  })}
+                />
+              )}
+            </Select>
+            <div className="admin-list-workspace__filter-checks">
+              <span>
+                <FormattedMessage id="user.management.quickFilters" />
+              </span>
               <CustomCheckBox
                 id="only-active"
                 label={<FormattedMessage id="menu.label.filter.active" />}
-                onChange={(isChecked) => {
-                  if (isChecked) {
-                    setFilters([...filters, "isActive"]);
-                  } else {
-                    setFilters(
-                      filters.filter((filter) => filter !== "isActive"),
-                    );
-                  }
-                }}
+                onChange={(isChecked) => updateFilter("isActive", isChecked)}
               />
-              <br />
               <CustomCheckBox
                 id="only-administrator"
                 label={<FormattedMessage id="menu.label.filter.admin" />}
-                onChange={(isChecked) => {
-                  if (isChecked) {
-                    setFilters([...filters, "isAdmin"]);
-                  } else {
-                    setFilters(
-                      filters.filter((filter) => filter !== "isAdmin"),
-                    );
-                  }
-                }}
+                onChange={(isChecked) => updateFilter("isAdmin", isChecked)}
               />
-            </Column>
-          </Grid>
-          <br />
-          <>
-            <Grid fullWidth={true} className="gridBoundary">
-              <Column lg={16} md={8} sm={4}>
+            </div>
+          </div>
+
+          {userManagementListShow.length === 0 ? (
+            <div className="admin-list-workspace__empty" role="status">
+              <div aria-hidden="true">0</div>
+              <h3>
+                <FormattedMessage
+                  id={
+                    panelSearchTerm || roleFilter || filters.length > 0
+                      ? "user.management.empty.filtered.title"
+                      : "user.management.empty.title"
+                  }
+                />
+              </h3>
+              <p>
+                <FormattedMessage
+                  id={
+                    panelSearchTerm || roleFilter || filters.length > 0
+                      ? "user.management.empty.filtered.subtitle"
+                      : "user.management.empty.subtitle"
+                  }
+                />
+              </p>
+              {!panelSearchTerm && !roleFilter && filters.length === 0 && (
+                <Button size="sm" onClick={openAddUser}>
+                  <FormattedMessage id="unifiedSystemUser.browser.button.add" />
+                </Button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="admin-list-workspace__table-scroll">
                 <DataTable
                   rows={userManagementListShow.slice(
                     (page - 1) * pageSize,
@@ -482,9 +494,7 @@ function UserManagement() {
                     },
                     {
                       key: "lastName",
-                      header: intl.formatMessage({
-                        id: "systemuser.lastName",
-                      }),
+                      header: intl.formatMessage({ id: "systemuser.lastName" }),
                     },
                     {
                       key: "loginName",
@@ -512,26 +522,16 @@ function UserManagement() {
                     },
                     {
                       key: "active",
-                      header: intl.formatMessage({
-                        id: "systemuser.isActive",
-                      }),
+                      header: intl.formatMessage({ id: "systemuser.isActive" }),
                     },
                     {
                       key: "timeout",
-                      header: intl.formatMessage({
-                        id: "login.timeout",
-                      }),
+                      header: intl.formatMessage({ id: "login.timeout" }),
                     },
                   ]}
                 >
-                  {({
-                    rows,
-                    headers,
-                    getHeaderProps,
-                    getTableProps,
-                    getSelectionProps,
-                  }) => (
-                    <TableContainer>
+                  {({ rows, headers, getHeaderProps, getTableProps }) => (
+                    <TableContainer className="admin-list-workspace__table">
                       <Table {...getTableProps()}>
                         <TableHead>
                           <TableRow>
@@ -546,82 +546,72 @@ function UserManagement() {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          <>
-                            {rows.map((row) => (
-                              <TableRow
-                                key={row.id}
-                                onClick={() => {
-                                  const id = row.id;
-                                  const CombinedUserID = row.combinedUserID;
-                                  const isSelected =
-                                    selectedRowIds.includes(id);
-                                  if (isSelected) {
-                                    setSelectedRowIds(
-                                      selectedRowIds.filter(
+                          {rows.map((row) => (
+                            <TableRow
+                              key={row.id}
+                              onClick={() => {
+                                const id = row.id;
+                                setSelectedRowIds(
+                                  selectedRowIds.includes(id)
+                                    ? selectedRowIds.filter(
                                         (selectedId) => selectedId !== id,
-                                      ),
-                                    );
-                                  } else {
-                                    setSelectedRowIds([...selectedRowIds, id]);
-                                  }
-                                }}
-                              >
-                                {row.cells.map((cell) => renderCell(cell, row))}
-                              </TableRow>
-                            ))}
-                          </>
+                                      )
+                                    : [...selectedRowIds, id],
+                                );
+                              }}
+                            >
+                              {row.cells.map((cell) => renderCell(cell, row))}
+                            </TableRow>
+                          ))}
                         </TableBody>
                       </Table>
                     </TableContainer>
                   )}
                 </DataTable>
-                <Pagination
-                  onChange={handlePageChange}
-                  page={page}
-                  pageSize={pageSize}
-                  pageSizes={[10, 20]}
-                  totalItems={userManagementListShow.length}
-                  forwardText={intl.formatMessage({
-                    id: "pagination.forward",
-                  })}
-                  backwardText={intl.formatMessage({
-                    id: "pagination.backward",
-                  })}
-                  itemRangeText={(min, max, total) =>
-                    intl.formatMessage(
-                      { id: "pagination.item-range" },
-                      { min: min, max: max, total: total },
-                    )
-                  }
-                  itemsPerPageText={intl.formatMessage({
-                    id: "pagination.items-per-page",
-                  })}
-                  itemText={(min, max) =>
-                    intl.formatMessage(
-                      { id: "pagination.item" },
-                      { min: min, max: max },
-                    )
-                  }
-                  pageNumberText={intl.formatMessage({
-                    id: "pagination.page-number",
-                  })}
-                  pageRangeText={(_current, total) =>
-                    intl.formatMessage(
-                      { id: "pagination.page-range" },
-                      { total: total },
-                    )
-                  }
-                  pageText={(page, pagesUnknown) =>
-                    intl.formatMessage(
-                      { id: "pagination.page" },
-                      { page: pagesUnknown ? "" : page },
-                    )
-                  }
-                />
-              </Column>
-            </Grid>
-          </>
-        </div>
+              </div>
+              <Pagination
+                className="admin-list-workspace__pagination"
+                onChange={handlePageChange}
+                page={page}
+                pageSize={pageSize}
+                pageSizes={[10, 20]}
+                totalItems={totalUsers}
+                forwardText={intl.formatMessage({ id: "pagination.forward" })}
+                backwardText={intl.formatMessage({ id: "pagination.backward" })}
+                itemRangeText={(min, max, total) =>
+                  intl.formatMessage(
+                    { id: "pagination.item-range" },
+                    { min: min, max: max, total: total },
+                  )
+                }
+                itemsPerPageText={intl.formatMessage({
+                  id: "pagination.items-per-page",
+                })}
+                itemText={(min, max) =>
+                  intl.formatMessage(
+                    { id: "pagination.item" },
+                    { min: min, max: max },
+                  )
+                }
+                pageNumberText={intl.formatMessage({
+                  id: "pagination.page-number",
+                })}
+                pageRangeText={(_current, total) =>
+                  intl.formatMessage(
+                    { id: "pagination.page-range" },
+                    { total: total },
+                  )
+                }
+                pageText={(currentPage, pagesUnknown) =>
+                  intl.formatMessage(
+                    { id: "pagination.page" },
+                    { page: pagesUnknown ? "" : currentPage },
+                  )
+                }
+              />
+            </>
+          )}
+        </section>
       </div>
     </>
   );

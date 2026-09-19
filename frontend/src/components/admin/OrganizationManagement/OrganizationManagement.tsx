@@ -1,11 +1,7 @@
-import React, { useContext, useState, useEffect, useRef } from "react";
-import type { ChangeEvent, FormEvent, ReactNode } from "react";
+import React, { useContext, useState, useEffect } from "react";
+import type { ChangeEvent, ReactNode, SyntheticEvent } from "react";
 import {
-  Heading,
   Loading,
-  Grid,
-  Column,
-  Section,
   DataTable,
   Table,
   TableHead,
@@ -17,6 +13,8 @@ import {
   TableContainer,
   Pagination,
   Search,
+  Button,
+  Tag,
 } from "@carbon/react";
 import {
   getFromOpenElisServer,
@@ -29,8 +27,12 @@ import {
 } from "../../common/CustomNotification";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
-import ActionPaginationButtonType from "../../common/ActionPaginationButtonType";
-import { refreshCurrentRoute } from "../../utils/NavigationUtils";
+import ProductPageHeader from "../../common/ProductPageHeader";
+import {
+  navigateToInternalPath,
+  refreshCurrentRoute,
+} from "../../utils/NavigationUtils";
+import "../AdminListWorkspace.css";
 
 interface OrganizationMenuItem {
   id: string;
@@ -93,13 +95,16 @@ let breadcrumbs = [
   },
 ];
 
+const isEnabledValue = (value: ReactNode) =>
+  value === true ||
+  ["true", "y", "yes", "1"].includes(String(value).toLowerCase());
+
 function OrganizationManagement() {
   const { notificationVisible, setNotificationVisible, addNotification } =
-    useContext(NotificationContext) as NotificationContextValue;
+    useContext(NotificationContext) as unknown as NotificationContextValue;
 
   const intl = useIntl();
 
-  const componentMounted = useRef(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [deactivateButton, setDeactivateButton] = useState(true);
@@ -109,21 +114,14 @@ function OrganizationManagement() {
     string[] | { selectedIDs: string[] }
   >([]);
   const [loading, setLoading] = useState(true);
-  const [isSearching, setIsSearching] = useState(false);
   const [panelSearchTerm, setPanelSearchTerm] = useState("");
   const [totalRecordCount, setTotalRecordCount] = useState("");
-  const [startingRecNo, setStartingRecNo] = useState<number | string>(1);
-  const [fromRecordCount, setFromRecordCount] = useState("");
-  const [toRecordCount, setToRecordCount] = useState("");
-  const [paging, setPaging] = useState(1);
   const [organizationsManagmentList, setOrganizationsManagmentList] =
     useState<OrganizationMenuResponse>();
   const [organizationsManagmentListShow, setOrganizationsManagmentListShow] =
     useState<OrganizationTableRow[]>([]);
 
-  function deleteDeactivateOrganizationManagament(
-    event: FormEvent<HTMLFormElement>,
-  ) {
+  function deleteDeactivateOrganizationManagament(event: SyntheticEvent) {
     event.preventDefault();
     setLoading(true);
     postToOpenElisServerJsonResponse(
@@ -135,22 +133,9 @@ function OrganizationManagement() {
     );
   }
 
-  const handleNextPage = () => {
-    setPaging((pager) => Math.max(pager, 2));
-    setStartingRecNo(fromRecordCount);
-    setSelectedRowIds([]);
-  };
-
-  const handlePreviousPage = () => {
-    setPaging((pager) => Math.max(pager - 1, 1));
-    setStartingRecNo(Math.max(fromRecordCount as unknown as number, 1));
-    setSelectedRowIds([]);
-  };
-
   const handlePanelSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setIsSearching(true);
-    setPaging(1);
-    setStartingRecNo(1);
+    setLoading(true);
+    setPage(1);
     const query = event.target.value;
     setPanelSearchTerm(query);
     setSelectedRowIds([]);
@@ -174,51 +159,37 @@ function OrganizationManagement() {
   };
 
   const handlePageChange = ({
-    page,
-    pageSize,
+    page: nextPage,
+    pageSize: nextPageSize,
   }: {
     page: number;
     pageSize: number;
   }) => {
-    setPage(page);
-    setPageSize(pageSize);
+    setPage(nextPage);
+    setPageSize(nextPageSize);
     setSelectedRowIds([]);
   };
 
   const handleMenuItems = (res?: OrganizationMenuResponse) => {
-    if (!res) {
-      setLoading(true);
-    } else {
-      setOrganizationsManagmentList(res);
-    }
+    setOrganizationsManagmentList(
+      res || {
+        menuList: [],
+        fromRecordCount: "0",
+        toRecordCount: "0",
+        totalRecordCount: "0",
+      },
+    );
+    setLoading(false);
   };
 
   useEffect(() => {
-    componentMounted.current = true;
     setLoading(true);
-    getFromOpenElisServer(
-      `/rest/OrganizationMenu?paging=${paging}&startingRecNo=${startingRecNo}`,
-      handleMenuItems,
-    );
-    return () => {
-      componentMounted.current = false;
-      setLoading(false);
-    };
-  }, [paging, startingRecNo]);
-
-  const handleSearchedProviderMenuList = (res?: OrganizationMenuResponse) => {
-    if (!res) {
-      setLoading(true);
-    } else {
-      setOrganizationsManagmentList(res);
-    }
-  };
-
-  useEffect(() => {
-    getFromOpenElisServer(
-      `/rest/SearchOrganizationMenu?search=Y&startingRecNo=${startingRecNo}&searchString=${panelSearchTerm}`,
-      handleSearchedProviderMenuList,
-    );
+    const endpoint = panelSearchTerm
+      ? `/rest/SearchOrganizationMenu?search=Y&startingRecNo=1&searchString=${encodeURIComponent(
+          panelSearchTerm,
+        )}`
+      : "/rest/OrganizationMenu?paging=1&startingRecNo=1";
+    getFromOpenElisServer(endpoint, handleMenuItems);
   }, [panelSearchTerm]);
 
   useEffect(() => {
@@ -228,9 +199,7 @@ function OrganizationManagement() {
           return {
             id: item.id,
             orgName: item.organizationName,
-            parentOrg: item.organization
-              ? item.organization.organizationName
-              : "",
+            parentOrg: item.organization?.organizationName || "",
             orgPrefix: item.shortName || "",
             active: item.isActive || "",
             internetAddress: item.internetAddress || "",
@@ -242,8 +211,6 @@ function OrganizationManagement() {
       const newOrganizationsManagementListArray = Object.values(
         newOrganizationsManagementList,
       );
-      setFromRecordCount(organizationsManagmentList.fromRecordCount);
-      setToRecordCount(organizationsManagmentList.toRecordCount);
       setTotalRecordCount(organizationsManagmentList.totalRecordCount);
       setOrganizationsManagmentListShow(newOrganizationsManagementListArray);
     }
@@ -270,14 +237,6 @@ function OrganizationManagement() {
     }
   }, [selectedRowIds]);
 
-  useEffect(() => {
-    if (isSearching && panelSearchTerm === "") {
-      setIsSearching(false);
-      setPaging(1);
-      setStartingRecNo(1);
-    }
-  }, [isSearching, panelSearchTerm]);
-
   const renderCell = (cell: CarbonTableCell, row: CarbonTableRow) => {
     if (cell.info.header === "select") {
       return (
@@ -296,14 +255,21 @@ function OrganizationManagement() {
           }}
         />
       );
-    } else if (cell.info.header === "active") {
-      return <TableCell key={cell.id}>{cell.value!.toString()}</TableCell>;
-    } else {
-      return <TableCell key={cell.id}>{cell.value}</TableCell>;
     }
+    if (cell.info.header === "active") {
+      const active = isEnabledValue(cell.value);
+      return (
+        <TableCell key={cell.id}>
+          <Tag type={active ? "green" : "cool-gray"} size="sm">
+            <FormattedMessage id={active ? "label.yes" : "label.no"} />
+          </Tag>
+        </TableCell>
+      );
+    }
+    return <TableCell key={cell.id}>{cell.value || "—"}</TableCell>;
   };
 
-  if (!loading) {
+  if (loading) {
     return (
       <>
         <Loading />
@@ -311,67 +277,151 @@ function OrganizationManagement() {
     );
   }
 
+  const totalOrganizations = Number(
+    totalRecordCount || organizationsManagmentListShow.length || 0,
+  );
+  const activeOrganizations = organizationsManagmentListShow.filter(
+    (organization) => isEnabledValue(organization.active),
+  ).length;
+  const selectedCount = selectedRowIds.length;
+
+  const openAddOrganization = () =>
+    navigateToInternalPath("/MasterListsPage/organizationEdit?ID=0");
+
+  const openSelectedOrganization = () => {
+    if (selectedCount === 1) {
+      navigateToInternalPath(
+        `/MasterListsPage/organizationEdit?ID=${selectedRowIds[0]}&startingRecNo=1`,
+      );
+    }
+  };
+
   return (
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
-      <div className="adminPageContent">
+      <div className="adminPageContent admin-list-workspace organization-management-page">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
-        <Grid fullWidth={true}>
-          <Column lg={16} md={8} sm={4}>
-            <Section>
-              <Heading>
-                <FormattedMessage id="organization.main.title" />
-              </Heading>
-            </Section>
-          </Column>
-        </Grid>
-        <br />
-        <ActionPaginationButtonType
-          selectedRowIds={selectedRowIds}
-          modifyButton={modifyButton}
-          deactivateButton={deactivateButton}
-          fromRecordCount={fromRecordCount}
-          toRecordCount={toRecordCount}
-          totalRecordCount={totalRecordCount}
-          handlePreviousPage={handlePreviousPage}
-          handleNextPage={handleNextPage}
-          deleteDeactivate={deleteDeactivateOrganizationManagament}
-          id={selectedRowIds[0]}
-          otherParmsInLink={`&startingRecNo=1`}
-          addButtonRedirectLink={`/MasterListsPage/organizationEdit?ID=0`}
-          modifyButtonRedirectLink={`/MasterListsPage/organizationEdit?ID=`}
-          type="type2"
+        <ProductPageHeader
+          title={<FormattedMessage id="organization.main.title" />}
+          subtitle={<FormattedMessage id="organization.management.subtitle" />}
+          actions={
+            <Button size="sm" onClick={openAddOrganization}>
+              <FormattedMessage id="organization.management.action.add" />
+            </Button>
+          }
         />
-        <br />
-        <div className="orderLegendBody">
-          <Grid>
-            <Column lg={16} md={8} sm={4}>
-              <Section>
-                <Search
-                  size="lg"
-                  id="org-name-search-bar"
-                  labelText={
-                    <FormattedMessage id="organization.search.byorgname" />
-                  }
-                  placeholder={intl.formatMessage({
-                    id: "organization.search.placeHolder",
-                  })}
-                  onChange={handlePanelSearchChange}
-                  value={(() => {
-                    if (panelSearchTerm) {
-                      return panelSearchTerm;
-                    }
-                    return "";
-                  })()}
-                ></Search>
-              </Section>
-            </Column>
-          </Grid>
-          <br />
 
-          <>
-            <Grid fullWidth={true} className="gridBoundary">
-              <Column lg={16} md={8} sm={4}>
+        <section className="admin-list-workspace__overview">
+          <article>
+            <span>
+              <FormattedMessage id="organization.management.metric.total" />
+            </span>
+            <strong>{totalOrganizations}</strong>
+          </article>
+          <article>
+            <span>
+              <FormattedMessage id="organization.management.metric.active" />
+            </span>
+            <strong>{activeOrganizations}</strong>
+          </article>
+          <article>
+            <span>
+              <FormattedMessage id="organization.management.metric.selected" />
+            </span>
+            <strong>{selectedCount}</strong>
+          </article>
+        </section>
+
+        <section className="admin-list-workspace__surface">
+          <div className="admin-list-workspace__section-heading">
+            <div>
+              <h2>
+                <FormattedMessage id="organization.management.list.title" />
+              </h2>
+              <p>
+                <FormattedMessage id="organization.management.list.subtitle" />
+              </p>
+            </div>
+            <div className="admin-list-workspace__selection-actions">
+              <span>
+                <FormattedMessage
+                  id="organization.management.selected"
+                  values={{ count: selectedCount }}
+                />
+              </span>
+              <Button
+                kind="ghost"
+                size="sm"
+                disabled={modifyButton}
+                onClick={openSelectedOrganization}
+              >
+                <FormattedMessage id="externalconnections.action.edit" />
+              </Button>
+              <Button
+                kind="danger--ghost"
+                size="sm"
+                disabled={deactivateButton}
+                onClick={deleteDeactivateOrganizationManagament}
+              >
+                <FormattedMessage id="externalconnections.action.deactivate" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="admin-list-workspace__filters admin-list-workspace__filters--search-only">
+            <Search
+              size="lg"
+              id="org-name-search-bar"
+              labelText={
+                <FormattedMessage id="organization.search.byorgname" />
+              }
+              placeholder={intl.formatMessage({
+                id: "organization.search.placeHolder",
+              })}
+              closeButtonLabelText={intl.formatMessage({
+                id: "organization.management.search.clear",
+              })}
+              onChange={handlePanelSearchChange}
+              value={panelSearchTerm}
+            />
+            <p role="status">
+              <FormattedMessage
+                id="organization.management.results"
+                values={{ count: organizationsManagmentListShow.length }}
+              />
+            </p>
+          </div>
+
+          {organizationsManagmentListShow.length === 0 ? (
+            <div className="admin-list-workspace__empty" role="status">
+              <div aria-hidden="true">0</div>
+              <h3>
+                <FormattedMessage
+                  id={
+                    panelSearchTerm
+                      ? "organization.management.empty.search.title"
+                      : "organization.management.empty.title"
+                  }
+                />
+              </h3>
+              <p>
+                <FormattedMessage
+                  id={
+                    panelSearchTerm
+                      ? "organization.management.empty.search.subtitle"
+                      : "organization.management.empty.subtitle"
+                  }
+                />
+              </p>
+              {!panelSearchTerm && (
+                <Button size="sm" onClick={openAddOrganization}>
+                  <FormattedMessage id="organization.management.action.add" />
+                </Button>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="admin-list-workspace__table-scroll">
                 <DataTable
                   rows={organizationsManagmentListShow.slice(
                     (page - 1) * pageSize,
@@ -380,9 +430,7 @@ function OrganizationManagement() {
                   headers={[
                     {
                       key: "select",
-                      header: intl.formatMessage({
-                        id: "organization.select",
-                      }),
+                      header: intl.formatMessage({ id: "organization.select" }),
                     },
                     {
                       key: "orgName",
@@ -390,14 +438,10 @@ function OrganizationManagement() {
                         id: "organization.organizationName",
                       }),
                     },
-
                     {
                       key: "parentOrg",
-                      header: intl.formatMessage({
-                        id: "organization.parent",
-                      }),
+                      header: intl.formatMessage({ id: "organization.parent" }),
                     },
-
                     {
                       key: "orgPrefix",
                       header: intl.formatMessage({
@@ -424,9 +468,7 @@ function OrganizationManagement() {
                     },
                     {
                       key: "city",
-                      header: intl.formatMessage({
-                        id: "organization.city",
-                      }),
+                      header: intl.formatMessage({ id: "organization.city" }),
                     },
                     {
                       key: "cliaNumber",
@@ -437,14 +479,14 @@ function OrganizationManagement() {
                   ]}
                 >
                   {({ rows, headers, getHeaderProps, getTableProps }) => (
-                    <TableContainer>
+                    <TableContainer className="admin-list-workspace__table">
                       <Table {...getTableProps()}>
                         <TableHead>
                           <TableRow>
                             {headers.map((header) => (
                               <TableHeader
-                                key={header.key}
                                 {...getHeaderProps({ header })}
+                                key={header.key}
                               >
                                 {header.header}
                               </TableHeader>
@@ -452,81 +494,72 @@ function OrganizationManagement() {
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          <>
-                            {rows.map((row) => (
-                              <TableRow
-                                key={row.id}
-                                onClick={() => {
-                                  const id = row.id;
-                                  const isSelected =
-                                    selectedRowIds.includes(id);
-                                  if (isSelected) {
-                                    setSelectedRowIds(
-                                      selectedRowIds.filter(
+                          {rows.map((row) => (
+                            <TableRow
+                              key={row.id}
+                              onClick={() => {
+                                const id = row.id;
+                                setSelectedRowIds(
+                                  selectedRowIds.includes(id)
+                                    ? selectedRowIds.filter(
                                         (selectedId) => selectedId !== id,
-                                      ),
-                                    );
-                                  } else {
-                                    setSelectedRowIds([...selectedRowIds, id]);
-                                  }
-                                }}
-                              >
-                                {row.cells.map((cell) => renderCell(cell, row))}
-                              </TableRow>
-                            ))}
-                          </>
+                                      )
+                                    : [...selectedRowIds, id],
+                                );
+                              }}
+                            >
+                              {row.cells.map((cell) => renderCell(cell, row))}
+                            </TableRow>
+                          ))}
                         </TableBody>
                       </Table>
                     </TableContainer>
                   )}
                 </DataTable>
-                <Pagination
-                  onChange={handlePageChange}
-                  page={page}
-                  pageSize={pageSize}
-                  pageSizes={[10, 20]}
-                  totalItems={organizationsManagmentListShow.length}
-                  forwardText={intl.formatMessage({
-                    id: "pagination.forward",
-                  })}
-                  backwardText={intl.formatMessage({
-                    id: "pagination.backward",
-                  })}
-                  itemRangeText={(min, max, total) =>
-                    intl.formatMessage(
-                      { id: "pagination.item-range" },
-                      { min: min, max: max, total: total },
-                    )
-                  }
-                  itemsPerPageText={intl.formatMessage({
-                    id: "pagination.items-per-page",
-                  })}
-                  itemText={(min, max) =>
-                    intl.formatMessage(
-                      { id: "pagination.item" },
-                      { min: min, max: max },
-                    )
-                  }
-                  pageNumberText={intl.formatMessage({
-                    id: "pagination.page-number",
-                  })}
-                  pageRangeText={(_current, total) =>
-                    intl.formatMessage(
-                      { id: "pagination.page-range" },
-                      { total: total },
-                    )
-                  }
-                  pageText={(page, pagesUnknown) =>
-                    intl.formatMessage(
-                      { id: "pagination.page" },
-                      { page: pagesUnknown ? "" : page },
-                    )
-                  }
-                />
-              </Column>
-            </Grid>
-          </>
-        </div>
+              </div>
+              <Pagination
+                className="admin-list-workspace__pagination"
+                onChange={handlePageChange}
+                page={page}
+                pageSize={pageSize}
+                pageSizes={[10, 20]}
+                totalItems={totalOrganizations}
+                forwardText={intl.formatMessage({ id: "pagination.forward" })}
+                backwardText={intl.formatMessage({ id: "pagination.backward" })}
+                itemRangeText={(min, max, total) =>
+                  intl.formatMessage(
+                    { id: "pagination.item-range" },
+                    { min: min, max: max, total: total },
+                  )
+                }
+                itemsPerPageText={intl.formatMessage({
+                  id: "pagination.items-per-page",
+                })}
+                itemText={(min, max) =>
+                  intl.formatMessage(
+                    { id: "pagination.item" },
+                    { min: min, max: max },
+                  )
+                }
+                pageNumberText={intl.formatMessage({
+                  id: "pagination.page-number",
+                })}
+                pageRangeText={(_current, total) =>
+                  intl.formatMessage(
+                    { id: "pagination.page-range" },
+                    { total: total },
+                  )
+                }
+                pageText={(currentPage, pagesUnknown) =>
+                  intl.formatMessage(
+                    { id: "pagination.page" },
+                    { page: pagesUnknown ? "" : currentPage },
+                  )
+                }
+              />
+            </>
+          )}
+        </section>
       </div>
     </>
   );
