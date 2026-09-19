@@ -79,6 +79,7 @@ import MasterDataIdentityManagement from "./masterDataIdentity/MasterDataIdentit
 import ManagementWorkspaceSwitcher from "../management/ManagementWorkspaceSwitcher";
 import OrganizationPeopleWorkspace from "./organizationPeopleWorkspace/OrganizationPeopleWorkspace";
 import WorkflowReportWorkspace from "./workflowReportWorkspace/WorkflowReportWorkspace";
+import InterfaceWorkspace from "./interfaceWorkspace/InterfaceWorkspace";
 
 function Admin() {
   const { path } = useRouteMatch();
@@ -110,6 +111,10 @@ function Admin() {
         <Route
           path={`${path}/workflowReportWorkspace`}
           component={WorkflowReportWorkspace}
+        />
+        <Route
+          path={`${path}/interfaceWorkspace`}
+          component={InterfaceWorkspace}
         />
         <Route path={`${path}/program`} component={ProgramManagement} />
         <Route path={`${path}/providerMenu`} component={ProviderMenu} />
