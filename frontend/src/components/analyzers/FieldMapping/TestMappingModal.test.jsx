@@ -396,4 +396,76 @@ describe("TestMappingModal", () => {
       "0 clinical writes",
     );
   });
+
+  test("testScenarioSelection_WithUnmappedAstM_FillsMessageAndExplainsExpectation", async () => {
+    renderWithIntl(<TestMappingModal {...defaultProps} />);
+
+    fireEvent.change(await screen.findByTestId("test-mapping-sample"), {
+      target: { value: "ASTM_UNMAPPED" },
+    });
+
+    expect(screen.getByTestId("test-mapping-protocol")).toHaveValue("ASTM");
+    expect(screen.getByTestId("test-mapping-message-input").value).toContain(
+      "OE_SIM_UNKNOWN",
+    );
+    expect(screen.getByTestId("test-mapping-scenario")).toHaveTextContent(
+      "OE_SIM_UNKNOWN should be identified",
+    );
+    expect(screen.getByTestId("test-mapping-option-detailed")).toBeChecked();
+    expect(screen.getByTestId("test-mapping-option-validate")).toBeChecked();
+  });
+
+  test("testUnmappedScenario_WithSafePreview_ShowsPassedVerification", async () => {
+    previewMapping.mockImplementation((analyzerId, data, callback) => {
+      callback(
+        {
+          protocol: "ASTM",
+          dryRun: true,
+          replaySummary: {
+            parsedFieldCount: 2,
+            appliedMappingCount: 1,
+            clinicalWrites: 0,
+          },
+          parsedFields: [
+            { fieldName: "sampleId", rawValue: "SIM-002" },
+            { fieldName: "testCode", rawValue: "OE_SIM_UNKNOWN" },
+          ],
+          appliedMappings: [{ analyzerFieldName: "sampleId" }],
+          entityPreview: {},
+          warnings: ["Unmapped analyzer test code: OE_SIM_UNKNOWN"],
+          errors: [],
+        },
+        null,
+      );
+    });
+
+    renderWithIntl(<TestMappingModal {...defaultProps} />);
+
+    fireEvent.change(await screen.findByTestId("test-mapping-sample"), {
+      target: { value: "ASTM_UNMAPPED" },
+    });
+    await userEvent.click(
+      await screen.findByTestId("test-mapping-preview-button"),
+    );
+
+    expect(
+      await screen.findByTestId("test-mapping-verification"),
+    ).toBeVisible();
+    expect(
+      screen.getByTestId("test-mapping-verification-status"),
+    ).toHaveTextContent("Passed");
+    expect(screen.getByTestId("test-mapping-verification")).toHaveTextContent(
+      "The unmapped code was identified and reported",
+    );
+    expect(previewMapping).toHaveBeenCalledWith(
+      "analyzer-1",
+      expect.objectContaining({
+        protocol: "ASTM",
+        includeDetailedParsing: true,
+        validateAllMappings: true,
+      }),
+      expect.any(Function),
+      null,
+    );
+  });
 });

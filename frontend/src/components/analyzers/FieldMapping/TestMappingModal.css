@@ -37,6 +37,19 @@
   margin-bottom: 1.5rem;
 }
 
+.test-mapping-scenario {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.test-mapping-scenario p {
+  margin-top: 0.35rem;
+  color: var(--cds-text-secondary);
+  line-height: 1.4;
+}
+
 .test-mapping-character-counter {
   margin-top: 0.5rem;
   text-align: right;
@@ -85,8 +98,38 @@
   color: var(--cds-text-secondary);
 }
 
+.test-mapping-verification {
+  margin: 1rem 0 1.5rem;
+}
+
+.test-mapping-verification__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.test-mapping-verification ul {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.test-mapping-verification li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 @media (max-width: 42rem) {
   .test-mapping-replay-config {
+    grid-template-columns: 1fr;
+  }
+
+  .test-mapping-scenario {
     grid-template-columns: 1fr;
   }
 }

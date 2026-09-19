@@ -34,6 +34,7 @@ import {
   Select,
   SelectItem,
   Tile,
+  Tag,
 } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
 import * as analyzerService from "../../../services/analyzerService";
@@ -43,13 +44,35 @@ const MAX_MESSAGE_SIZE = 10240; // 10KB
 const REPLAY_SAMPLES = {
   ASTM_CHEMISTRY: {
     protocol: "ASTM",
+    mode: "mapped",
+    purposeId: "analyzer.testMapping.scenario.astmNormal.purpose",
+    expectedId: "analyzer.testMapping.scenario.astmNormal.expected",
     message:
       "H|\\^&|||LIS-SIM|||||P|1\rP|1||SIM-001\rO|1|SIM-20260917||^^^GLU\rR|1|^^^GLU|5.6|mmol/L|||N\rL|1|N",
   },
+  ASTM_UNMAPPED: {
+    protocol: "ASTM",
+    mode: "unmapped",
+    purposeId: "analyzer.testMapping.scenario.astmUnmapped.purpose",
+    expectedId: "analyzer.testMapping.scenario.astmUnmapped.expected",
+    message:
+      "H|\\^&|||LIS-SIM|||||P|1\rP|1||SIM-002\rO|1|SIM-20260917||^^^OE_SIM_UNKNOWN\rR|1|^^^OE_SIM_UNKNOWN|7.8|mmol/L|||H\rL|1|N",
+  },
   HL7_ORU: {
     protocol: "HL7",
+    mode: "mapped",
+    purposeId: "analyzer.testMapping.scenario.hl7Normal.purpose",
+    expectedId: "analyzer.testMapping.scenario.hl7Normal.expected",
     message:
       "MSH|^~\\&|ANALYZER-SIM|LAB|OPENELIS|LAB|202609171030||ORU^R01|SIM-001|P|2.3.1\rPID|1||SIM-PATIENT\rOBR|1|SIM-20260917||GLU^Glucose\rOBX|1|NM|GLU^Glucose||5.6|mmol/L|3.9-6.1|N|||F",
+  },
+  HL7_CRITICAL: {
+    protocol: "HL7",
+    mode: "mapped",
+    purposeId: "analyzer.testMapping.scenario.hl7Critical.purpose",
+    expectedId: "analyzer.testMapping.scenario.hl7Critical.expected",
+    message:
+      "MSH|^~\\&|ANALYZER-SIM|LAB|OPENELIS|LAB|202609171035||ORU^R01|SIM-CRITICAL-001|P|2.5\rPID|1||SIM-PATIENT\rOBR|1|SIM-20260917||K^Potassium\rOBX|1|NM|K^Potassium||7.2|mmol/L|3.5-5.3|HH|||F",
   },
 };
 
@@ -157,6 +180,54 @@ const TestMappingModal = ({
   const characterCount = astmMessage.length;
   const characterCountPercent = (characterCount / MAX_MESSAGE_SIZE) * 100;
   const isNearLimit = characterCountPercent >= 90;
+  const selectedScenario = sampleKey ? REPLAY_SAMPLES[sampleKey] : null;
+
+  const getVerificationChecks = () => {
+    if (!previewResult || !selectedScenario) return [];
+
+    const parsedCount = Number(
+      previewResult.replaySummary?.parsedFieldCount ??
+        previewResult.parsedFields?.length ??
+        0,
+    );
+    const mappedCount = Number(
+      previewResult.replaySummary?.appliedMappingCount ??
+        previewResult.appliedMappings?.length ??
+        0,
+    );
+    const clinicalWrites = previewResult.replaySummary?.clinicalWrites;
+    const isDryRun = previewResult.dryRun === true || clinicalWrites === 0;
+    const warnings = Array.isArray(previewResult.warnings)
+      ? previewResult.warnings.length
+      : 0;
+    const expectationMet =
+      selectedScenario.mode === "unmapped"
+        ? warnings > 0 || parsedCount > mappedCount
+        : mappedCount > 0;
+
+    return [
+      {
+        id: "analyzer.testMapping.verification.parsed",
+        passed: parsedCount > 0,
+      },
+      {
+        id: "analyzer.testMapping.verification.noWrite",
+        passed: isDryRun,
+      },
+      {
+        id:
+          selectedScenario.mode === "unmapped"
+            ? "analyzer.testMapping.verification.unmappedDetected"
+            : "analyzer.testMapping.verification.mappingApplied",
+        passed: expectationMet,
+      },
+    ];
+  };
+
+  const verificationChecks = getVerificationChecks();
+  const verificationPassed =
+    verificationChecks.length > 0 &&
+    verificationChecks.every((check) => check.passed);
 
   // Table headers for parsed fields
   const parsedFieldsHeaders = [
@@ -198,7 +269,7 @@ const TestMappingModal = ({
       onClose={handleClose}
       aria-label={intl.formatMessage({ id: "analyzer.testMapping.title" })}
       data-testid="test-mapping-modal"
-      preventCloseOnClickOutside={false}
+      preventCloseOnClickOutside
       size="md"
     >
       <ModalHeader
@@ -264,7 +335,11 @@ const TestMappingModal = ({
               if (REPLAY_SAMPLES[key]) {
                 setProtocol(REPLAY_SAMPLES[key].protocol);
                 setAstmMessage(REPLAY_SAMPLES[key].message);
+                setIncludeDetailedParsing(true);
+                setValidateAllMappings(true);
               }
+              setPreviewResult(null);
+              setError(null);
             }}
             data-testid="test-mapping-sample"
           >
@@ -281,13 +356,58 @@ const TestMappingModal = ({
               })}
             />
             <SelectItem
+              value="ASTM_UNMAPPED"
+              text={intl.formatMessage({
+                id: "analyzer.testMapping.sample.astmUnmapped",
+              })}
+            />
+            <SelectItem
               value="HL7_ORU"
               text={intl.formatMessage({
                 id: "analyzer.testMapping.sample.hl7",
               })}
             />
+            <SelectItem
+              value="HL7_CRITICAL"
+              text={intl.formatMessage({
+                id: "analyzer.testMapping.sample.hl7Critical",
+              })}
+            />
           </Select>
         </div>
+
+        <InlineNotification
+          kind="info"
+          title={intl.formatMessage({
+            id: "analyzer.testMapping.safety.title",
+          })}
+          subtitle={intl.formatMessage({
+            id: "analyzer.testMapping.safety.subtitle",
+          })}
+          lowContrast
+          hideCloseButton
+          data-testid="test-mapping-safety-note"
+        />
+
+        {selectedScenario && (
+          <Tile
+            className="test-mapping-scenario"
+            data-testid="test-mapping-scenario"
+          >
+            <div>
+              <strong>
+                <FormattedMessage id="analyzer.testMapping.scenario.purpose" />
+              </strong>
+              <p>{intl.formatMessage({ id: selectedScenario.purposeId })}</p>
+            </div>
+            <div>
+              <strong>
+                <FormattedMessage id="analyzer.testMapping.scenario.expected" />
+              </strong>
+              <p>{intl.formatMessage({ id: selectedScenario.expectedId })}</p>
+            </div>
+          </Tile>
+        )}
 
         {/* Sample Message Input Section */}
         <div
@@ -407,6 +527,50 @@ const TestMappingModal = ({
                 hideCloseButton
                 data-testid="test-mapping-dry-run"
               />
+            )}
+
+            {verificationChecks.length > 0 && (
+              <Tile
+                className="test-mapping-verification"
+                data-testid="test-mapping-verification"
+              >
+                <div className="test-mapping-verification__header">
+                  <strong>
+                    <FormattedMessage id="analyzer.testMapping.verification.title" />
+                  </strong>
+                  <Tag
+                    type={verificationPassed ? "green" : "warm-gray"}
+                    data-testid="test-mapping-verification-status"
+                  >
+                    <FormattedMessage
+                      id={
+                        verificationPassed
+                          ? "analyzer.testMapping.verification.passed"
+                          : "analyzer.testMapping.verification.attention"
+                      }
+                    />
+                  </Tag>
+                </div>
+                <ul>
+                  {verificationChecks.map((check) => (
+                    <li key={check.id}>
+                      <Tag
+                        type={check.passed ? "green" : "warm-gray"}
+                        size="sm"
+                      >
+                        <FormattedMessage
+                          id={
+                            check.passed
+                              ? "analyzer.testMapping.verification.yes"
+                              : "analyzer.testMapping.verification.no"
+                          }
+                        />
+                      </Tag>
+                      <FormattedMessage id={check.id} />
+                    </li>
+                  ))}
+                </ul>
+              </Tile>
             )}
 
             {previewResult.replaySummary && (
