@@ -1,15 +1,19 @@
-import React, { useContext, useState, useEffect, useRef } from "react";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Heading,
   Button,
-  Loading,
-  Grid,
-  Column,
-  Section,
-  TextInput,
-  TextArea,
   Checkbox,
+  ContentSwitcher,
+  InlineLoading,
+  Loading,
+  Modal,
+  Switch,
+  Tag,
+  TextArea,
+  TextInput,
 } from "@carbon/react";
+import { ArrowLeft, Edit, Save, Undo } from "@carbon/icons-react";
+import { FormattedMessage, useIntl } from "react-intl";
+import { useLocation } from "react-router-dom";
 import {
   getFromOpenElisServer,
   postToOpenElisServerJsonResponse,
@@ -19,12 +23,12 @@ import {
   AlertDialog,
   NotificationKinds,
 } from "../../common/CustomNotification";
-import { FormattedMessage, injectIntl, useIntl } from "react-intl";
-import { useLocation } from "react-router-dom";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import ProductPageHeader from "../../common/ProductPageHeader";
 import { navigateToInternalPath } from "../../utils/NavigationUtils";
+import "./TestNotificationConfigEdit.css";
 
-let breadcrumbs = [
+const breadcrumbs = [
   { label: "home.label", link: "/" },
   { label: "breadcrums.admin.managment", link: "/MasterListsPage" },
   {
@@ -33,743 +37,497 @@ let breadcrumbs = [
   },
 ];
 
-function TestNotificationConfigEdit() {
-  const { notificationVisible, setNotificationVisible, addNotification } =
-    useContext(NotificationContext);
+const CHANNELS = [
+  {
+    key: "providerEmail",
+    label: "testnotification.provider.email",
+    email: true,
+  },
+  { key: "providerSMS", label: "testnotification.provider.sms", email: false },
+  { key: "patientEmail", label: "testnotification.patient.email", email: true },
+  { key: "patientSMS", label: "testnotification.patient.sms", email: false },
+];
 
+const clone = (value) => JSON.parse(JSON.stringify(value || {}));
+
+export default function TestNotificationConfigEdit() {
   const intl = useIntl();
   const location = useLocation();
+  const { notificationVisible, setNotificationVisible, addNotification } =
+    useContext(NotificationContext);
+  const mounted = useRef(false);
+  const testId = new URLSearchParams(location.search).get("testId") || "0";
 
-  const ID = (() => {
-    const search = location.search;
-    if (search) {
-      const urlParams = new URLSearchParams(search);
-      return urlParams.get("testId") || "0";
-    }
-    return "0";
-  })();
-
-  const componentMounted = useRef(false);
-  const [indMsg, setIndMsg] = useState("0");
-  const [loading, setLoading] = useState(true);
-  const [saveButton, setSaveButton] = useState(false);
-  const [sysDefaultMsg, setSysDefaultMsg] = useState(true);
-  const [testNotificationConfigEditData, setTestNotificationConfigEditData] =
-    useState({});
-  const [
-    testNotificationConfigEditDataPost,
-    setTestNotificationConfigEditDataPost,
-  ] = useState({});
-  const [testNamesList, setTestNamesList] = useState([]);
-  const [testName, setTestName] = useState("");
-  const [testNotificationConfigMenuList, setTestNotificationConfigMenuList] =
-    useState([]);
+  const [selectedChannel, setSelectedChannel] = useState(0);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [namesLoading, setNamesLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [systemTemplateEditable, setSystemTemplateEditable] = useState(false);
+  const [form, setForm] = useState({});
+  const [savedForm, setSavedForm] = useState({});
+  const [testNames, setTestNames] = useState([]);
 
   useEffect(() => {
-    if (testNotificationConfigEditData) {
-      setTestNotificationConfigEditDataPost(
-        (prevSetTestNotificationConfigDataPost) => ({
-          ...prevSetTestNotificationConfigDataPost,
-          formName: testNotificationConfigEditData.formName,
-          formMethod: testNotificationConfigEditData.formMethod,
-          cancelAction: testNotificationConfigEditData.cancelAction,
-          submitOnCancel: testNotificationConfigEditData.submitOnCancel,
-          cancelMethod: testNotificationConfigEditData.cancelMethod,
-          config: testNotificationConfigEditData.config,
-          systemDefaultPayloadTemplate:
-            testNotificationConfigEditData.systemDefaultPayloadTemplate,
-          editSystemDefaultPayloadTemplate:
-            testNotificationConfigEditData.editSystemDefaultPayloadTemplate,
-        }),
-      );
-    }
-  }, [testNotificationConfigEditData]);
-
-  const handleMenuItems = (res) => {
-    if (res) {
-      setTestNotificationConfigEditData(res);
-    }
-    setLoading(false);
-  };
-
-  const handleTestNamesList = (res) => {
-    if (res) {
-      setTestNamesList(res);
-    }
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    componentMounted.current = true;
-    if (ID && ID !== "0") {
+    mounted.current = true;
+    if (testId !== "0") {
       getFromOpenElisServer(
-        `/rest/TestNotificationConfig?testId=${ID}`,
-        handleMenuItems,
+        `/rest/TestNotificationConfig?testId=${encodeURIComponent(testId)}`,
+        (response) => {
+          if (!mounted.current) return;
+          const next = clone(response);
+          setForm(next);
+          setSavedForm(clone(next));
+          setConfigLoading(false);
+        },
       );
+    } else {
+      setConfigLoading(false);
     }
-    getFromOpenElisServer(`/rest/test-list`, handleTestNamesList);
+    getFromOpenElisServer("/rest/test-list", (response) => {
+      if (!mounted.current) return;
+      setTestNames(Array.isArray(response) ? response : []);
+      setNamesLoading(false);
+    });
     return () => {
-      componentMounted.current = false;
+      mounted.current = false;
     };
-  }, [ID, location.search]);
+  }, [testId]);
 
-  useEffect(() => {
-    const testId = testNotificationConfigEditData?.config?.testId;
-    if (testNamesList && testId) {
-      const test = testNamesList.find((item) => item.id === testId);
-      if (test) {
-        setTestName(test.value);
-      }
-    }
-  }, [testNamesList, testNotificationConfigEditData]);
+  const testName = useMemo(() => {
+    const configuredId = form?.config?.testId ?? testId;
+    return (
+      testNames.find((item) => String(item.id) === String(configuredId))
+        ?.value ||
+      intl.formatMessage(
+        { id: "testnotification.editor.unknownTest" },
+        { id: configuredId },
+      )
+    );
+  }, [form, intl, testId, testNames]);
 
-  function handleSubjectTemplateChange(e) {
-    setTestNotificationConfigEditDataPost((prev) => ({
-      ...prev,
-      editSystemDefaultPayloadTemplate: true,
-    }));
-    setTestNotificationConfigEditDataPost((prev) => ({
-      ...prev,
-      systemDefaultPayloadTemplate: {
-        ...prev.systemDefaultPayloadTemplate,
-        subjectTemplate: e.target.value,
-      },
-    }));
-  }
+  const isDirty = useMemo(
+    () => JSON.stringify(form) !== JSON.stringify(savedForm),
+    [form, savedForm],
+  );
 
-  function handleMessageTemplateChange(e) {
-    setTestNotificationConfigEditDataPost((prev) => ({
-      ...prev,
-      editSystemDefaultPayloadTemplate: true,
-    }));
-    setTestNotificationConfigEditDataPost((prev) => ({
-      ...prev,
-      systemDefaultPayloadTemplate: {
-        ...prev.systemDefaultPayloadTemplate,
-        messageTemplate: e.target.value,
-      },
-    }));
-  }
+  const activeChannelCount = useMemo(
+    () => CHANNELS.filter(({ key }) => form?.config?.[key]?.active).length,
+    [form],
+  );
 
-  const setTemplateField = (templatePath, field) => (e) => {
-    const value = e.target.value;
-    setTestNotificationConfigEditDataPost((prev) => {
-      const next = { ...prev };
-      const parts = templatePath.split(".");
-      let parent = next;
-      for (let i = 0; i < parts.length - 1; i++) {
-        parent[parts[i]] = { ...(parent[parts[i]] || {}) };
-        parent = parent[parts[i]];
-      }
-      const lastKey = parts[parts.length - 1];
-      parent[lastKey] = { ...(parent[lastKey] || {}), [field]: value };
+  const setAtPath = (path, value) => {
+    setForm((current) => {
+      const next = clone(current);
+      const parts = path.split(".");
+      let cursor = next;
+      parts.slice(0, -1).forEach((part) => {
+        cursor[part] ||= {};
+        cursor = cursor[part];
+      });
+      cursor[parts.at(-1)] = value;
       return next;
     });
   };
 
-  const readTemplateField = (templatePath, field) => {
-    const parts = templatePath.split(".");
-    let cursor = testNotificationConfigEditDataPost;
-    for (const p of parts) {
-      if (cursor == null) return "";
-      cursor = cursor[p];
-    }
-    return cursor?.[field] ?? "";
+  const readAtPath = (path) => {
+    let cursor = form;
+    for (const part of path.split(".")) cursor = cursor?.[part];
+    return cursor ?? "";
   };
 
-  const individualChannelKey = (() => {
-    switch (indMsg) {
-      case "0":
-        return "providerEmail";
-      case "1":
-        return "providerSMS";
-      case "2":
-        return "patientEmail";
-      case "3":
-        return "patientSMS";
-      default:
-        return null;
-    }
-  })();
-
-  const handleCheckboxChange = (e) => {
-    const { id, checked } = e.target;
-
-    setTestNotificationConfigEditDataPost((prev) => {
-      const updatedConfig = { ...prev.config };
-
-      switch (id) {
-        case "providerEmail":
-          updatedConfig.providerEmail.active = checked;
-          break;
-        case "patientEmail":
-          updatedConfig.patientEmail.active = checked;
-          break;
-        case "patientSMS":
-          updatedConfig.patientSMS.active = checked;
-          break;
-        case "providerSMS":
-          updatedConfig.providerSMS.active = checked;
-          break;
-        default:
-          break;
-      }
-
-      return {
-        ...prev,
-        config: updatedConfig,
-      };
-    });
+  const updateSystemTemplate = (field, value) => {
+    setForm((current) => ({
+      ...current,
+      editSystemDefaultPayloadTemplate: true,
+      systemDefaultPayloadTemplate: {
+        ...current.systemDefaultPayloadTemplate,
+        [field]: value,
+      },
+    }));
   };
 
-  function testNotificationConfigEditSavePostCall() {
-    setLoading(true);
+  const discardChanges = () => {
+    setForm(clone(savedForm));
+    setSystemTemplateEditable(false);
+  };
+
+  const saveChanges = () => {
+    setConfirmOpen(false);
+    setSaving(true);
     postToOpenElisServerJsonResponse(
-      `/rest/TestNotificationConfig`,
-      JSON.stringify(testNotificationConfigEditDataPost),
-      (res) => {
-        testNotificationConfigEditSavePostCallBack(res);
+      "/rest/TestNotificationConfig",
+      JSON.stringify(form),
+      (response) => {
+        if (!mounted.current) return;
+        const succeeded = Boolean(response);
+        if (succeeded) {
+          setSavedForm(clone(form));
+          setSystemTemplateEditable(false);
+        }
+        addNotification({
+          kind: succeeded ? NotificationKinds.success : NotificationKinds.error,
+          title: intl.formatMessage({ id: "notification.title" }),
+          message: intl.formatMessage({
+            id: succeeded
+              ? "notification.user.post.save.success"
+              : "server.error.msg",
+          }),
+        });
+        setNotificationVisible(true);
+        setSaving(false);
       },
     );
-  }
+  };
 
-  function testNotificationConfigEditSavePostCallBack(res) {
-    if (res) {
-      addNotification({
-        title: intl.formatMessage({
-          id: "notification.title",
-        }),
-        message: intl.formatMessage({
-          id: "notification.user.post.save.success",
-        }),
-        kind: NotificationKinds.success,
-      });
-      setNotificationVisible(true);
-    } else {
-      addNotification({
-        kind: NotificationKinds.error,
-        title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "server.error.msg" }),
-      });
-      setNotificationVisible(true);
-    }
-    setLoading(false);
-  }
+  const channel = CHANNELS[selectedChannel];
+  const loading = configLoading || namesLoading;
 
   return (
     <>
-      {notificationVisible === true ? <AlertDialog /> : ""}
-      {loading && <Loading></Loading>}
-      <div className="adminPageContent">
+      {notificationVisible && <AlertDialog />}
+      {loading && <Loading />}
+      <div className="adminPageContent notification-template-workspace">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
-        <Grid fullWidth={true}>
-          <Column lg={16} md={8} sm={4}>
-            <Section>
-              <Section>
-                <Heading>
-                  <FormattedMessage id="testnotificationconfig.browse.title" />
-                </Heading>
-              </Section>
-            </Section>
-          </Column>
-        </Grid>
-        <div className="orderLegendBody">
-          <Grid fullWidth={true}>
-            <Column lg={16} md={8} sm={4}>
-              <Section>
-                <Section>
-                  <Heading>
-                    {testName && <FormattedMessage id={`${testName}`} />}
-                  </Heading>
-                </Section>
-              </Section>
-            </Column>
-          </Grid>
-          <hr />
-          <br />
-          {testNotificationConfigEditDataPost?.config && (
-            <Grid fullWidth={true}>
-              <Column lg={4} md={4} sm={2}>
-                <Checkbox
-                  id="patientEmail"
-                  labelText={
-                    <FormattedMessage id="testnotification.patient.email" />
-                  }
-                  checked={
-                    testNotificationConfigEditDataPost.config.patientEmail
-                      ?.active ?? false
-                  }
-                  onChange={handleCheckboxChange}
-                />
-              </Column>
-              <Column lg={4} md={4} sm={2}>
-                <Checkbox
-                  id="patientSMS"
-                  labelText={
-                    <FormattedMessage id="testnotification.patient.sms" />
-                  }
-                  checked={
-                    testNotificationConfigEditDataPost.config.patientSMS
-                      ?.active ?? false
-                  }
-                  onChange={handleCheckboxChange}
-                />
-              </Column>
-              <Column lg={4} md={4} sm={2}>
-                <Checkbox
-                  id="providerSMS"
-                  labelText={
-                    <FormattedMessage id="testnotification.provider.sms" />
-                  }
-                  checked={
-                    testNotificationConfigEditDataPost.config.providerSMS
-                      ?.active ?? false
-                  }
-                  onChange={handleCheckboxChange}
-                />
-              </Column>
-              <Column lg={4} md={4} sm={2}>
-                <Checkbox
-                  // key={section.elementID}
-                  // id={section.elementID}
-                  // value={section.roleId}
-                  // labelText={section.roleName}
-                  // checked={selectedGlobalLabUnitRoles.includes(section.roleId)}
-                  id="providerEmail"
-                  labelText={
-                    <FormattedMessage id="testnotification.provider.email" />
-                  }
-                  checked={
-                    testNotificationConfigEditDataPost.config.providerEmail
-                      ?.active ?? false
-                  }
-                  onChange={handleCheckboxChange}
-                />
-              </Column>
-            </Grid>
-          )}
-          <br />
-          <hr />
-          <br />
-          <Grid fullWidth={true} className="gridBoundary">
-            <Column lg={16} md={8} sm={4}>
-              <Section>
-                <Section>
-                  <Heading>
-                    <FormattedMessage id="testnotification.instructions.header" />
-                  </Heading>
-                </Section>
-              </Section>
-              <br />
-              <FormattedMessage id="testnotification.instructions.body" />
-              <br />
-              <br />
-              <FormattedMessage id="testnotification.instructions.body.0" />
-              <br />
-              <br />
-              <FormattedMessage id="testnotification.instructions.body.1" />
-              <br />
-              <br />
-              <FormattedMessage id="testnotification.instructions.body.2" />
-              <br />
-              <br />
-              <FormattedMessage id="testnotification.instructions.body.3" />
-              <br />
-              <br />
-              <Section>
-                <Section>
-                  <Heading>
-                    <FormattedMessage id="testnotification.instructionis.variables.header" />
-                  </Heading>
-                </Section>
-              </Section>
-              <br />
-              <FormattedMessage id="testnotification.instructionis.variables.body" />
-              <br />
-              <br />
-              <FormattedMessage id="testnotification.instructionis.variables.body.0" />
-              <br />
-              <br />
-              <FormattedMessage id="testnotification.instructionis.variables.body.1" />
-              <br />
-              <br />
-              <FormattedMessage id="testnotification.instructionis.variables.body.2" />
-              <br />
-              <br />
-            </Column>
-          </Grid>
-          <br />
-          <hr />
-          <br />
-          <div>
-            <Grid fullWidth={true}>
-              <Column lg={14} md={8} sm={4}>
-                <Section>
-                  <Section>
-                    <Section>
-                      <Heading>
+        <ProductPageHeader
+          title={testName}
+          subtitle={<FormattedMessage id="testnotification.editor.subtitle" />}
+          actions={
+            <>
+              <Button
+                kind="ghost"
+                renderIcon={ArrowLeft}
+                onClick={() =>
+                  navigateToInternalPath(
+                    "/MasterListsPage/testNotificationConfigMenu",
+                    { replace: true },
+                  )
+                }
+              >
+                <FormattedMessage id="testnotification.editor.back" />
+              </Button>
+              <Button
+                kind="secondary"
+                renderIcon={Undo}
+                disabled={!isDirty || saving}
+                onClick={discardChanges}
+              >
+                <FormattedMessage id="testnotification.workspace.discard" />
+              </Button>
+              <Button
+                renderIcon={Save}
+                disabled={!isDirty || saving}
+                onClick={() => setConfirmOpen(true)}
+              >
+                {saving ? (
+                  <InlineLoading
+                    description={intl.formatMessage({
+                      id: "testnotification.workspace.saving",
+                    })}
+                  />
+                ) : (
+                  <FormattedMessage id="testnotification.workspace.save" />
+                )}
+              </Button>
+            </>
+          }
+        />
+
+        {!loading && form?.config && (
+          <>
+            <section className="notification-template-workspace__channels">
+              <header>
+                <div>
+                  <h2>
+                    <FormattedMessage id="testnotification.editor.channelsTitle" />
+                  </h2>
+                  <p>
+                    <FormattedMessage id="testnotification.editor.channelsHelper" />
+                  </p>
+                </div>
+                <Tag type={activeChannelCount ? "teal" : "cool-gray"} size="sm">
+                  <FormattedMessage
+                    id="testnotification.editor.channelsActive"
+                    values={{ count: activeChannelCount }}
+                  />
+                </Tag>
+              </header>
+              <div className="notification-template-workspace__channel-grid">
+                {CHANNELS.map((item) => (
+                  <Checkbox
+                    key={item.key}
+                    id={`channel-${item.key}`}
+                    aria-label={intl.formatMessage({ id: item.label })}
+                    labelText={intl.formatMessage({ id: item.label })}
+                    checked={Boolean(form.config?.[item.key]?.active)}
+                    onChange={(event) =>
+                      setAtPath(
+                        `config.${item.key}.active`,
+                        event.target.checked,
+                      )
+                    }
+                  />
+                ))}
+              </div>
+            </section>
+
+            <div className="notification-template-workspace__layout">
+              <aside className="notification-template-workspace__guide">
+                <h2>
+                  <FormattedMessage id="testnotification.instructions.header" />
+                </h2>
+                <p>
+                  <FormattedMessage id="testnotification.instructions.body" />
+                </p>
+                <ol>
+                  <li>
+                    <FormattedMessage id="testnotification.instructions.body.0" />
+                  </li>
+                  <li>
+                    <FormattedMessage id="testnotification.instructions.body.1" />
+                  </li>
+                  <li>
+                    <FormattedMessage id="testnotification.instructions.body.2" />
+                  </li>
+                  <li>
+                    <FormattedMessage id="testnotification.instructions.body.3" />
+                  </li>
+                </ol>
+                <h3>
+                  <FormattedMessage id="testnotification.instructionis.variables.header" />
+                </h3>
+                <ul className="notification-template-workspace__variables">
+                  <li>
+                    <FormattedMessage id="testnotification.instructionis.variables.body" />
+                  </li>
+                  <li>
+                    <FormattedMessage id="testnotification.instructionis.variables.body.0" />
+                  </li>
+                  <li>
+                    <FormattedMessage id="testnotification.instructionis.variables.body.1" />
+                  </li>
+                  <li>
+                    <FormattedMessage id="testnotification.instructionis.variables.body.2" />
+                  </li>
+                </ul>
+              </aside>
+
+              <main className="notification-template-workspace__templates">
+                <section className="notification-template-workspace__card">
+                  <header>
+                    <div>
+                      <h2>
                         <FormattedMessage id="testnotification.systemdefault.template" />
-                      </Heading>
-                    </Section>
-                  </Section>
-                </Section>
-              </Column>
-              <Column lg={2} md={8} sm={4}>
-                <Button
-                  onClick={() => {
-                    setSysDefaultMsg(!sysDefaultMsg);
-                  }}
-                >
-                  Edit
-                </Button>
-              </Column>
-            </Grid>
-            <br />
-            <Grid fullWidth={true}>
-              <Column lg={8} md={4} sm={2}>
-                <FormattedMessage id="testnotification.subjecttemplate" />
-              </Column>
-              <Column lg={8} md={4} sm={2}>
-                <TextInput
-                  id="subject"
-                  type="text"
-                  labelText=""
-                  hideLabel={true}
-                  disabled={sysDefaultMsg}
-                  placeholder={intl.formatMessage({
-                    id: "systemDefaultPayloadTemplate.subjectTemplate",
-                  })}
-                  // invalid={
-                  //   userDataShow &&
-                  //   userDataShow.userLoginName &&
-                  //   !loginNameRegex.test(userDataShow.userLoginName)
-                  // }
-                  // // invalidText={errors.order}
-                  // required={true}
-                  value={
-                    testNotificationConfigEditDataPost &&
-                    testNotificationConfigEditDataPost.systemDefaultPayloadTemplate &&
-                    testNotificationConfigEditDataPost
-                      .systemDefaultPayloadTemplate.subjectTemplate
-                      ? testNotificationConfigEditDataPost
-                          .systemDefaultPayloadTemplate.subjectTemplate
-                      : ""
-                  }
-                  onChange={(e) => handleSubjectTemplateChange(e)}
-                />
-              </Column>
-            </Grid>
-            <br />
-            <Grid fullWidth={true}>
-              <Column lg={16} md={8} sm={4}>
-                <FormattedMessage id="testnotification.messagetemplate" />
-              </Column>
-            </Grid>
-            <br />
-            <Grid fullWidth={true}>
-              <Column lg={16} md={8} sm={4}>
-                <TextArea
-                  id="message"
-                  type="text"
-                  labelText=""
-                  hideLabel={true}
-                  disabled={sysDefaultMsg}
-                  placeholder={intl.formatMessage({
-                    id: "systemDefaultPayloadTemplate.messageTemplate",
-                  })}
-                  // invalid={
-                  //   userDataShow &&
-                  //   userDataShow.userLoginName &&
-                  //   !loginNameRegex.test(userDataShow.userLoginName)
-                  // }
-                  // // invalidText={errors.order}
-                  // required={true}
-                  value={
-                    testNotificationConfigEditDataPost &&
-                    testNotificationConfigEditDataPost.systemDefaultPayloadTemplate &&
-                    testNotificationConfigEditDataPost
-                      .systemDefaultPayloadTemplate.messageTemplate
-                      ? testNotificationConfigEditDataPost
-                          .systemDefaultPayloadTemplate.messageTemplate
-                      : ""
-                  }
-                  onChange={(e) => handleMessageTemplateChange(e)}
-                />
-              </Column>
-            </Grid>
-          </div>
-          <br />
-          <hr />
-          <br />
-          <div>
-            <Grid fullWidth={true}>
-              <Column lg={16} md={8} sm={4}>
-                <Section>
-                  <Section>
-                    <Section>
-                      <Heading>
-                        <FormattedMessage id="testnotification.testdefault.template" />
-                      </Heading>
-                    </Section>
-                  </Section>
-                </Section>
-              </Column>
-            </Grid>
-            <br />
-            <Grid fullWidth={true}>
-              <Column lg={8} md={4} sm={2}>
-                <FormattedMessage id="testnotification.subjecttemplate" />
-              </Column>
-              <Column lg={8} md={4} sm={2}>
-                <TextInput
-                  id="testDefaultSubjectTemplate"
-                  type="text"
-                  labelText=""
-                  value={readTemplateField(
-                    "config.defaultPayloadTemplate",
-                    "subjectTemplate",
+                      </h2>
+                      <p>
+                        <FormattedMessage id="testnotification.editor.systemHelper" />
+                      </p>
+                    </div>
+                    <Button
+                      kind="ghost"
+                      size="sm"
+                      renderIcon={Edit}
+                      onClick={() =>
+                        setSystemTemplateEditable((value) => !value)
+                      }
+                    >
+                      <FormattedMessage
+                        id={
+                          systemTemplateEditable
+                            ? "testnotification.editor.lockSystem"
+                            : "testnotification.editor.editSystem"
+                        }
+                      />
+                    </Button>
+                  </header>
+                  {systemTemplateEditable && (
+                    <p className="notification-template-workspace__warning">
+                      <FormattedMessage id="testnotification.editor.systemWarning" />
+                    </p>
                   )}
-                  onChange={setTemplateField(
-                    "config.defaultPayloadTemplate",
-                    "subjectTemplate",
-                  )}
-                />
-              </Column>
-            </Grid>
-            <br />
-            <Grid fullWidth={true}>
-              <Column lg={16} md={8} sm={4}>
-                <FormattedMessage id="testnotification.messagetemplate" />
-              </Column>
-            </Grid>
-            <br />
-            <Grid fullWidth={true}>
-              <Column lg={16} md={8} sm={4}>
-                <TextArea
-                  id="testDefaultMessageTemplate"
-                  labelText=""
-                  value={readTemplateField(
-                    "config.defaultPayloadTemplate",
-                    "messageTemplate",
-                  )}
-                  onChange={setTemplateField(
-                    "config.defaultPayloadTemplate",
-                    "messageTemplate",
-                  )}
-                />
-              </Column>
-            </Grid>
-          </div>
-          <br />
-          <hr />
-          <br />
-          <div>
-            <Grid fullWidth={true}>
-              <Column lg={14} md={8} sm={4}>
-                <Section>
-                  <Section>
-                    <Section>
-                      <Heading>
-                        <FormattedMessage id="testnotification.options" />
-                      </Heading>
-                    </Section>
-                  </Section>
-                </Section>
-              </Column>
-            </Grid>
-            <br />
-            <Grid fullWidth={true}>
-              <Column lg={4} md={8} sm={4}>
-                <Button
-                  onClick={() => {
-                    setIndMsg("0");
-                  }}
-                  kind="tertiary"
-                >
-                  <FormattedMessage id="testnotification.provider.email" />
-                </Button>
-              </Column>{" "}
-              <Column lg={4} md={8} sm={4}>
-                <Button
-                  onClick={() => {
-                    setIndMsg("1");
-                  }}
-                  kind="tertiary"
-                >
-                  <FormattedMessage id="testnotification.provider.sms" />
-                </Button>
-              </Column>{" "}
-              <Column lg={4} md={8} sm={4}>
-                <Button
-                  onClick={() => {
-                    setIndMsg("2");
-                  }}
-                  kind="tertiary"
-                >
-                  <FormattedMessage id="testnotification.patient.email" />
-                </Button>
-              </Column>{" "}
-              <Column lg={4} md={8} sm={4}>
-                <Button
-                  onClick={() => {
-                    setIndMsg("3");
-                  }}
-                  kind="tertiary"
-                >
-                  <FormattedMessage id="testnotification.patient.sms" />
-                </Button>
-              </Column>
-            </Grid>
-            <br />
-            <hr />
-            <br />
-            {indMsg === "0" || indMsg === "2" ? (
-              <>
-                <Grid fullWidth={true}>
-                  <Column lg={16} md={8} sm={4}>
-                    <Section>
-                      <Section>
-                        <Section>
-                          <Heading>
-                            {indMsg === "0" ? (
-                              <>
-                                <FormattedMessage id="testnotification.provider.email" />
-                              </>
-                            ) : (
-                              <>
-                                <FormattedMessage id="testnotification.patient.email" />
-                              </>
-                            )}
-                          </Heading>
-                        </Section>
-                      </Section>
-                    </Section>
-                  </Column>
-                </Grid>
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={8} md={4} sm={2}>
-                    <FormattedMessage id="testnotification.subjecttemplate" />
-                  </Column>
-                  <Column lg={8} md={4} sm={2}>
+                  <div className="notification-template-workspace__fields">
                     <TextInput
-                      id={`${individualChannelKey}-subject`}
-                      type="text"
-                      labelText=""
-                      value={readTemplateField(
-                        `config.${individualChannelKey}.payloadTemplate`,
-                        "subjectTemplate",
-                      )}
-                      onChange={setTemplateField(
-                        `config.${individualChannelKey}.payloadTemplate`,
-                        "subjectTemplate",
-                      )}
+                      id="system-default-subject"
+                      labelText={intl.formatMessage({
+                        id: "testnotification.subjecttemplate",
+                      })}
+                      disabled={!systemTemplateEditable}
+                      value={
+                        form.systemDefaultPayloadTemplate?.subjectTemplate || ""
+                      }
+                      onChange={(event) =>
+                        updateSystemTemplate(
+                          "subjectTemplate",
+                          event.target.value,
+                        )
+                      }
                     />
-                  </Column>
-                </Grid>
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={16} md={8} sm={4}>
-                    <FormattedMessage id="testnotification.messagetemplate" />
-                  </Column>
-                </Grid>
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={16} md={8} sm={4}>
                     <TextArea
-                      id={`${individualChannelKey}-message`}
-                      labelText=""
-                      value={readTemplateField(
-                        `config.${individualChannelKey}.payloadTemplate`,
-                        "messageTemplate",
-                      )}
-                      onChange={setTemplateField(
-                        `config.${individualChannelKey}.payloadTemplate`,
-                        "messageTemplate",
-                      )}
+                      id="system-default-message"
+                      aria-label={intl.formatMessage({
+                        id: "testnotification.messagetemplate",
+                      })}
+                      labelText={intl.formatMessage({
+                        id: "testnotification.messagetemplate",
+                      })}
+                      disabled={!systemTemplateEditable}
+                      value={
+                        form.systemDefaultPayloadTemplate?.messageTemplate || ""
+                      }
+                      onChange={(event) =>
+                        updateSystemTemplate(
+                          "messageTemplate",
+                          event.target.value,
+                        )
+                      }
                     />
-                  </Column>
-                </Grid>
-              </>
-            ) : (
-              <>
-                <Grid fullWidth={true}>
-                  <Column lg={16} md={8} sm={4}>
-                    <Section>
-                      <Section>
-                        <Section>
-                          <Heading>
-                            {indMsg === "1" ? (
-                              <>
-                                <FormattedMessage id="testnotification.provider.sms" />
-                              </>
-                            ) : (
-                              <>
-                                <FormattedMessage id="testnotification.patient.sms" />
-                              </>
-                            )}
-                          </Heading>
-                        </Section>
-                      </Section>
-                    </Section>
-                  </Column>
-                </Grid>
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={16} md={8} sm={4}>
-                    <FormattedMessage id="testnotification.messagetemplate" />
-                  </Column>
-                </Grid>
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={16} md={8} sm={4}>
+                  </div>
+                </section>
+
+                <section className="notification-template-workspace__card">
+                  <header>
+                    <div>
+                      <h2>
+                        <FormattedMessage id="testnotification.testdefault.template" />
+                      </h2>
+                      <p>
+                        <FormattedMessage id="testnotification.editor.testDefaultHelper" />
+                      </p>
+                    </div>
+                  </header>
+                  <div className="notification-template-workspace__fields">
+                    <TextInput
+                      id="test-default-subject"
+                      labelText={intl.formatMessage({
+                        id: "testnotification.subjecttemplate",
+                      })}
+                      value={readAtPath(
+                        "config.defaultPayloadTemplate.subjectTemplate",
+                      )}
+                      onChange={(event) =>
+                        setAtPath(
+                          "config.defaultPayloadTemplate.subjectTemplate",
+                          event.target.value,
+                        )
+                      }
+                    />
                     <TextArea
-                      id={`${individualChannelKey}-message`}
-                      labelText=""
-                      value={readTemplateField(
-                        `config.${individualChannelKey}.payloadTemplate`,
-                        "messageTemplate",
+                      id="test-default-message"
+                      aria-label={intl.formatMessage({
+                        id: "testnotification.messagetemplate",
+                      })}
+                      labelText={intl.formatMessage({
+                        id: "testnotification.messagetemplate",
+                      })}
+                      value={readAtPath(
+                        "config.defaultPayloadTemplate.messageTemplate",
                       )}
-                      onChange={setTemplateField(
-                        `config.${individualChannelKey}.payloadTemplate`,
-                        "messageTemplate",
-                      )}
+                      onChange={(event) =>
+                        setAtPath(
+                          "config.defaultPayloadTemplate.messageTemplate",
+                          event.target.value,
+                        )
+                      }
                     />
-                  </Column>
-                </Grid>
-              </>
-            )}
-            <br />
-            <hr />
-            <br />
-            <Grid fullWidth={true}>
-              <Column lg={16} md={8} sm={4}>
-                <Button
-                  disabled={saveButton}
-                  onClick={testNotificationConfigEditSavePostCall}
-                  type="button"
-                >
-                  <FormattedMessage id="label.button.save" />
-                </Button>{" "}
-                <Button
-                  onClick={() =>
-                    navigateToInternalPath(
-                      "/MasterListsPage/testNotificationConfigMenu",
-                      { replace: true },
-                    )
-                  }
-                  kind="tertiary"
-                  type="button"
-                >
-                  <FormattedMessage id="label.button.exit" />
-                </Button>
-              </Column>
-            </Grid>
-          </div>
-        </div>
+                  </div>
+                </section>
+
+                <section className="notification-template-workspace__card">
+                  <header>
+                    <div>
+                      <h2>
+                        <FormattedMessage id="testnotification.options" />
+                      </h2>
+                      <p>
+                        <FormattedMessage id="testnotification.editor.individualHelper" />
+                      </p>
+                    </div>
+                    <Tag type={isDirty ? "warm-gray" : "green"} size="sm">
+                      <FormattedMessage
+                        id={
+                          isDirty
+                            ? "testnotification.editor.unsaved"
+                            : "testnotification.workspace.saved"
+                        }
+                      />
+                    </Tag>
+                  </header>
+                  <ContentSwitcher
+                    selectedIndex={selectedChannel}
+                    onChange={({ index }) => setSelectedChannel(index)}
+                    size="sm"
+                  >
+                    {CHANNELS.map((item) => (
+                      <Switch
+                        key={item.key}
+                        name={item.key}
+                        text={intl.formatMessage({ id: item.label })}
+                      />
+                    ))}
+                  </ContentSwitcher>
+                  <div className="notification-template-workspace__fields notification-template-workspace__fields--channel">
+                    {channel.email && (
+                      <TextInput
+                        id={`${channel.key}-subject`}
+                        labelText={intl.formatMessage({
+                          id: "testnotification.subjecttemplate",
+                        })}
+                        value={readAtPath(
+                          `config.${channel.key}.payloadTemplate.subjectTemplate`,
+                        )}
+                        onChange={(event) =>
+                          setAtPath(
+                            `config.${channel.key}.payloadTemplate.subjectTemplate`,
+                            event.target.value,
+                          )
+                        }
+                      />
+                    )}
+                    <TextArea
+                      id={`${channel.key}-message`}
+                      aria-label={intl.formatMessage({
+                        id: "testnotification.messagetemplate",
+                      })}
+                      labelText={intl.formatMessage({
+                        id: "testnotification.messagetemplate",
+                      })}
+                      value={readAtPath(
+                        `config.${channel.key}.payloadTemplate.messageTemplate`,
+                      )}
+                      onChange={(event) =>
+                        setAtPath(
+                          `config.${channel.key}.payloadTemplate.messageTemplate`,
+                          event.target.value,
+                        )
+                      }
+                    />
+                  </div>
+                </section>
+              </main>
+            </div>
+          </>
+        )}
       </div>
+
+      <Modal
+        open={confirmOpen}
+        modalHeading={intl.formatMessage({
+          id: "testnotification.editor.confirmTitle",
+        })}
+        primaryButtonText={intl.formatMessage({
+          id: "testnotification.workspace.confirmSave",
+        })}
+        secondaryButtonText={intl.formatMessage({ id: "label.button.cancel" })}
+        onRequestClose={() => setConfirmOpen(false)}
+        onRequestSubmit={saveChanges}
+      >
+        <p>
+          <FormattedMessage
+            id="testnotification.editor.confirmBody"
+            values={{ test: testName }}
+          />
+        </p>
+      </Modal>
     </>
   );
 }
-
-export default injectIntl(TestNotificationConfigEdit);
