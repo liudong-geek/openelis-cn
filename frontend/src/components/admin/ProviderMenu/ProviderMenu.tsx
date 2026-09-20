@@ -1,7 +1,8 @@
 import React, { useContext, useState, useEffect } from "react";
-import type { ChangeEvent, ReactNode, SyntheticEvent } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 import {
   Loading,
+  InlineLoading,
   DataTable,
   Table,
   TableHead,
@@ -15,7 +16,8 @@ import {
   Search,
   Modal,
   TextInput,
-  Dropdown,
+  Select,
+  SelectItem,
   Button,
   Tag,
 } from "@carbon/react";
@@ -36,8 +38,8 @@ import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 import "../AdminListWorkspace.css";
 
 interface ProviderPerson {
-  lastName: string;
-  firstName: string;
+  lastName?: string;
+  firstName?: string;
   workPhone?: string;
   fax?: string;
   email?: string;
@@ -47,7 +49,7 @@ interface ProviderRecord {
   id: string;
   fhirUuid: string;
   person: ProviderPerson;
-  active: boolean;
+  active: boolean | string;
 }
 
 interface ProviderMenuResponse {
@@ -62,10 +64,12 @@ interface ProviderTableRow {
   fhirUuid: string;
   lastName: string;
   firstName: string;
-  active: boolean;
+  displayName: string;
+  active: boolean | string;
   telephone?: string;
   fax?: string;
   email?: string;
+  actions: string;
 }
 
 interface YesNoOption {
@@ -112,6 +116,11 @@ let breadcrumbs = [
     link: "/MasterListsPage/providerMenu",
   },
 ];
+
+const isEnabledValue = (value: ReactNode) =>
+  value === true ||
+  ["true", "y", "yes", "1"].includes(String(value).toLowerCase());
+
 function ProviderMenu() {
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext) as unknown as NotificationContextValue;
@@ -123,11 +132,14 @@ function ProviderMenu() {
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [modifyButton, setModifyButton] = useState(true);
-  const [deactivateButton, setDeactivateButton] = useState(true);
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [panelSearchTerm, setPanelSearchTerm] = useState("");
+  const [appliedSearchTerm, setAppliedSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [confirmDeactivateOpen, setConfirmDeactivateOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [providerMenuList, setProviderMenuList] =
     useState<ProviderMenuResponse>({});
   const [providerMenuListShow, setProviderMenuListShow] = useState<
@@ -141,8 +153,6 @@ function ProviderMenu() {
   const [lastName, setLastName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [telephone, setTelephone] = useState<string | undefined>("");
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- preserve the original state tuple
-  const [fhirUuid, setFhirUuid] = useState("");
   const [fax, setFax] = useState<string | undefined>("");
   const [email, setEmail] = useState("");
   const [isActive, setIsActive] = useState<YesNoOption>({
@@ -158,38 +168,62 @@ function ProviderMenu() {
     status: true,
   });
 
-  const yesOrNo: YesNoOption[] = [
-    { id: "yes", value: intl.formatMessage({ id: "label.yes" }) },
-    { id: "no", value: intl.formatMessage({ id: "label.no" }) },
-  ];
-
   const handleMenuItems = (res?: ProviderMenuResponse) => {
-    setProviderMenuList(res || { providers: [], totalRecordCount: "0" });
+    if (!res) {
+      setLoading(false);
+      setRefreshing(false);
+      setNotificationVisible(true);
+      addNotification({
+        kind: NotificationKinds.error,
+        title: intl.formatMessage({ id: "notification.title" }),
+        message: intl.formatMessage({ id: "server.error.msg" }),
+      });
+      return;
+    }
+    setProviderMenuList(res);
     setLoading(false);
+    setRefreshing(false);
   };
 
   useEffect(() => {
-    setLoading(true);
-    const endpoint = panelSearchTerm
-      ? `/rest/SearchProviderMenu?search=Y&startingRecNo=1&searchString=${encodeURIComponent(
-          panelSearchTerm,
-        )}`
-      : "/rest/ProviderMenu?paging=1&startingRecNo=1";
-    getFromOpenElisServer(endpoint, handleMenuItems);
+    const debounce = window.setTimeout(() => {
+      setPage(1);
+      setAppliedSearchTerm(panelSearchTerm.trim());
+    }, 300);
+    return () => window.clearTimeout(debounce);
   }, [panelSearchTerm]);
 
   useEffect(() => {
     if (providerMenuList.providers) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    const endpoint = appliedSearchTerm
+      ? `/rest/SearchProviderMenu?search=Y&startingRecNo=1&searchString=${encodeURIComponent(
+          appliedSearchTerm,
+        )}`
+      : "/rest/ProviderMenu?paging=1&startingRecNo=1";
+    getFromOpenElisServer(endpoint, handleMenuItems);
+  }, [appliedSearchTerm]);
+
+  useEffect(() => {
+    if (providerMenuList.providers) {
       const newProviderMenuList = providerMenuList.providers.map((item) => {
+        const displayName = [item.person.lastName, item.person.firstName]
+          .filter(Boolean)
+          .join(" ");
         return {
           id: item.id,
           fhirUuid: item.fhirUuid,
-          lastName: item.person.lastName,
-          firstName: item.person.firstName,
+          lastName: item.person.lastName || "",
+          firstName: item.person.firstName || "",
+          displayName,
           active: item.active,
           telephone: item.person.workPhone,
           fax: item.person.fax,
           email: item.person.email,
+          actions: item.id,
         };
       });
       setTotalRecordCount(providerMenuList.totalRecordCount || "0");
@@ -197,20 +231,8 @@ function ProviderMenu() {
     }
   }, [providerMenuList]);
 
-  useEffect(() => {
-    if (selectedRowIds.length === 1) {
-      setModifyButton(false);
-    } else {
-      setModifyButton(true);
-    }
-    if (selectedRowIds.length === 0) {
-      setDeactivateButton(true);
-    } else {
-      setDeactivateButton(false);
-    }
-  }, [selectedRowIds]);
-
   async function displayStatus(res?: Response) {
+    setSaving(false);
     setNotificationVisible(true);
     if (res?.status === 201 || res?.status === 200) {
       addNotification({
@@ -218,6 +240,10 @@ function ProviderMenu() {
         title: intl.formatMessage({ id: "notification.title" }),
         message: intl.formatMessage({ id: "save.config.success.msg" }),
       });
+      setIsAddModalOpen(false);
+      setIsUpdateModalOpen(false);
+      reloadConfiguration();
+      setTimeout(() => refreshCurrentRoute(), 200);
     } else {
       addNotification({
         kind: NotificationKinds.error,
@@ -225,18 +251,33 @@ function ProviderMenu() {
         message: intl.formatMessage({ id: "server.error.msg" }),
       });
     }
-    reloadConfiguration();
   }
 
-  function deleteDeactivateProvider(event: SyntheticEvent) {
-    event.preventDefault();
-    setLoading(true);
+  function deleteDeactivateProvider() {
+    setConfirmDeactivateOpen(false);
+    setRefreshing(true);
     postToOpenElisServerFullResponse(
       `/rest/DeleteProvider?ID=${selectedRowIds.join(",")}&startingRecNo=1`,
-      JSON.stringify(providerMenuListShow),
-      () => {
-        setLoading(false);
-        refreshCurrentRoute();
+      JSON.stringify({ selectedIDs: selectedRowIds }),
+      (res) => {
+        setRefreshing(false);
+        setNotificationVisible(true);
+        if (res?.ok) {
+          addNotification({
+            kind: NotificationKinds.success,
+            title: intl.formatMessage({ id: "notification.title" }),
+            message: intl.formatMessage({
+              id: "provider.management.deactivate.success",
+            }),
+          });
+          setTimeout(() => refreshCurrentRoute(), 200);
+        } else {
+          addNotification({
+            kind: NotificationKinds.error,
+            title: intl.formatMessage({ id: "notification.title" }),
+            message: intl.formatMessage({ id: "server.error.msg" }),
+          });
+        }
       },
     );
   }
@@ -254,19 +295,20 @@ function ProviderMenu() {
   };
 
   const handlePanelSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setLoading(true);
-    setPage(1);
-    const query = event.target.value.toLowerCase();
+    const query = event.target.value;
     setPanelSearchTerm(query);
     setSelectedRowIds([]);
   };
 
   const openAddModal = () => {
+    setSaving(false);
     setLastName("");
     setFirstName("");
     setTelephone("");
     setFax("");
     setEmail("");
+    setPhoneValidation({ body: "", status: true });
+    setEmailValidation({ body: "", status: true });
     setIsActive({
       id: "yes",
       value: intl.formatMessage({ id: "label.yes" }),
@@ -283,11 +325,14 @@ function ProviderMenu() {
     setCurrentProvider(provider);
     setLastName(provider.lastName);
     setFirstName(provider.firstName);
-    setTelephone(provider.telephone);
-    setFax(provider.fax);
+    setTelephone(provider.telephone || "");
+    setFax(provider.fax || "");
     setEmail(provider.email || "");
+    setPhoneValidation({ body: "", status: true });
+    setEmailValidation({ body: "", status: true });
+    setSaving(false);
     setIsActive(
-      provider.active
+      isEnabledValue(provider.active)
         ? { id: "yes", value: intl.formatMessage({ id: "label.yes" }) }
         : { id: "no", value: intl.formatMessage({ id: "label.no" }) },
     );
@@ -299,6 +344,7 @@ function ProviderMenu() {
   };
 
   const handleAddProvider = () => {
+    setSaving(true);
     const newProvider = {
       person: {
         lastName,
@@ -314,12 +360,10 @@ function ProviderMenu() {
       JSON.stringify(newProvider),
       displayStatus,
     );
-
-    closeAddModal();
-    refreshCurrentRoute();
   };
 
   const handleUpdateProvider = () => {
+    setSaving(true);
     const updatedProvider = {
       fhirUuid: currentProvider!.fhirUuid,
       person: {
@@ -336,21 +380,18 @@ function ProviderMenu() {
       JSON.stringify(updatedProvider),
       displayStatus,
     );
-
-    closeUpdateModal();
-    refreshCurrentRoute();
   };
 
   const handleLastNameChange = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
-    if (value === "" || /^[A-Za-z\s]+$/.test(value)) {
+    if (value === "" || /^[\p{L}\p{M}.'·\-\s]+$/u.test(value)) {
       setLastName(value);
     }
   };
 
   const handleFirstNameChange = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
-    if (value === "" || /^[A-Za-z\s]+$/.test(value)) {
+    if (value === "" || /^[\p{L}\p{M}.'·\-\s]+$/u.test(value)) {
       setFirstName(value);
     }
   };
@@ -361,6 +402,10 @@ function ProviderMenu() {
 
   const handlePhoneValidation = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
+    if (!value) {
+      setPhoneValidation({ body: "", status: true });
+      return;
+    }
     getFromOpenElisServer(
       "/rest/PhoneNumberValidationProvider?fieldId=patientPhone&value=" +
         encodeURIComponent(value),
@@ -388,14 +433,6 @@ function ProviderMenu() {
     });
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- preserve original migration behavior
-  const handleFaxChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value;
-    if (value === "" || (/^\d+$/.test(value) && value.length <= 10)) {
-      setFax(value);
-    }
-  };
-
   const renderCell = (cell: CarbonTableCell, row: CarbonTableRow) => {
     if (cell.info.header === "select") {
       return (
@@ -418,9 +455,26 @@ function ProviderMenu() {
     } else if (cell.info.header === "active") {
       return (
         <TableCell key={cell.id}>
-          <Tag type={cell.value ? "green" : "cool-gray"} size="sm">
-            <FormattedMessage id={cell.value ? "label.yes" : "label.no"} />
+          <Tag
+            type={isEnabledValue(cell.value) ? "green" : "cool-gray"}
+            size="sm"
+          >
+            <FormattedMessage
+              id={isEnabledValue(cell.value) ? "label.yes" : "label.no"}
+            />
           </Tag>
+        </TableCell>
+      );
+    } else if (cell.info.header === "actions") {
+      return (
+        <TableCell key={cell.id}>
+          <Button
+            kind="ghost"
+            size="sm"
+            onClick={() => openUpdateModal(row.id)}
+          >
+            <FormattedMessage id="externalconnections.action.edit" />
+          </Button>
         </TableCell>
       );
     } else {
@@ -439,14 +493,49 @@ function ProviderMenu() {
   const totalProviders = Number(
     totalRecordCount || providerMenuListShow.length || 0,
   );
-  const activeProviders = providerMenuListShow.filter(
-    (provider) => provider.active,
+  const activeProviders = providerMenuListShow.filter((provider) =>
+    isEnabledValue(provider.active),
   ).length;
+  const inactiveProviders = Math.max(
+    providerMenuListShow.length - activeProviders,
+    0,
+  );
+  const visibleProviders = providerMenuListShow.filter(
+    (provider) =>
+      statusFilter === "all" ||
+      (statusFilter === "active"
+        ? isEnabledValue(provider.active)
+        : !isEnabledValue(provider.active)),
+  );
   const selectedCount = selectedRowIds.length;
+  const formValid =
+    String(lastName || "").trim().length > 0 &&
+    String(firstName || "").trim().length > 0 &&
+    phoneValidation.status &&
+    emailValidation.status;
 
   return (
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
+      <Modal
+        open={confirmDeactivateOpen}
+        danger
+        modalHeading={intl.formatMessage({
+          id: "provider.management.deactivate.confirm.title",
+        })}
+        primaryButtonText={intl.formatMessage({
+          id: "externalconnections.action.deactivate",
+        })}
+        secondaryButtonText={intl.formatMessage({ id: "label.button.cancel" })}
+        onRequestClose={() => setConfirmDeactivateOpen(false)}
+        onRequestSubmit={deleteDeactivateProvider}
+        preventCloseOnClickOutside
+      >
+        <FormattedMessage
+          id="provider.management.deactivate.confirm.message"
+          values={{ count: selectedCount }}
+        />
+      </Modal>
       <div className="adminPageContent admin-list-workspace provider-management-page">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
         <ProductPageHeader
@@ -474,9 +563,9 @@ function ProviderMenu() {
           </article>
           <article>
             <span>
-              <FormattedMessage id="provider.management.metric.selected" />
+              <FormattedMessage id="provider.management.metric.inactive" />
             </span>
-            <strong>{selectedCount}</strong>
+            <strong>{inactiveProviders}</strong>
           </article>
         </section>
 
@@ -498,25 +587,17 @@ function ProviderMenu() {
                 />
               </span>
               <Button
-                kind="ghost"
-                size="sm"
-                disabled={modifyButton}
-                onClick={() => openUpdateModal(selectedRowIds[0])}
-              >
-                <FormattedMessage id="externalconnections.action.edit" />
-              </Button>
-              <Button
                 kind="danger--ghost"
                 size="sm"
-                disabled={deactivateButton}
-                onClick={deleteDeactivateProvider}
+                disabled={selectedCount === 0 || refreshing}
+                onClick={() => setConfirmDeactivateOpen(true)}
               >
                 <FormattedMessage id="externalconnections.action.deactivate" />
               </Button>
             </div>
           </div>
 
-          <div className="admin-list-workspace__filters admin-list-workspace__filters--search-only">
+          <div className="admin-list-workspace__filters admin-list-workspace__filters--organization">
             <Search
               size="lg"
               id="provider-search-bar"
@@ -530,22 +611,61 @@ function ProviderMenu() {
               onChange={handlePanelSearchChange}
               value={panelSearchTerm}
             />
+            <Select
+              id="provider-status-filter"
+              labelText={intl.formatMessage({
+                id: "provider.management.filter.status",
+              })}
+              value={statusFilter}
+              onChange={(event) => {
+                setPage(1);
+                setSelectedRowIds([]);
+                setStatusFilter(event.target.value);
+              }}
+            >
+              <SelectItem
+                value="all"
+                text={intl.formatMessage({
+                  id: "provider.management.filter.all",
+                })}
+              />
+              <SelectItem
+                value="active"
+                text={intl.formatMessage({
+                  id: "provider.management.filter.active",
+                })}
+              />
+              <SelectItem
+                value="inactive"
+                text={intl.formatMessage({
+                  id: "provider.management.filter.inactive",
+                })}
+              />
+            </Select>
             <p role="status">
               <FormattedMessage
                 id="provider.management.results"
-                values={{ count: providerMenuListShow.length }}
+                values={{ count: visibleProviders.length }}
               />
             </p>
+            {refreshing && (
+              <InlineLoading
+                className="admin-list-workspace__refreshing"
+                description={intl.formatMessage({
+                  id: "admin.list.refreshing",
+                })}
+              />
+            )}
           </div>
 
-          {providerMenuListShow.length === 0 ? (
+          {visibleProviders.length === 0 ? (
             <div className="admin-list-workspace__empty" role="status">
               <div aria-hidden="true">0</div>
               <h3>
                 <FormattedMessage
                   id={
-                    panelSearchTerm
-                      ? "provider.management.empty.search.title"
+                    appliedSearchTerm || statusFilter !== "all"
+                      ? "provider.management.empty.filtered.title"
                       : "provider.management.empty.title"
                   }
                 />
@@ -553,13 +673,13 @@ function ProviderMenu() {
               <p>
                 <FormattedMessage
                   id={
-                    panelSearchTerm
-                      ? "provider.management.empty.search.subtitle"
+                    appliedSearchTerm || statusFilter !== "all"
+                      ? "provider.management.empty.filtered.subtitle"
                       : "provider.management.empty.subtitle"
                   }
                 />
               </p>
-              {!panelSearchTerm && (
+              {!appliedSearchTerm && statusFilter === "all" && (
                 <Button size="sm" onClick={openAddModal}>
                   <FormattedMessage id="provider.management.action.add" />
                 </Button>
@@ -569,7 +689,7 @@ function ProviderMenu() {
             <>
               <div className="admin-list-workspace__table-scroll">
                 <DataTable
-                  rows={providerMenuListShow.slice(
+                  rows={visibleProviders.slice(
                     (page - 1) * pageSize,
                     page * pageSize,
                   )}
@@ -579,15 +699,9 @@ function ProviderMenu() {
                       header: intl.formatMessage({ id: "provider.select" }),
                     },
                     {
-                      key: "lastName",
+                      key: "displayName",
                       header: intl.formatMessage({
-                        id: "provider.providerLastName",
-                      }),
-                    },
-                    {
-                      key: "firstName",
-                      header: intl.formatMessage({
-                        id: "provider.providerFirstName",
+                        id: "provider.management.column.name",
                       }),
                     },
                     {
@@ -599,12 +713,14 @@ function ProviderMenu() {
                       header: intl.formatMessage({ id: "provider.telephone" }),
                     },
                     {
-                      key: "fax",
-                      header: intl.formatMessage({ id: "provider.fax" }),
-                    },
-                    {
                       key: "email",
                       header: intl.formatMessage({ id: "provider.email" }),
+                    },
+                    {
+                      key: "actions",
+                      header: intl.formatMessage({
+                        id: "admin.list.column.actions",
+                      }),
                     },
                   ]}
                 >
@@ -625,19 +741,7 @@ function ProviderMenu() {
                         </TableHead>
                         <TableBody>
                           {rows.map((row) => (
-                            <TableRow
-                              key={row.id}
-                              onClick={() => {
-                                const id = row.id;
-                                setSelectedRowIds(
-                                  selectedRowIds.includes(id)
-                                    ? selectedRowIds.filter(
-                                        (selectedId) => selectedId !== id,
-                                      )
-                                    : [...selectedRowIds, id],
-                                );
-                              }}
-                            >
+                            <TableRow key={row.id}>
                               {row.cells.map((cell) => renderCell(cell, row))}
                             </TableRow>
                           ))}
@@ -653,7 +757,7 @@ function ProviderMenu() {
                 page={page}
                 pageSize={pageSize}
                 pageSizes={[10, 20]}
-                totalItems={totalProviders}
+                totalItems={visibleProviders.length}
                 forwardText={intl.formatMessage({ id: "pagination.forward" })}
                 backwardText={intl.formatMessage({ id: "pagination.backward" })}
                 itemRangeText={(min, max, total) =>
@@ -700,66 +804,76 @@ function ProviderMenu() {
         secondaryButtonText={intl.formatMessage({
           id: "label.button.cancel",
         })}
+        primaryButtonDisabled={!formValid || saving}
         onRequestSubmit={handleAddProvider}
         onRequestClose={closeAddModal}
       >
-        <TextInput
-          id="lastName"
-          labelText={intl.formatMessage({ id: "provider.providerLastName" })}
-          value={lastName}
-          onChange={(e) => handleLastNameChange(e)}
-          required
-        />
-        <TextInput
-          id="firstName"
-          labelText={intl.formatMessage({ id: "provider.providerFirstName" })}
-          value={firstName}
-          onChange={(e) => handleFirstNameChange(e)}
-          required
-        />
-        <TextInput
-          id="telephone"
-          labelText={intl.formatMessage(
-            {
-              id: "patient.label.primaryphone",
-            },
-            { PHONE_FORMAT: "" },
-          )}
-          helperText={getPhoneFormatHint(intl, configurationProperties)}
-          value={telephone}
-          onChange={(e) => handleTelephoneChange(e)}
-          onBlur={(e) => handlePhoneValidation(e)}
-          invalid={!phoneValidation.status}
-          invalidText={phoneValidation.status ? "" : phoneValidation.body}
-        />
-        <TextInput
-          id="email"
-          labelText={intl.formatMessage({ id: "provider.email" })}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onBlur={(e) => handleEmailValidation(e)}
-          invalid={!emailValidation.status}
-          invalidText={emailValidation.status ? "" : emailValidation.body}
-        />
-
-        <Dropdown
-          className="dropdown-list"
-          id="isActive"
-          titleText={intl.formatMessage({ id: "label.active" })}
-          label={intl.formatMessage({ id: "provider.select" })}
-          items={yesOrNo}
-          itemToString={(item) => (item ? item.value : "")}
-          selectedItem={isActive}
-          onChange={({ selectedItem }) =>
-            setIsActive(selectedItem as YesNoOption)
-          }
-        />
-        <TextInput
-          id="fax"
-          labelText={intl.formatMessage({ id: "provider.fax" })}
-          value={fax}
-          onChange={(e) => setFax(e.target.value)}
-        />
+        <div className="provider-editor-form">
+          <TextInput
+            id="provider-add-last-name"
+            labelText={intl.formatMessage({ id: "provider.providerLastName" })}
+            value={lastName}
+            onChange={(e) => handleLastNameChange(e)}
+            required
+          />
+          <TextInput
+            id="provider-add-first-name"
+            labelText={intl.formatMessage({ id: "provider.providerFirstName" })}
+            value={firstName}
+            onChange={(e) => handleFirstNameChange(e)}
+            required
+          />
+          <TextInput
+            id="provider-add-telephone"
+            labelText={intl.formatMessage(
+              { id: "patient.label.primaryphone" },
+              { PHONE_FORMAT: "" },
+            )}
+            helperText={getPhoneFormatHint(intl, configurationProperties)}
+            value={telephone}
+            onChange={(e) => handleTelephoneChange(e)}
+            onBlur={(e) => handlePhoneValidation(e)}
+            invalid={!phoneValidation.status}
+            invalidText={phoneValidation.status ? "" : phoneValidation.body}
+          />
+          <TextInput
+            id="provider-add-email"
+            labelText={intl.formatMessage({ id: "provider.email" })}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onBlur={(e) => handleEmailValidation(e)}
+            invalid={!emailValidation.status}
+            invalidText={emailValidation.status ? "" : emailValidation.body}
+          />
+          <Select
+            id="provider-add-active"
+            labelText={intl.formatMessage({ id: "label.active" })}
+            value={isActive.id}
+            onChange={(event) =>
+              setIsActive({
+                id: event.target.value as "yes" | "no",
+                value: intl.formatMessage({
+                  id: event.target.value === "yes" ? "label.yes" : "label.no",
+                }),
+              })
+            }
+          >
+            <SelectItem
+              value="yes"
+              text={intl.formatMessage({ id: "label.yes" })}
+            />
+            <SelectItem
+              value="no"
+              text={intl.formatMessage({ id: "label.no" })}
+            />
+          </Select>
+          <TextInput
+            id="provider-add-fax"
+            labelText={intl.formatMessage({ id: "provider.fax" })}
+            value={fax}
+            onChange={(e) => setFax(e.target.value)}
+          />
+        </div>
       </Modal>
 
       <Modal
@@ -771,64 +885,76 @@ function ProviderMenu() {
         secondaryButtonText={intl.formatMessage({
           id: "label.button.cancel",
         })}
+        primaryButtonDisabled={!formValid || saving}
         onRequestSubmit={handleUpdateProvider}
         onRequestClose={closeUpdateModal}
       >
-        <TextInput
-          id="lastName"
-          labelText={intl.formatMessage({ id: "provider.providerLastName" })}
-          value={lastName}
-          onChange={(e) => handleLastNameChange(e)}
-          required
-        />
-        <TextInput
-          id="firstName"
-          labelText={intl.formatMessage({ id: "provider.providerFirstName" })}
-          value={firstName}
-          onChange={(e) => handleFirstNameChange(e)}
-          required
-        />
-        <TextInput
-          id="telephone"
-          labelText={intl.formatMessage(
-            {
-              id: "patient.label.primaryphone",
-            },
-            { PHONE_FORMAT: "" },
-          )}
-          helperText={getPhoneFormatHint(intl, configurationProperties)}
-          value={telephone}
-          onChange={(e) => handleTelephoneChange(e)}
-          onBlur={(e) => handlePhoneValidation(e)}
-          invalid={!phoneValidation.status}
-          invalidText={phoneValidation.status ? "" : phoneValidation.body}
-        />
-        <TextInput
-          id="updateEmail"
-          labelText={intl.formatMessage({ id: "provider.email" })}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onBlur={(e) => handleEmailValidation(e)}
-          invalid={!emailValidation.status}
-          invalidText={emailValidation.status ? "" : emailValidation.body}
-        />
-        <Dropdown
-          id="isActive"
-          titleText={intl.formatMessage({ id: "label.active" })}
-          label={intl.formatMessage({ id: "provider.select" })}
-          items={yesOrNo}
-          itemToString={(item) => (item ? item.value : "")}
-          selectedItem={isActive}
-          onChange={({ selectedItem }) =>
-            setIsActive(selectedItem as YesNoOption)
-          }
-        />
-        <TextInput
-          id="fax"
-          labelText={intl.formatMessage({ id: "provider.fax" })}
-          value={fax}
-          onChange={(e) => setFax(e.target.value)}
-        />
+        <div className="provider-editor-form">
+          <TextInput
+            id="provider-update-last-name"
+            labelText={intl.formatMessage({ id: "provider.providerLastName" })}
+            value={lastName}
+            onChange={(e) => handleLastNameChange(e)}
+            required
+          />
+          <TextInput
+            id="provider-update-first-name"
+            labelText={intl.formatMessage({ id: "provider.providerFirstName" })}
+            value={firstName}
+            onChange={(e) => handleFirstNameChange(e)}
+            required
+          />
+          <TextInput
+            id="provider-update-telephone"
+            labelText={intl.formatMessage(
+              { id: "patient.label.primaryphone" },
+              { PHONE_FORMAT: "" },
+            )}
+            helperText={getPhoneFormatHint(intl, configurationProperties)}
+            value={telephone}
+            onChange={(e) => handleTelephoneChange(e)}
+            onBlur={(e) => handlePhoneValidation(e)}
+            invalid={!phoneValidation.status}
+            invalidText={phoneValidation.status ? "" : phoneValidation.body}
+          />
+          <TextInput
+            id="provider-update-email"
+            labelText={intl.formatMessage({ id: "provider.email" })}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onBlur={(e) => handleEmailValidation(e)}
+            invalid={!emailValidation.status}
+            invalidText={emailValidation.status ? "" : emailValidation.body}
+          />
+          <Select
+            id="provider-update-active"
+            labelText={intl.formatMessage({ id: "label.active" })}
+            value={isActive.id}
+            onChange={(event) =>
+              setIsActive({
+                id: event.target.value as "yes" | "no",
+                value: intl.formatMessage({
+                  id: event.target.value === "yes" ? "label.yes" : "label.no",
+                }),
+              })
+            }
+          >
+            <SelectItem
+              value="yes"
+              text={intl.formatMessage({ id: "label.yes" })}
+            />
+            <SelectItem
+              value="no"
+              text={intl.formatMessage({ id: "label.no" })}
+            />
+          </Select>
+          <TextInput
+            id="provider-update-fax"
+            labelText={intl.formatMessage({ id: "provider.fax" })}
+            value={fax}
+            onChange={(e) => setFax(e.target.value)}
+          />
+        </div>
       </Modal>
     </>
   );

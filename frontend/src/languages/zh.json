@@ -5334,7 +5334,7 @@
   "provider.management.empty.search.title": "没有找到匹配的申请医生",
   "provider.management.empty.subtitle": "新增医生后，可在检验申请中直接选择，减少重复录入。",
   "provider.management.empty.title": "尚未维护申请医生",
-  "provider.management.list.subtitle": "维护医生姓名、联系电话、电子邮件和启用状态。",
+  "provider.management.list.subtitle": "直接编辑医生资料；勾选记录后可批量停用。",
   "provider.management.list.title": "申请医生目录",
   "provider.management.metric.active": "当前页启用",
   "provider.management.metric.selected": "已选择",
@@ -9469,5 +9469,16 @@
   "organization.management.deactivate.confirm.title": "确认停用机构",
   "organization.management.deactivate.confirm.message": "将停用已选择的 {count} 个机构或科室。确定继续吗？",
   "organization.management.empty.filtered.title": "没有符合条件的机构",
-  "organization.management.empty.filtered.subtitle": "请调整机构名称或启用状态筛选条件。"
+  "organization.management.empty.filtered.subtitle": "请调整机构名称或启用状态筛选条件。",
+  "provider.management.metric.inactive": "当前页停用",
+  "provider.management.filter.status": "启用状态",
+  "provider.management.filter.all": "全部状态",
+  "provider.management.filter.active": "仅启用",
+  "provider.management.filter.inactive": "仅停用",
+  "provider.management.column.name": "医生姓名",
+  "provider.management.empty.filtered.title": "没有符合条件的申请医生",
+  "provider.management.empty.filtered.subtitle": "请调整医生姓名或启用状态筛选条件。",
+  "provider.management.deactivate.confirm.title": "确认停用申请医生",
+  "provider.management.deactivate.confirm.message": "将停用已选择的 {count} 名申请医生。停用后将无法在新申请中选择，确定继续吗？",
+  "provider.management.deactivate.success": "申请医生已停用。"
 }

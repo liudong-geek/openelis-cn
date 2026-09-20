@@ -153,8 +153,23 @@
 }
 
 .user-management-page .admin-list-workspace__table,
-.organization-management-page .admin-list-workspace__table {
+.organization-management-page .admin-list-workspace__table,
+.provider-management-page .admin-list-workspace__table {
   min-width: 52rem;
+}
+
+.provider-editor-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  padding-block: 0.5rem;
+}
+
+.provider-editor-form .cds--text-input-wrapper,
+.provider-editor-form .cds--select,
+.provider-editor-form .cds--select-input {
+  width: 100%;
+  max-width: none;
 }
 
 .admin-list-workspace__table .cds--data-table-header {
@@ -219,6 +234,10 @@
 
   .admin-list-workspace__filter-checks {
     grid-column: 1 / -1;
+  }
+
+  .provider-editor-form {
+    grid-template-columns: 1fr;
   }
 }
 

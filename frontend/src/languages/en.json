@@ -5335,7 +5335,7 @@
   "provider.management.empty.search.title": "No matching providers",
   "provider.management.empty.subtitle": "Add providers so staff can select them during order entry without repeated typing.",
   "provider.management.empty.title": "No requesting providers yet",
-  "provider.management.list.subtitle": "Maintain provider names, contact details, email addresses, and active status.",
+  "provider.management.list.subtitle": "Edit provider details directly, or select records for bulk deactivation.",
   "provider.management.list.title": "Requesting provider directory",
   "provider.management.metric.active": "Active on this page",
   "provider.management.metric.selected": "Selected",
@@ -9266,5 +9266,16 @@
   "organization.management.deactivate.confirm.title": "Confirm organization deactivation",
   "organization.management.deactivate.confirm.message": "Deactivate the {count} selected organizations or departments?",
   "organization.management.empty.filtered.title": "No organizations match the filters",
-  "organization.management.empty.filtered.subtitle": "Adjust the organization name or status filter."
+  "organization.management.empty.filtered.subtitle": "Adjust the organization name or status filter.",
+  "provider.management.metric.inactive": "Inactive on this page",
+  "provider.management.filter.status": "Status",
+  "provider.management.filter.all": "All statuses",
+  "provider.management.filter.active": "Active only",
+  "provider.management.filter.inactive": "Inactive only",
+  "provider.management.column.name": "Provider name",
+  "provider.management.empty.filtered.title": "No providers match the filters",
+  "provider.management.empty.filtered.subtitle": "Adjust the provider name or status filter.",
+  "provider.management.deactivate.confirm.title": "Confirm provider deactivation",
+  "provider.management.deactivate.confirm.message": "Deactivate the {count} selected requesting providers? They will no longer be available for new orders.",
+  "provider.management.deactivate.success": "The requesting providers were deactivated."
 }
