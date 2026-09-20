@@ -1,26 +1,25 @@
-import React, { useContext, useState, useEffect, useRef } from "react";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Heading,
   Button,
+  Checkbox,
+  InlineLoading,
   Loading,
-  Grid,
-  Column,
-  Section,
-  DataTable,
-  Table,
-  TableHead,
-  TableRow,
-  TableBody,
-  TableHeader,
-  TableCell,
-  TableContainer,
+  Modal,
   Pagination,
   Search,
-  Checkbox,
   Select,
   SelectItem,
-  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableHeader,
+  TableRow,
+  Tag,
 } from "@carbon/react";
+import { Save, Settings, Undo } from "@carbon/icons-react";
+import { FormattedMessage, useIntl } from "react-intl";
 import {
   getFromOpenElisServer,
   postToOpenElisServerJsonResponse,
@@ -30,12 +29,12 @@ import {
   AlertDialog,
   NotificationKinds,
 } from "../../common/CustomNotification";
-import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
-import { Settings } from "@carbon/icons-react";
+import ProductPageHeader from "../../common/ProductPageHeader";
 import { navigateToInternalPath } from "../../utils/NavigationUtils";
+import "./TestNotificationConfigMenu.css";
 
-let breadcrumbs = [
+const breadcrumbs = [
   { label: "home.label", link: "/" },
   { label: "breadcrums.admin.managment", link: "/MasterListsPage" },
   {
@@ -44,536 +43,529 @@ let breadcrumbs = [
   },
 ];
 
-function TestNotificationConfigMenu() {
+const CHANNELS = [
+  { key: "patientEmail", label: "testnotification.patient.email" },
+  { key: "patientSMS", label: "testnotification.patient.sms" },
+  { key: "providerEmail", label: "testnotification.provider.email" },
+  { key: "providerSMS", label: "testnotification.provider.sms" },
+];
+
+const copyMenuList = (items = []) =>
+  items.map((item) => ({
+    ...item,
+    patientEmail: { ...item.patientEmail },
+    patientSMS: { ...item.patientSMS },
+    providerEmail: { ...item.providerEmail },
+    providerSMS: { ...item.providerSMS },
+  }));
+
+const channelState = (item) =>
+  CHANNELS.map(({ key }) => Boolean(item?.[key]?.active)).join(":");
+
+export default function TestNotificationConfigMenu() {
+  const intl = useIntl();
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
+  const mounted = useRef(false);
 
-  const intl = useIntl();
-
-  const componentMounted = useRef(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [loading, setLoading] = useState(true);
-  const [saveButton, setSaveButton] = useState(true);
-  const [testNamesList, setTestNamesList] = useState([]);
-  const [testNotificationConfigMenuData, setTestNotificationConfigMenuData] =
-    useState({});
-  const [
-    testNotificationConfigMenuDataPost,
-    setTestNotificationConfigMenuDataPost,
-  ] = useState({ menuList: [] });
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [namesLoading, setNamesLoading] = useState(true);
+  const [sampleFilterLoading, setSampleFilterLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [menuData, setMenuData] = useState({ menuList: [] });
+  const [savedMenuList, setSavedMenuList] = useState([]);
   const [testNamesMap, setTestNamesMap] = useState({});
-
-  // Filter state. searchTerm is a client-side substring match on testName;
-  // selectedSampleType filters to only tests that belong to that sample type
-  // (resolved via /rest/sample-type-tests). null sampleType set ⇒ no filter.
+  const [sampleTypes, setSampleTypes] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSampleType, setSelectedSampleType] = useState("");
-  const [sampleTypeList, setSampleTypeList] = useState([]);
   const [testIdsForSampleType, setTestIdsForSampleType] = useState(null);
 
-  const handleMenuItems = (res) => {
-    if (res) {
-      setTestNotificationConfigMenuData(res);
-    }
-    setLoading(false);
-  };
-
-  const handleTestNamesList = (res) => {
-    if (res) {
-      setTestNamesList(res);
-    }
-    setLoading(false);
-  };
-
   useEffect(() => {
-    componentMounted.current = true;
-    getFromOpenElisServer(`/rest/TestNotificationConfigMenu`, handleMenuItems);
-    getFromOpenElisServer(`/rest/test-list`, handleTestNamesList);
-    getFromOpenElisServer(`/rest/user-sample-types`, (res) => {
-      if (Array.isArray(res)) {
-        setSampleTypeList(res);
-      }
+    mounted.current = true;
+    getFromOpenElisServer("/rest/TestNotificationConfigMenu", (response) => {
+      if (!mounted.current) return;
+      const next = response || { menuList: [] };
+      const nextList = copyMenuList(next.menuList);
+      setMenuData({ ...next, menuList: nextList });
+      setSavedMenuList(copyMenuList(nextList));
+      setMenuLoading(false);
+    });
+    getFromOpenElisServer("/rest/test-list", (response) => {
+      if (!mounted.current) return;
+      setTestNamesMap(
+        (Array.isArray(response) ? response : []).reduce((names, item) => {
+          names[String(item.id)] = item.value;
+          return names;
+        }, {}),
+      );
+      setNamesLoading(false);
+    });
+    getFromOpenElisServer("/rest/user-sample-types", (response) => {
+      if (mounted.current)
+        setSampleTypes(Array.isArray(response) ? response : []);
     });
     return () => {
-      componentMounted.current = false;
+      mounted.current = false;
     };
   }, []);
 
-  // When a sample type is chosen, resolve which test IDs belong to it
-  // (server-side via /rest/sample-type-tests). Cleared selection ⇒ no filter.
   useEffect(() => {
+    setPage(1);
     if (!selectedSampleType) {
       setTestIdsForSampleType(null);
+      setSampleFilterLoading(false);
       return;
     }
+    setSampleFilterLoading(true);
     getFromOpenElisServer(
       `/rest/sample-type-tests?sampleType=${encodeURIComponent(selectedSampleType)}`,
-      (res) => {
-        // res.tests is List<TestMap> — { id, name, userBenchChoice } — see
-        // SampleEntryTestsForTypeProviderRestController.TestMap. The `id` is
-        // the test record's DB id, same scale as menuList[i].testId.
-        const ids = new Set((res?.tests || []).map((t) => String(t.id)));
-        setTestIdsForSampleType(ids);
+      (response) => {
+        if (!mounted.current) return;
+        setTestIdsForSampleType(
+          new Set((response?.tests || []).map((test) => String(test.id))),
+        );
+        setSampleFilterLoading(false);
       },
     );
   }, [selectedSampleType]);
 
-  // Reset to first page whenever a filter changes so the user always sees
-  // the start of the (possibly shorter) filtered list.
-  useEffect(() => {
-    setPage(1);
-  }, [searchTerm, selectedSampleType]);
+  useEffect(() => setPage(1), [searchTerm]);
 
-  useEffect(() => {
-    if (
-      testNotificationConfigMenuData &&
-      testNotificationConfigMenuData.menuList
-    ) {
-      setTestNotificationConfigMenuDataPost((prevTestNotificationDataPost) => ({
-        ...prevTestNotificationDataPost,
-        formMethod: testNotificationConfigMenuData.formMethod,
-        // formAction: testNotificationConfigMenuData.formAction,
-        // formName: testNotificationConfigMenuData.formName,
-        // config: testNotificationConfigMenuData.config,
-        cancelAction: testNotificationConfigMenuData.cancelAction,
-        submitOnCancel: testNotificationConfigMenuData.submitOnCancel,
-        cancelMethod: testNotificationConfigMenuData.cancelMethod,
-        adminMenuItems: testNotificationConfigMenuData.adminMenuItems,
-        totalRecordCount: testNotificationConfigMenuData.totalRecordCount,
-        fromRecordCount: testNotificationConfigMenuData.fromRecordCount,
-        toRecordCount: testNotificationConfigMenuData.toRecordCount,
-        selectedIDs: testNotificationConfigMenuData.selectedIDs,
-        menuList: testNotificationConfigMenuData.menuList,
-      }));
-    }
-  }, [testNotificationConfigMenuData]);
+  const savedById = useMemo(
+    () => new Map(savedMenuList.map((item) => [String(item.testId), item])),
+    [savedMenuList],
+  );
 
-  useEffect(() => {
-    const map = testNamesList.reduce((acc, item) => {
-      acc[item.id] = item.value;
-      return acc;
-    }, {});
-    setTestNamesMap(map);
-  }, [testNamesList]);
+  const changedIds = useMemo(
+    () =>
+      new Set(
+        menuData.menuList
+          .filter(
+            (item) =>
+              channelState(item) !==
+              channelState(savedById.get(String(item.testId))),
+          )
+          .map((item) => String(item.testId)),
+      ),
+    [menuData.menuList, savedById],
+  );
 
-  const handleEditButtonClick = (id) => {
-    navigateToInternalPath(
-      `/MasterListsPage/testNotificationConfig?testId=${encodeURIComponent(id)}`,
-    );
+  const filteredRows = useMemo(() => {
+    const query = searchTerm.trim().toLocaleLowerCase();
+    return menuData.menuList.filter((item) => {
+      const id = String(item.testId);
+      if (testIdsForSampleType && !testIdsForSampleType.has(id)) return false;
+      if (!query) return true;
+      return `${testNamesMap[id] || ""} ${id}`
+        .toLocaleLowerCase()
+        .includes(query);
+    });
+  }, [menuData.menuList, searchTerm, testIdsForSampleType, testNamesMap]);
+
+  const metrics = useMemo(() => {
+    let configuredTests = 0;
+    let activeChannels = 0;
+    menuData.menuList.forEach((item) => {
+      const enabled = CHANNELS.filter(({ key }) => item?.[key]?.active).length;
+      if (enabled) configuredTests += 1;
+      activeChannels += enabled;
+    });
+    return { configuredTests, activeChannels };
+  }, [menuData.menuList]);
+
+  const pagedRows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
+  const loading = menuLoading || namesLoading;
+  const isDirty = changedIds.size > 0;
+
+  const updateChannel = (testId, channel, active) => {
+    setMenuData((current) => ({
+      ...current,
+      menuList: current.menuList.map((item) =>
+        String(item.testId) === String(testId)
+          ? { ...item, [channel]: { ...item[channel], active } }
+          : item,
+      ),
+    }));
   };
 
-  function testNotificationConfigMenuSavePostCall() {
-    setLoading(true);
+  const discardChanges = () => {
+    setMenuData((current) => ({
+      ...current,
+      menuList: copyMenuList(savedMenuList),
+    }));
+  };
+
+  const saveChanges = () => {
+    setConfirmOpen(false);
+    setSaving(true);
     postToOpenElisServerJsonResponse(
-      `/rest/TestNotificationConfigMenu`,
-      JSON.stringify(testNotificationConfigMenuDataPost),
-      (res) => {
-        testNotificationConfigMenuSavePostCallBack(res);
+      "/rest/TestNotificationConfigMenu",
+      JSON.stringify(menuData),
+      (response) => {
+        if (!mounted.current) return;
+        const succeeded = Boolean(response);
+        if (succeeded) setSavedMenuList(copyMenuList(menuData.menuList));
+        addNotification({
+          kind: succeeded ? NotificationKinds.success : NotificationKinds.error,
+          title: intl.formatMessage({ id: "notification.title" }),
+          message: intl.formatMessage({
+            id: succeeded
+              ? "notification.user.post.save.success"
+              : "server.error.msg",
+          }),
+        });
+        setNotificationVisible(true);
+        setSaving(false);
       },
     );
-  }
-
-  function testNotificationConfigMenuSavePostCallBack(res) {
-    if (res) {
-      addNotification({
-        title: intl.formatMessage({
-          id: "notification.title",
-        }),
-        message: intl.formatMessage({
-          id: "notification.user.post.save.success",
-        }),
-        kind: NotificationKinds.success,
-      });
-      setNotificationVisible(true);
-    } else {
-      addNotification({
-        kind: NotificationKinds.error,
-        title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "server.error.msg" }),
-      });
-      setNotificationVisible(true);
-    }
-    setLoading(false);
-  }
-
-  const handleCheckboxChange = (e, rowId, header) => {
-    const isChecked = e.target.checked;
-
-    setTestNotificationConfigMenuDataPost((prevData) => {
-      const updatedMenuList = prevData.menuList.map((item) => {
-        if (item.testId === rowId) {
-          switch (header) {
-            case "patientEmail":
-              return {
-                ...item,
-                patientEmail: { ...item.patientEmail, active: isChecked },
-              };
-            case "patientSMS":
-              return {
-                ...item,
-                patientSMS: { ...item.patientSMS, active: isChecked },
-              };
-            case "providerEmail":
-              return {
-                ...item,
-                providerEmail: { ...item.providerEmail, active: isChecked },
-              };
-            case "providerSMS":
-              return {
-                ...item,
-                providerSMS: { ...item.providerSMS, active: isChecked },
-              };
-            default:
-              return item;
-          }
-        }
-        return item;
-      });
-
-      return {
-        ...prevData,
-        menuList: updatedMenuList,
-      };
-    });
-  };
-
-  const handlePageChange = ({ page, pageSize }) => {
-    setPage(page);
-    setPageSize(pageSize);
-  };
-
-  const renderCell = (cell, row) => {
-    if (cell.info.header === "testId") {
-      return <TableCell key={cell.id}>{cell.value}</TableCell>;
-    } else if (cell.info.header === "testName") {
-      return <TableCell key={cell.id}>{cell.value}</TableCell>;
-    } else if (
-      cell.info.header === "patientEmail" ||
-      cell.info.header === "patientSMS" ||
-      cell.info.header === "providerEmail" ||
-      cell.info.header === "providerSMS"
-    ) {
-      return (
-        <TableCell key={cell.id}>
-          <Checkbox
-            id={`checkbox-${row.id}-${cell.info.header}`}
-            labelText=""
-            checked={
-              testNotificationConfigMenuDataPost?.menuList.find(
-                (item) => item.testId === row.id,
-              )?.[cell.info.header]?.active || false
-            }
-            onChange={(e) => {
-              setSaveButton(false);
-              handleCheckboxChange(e, row.id, cell.info.header);
-            }}
-          />
-        </TableCell>
-      );
-    } else if (cell.info.header === "edit") {
-      return (
-        <TableCell key={cell.id}>
-          <Button
-            hasIconOnly
-            iconDescription={intl.formatMessage({
-              id: "testnotification.testdefault.editIcon",
-            })}
-            onClick={() => handleEditButtonClick(row.cells[0].value)}
-            renderIcon={Settings}
-            kind="tertiary"
-          />
-        </TableCell>
-      );
-    } else {
-      return <TableCell key={cell.id}>{cell.value}</TableCell>;
-    }
   };
 
   return (
     <>
-      {notificationVisible === true ? <AlertDialog /> : ""}
-      {loading && <Loading></Loading>}
-      <div className="adminPageContent">
+      {notificationVisible && <AlertDialog />}
+      {loading && <Loading />}
+      <div className="adminPageContent notification-config-workspace">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
-        <Grid fullWidth={true}>
-          <Column lg={16}>
-            <Section>
-              <Heading>
-                <FormattedMessage id="testnotificationconfig.browse.title" />
-              </Heading>
-            </Section>
-            <br />
-            <Section>
-              <Column
-                lg={16}
-                md={8}
-                sm={4}
-                style={{ display: "flex", gap: "10px" }}
-              >
-                <Button
-                  disabled={saveButton}
-                  onClick={testNotificationConfigMenuSavePostCall}
-                  type="button"
-                >
-                  <FormattedMessage id="label.button.save" />
-                </Button>{" "}
-                <Button
-                  onClick={() =>
-                    navigateToInternalPath(
-                      "/MasterListsPage/testNotificationConfigMenu",
-                      { replace: true },
-                    )
-                  }
-                  kind="tertiary"
-                  type="button"
-                >
-                  <FormattedMessage id="label.button.exit" />
-                </Button>
-              </Column>
-            </Section>
-          </Column>
-        </Grid>
-        <div className="orderLegendBody">
-          <Grid fullWidth={true}>
-            <Column lg={16} md={8} sm={4}>
-              <br />
-              <Section>
-                <Stack orientation="horizontal" gap={5}>
-                  <Search
-                    id="testNotificationTestNameSearch"
-                    labelText={intl.formatMessage({ id: "label.testName" })}
-                    placeholder={intl.formatMessage({ id: "label.testName" })}
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    onClear={() => setSearchTerm("")}
-                  />
-                  <Select
-                    id="testNotificationSampleTypeFilter"
-                    labelText={intl.formatMessage({ id: "field.sampleType" })}
-                    hideLabel
-                    value={selectedSampleType}
-                    onChange={(e) => setSelectedSampleType(e.target.value)}
-                  >
-                    <SelectItem
-                      text={intl.formatMessage({ id: "sample.select.type" })}
-                      value=""
-                    />
-                    {sampleTypeList?.map((s) => (
-                      <SelectItem key={s.id} text={s.value} value={s.id} />
-                    ))}
-                  </Select>
-                  <Button
-                    kind="secondary"
-                    onClick={() => {
-                      setSearchTerm("");
-                      setSelectedSampleType("");
-                    }}
-                  >
-                    <FormattedMessage id="label.clear" />
-                  </Button>
-                </Stack>
-              </Section>
-              <br />
-              {(() => {
-                // Apply both filters once, then page-slice. Done inline so
-                // pagination's totalItems matches the filtered set.
-                const all = testNotificationConfigMenuDataPost?.menuList || [];
-                const search = searchTerm.trim().toLowerCase();
-                const filteredMenuList = all.filter((item) => {
-                  if (
-                    testIdsForSampleType &&
-                    !testIdsForSampleType.has(String(item.testId))
-                  ) {
-                    return false;
-                  }
-                  if (search) {
-                    const name = (
-                      testNamesMap[item.testId] || ""
-                    ).toLowerCase();
-                    if (!name.includes(search)) return false;
-                  }
-                  return true;
-                });
-                return (
-                  <>
-                    <DataTable
-                      rows={filteredMenuList
-                        .slice((page - 1) * pageSize, page * pageSize)
-                        .map((item) => ({
-                          id: item.testId,
-                          testId: item.testId,
-                          patientEmail: item.patientEmail.active
-                            ? "true"
-                            : "false",
-                          patientSMS: item.patientSMS.active ? "true" : "false",
-                          providerEmail: item.providerEmail.active
-                            ? "true"
-                            : "false",
-                          providerSMS: item.providerSMS.active
-                            ? "true"
-                            : "false",
-                          testName: testNamesMap[item.testId] || item.testId,
-                        }))}
-                      headers={[
-                        {
-                          key: "testId",
-                          header: intl.formatMessage({
-                            id: "column.name.testId",
-                          }),
-                        },
-                        {
-                          key: "testName",
-                          header: intl.formatMessage({
-                            id: "label.testName",
-                          }),
-                        },
-                        {
-                          key: "patientEmail",
-                          header: intl.formatMessage({
-                            id: "testnotification.patient.email",
-                          }),
-                        },
-                        {
-                          key: "patientSMS",
-                          header: intl.formatMessage({
-                            id: "testnotification.patient.sms",
-                          }),
-                        },
-                        {
-                          key: "providerEmail",
-                          header: intl.formatMessage({
-                            id: "testnotification.provider.email",
-                          }),
-                        },
-                        {
-                          key: "providerSMS",
-                          header: intl.formatMessage({
-                            id: "testnotification.provider.sms",
-                          }),
-                        },
-                        {
-                          key: "edit",
-                          header: intl.formatMessage({
-                            id: "banner.menu.patientEdit",
-                          }),
-                        },
-                      ]}
-                    >
-                      {({
-                        rows,
-                        headers,
-                        getHeaderProps,
-                        getTableProps,
-                        getSelectionProps,
-                      }) => (
-                        <TableContainer>
-                          <Table {...getTableProps()}>
-                            <TableHead>
-                              <TableRow>
-                                {headers.map((header) => (
-                                  // header.key !== "id" &&
-                                  <TableHeader
-                                    key={header.key}
-                                    {...getHeaderProps({ header })}
-                                  >
-                                    {header.header}
-                                  </TableHeader>
-                                ))}
-                              </TableRow>
-                            </TableHead>
-                            <TableBody>
-                              <>
-                                {rows.map((row) => (
-                                  <TableRow key={row.id}>
-                                    {row.cells.map((cell) =>
-                                      renderCell(cell, row),
-                                    )}
-                                  </TableRow>
-                                ))}
-                              </>
-                            </TableBody>
-                          </Table>
-                        </TableContainer>
-                      )}
-                    </DataTable>
-                    <Pagination
-                      onChange={handlePageChange}
-                      page={page}
-                      pageSize={pageSize}
-                      pageSizes={[25, 50]}
-                      totalItems={filteredMenuList.length}
-                      forwardText={intl.formatMessage({
-                        id: "pagination.forward",
-                      })}
-                      backwardText={intl.formatMessage({
-                        id: "pagination.backward",
-                      })}
-                      itemRangeText={(min, max, total) =>
-                        intl.formatMessage(
-                          { id: "pagination.item-range" },
-                          { min: min, max: max, total: total },
-                        )
-                      }
-                      itemsPerPageText={intl.formatMessage({
-                        id: "pagination.items-per-page",
-                      })}
-                      itemText={(min, max) =>
-                        intl.formatMessage(
-                          { id: "pagination.item" },
-                          { min: min, max: max },
-                        )
-                      }
-                      pageNumberText={intl.formatMessage({
-                        id: "pagination.page-number",
-                      })}
-                      pageRangeText={(_current, total) =>
-                        intl.formatMessage(
-                          { id: "pagination.page-range" },
-                          { total: total },
-                        )
-                      }
-                      pageText={(page, pagesUnknown) =>
-                        intl.formatMessage(
-                          { id: "pagination.page" },
-                          { page: pagesUnknown ? "" : page },
-                        )
-                      }
-                    />
-                    <br />
-                  </>
-                );
-              })()}
-            </Column>
-          </Grid>
-          <br />
-          <Grid fullWidth={true}>
-            <Column lg={16} md={8} sm={4}>
+        <ProductPageHeader
+          title={<FormattedMessage id="testnotificationconfig.browse.title" />}
+          subtitle={
+            <FormattedMessage id="testnotification.workspace.subtitle" />
+          }
+          actions={
+            <>
               <Button
-                disabled={saveButton}
-                onClick={testNotificationConfigMenuSavePostCall}
-                type="button"
+                kind="secondary"
+                renderIcon={Undo}
+                disabled={!isDirty || saving}
+                onClick={discardChanges}
               >
-                <FormattedMessage id="label.button.save" />
-              </Button>{" "}
-              <Button
-                onClick={() =>
-                  navigateToInternalPath(
-                    "/MasterListsPage/testNotificationConfigMenu",
-                    { replace: true },
-                  )
-                }
-                kind="tertiary"
-                type="button"
-              >
-                <FormattedMessage id="label.button.exit" />
+                <FormattedMessage id="testnotification.workspace.discard" />
               </Button>
-            </Column>
-          </Grid>
-        </div>
+              <Button
+                renderIcon={Save}
+                disabled={!isDirty || saving}
+                onClick={() => setConfirmOpen(true)}
+              >
+                {saving ? (
+                  <InlineLoading
+                    description={intl.formatMessage({
+                      id: "testnotification.workspace.saving",
+                    })}
+                  />
+                ) : (
+                  <FormattedMessage id="testnotification.workspace.save" />
+                )}
+              </Button>
+            </>
+          }
+        />
+
+        <section
+          className="notification-config-workspace__metrics"
+          aria-label={intl.formatMessage({
+            id: "testnotification.workspace.summary",
+          })}
+        >
+          <article>
+            <span>
+              <FormattedMessage id="testnotification.workspace.totalTests" />
+            </span>
+            <strong>{menuData.menuList.length}</strong>
+          </article>
+          <article>
+            <span>
+              <FormattedMessage id="testnotification.workspace.configuredTests" />
+            </span>
+            <strong>{metrics.configuredTests}</strong>
+          </article>
+          <article>
+            <span>
+              <FormattedMessage id="testnotification.workspace.activeChannels" />
+            </span>
+            <strong>{metrics.activeChannels}</strong>
+          </article>
+          <article>
+            <span>
+              <FormattedMessage id="testnotification.workspace.pendingChanges" />
+            </span>
+            <strong>{changedIds.size}</strong>
+          </article>
+        </section>
+
+        <section className="notification-config-workspace__panel">
+          <header className="notification-config-workspace__panel-header">
+            <div>
+              <h2>
+                <FormattedMessage id="testnotification.workspace.rulesTitle" />
+              </h2>
+              <p>
+                <FormattedMessage id="testnotification.workspace.rulesHelper" />
+              </p>
+            </div>
+            <Tag type={isDirty ? "warm-gray" : "green"} size="sm">
+              <FormattedMessage
+                id={
+                  isDirty
+                    ? "testnotification.workspace.unsaved"
+                    : "testnotification.workspace.saved"
+                }
+                values={{ count: changedIds.size }}
+              />
+            </Tag>
+          </header>
+
+          <div className="notification-config-workspace__filters">
+            <Search
+              id="testNotificationTestNameSearch"
+              labelText={intl.formatMessage({
+                id: "testnotification.workspace.searchLabel",
+              })}
+              placeholder={intl.formatMessage({
+                id: "testnotification.workspace.searchPlaceholder",
+              })}
+              closeButtonLabelText={intl.formatMessage({
+                id: "testnotification.workspace.clearSearch",
+              })}
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+            />
+            <Select
+              id="testNotificationSampleTypeFilter"
+              labelText={intl.formatMessage({ id: "field.sampleType" })}
+              aria-label={intl.formatMessage({ id: "field.sampleType" })}
+              value={selectedSampleType}
+              onChange={(event) => setSelectedSampleType(event.target.value)}
+            >
+              <SelectItem
+                text={intl.formatMessage({
+                  id: "testnotification.workspace.allSampleTypes",
+                })}
+                value=""
+              />
+              {sampleTypes.map((sampleType) => (
+                <SelectItem
+                  key={sampleType.id}
+                  text={sampleType.value}
+                  value={sampleType.id}
+                />
+              ))}
+            </Select>
+            <Button
+              kind="ghost"
+              disabled={!searchTerm && !selectedSampleType}
+              onClick={() => {
+                setSearchTerm("");
+                setSelectedSampleType("");
+              }}
+            >
+              <FormattedMessage id="label.clear" />
+            </Button>
+          </div>
+
+          <div
+            className="notification-config-workspace__result-line"
+            role="status"
+          >
+            <FormattedMessage
+              id="testnotification.workspace.results"
+              values={{ count: filteredRows.length }}
+            />
+            {sampleFilterLoading && (
+              <InlineLoading
+                description={intl.formatMessage({
+                  id: "testnotification.workspace.filtering",
+                })}
+              />
+            )}
+          </div>
+
+          {filteredRows.length === 0 && !loading ? (
+            <div className="notification-config-workspace__empty">
+              <h3>
+                <FormattedMessage id="testnotification.workspace.emptyTitle" />
+              </h3>
+              <p>
+                <FormattedMessage id="testnotification.workspace.emptyHelper" />
+              </p>
+              <Button
+                kind="tertiary"
+                size="sm"
+                onClick={() => {
+                  setSearchTerm("");
+                  setSelectedSampleType("");
+                }}
+              >
+                <FormattedMessage id="label.clear" />
+              </Button>
+            </div>
+          ) : (
+            <TableContainer className="notification-config-workspace__table-wrap">
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableHeader>
+                      <FormattedMessage id="label.testName" />
+                    </TableHeader>
+                    {CHANNELS.map((channel) => (
+                      <TableHeader key={channel.key}>
+                        <FormattedMessage id={channel.label} />
+                      </TableHeader>
+                    ))}
+                    <TableHeader>
+                      <FormattedMessage id="testnotification.workspace.template" />
+                    </TableHeader>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {pagedRows.map((item) => {
+                    const id = String(item.testId);
+                    return (
+                      <TableRow
+                        key={id}
+                        className={
+                          changedIds.has(id)
+                            ? "notification-config-workspace__row--changed"
+                            : undefined
+                        }
+                      >
+                        <TableCell>
+                          <strong>{testNamesMap[id] || id}</strong>
+                          <span className="notification-config-workspace__test-id">
+                            <FormattedMessage
+                              id="testnotification.workspace.testId"
+                              values={{ id }}
+                            />
+                          </span>
+                        </TableCell>
+                        {CHANNELS.map((channel) => (
+                          <TableCell key={channel.key}>
+                            <Checkbox
+                              id={`notification-${id}-${channel.key}`}
+                              aria-label={intl.formatMessage(
+                                {
+                                  id: "testnotification.workspace.channelLabel",
+                                },
+                                {
+                                  test: testNamesMap[id] || id,
+                                  channel: intl.formatMessage({
+                                    id: channel.label,
+                                  }),
+                                },
+                              )}
+                              labelText={intl.formatMessage(
+                                {
+                                  id: "testnotification.workspace.channelLabel",
+                                },
+                                {
+                                  test: testNamesMap[id] || id,
+                                  channel: intl.formatMessage({
+                                    id: channel.label,
+                                  }),
+                                },
+                              )}
+                              hideLabel
+                              checked={Boolean(item?.[channel.key]?.active)}
+                              onChange={(event) =>
+                                updateChannel(
+                                  id,
+                                  channel.key,
+                                  event.target.checked,
+                                )
+                              }
+                            />
+                          </TableCell>
+                        ))}
+                        <TableCell>
+                          <Button
+                            hasIconOnly
+                            kind="ghost"
+                            size="sm"
+                            renderIcon={Settings}
+                            iconDescription={intl.formatMessage({
+                              id: "testnotification.testdefault.editIcon",
+                            })}
+                            onClick={() =>
+                              navigateToInternalPath(
+                                `/MasterListsPage/testNotificationConfig?testId=${encodeURIComponent(id)}`,
+                              )
+                            }
+                          />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+
+          {filteredRows.length > 0 && (
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              pageSizes={[10, 25, 50]}
+              totalItems={filteredRows.length}
+              onChange={({ page: nextPage, pageSize: nextPageSize }) => {
+                setPage(nextPage);
+                setPageSize(nextPageSize);
+              }}
+              forwardText={intl.formatMessage({ id: "pagination.forward" })}
+              backwardText={intl.formatMessage({ id: "pagination.backward" })}
+              itemsPerPageText={intl.formatMessage({
+                id: "pagination.items-per-page",
+              })}
+              pageNumberText={intl.formatMessage({
+                id: "pagination.page-number",
+              })}
+              itemRangeText={(min, max, total) =>
+                intl.formatMessage(
+                  { id: "pagination.item-range" },
+                  { min, max, total },
+                )
+              }
+              itemText={(min, max) =>
+                intl.formatMessage({ id: "pagination.item" }, { min, max })
+              }
+              pageRangeText={(_current, total) =>
+                intl.formatMessage({ id: "pagination.page-range" }, { total })
+              }
+              pageText={(currentPage, pagesUnknown) =>
+                intl.formatMessage(
+                  { id: "pagination.page" },
+                  { page: pagesUnknown ? "" : currentPage },
+                )
+              }
+            />
+          )}
+        </section>
+
+        <p className="notification-config-workspace__notice">
+          <FormattedMessage id="testnotification.workspace.notice" />
+        </p>
       </div>
+
+      <Modal
+        open={confirmOpen}
+        modalHeading={intl.formatMessage({
+          id: "testnotification.workspace.confirmTitle",
+        })}
+        primaryButtonText={intl.formatMessage({
+          id: "testnotification.workspace.confirmSave",
+        })}
+        secondaryButtonText={intl.formatMessage({ id: "label.button.cancel" })}
+        onRequestClose={() => setConfirmOpen(false)}
+        onRequestSubmit={saveChanges}
+      >
+        <p>
+          <FormattedMessage
+            id="testnotification.workspace.confirmBody"
+            values={{ count: changedIds.size }}
+          />
+        </p>
+      </Modal>
     </>
   );
 }
-
-export default injectIntl(TestNotificationConfigMenu);

@@ -1,0 +1,160 @@
+.notification-config-workspace {
+  padding-bottom: 2rem;
+}
+.notification-config-workspace__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.notification-config-workspace__metrics article {
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  background: var(--oe-surface);
+  box-shadow: var(--oe-surface-shadow);
+}
+.notification-config-workspace__metrics span {
+  display: block;
+  color: var(--oe-text-muted);
+  font-size: 0.75rem;
+}
+.notification-config-workspace__metrics strong {
+  display: block;
+  margin-top: 0.375rem;
+  color: var(--oe-text);
+  font-size: 1.5rem;
+  font-weight: 650;
+}
+.notification-config-workspace__panel {
+  overflow: hidden;
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  background: var(--oe-surface);
+  box-shadow: var(--oe-surface-shadow);
+}
+.notification-config-workspace__panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--oe-border);
+}
+.notification-config-workspace__panel-header h2,
+.notification-config-workspace__empty h3 {
+  margin: 0;
+  color: var(--oe-text);
+  font-size: 1.125rem;
+  font-weight: 650;
+}
+.notification-config-workspace__panel-header p,
+.notification-config-workspace__empty p {
+  margin: 0.25rem 0 0;
+  color: var(--oe-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.notification-config-workspace__filters {
+  display: grid;
+  grid-template-columns: minmax(18rem, 1fr) minmax(13rem, 0.55fr) auto;
+  align-items: end;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: var(--oe-surface-subtle);
+}
+.notification-config-workspace__filters .cds--search,
+.notification-config-workspace__filters .cds--select,
+.notification-config-workspace__filters .cds--select-input {
+  width: 100%;
+  max-width: none;
+}
+.notification-config-workspace__result-line {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.625rem 1.25rem;
+  border-top: 1px solid var(--oe-border);
+  color: var(--oe-text-muted);
+  font-size: 0.8125rem;
+}
+.notification-config-workspace__table-wrap {
+  overflow-x: auto;
+}
+.notification-config-workspace__table-wrap table {
+  min-width: 56rem;
+}
+.notification-config-workspace__table-wrap th:not(:first-child),
+.notification-config-workspace__table-wrap td:not(:first-child) {
+  text-align: center;
+}
+.notification-config-workspace__table-wrap .cds--checkbox-wrapper {
+  justify-content: center;
+}
+.notification-config-workspace__test-id {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--oe-text-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+.notification-config-workspace__row--changed td:first-child {
+  box-shadow: inset 3px 0 0 var(--oe-accent);
+}
+.notification-config-workspace__empty {
+  padding: 2rem 1.25rem;
+  text-align: center;
+}
+.notification-config-workspace__empty .cds--btn {
+  margin-top: 1rem;
+}
+.notification-config-workspace__notice {
+  margin: 1rem 0 0;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--oe-accent);
+  color: var(--oe-text-muted);
+  background: var(--oe-surface-subtle);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+@media (max-width: 64rem) {
+  .notification-config-workspace__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .notification-config-workspace__filters {
+    grid-template-columns: 1fr 1fr;
+  }
+  .notification-config-workspace__filters .cds--btn {
+    width: 100%;
+    max-width: none;
+  }
+}
+@media (max-width: 42rem) {
+  .notification-config-workspace .oe-page-header,
+  .notification-config-workspace__panel-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .notification-config-workspace .oe-page-header__actions,
+  .notification-config-workspace__filters {
+    display: grid;
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .notification-config-workspace__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .notification-config-workspace .oe-page-header__actions .cds--btn {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+@media (max-width: 28rem) {
+  .notification-config-workspace__metrics {
+    grid-template-columns: 1fr;
+  }
+}
