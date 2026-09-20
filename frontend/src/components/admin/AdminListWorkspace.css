@@ -172,6 +172,97 @@
   max-width: none;
 }
 
+.config-workspace .admin-list-workspace__table {
+  min-width: 64rem;
+}
+
+.config-workspace__value {
+  display: block;
+  overflow: hidden;
+  max-width: 24rem;
+  color: var(--oe-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-editor {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.config-editor--embedded {
+  padding: 0.25rem 0 0.75rem;
+}
+
+.config-editor__heading h1 {
+  margin: 0;
+  color: var(--oe-text);
+  font-size: 1.5rem;
+  font-weight: 650;
+}
+
+.config-editor__heading p,
+.config-editor__summary p,
+.config-editor__hint {
+  margin: 0.35rem 0 0;
+  color: var(--oe-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.config-editor__summary {
+  padding: 1rem;
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  background: var(--oe-surface-subtle);
+}
+
+.config-editor__summary span {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--oe-text-muted);
+  font-size: 0.75rem;
+}
+
+.config-editor__summary strong {
+  color: var(--oe-text);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.config-editor__field,
+.config-editor__localized-fields,
+.config-editor__logo {
+  display: grid;
+  gap: 1rem;
+}
+
+.config-editor__field .cds--text-input-wrapper,
+.config-editor__field .cds--text-area__wrapper,
+.config-editor__field .cds--select,
+.config-editor__field .cds--select-input {
+  width: 100%;
+  max-width: none;
+}
+
+.config-editor__localized-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.config-editor__logo img {
+  max-width: 12rem;
+  max-height: 7rem;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.config-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+}
+
 .admin-list-workspace__table .cds--data-table-header {
   display: none;
 }
@@ -239,6 +330,10 @@
   .provider-editor-form {
     grid-template-columns: 1fr;
   }
+
+  .config-editor__localized-fields {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 42rem) {
@@ -290,5 +385,15 @@
   .admin-list-workspace__filter-checks {
     grid-column: auto;
     flex-wrap: wrap;
+  }
+
+  .config-editor__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .config-editor__actions .cds--btn {
+    width: 100%;
+    max-width: none;
   }
 }
