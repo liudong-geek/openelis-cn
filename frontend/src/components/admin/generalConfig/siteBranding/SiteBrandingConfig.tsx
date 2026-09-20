@@ -8,32 +8,32 @@
 
 import React, { useState, useEffect, useContext, useRef } from "react";
 import {
-  Grid,
-  Column,
-  Section,
-  Heading,
   Button,
   Loading,
   Modal,
   InlineLoading,
+  InlineNotification,
 } from "@carbon/react";
+import { Reset, Save, Undo } from "@carbon/icons-react";
 import {
   getBranding,
   updateBranding,
   resetBranding,
 } from "../../../utils/BrandingUtils";
+import type { BrandingConfiguration } from "../../../utils/BrandingUtils";
 import { NotificationContext } from "../../../layout/Layout";
 import {
   AlertDialog,
   NotificationKinds,
 } from "../../../common/CustomNotification";
 import { FormattedMessage, useIntl } from "react-intl";
-import { useHistory } from "react-router-dom";
 import PageBreadCrumb from "../../../common/PageBreadCrumb";
+import ProductPageHeader from "../../../common/ProductPageHeader";
 import LogoUploadSection from "./LogoUploadSection";
 import type { LogoUploadSectionHandle } from "./LogoUploadSection";
 import ColorPickerSection from "./ColorPickerSection";
 import config from "../../../../config.json";
+import "./BrandingWorkspace.css";
 
 interface BrandingConfig {
   id?: string | number | null;
@@ -59,10 +59,8 @@ interface NotificationContextValue {
 
 function SiteBrandingConfig() {
   const intl = useIntl();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- preserve the original router subscription
-  const history = useHistory();
   const { notificationVisible, setNotificationVisible, addNotification } =
-    useContext(NotificationContext) as NotificationContextValue;
+    useContext(NotificationContext) as unknown as NotificationContextValue;
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -85,10 +83,43 @@ function SiteBrandingConfig() {
     { label: "breadcrums.admin.managment", link: "/MasterListsPage" },
     {
       label: "sidenav.label.admin.formEntry.siteInfoconfig",
-      link: "/MasterListsPage#SiteInformationMenu",
+      link: "/MasterListsPage/workflowReportWorkspace",
     },
-    { label: "site.branding.title", link: "#SiteBrandingMenu" },
+    { label: "site.branding.title", link: "/MasterListsPage/SiteBrandingMenu" },
   ];
+
+  const normalizeBranding = (
+    response?: BrandingConfiguration,
+  ): BrandingConfig => ({
+    ...response,
+    id:
+      typeof response?.id === "string" || typeof response?.id === "number"
+        ? response.id
+        : null,
+    headerColor:
+      typeof response?.headerColor === "string"
+        ? response.headerColor
+        : "#295785",
+    primaryColor:
+      typeof response?.primaryColor === "string"
+        ? response.primaryColor
+        : "#0f62fe",
+    secondaryColor:
+      typeof response?.secondaryColor === "string"
+        ? response.secondaryColor
+        : "#393939",
+    colorMode:
+      typeof response?.colorMode === "string" ? response.colorMode : "light",
+    useHeaderLogoForLogin: Boolean(response?.useHeaderLogoForLogin),
+    headerLogoUrl:
+      typeof response?.headerLogoUrl === "string"
+        ? response.headerLogoUrl
+        : null,
+    loginLogoUrl:
+      typeof response?.loginLogoUrl === "string" ? response.loginLogoUrl : null,
+    faviconUrl:
+      typeof response?.faviconUrl === "string" ? response.faviconUrl : null,
+  });
 
   useEffect(() => {
     loadBranding();
@@ -96,32 +127,20 @@ function SiteBrandingConfig() {
 
   const loadBranding = () => {
     setIsLoading(true);
-    getBranding((response: BrandingConfig | null) => {
-      console.debug("loadBranding response:", response);
-      console.debug("Logo URLs in response:", {
-        headerLogoUrl: response?.headerLogoUrl,
-        loginLogoUrl: response?.loginLogoUrl,
-        faviconUrl: response?.faviconUrl,
-      });
+    getBranding((response) => {
+      const nextBranding = normalizeBranding(response);
       if (response) {
-        setBranding(response);
-        setSavedBranding(JSON.parse(JSON.stringify(response))); // Deep copy for comparison
-        initialBrandingRef.current = JSON.parse(JSON.stringify(response));
+        setBranding(nextBranding);
+        setSavedBranding(JSON.parse(JSON.stringify(nextBranding))); // Deep copy for comparison
+        initialBrandingRef.current = JSON.parse(JSON.stringify(nextBranding));
         // Apply colors immediately
-        applyBrandingColors(response);
+        applyBrandingColors(nextBranding);
         // Update favicon if custom favicon exists
-        if (response.faviconUrl) {
-          updateFavicon(response.faviconUrl);
+        if (nextBranding.faviconUrl) {
+          updateFavicon(nextBranding.faviconUrl);
         }
       } else {
-        // Handle error - use default values
-        const defaultBranding = {
-          headerColor: "#295785",
-          primaryColor: "#0f62fe",
-          secondaryColor: "#393939",
-          colorMode: "light",
-          useHeaderLogoForLogin: false,
-        };
+        const defaultBranding = nextBranding;
         setBranding(defaultBranding);
         setSavedBranding(JSON.parse(JSON.stringify(defaultBranding)));
         initialBrandingRef.current = JSON.parse(
@@ -467,7 +486,7 @@ function SiteBrandingConfig() {
 
   if (isLoading) {
     return (
-      <div className="adminPageContent">
+      <div className="adminPageContent branding-workspace">
         <Loading
           description={intl.formatMessage({ id: "loading.description" })}
         />
@@ -476,25 +495,130 @@ function SiteBrandingConfig() {
   }
 
   return (
-    <div className="adminPageContent">
+    <div className="adminPageContent branding-workspace">
       {notificationVisible === true ? <AlertDialog /> : ""}
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          <Section>
-            <Heading>
-              <FormattedMessage id="site.branding.title" />
-            </Heading>
-            <p>
-              <FormattedMessage id="site.branding.description" />
-            </p>
-          </Section>
-        </Column>
-      </Grid>
+      <ProductPageHeader
+        title={<FormattedMessage id="site.branding.title" />}
+        subtitle={<FormattedMessage id="site.branding.description" />}
+        actions={
+          <>
+            <Button
+              data-testid="branding-reset-button"
+              kind="danger--tertiary"
+              renderIcon={Reset}
+              disabled={isSaving}
+              onClick={handleReset}
+            >
+              <FormattedMessage id="site.branding.reset.to.defaults" />
+            </Button>
+            <Button
+              data-testid="branding-cancel-button"
+              kind="secondary"
+              renderIcon={Undo}
+              disabled={(!hasUnsavedChanges && !hasPendingFiles) || isSaving}
+              onClick={handleCancel}
+            >
+              <FormattedMessage id="site.branding.cancel" />
+            </Button>
+            <Button
+              renderIcon={Save}
+              onClick={handleSave}
+              disabled={(!hasUnsavedChanges && !hasPendingFiles) || isSaving}
+            >
+              {isSaving ? (
+                <InlineLoading
+                  description={intl.formatMessage({
+                    id: "loading.description",
+                  })}
+                />
+              ) : (
+                <FormattedMessage id="site.branding.save" />
+              )}
+            </Button>
+          </>
+        }
+      />
 
-      {/* Logo Upload Sections */}
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
+      {(hasUnsavedChanges || hasPendingFiles) && (
+        <InlineNotification
+          className="branding-workspace__unsaved"
+          lowContrast
+          hideCloseButton
+          kind="warning"
+          title={intl.formatMessage({ id: "site.branding.unsaved.changes" })}
+          subtitle={intl.formatMessage({
+            id: "site.branding.unsaved.changes.warning",
+          })}
+        />
+      )}
+
+      <section
+        className="branding-workspace__preview"
+        aria-label={intl.formatMessage({ id: "site.branding.preview" })}
+      >
+        <header>
+          <div>
+            <h2>
+              <FormattedMessage id="site.branding.preview" />
+            </h2>
+            <p>
+              <FormattedMessage id="site.branding.preview.description" />
+            </p>
+          </div>
+          <span className="branding-workspace__status">
+            <FormattedMessage
+              id={
+                hasUnsavedChanges || hasPendingFiles
+                  ? "site.branding.status.unsaved"
+                  : "site.branding.status.saved"
+              }
+            />
+          </span>
+        </header>
+        <div
+          className="branding-preview"
+          style={
+            {
+              "--branding-preview-header": branding?.headerColor || "#295785",
+              "--branding-preview-primary": branding?.primaryColor || "#0f62fe",
+              "--branding-preview-secondary":
+                branding?.secondaryColor || "#393939",
+            } as React.CSSProperties
+          }
+        >
+          <div className="branding-preview__header">
+            <span className="branding-preview__mark">L</span>
+            <strong>
+              <FormattedMessage id="site.branding.preview.workspace" />
+            </strong>
+            <span className="branding-preview__header-dot" />
+          </div>
+          <div className="branding-preview__body">
+            <span className="branding-preview__eyebrow">
+              <FormattedMessage id="site.branding.preview.workspace" />
+            </span>
+            <div className="branding-preview__line branding-preview__line--title" />
+            <div className="branding-preview__line" />
+            <button type="button" tabIndex={-1}>
+              <FormattedMessage id="site.branding.preview.action" />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="branding-workspace__panel">
+        <header className="branding-workspace__panel-heading">
+          <div>
+            <h2>
+              <FormattedMessage id="site.branding.section.logos" />
+            </h2>
+            <p>
+              <FormattedMessage id="site.branding.section.logos.description" />
+            </p>
+          </div>
+        </header>
+        <div className="branding-workspace__logo-grid">
           <LogoUploadSection
             ref={headerLogoRef}
             type="header"
@@ -512,11 +636,6 @@ function SiteBrandingConfig() {
               window.dispatchEvent(new CustomEvent("branding-updated"));
             }}
           />
-        </Column>
-      </Grid>
-
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
           <LogoUploadSection
             ref={loginLogoRef}
             type="login"
@@ -541,11 +660,6 @@ function SiteBrandingConfig() {
               }));
             }}
           />
-        </Column>
-      </Grid>
-
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
           <LogoUploadSection
             ref={faviconRef}
             type="favicon"
@@ -567,12 +681,21 @@ function SiteBrandingConfig() {
               window.dispatchEvent(new CustomEvent("branding-updated"));
             }}
           />
-        </Column>
-      </Grid>
+        </div>
+      </section>
 
-      {/* Color Configuration Sections */}
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
+      <section className="branding-workspace__panel">
+        <header className="branding-workspace__panel-heading">
+          <div>
+            <h2>
+              <FormattedMessage id="site.branding.section.colors" />
+            </h2>
+            <p>
+              <FormattedMessage id="site.branding.section.colors.description" />
+            </p>
+          </div>
+        </header>
+        <div className="branding-workspace__color-grid">
           <ColorPickerSection
             label={intl.formatMessage({ id: "site.branding.header.color" })}
             description={intl.formatMessage({
@@ -588,11 +711,6 @@ function SiteBrandingConfig() {
               );
             }}
           />
-        </Column>
-      </Grid>
-
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
           <ColorPickerSection
             label={intl.formatMessage({ id: "site.branding.primary.color" })}
             description={intl.formatMessage({
@@ -612,11 +730,6 @@ function SiteBrandingConfig() {
               );
             }}
           />
-        </Column>
-      </Grid>
-
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
           <ColorPickerSection
             label={intl.formatMessage({ id: "site.branding.secondary.color" })}
             description={intl.formatMessage({
@@ -636,56 +749,8 @@ function SiteBrandingConfig() {
               );
             }}
           />
-        </Column>
-      </Grid>
-
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          <Section>
-            <Button
-              onClick={handleSave}
-              disabled={(!hasUnsavedChanges && !hasPendingFiles) || isSaving}
-              style={{ marginRight: "1rem" }}
-            >
-              {isSaving ? (
-                <InlineLoading
-                  description={intl.formatMessage({
-                    id: "loading.description",
-                  })}
-                />
-              ) : (
-                <FormattedMessage id="site.branding.save" />
-              )}
-            </Button>
-            <Button
-              data-testid="branding-cancel-button"
-              onClick={handleCancel}
-              kind="secondary"
-              style={{ marginRight: "1rem" }}
-            >
-              <FormattedMessage id="site.branding.cancel" />
-            </Button>
-            <Button
-              data-testid="branding-reset-button"
-              kind="danger"
-              onClick={handleReset}
-            >
-              <FormattedMessage id="site.branding.reset.to.defaults" />
-            </Button>
-            {(hasUnsavedChanges || hasPendingFiles) && (
-              <p
-                style={{
-                  marginTop: "1rem",
-                  fontStyle: "italic",
-                  color: "#da1e28",
-                }}
-              >
-                <FormattedMessage id="site.branding.unsaved.changes.warning" />
-              </p>
-            )}
-          </Section>
-        </Column>
-      </Grid>
+        </div>
+      </section>
 
       {/* Reset Confirmation Modal */}
       <Modal

@@ -12,11 +12,8 @@ import React, {
   useImperativeHandle,
   forwardRef,
 } from "react";
-import type { ChangeEvent } from "react";
+import type { SyntheticEvent } from "react";
 import {
-  Grid,
-  Column,
-  Section,
   FileUploader,
   Button,
   InlineNotification,
@@ -129,8 +126,8 @@ const LogoUploadSection = forwardRef<
     hasPendingFile: () => !!file,
   }));
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0];
+  const handleFileChange = (event: SyntheticEvent<HTMLElement>) => {
+    const selectedFile = (event.target as HTMLInputElement).files?.[0];
     if (!selectedFile) return;
 
     // Validate file format
@@ -177,8 +174,12 @@ const LogoUploadSection = forwardRef<
     setShowRemoveConfirm(false);
     setError(null);
 
-    removeLogo(type, async (response: Response) => {
+    removeLogo(type, async (response) => {
       try {
+        if (!response) {
+          setError(intl.formatMessage({ id: "site.branding.error.remove" }));
+          return;
+        }
         const status = response.status || 200;
         if (status === 200 || status === 204) {
           // Parse response body if available
@@ -262,9 +263,12 @@ const LogoUploadSection = forwardRef<
   };
 
   return (
-    <Section>
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
+    <article className={`branding-logo-card branding-logo-card--${type}`}>
+      <header>
+        <span className="branding-logo-card__type" aria-hidden="true">
+          {type === "favicon" ? "16 × 16" : type === "header" ? "TOP" : "LOGIN"}
+        </span>
+        <div>
           <h3>
             <FormattedMessage id={getTitleKey()} />
           </h3>
@@ -273,135 +277,107 @@ const LogoUploadSection = forwardRef<
               <FormattedMessage id={getDescriptionKey()} />
             </p>
           )}
+        </div>
+      </header>
 
-          {error && (
-            <InlineNotification
-              kind="error"
-              title={intl.formatMessage({ id: "error.title" })}
-              subtitle={error}
-              onClose={() => setError(null)}
+      {error && (
+        <InlineNotification
+          kind="error"
+          title={intl.formatMessage({ id: "error.title" })}
+          subtitle={error}
+          onClose={() => setError(null)}
+        />
+      )}
+
+      {type === "login" && onUseHeaderLogoChange && (
+        <div className="branding-logo-card__reuse">
+          <Checkbox
+            id="use-header-logo-for-login"
+            labelText={intl.formatMessage({
+              id: "site.branding.use.header.logo.for.login",
+            })}
+            checked={useHeaderLogoForLogin}
+            onChange={(_event, { checked }) =>
+              onUseHeaderLogoChange(Boolean(checked))
+            }
+          />
+        </div>
+      )}
+
+      <div className="branding-logo-card__preview">
+        {preview && !(type === "login" && useHeaderLogoForLogin) ? (
+          <img src={preview} alt={intl.formatMessage({ id: getTitleKey() })} />
+        ) : (
+          <span>
+            <FormattedMessage
+              id={
+                type === "login" && useHeaderLogoForLogin
+                  ? "site.branding.login.using.header.logo"
+                  : "site.branding.no.logo"
+              }
             />
-          )}
+          </span>
+        )}
+      </div>
 
-          {/* "Use same logo as header" checkbox for login logo */}
-          {type === "login" && onUseHeaderLogoChange && (
-            <div style={{ marginBottom: "1rem" }}>
-              <Checkbox
-                id="use-header-logo-for-login"
-                labelText={intl.formatMessage({
-                  id: "site.branding.use.header.logo.for.login",
-                })}
-                checked={useHeaderLogoForLogin}
-                onChange={(event) => {
-                  if (onUseHeaderLogoChange) {
-                    onUseHeaderLogoChange(event.target.checked);
-                  }
-                }}
-              />
-            </div>
-          )}
+      {!(type === "login" && useHeaderLogoForLogin) && (
+        <div className="branding-logo-card__upload">
+          <FileUploader
+            buttonLabel={intl.formatMessage({ id: getUploadButtonKey() })}
+            iconDescription={intl.formatMessage({ id: getUploadButtonKey() })}
+            filenameStatus={file ? "complete" : "edit"}
+            accept={["image/png", "image/svg+xml", "image/jpeg", "image/jpg"]}
+            multiple={false}
+            onChange={handleFileChange}
+            disabled={isUploading}
+          />
+          <p>
+            <FormattedMessage id="site.branding.formats" />
+          </p>
+        </div>
+      )}
 
-          {preview && !(type === "login" && useHeaderLogoForLogin) && (
-            <div style={{ marginBottom: "1rem" }}>
-              <img
-                src={preview}
-                alt={intl.formatMessage({ id: getTitleKey() })}
-                style={{
-                  maxWidth: "200px",
-                  maxHeight: "100px",
-                  objectFit: "contain",
-                }}
-              />
-              <Button
-                data-testid="remove-logo-button"
-                kind="danger"
-                size="sm"
-                renderIcon={TrashCan}
-                onClick={handleRemove}
-                style={{ marginLeft: "1rem" }}
-              >
-                <FormattedMessage id={getRemoveButtonKey()} />
-              </Button>
-            </div>
-          )}
+      {preview && !(type === "login" && useHeaderLogoForLogin) && (
+        <Button
+          className="branding-logo-card__remove"
+          data-testid="remove-logo-button"
+          kind="danger--ghost"
+          size="sm"
+          renderIcon={TrashCan}
+          onClick={handleRemove}
+        >
+          <FormattedMessage id={getRemoveButtonKey()} />
+        </Button>
+      )}
 
-          {/* Hide file uploader when login logo uses header logo */}
-          {!(type === "login" && useHeaderLogoForLogin) && (
-            <>
-              <FileUploader
-                buttonLabel={intl.formatMessage({
-                  id: getUploadButtonKey(),
-                })}
-                iconDescription={intl.formatMessage({
-                  id: getUploadButtonKey(),
-                })}
-                filenameStatus={file ? "complete" : undefined}
-                accept={[
-                  "image/png",
-                  "image/svg+xml",
-                  "image/jpeg",
-                  "image/jpg",
-                ]}
-                multiple={false}
-                onChange={handleFileChange}
-                disabled={isUploading}
-              />
-              <p
-                style={{
-                  fontSize: "0.75rem",
-                  color: "#525252",
-                  marginTop: "0.25rem",
-                }}
-              >
-                <FormattedMessage id="site.branding.formats" />
-              </p>
-            </>
-          )}
+      {file && preview?.startsWith("data:") && (
+        <p className="branding-logo-card__pending">
+          <FormattedMessage id="site.branding.file.pending" />
+        </p>
+      )}
 
-          {type === "login" && useHeaderLogoForLogin && (
-            <p style={{ marginTop: "1rem", fontStyle: "italic" }}>
-              <FormattedMessage id="site.branding.login.using.header.logo" />
-            </p>
-          )}
-
-          {/* Show pending upload indicator */}
-          {file && preview?.startsWith("data:") && (
-            <p
-              style={{
-                marginTop: "0.5rem",
-                fontStyle: "italic",
-                color: "#0f62fe",
-              }}
-            >
-              <FormattedMessage id="site.branding.file.pending" />
-            </p>
-          )}
-
-          {/* Confirmation Modal for Logo Removal */}
-          <Modal
-            open={showRemoveConfirm}
-            modalHeading={intl.formatMessage({
-              id: "site.branding.confirm.remove",
-            })}
-            primaryButtonText={intl.formatMessage({
-              id: "label.button.remove",
-            })}
-            secondaryButtonText={intl.formatMessage({
-              id: "label.button.cancel",
-            })}
-            onRequestClose={cancelRemove}
-            onRequestSubmit={confirmRemove}
-            danger
-          >
-            <p>
-              {intl.formatMessage({
-                id: "site.branding.confirm.remove.message",
-              })}
-            </p>
-          </Modal>
-        </Column>
-      </Grid>
-    </Section>
+      <Modal
+        open={showRemoveConfirm}
+        modalHeading={intl.formatMessage({
+          id: "site.branding.confirm.remove",
+        })}
+        primaryButtonText={intl.formatMessage({
+          id: "label.button.remove",
+        })}
+        secondaryButtonText={intl.formatMessage({
+          id: "label.button.cancel",
+        })}
+        onRequestClose={cancelRemove}
+        onRequestSubmit={confirmRemove}
+        danger
+      >
+        <p>
+          {intl.formatMessage({
+            id: "site.branding.confirm.remove.message",
+          })}
+        </p>
+      </Modal>
+    </article>
   );
 });
 

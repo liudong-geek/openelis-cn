@@ -140,6 +140,36 @@ describe("SiteBrandingConfig", () => {
     });
   });
 
+  test("organizes logos, colors, and live preview into a single workspace", async () => {
+    getBranding.mockImplementation((callback) => {
+      callback({
+        id: "test-id",
+        primaryColor: "#1d4ed8",
+        secondaryColor: "#64748b",
+        headerColor: "#295785",
+        colorMode: "light",
+        useHeaderLogoForLogin: false,
+      });
+    });
+
+    renderWithIntl(<SiteBrandingConfig />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Preview" }),
+    ).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Logos" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Colors" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Header Logo" })).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Login Page Logo" }),
+    ).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Favicon" })).toBeVisible();
+    expect(screen.getAllByTestId("color-preview")).toHaveLength(3);
+    expect(
+      screen.getByRole("button", { name: /save changes/i }),
+    ).toBeDisabled();
+  });
+
   /**
    * Test: Component displays current branding values
    * Task Reference: T019
