@@ -1,0 +1,69 @@
+.security-properties__filters,
+.security-menu-page__filters {
+  grid-template-columns: minmax(18rem, 1.45fr) minmax(14rem, 0.8fr) minmax(
+      10rem,
+      0.55fr
+    );
+}
+
+.security-properties__filters > p,
+.security-menu-page__filters > p {
+  margin: 0 0 0.875rem;
+  color: var(--oe-text-muted);
+  font-size: 0.8125rem;
+  text-align: right;
+}
+
+.security-properties .admin-list-workspace__table,
+.security-menu-page .admin-list-workspace__table {
+  min-width: 62rem;
+}
+
+.security-properties__value {
+  display: block;
+  overflow: hidden;
+  max-width: 30rem;
+  color: var(--oe-text);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.security-menu-page__menu-name {
+  padding-left: calc(var(--menu-depth) * 1.25rem);
+}
+
+.security-menu-page__menu-name .cds--checkbox-label-text {
+  color: var(--oe-text);
+  font-weight: 550;
+}
+
+.security-menu-page__filters .cds--toggle {
+  min-height: 3rem;
+}
+
+@media (max-width: 66rem) {
+  .security-properties__filters,
+  .security-menu-page__filters {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .security-properties__filters > p,
+  .security-menu-page__filters > p {
+    grid-column: 1 / -1;
+    margin-bottom: 0;
+    text-align: left;
+  }
+}
+
+@media (max-width: 42rem) {
+  .security-properties__filters,
+  .security-menu-page__filters {
+    grid-template-columns: 1fr;
+  }
+
+  .security-menu-page__menu-name {
+    padding-left: calc(min(var(--menu-depth), 2) * 0.75rem);
+  }
+}
