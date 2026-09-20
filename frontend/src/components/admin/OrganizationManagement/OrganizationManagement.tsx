@@ -1,7 +1,8 @@
 import React, { useContext, useState, useEffect } from "react";
-import type { ChangeEvent, ReactNode, SyntheticEvent } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 import {
   Loading,
+  InlineLoading,
   DataTable,
   Table,
   TableHead,
@@ -15,6 +16,9 @@ import {
   Search,
   Button,
   Tag,
+  Select,
+  SelectItem,
+  Modal,
 } from "@carbon/react";
 import {
   getFromOpenElisServer,
@@ -59,10 +63,8 @@ interface OrganizationTableRow {
   parentOrg: string;
   orgPrefix: string;
   active: boolean | string;
-  internetAddress: string;
-  streetAddress: string;
-  city: string;
-  cliaNumber: string;
+  location: string;
+  actions: string;
 }
 
 interface CarbonTableCell {
@@ -83,6 +85,11 @@ interface NotificationContextValue {
     title: string;
     message: string;
   }) => void;
+}
+
+interface ActionResponse {
+  error?: unknown;
+  status?: number | string;
 }
 
 // eslint-disable-next-line prefer-const -- preserve the original JavaScript runtime declaration
@@ -107,55 +114,63 @@ function OrganizationManagement() {
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [deactivateButton, setDeactivateButton] = useState(true);
-  const [modifyButton, setModifyButton] = useState(true);
   const [selectedRowIds, setSelectedRowIds] = useState<string[]>([]);
   const [selectedRowIdsPost, setSelectedRowIdsPost] = useState<
     string[] | { selectedIDs: string[] }
   >([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [panelSearchTerm, setPanelSearchTerm] = useState("");
+  const [appliedSearchTerm, setAppliedSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [confirmDeactivateOpen, setConfirmDeactivateOpen] = useState(false);
   const [totalRecordCount, setTotalRecordCount] = useState("");
   const [organizationsManagmentList, setOrganizationsManagmentList] =
     useState<OrganizationMenuResponse>();
   const [organizationsManagmentListShow, setOrganizationsManagmentListShow] =
     useState<OrganizationTableRow[]>([]);
 
-  function deleteDeactivateOrganizationManagament(event: SyntheticEvent) {
-    event.preventDefault();
-    setLoading(true);
-    postToOpenElisServerJsonResponse(
+  function deleteDeactivateOrganizationManagament() {
+    setConfirmDeactivateOpen(false);
+    setRefreshing(true);
+    postToOpenElisServerJsonResponse<ActionResponse>(
       `/rest/DeleteOrganization?ID=${selectedRowIds.join(",")}&startingRecNo=1`,
       JSON.stringify(selectedRowIdsPost),
-      () => {
-        deleteDeactivateOrganizationManagamentCallback();
+      (res) => {
+        deleteDeactivateOrganizationManagamentCallback(res);
       },
     );
   }
 
   const handlePanelSearchChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setLoading(true);
-    setPage(1);
     const query = event.target.value;
     setPanelSearchTerm(query);
     setSelectedRowIds([]);
   };
 
-  const deleteDeactivateOrganizationManagamentCallback = () => {
-    setLoading(false);
+  const deleteDeactivateOrganizationManagamentCallback = (
+    res?: ActionResponse,
+  ) => {
+    const succeeded =
+      res && !res.error && (!res.status || Number(res.status) < 400);
+    setRefreshing(false);
     setNotificationVisible(true);
-    addNotification({
-      title: intl.formatMessage({
-        id: "notification.title",
-      }),
-      message: intl.formatMessage({
-        id: "notification.organization.post.delete.success",
-      }),
-      kind: NotificationKinds.success,
-    });
-    setTimeout(() => {
-      refreshCurrentRoute();
-    }, 200);
+    if (succeeded) {
+      addNotification({
+        title: intl.formatMessage({ id: "notification.title" }),
+        message: intl.formatMessage({
+          id: "notification.organization.post.delete.success",
+        }),
+        kind: NotificationKinds.success,
+      });
+      setTimeout(() => refreshCurrentRoute(), 200);
+    } else {
+      addNotification({
+        title: intl.formatMessage({ id: "notification.title" }),
+        message: intl.formatMessage({ id: "server.error.msg" }),
+        kind: NotificationKinds.error,
+      });
+    }
   };
 
   const handlePageChange = ({
@@ -171,41 +186,59 @@ function OrganizationManagement() {
   };
 
   const handleMenuItems = (res?: OrganizationMenuResponse) => {
-    setOrganizationsManagmentList(
-      res || {
-        menuList: [],
-        fromRecordCount: "0",
-        toRecordCount: "0",
-        totalRecordCount: "0",
-      },
-    );
+    if (!res) {
+      setLoading(false);
+      setRefreshing(false);
+      setNotificationVisible(true);
+      addNotification({
+        kind: NotificationKinds.error,
+        title: intl.formatMessage({ id: "notification.title" }),
+        message: intl.formatMessage({ id: "server.error.msg" }),
+      });
+      return;
+    }
+    setOrganizationsManagmentList(res);
     setLoading(false);
+    setRefreshing(false);
   };
 
   useEffect(() => {
-    setLoading(true);
-    const endpoint = panelSearchTerm
+    const debounce = window.setTimeout(() => {
+      setPage(1);
+      setAppliedSearchTerm(panelSearchTerm.trim());
+    }, 300);
+    return () => window.clearTimeout(debounce);
+  }, [panelSearchTerm]);
+
+  useEffect(() => {
+    if (organizationsManagmentList) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    const endpoint = appliedSearchTerm
       ? `/rest/SearchOrganizationMenu?search=Y&startingRecNo=1&searchString=${encodeURIComponent(
-          panelSearchTerm,
+          appliedSearchTerm,
         )}`
       : "/rest/OrganizationMenu?paging=1&startingRecNo=1";
     getFromOpenElisServer(endpoint, handleMenuItems);
-  }, [panelSearchTerm]);
+  }, [appliedSearchTerm]);
 
   useEffect(() => {
     if (organizationsManagmentList) {
       const newOrganizationsManagementList =
         organizationsManagmentList.menuList.map((item) => {
+          const location = [item.city, item.streetAddress]
+            .filter(Boolean)
+            .join(" · ");
           return {
             id: item.id,
             orgName: item.organizationName,
             parentOrg: item.organization?.organizationName || "",
             orgPrefix: item.shortName || "",
             active: item.isActive || "",
-            internetAddress: item.internetAddress || "",
-            streetAddress: item.streetAddress || "",
-            city: item.city || "",
-            cliaNumber: item.cliaNum || "",
+            location,
+            actions: item.id,
           };
         });
       const newOrganizationsManagementListArray = Object.values(
@@ -223,19 +256,6 @@ function OrganizationManagement() {
 
     setSelectedRowIdsPost(selectedIDsObject);
   }, [selectedRowIds, organizationsManagmentListShow]);
-
-  useEffect(() => {
-    if (selectedRowIds.length == 0) {
-      setDeactivateButton(true);
-    } else {
-      setDeactivateButton(false);
-    }
-    if (selectedRowIds.length === 1) {
-      setModifyButton(false);
-    } else {
-      setModifyButton(true);
-    }
-  }, [selectedRowIds]);
 
   const renderCell = (cell: CarbonTableCell, row: CarbonTableRow) => {
     if (cell.info.header === "select") {
@@ -266,6 +286,23 @@ function OrganizationManagement() {
         </TableCell>
       );
     }
+    if (cell.info.header === "actions") {
+      return (
+        <TableCell key={cell.id}>
+          <Button
+            kind="ghost"
+            size="sm"
+            onClick={() =>
+              navigateToInternalPath(
+                `/MasterListsPage/organizationEdit?ID=${row.id}&startingRecNo=1`,
+              )
+            }
+          >
+            <FormattedMessage id="externalconnections.action.edit" />
+          </Button>
+        </TableCell>
+      );
+    }
     return <TableCell key={cell.id}>{cell.value || "—"}</TableCell>;
   };
 
@@ -277,28 +314,50 @@ function OrganizationManagement() {
     );
   }
 
+  const visibleOrganizations = organizationsManagmentListShow.filter(
+    (organization) =>
+      statusFilter === "all" ||
+      (statusFilter === "active"
+        ? isEnabledValue(organization.active)
+        : !isEnabledValue(organization.active)),
+  );
   const totalOrganizations = Number(
     totalRecordCount || organizationsManagmentListShow.length || 0,
   );
   const activeOrganizations = organizationsManagmentListShow.filter(
     (organization) => isEnabledValue(organization.active),
   ).length;
+  const inactiveOrganizations = Math.max(
+    organizationsManagmentListShow.length - activeOrganizations,
+    0,
+  );
   const selectedCount = selectedRowIds.length;
 
   const openAddOrganization = () =>
     navigateToInternalPath("/MasterListsPage/organizationEdit?ID=0");
 
-  const openSelectedOrganization = () => {
-    if (selectedCount === 1) {
-      navigateToInternalPath(
-        `/MasterListsPage/organizationEdit?ID=${selectedRowIds[0]}&startingRecNo=1`,
-      );
-    }
-  };
-
   return (
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
+      <Modal
+        open={confirmDeactivateOpen}
+        danger
+        modalHeading={intl.formatMessage({
+          id: "organization.management.deactivate.confirm.title",
+        })}
+        primaryButtonText={intl.formatMessage({
+          id: "externalconnections.action.deactivate",
+        })}
+        secondaryButtonText={intl.formatMessage({ id: "label.button.cancel" })}
+        onRequestClose={() => setConfirmDeactivateOpen(false)}
+        onRequestSubmit={deleteDeactivateOrganizationManagament}
+        preventCloseOnClickOutside
+      >
+        <FormattedMessage
+          id="organization.management.deactivate.confirm.message"
+          values={{ count: selectedCount }}
+        />
+      </Modal>
       <div className="adminPageContent admin-list-workspace organization-management-page">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
         <ProductPageHeader
@@ -326,9 +385,9 @@ function OrganizationManagement() {
           </article>
           <article>
             <span>
-              <FormattedMessage id="organization.management.metric.selected" />
+              <FormattedMessage id="organization.management.metric.inactive" />
             </span>
-            <strong>{selectedCount}</strong>
+            <strong>{inactiveOrganizations}</strong>
           </article>
         </section>
 
@@ -350,25 +409,17 @@ function OrganizationManagement() {
                 />
               </span>
               <Button
-                kind="ghost"
-                size="sm"
-                disabled={modifyButton}
-                onClick={openSelectedOrganization}
-              >
-                <FormattedMessage id="externalconnections.action.edit" />
-              </Button>
-              <Button
                 kind="danger--ghost"
                 size="sm"
-                disabled={deactivateButton}
-                onClick={deleteDeactivateOrganizationManagament}
+                disabled={selectedCount === 0 || refreshing}
+                onClick={() => setConfirmDeactivateOpen(true)}
               >
                 <FormattedMessage id="externalconnections.action.deactivate" />
               </Button>
             </div>
           </div>
 
-          <div className="admin-list-workspace__filters admin-list-workspace__filters--search-only">
+          <div className="admin-list-workspace__filters admin-list-workspace__filters--organization">
             <Search
               size="lg"
               id="org-name-search-bar"
@@ -384,22 +435,61 @@ function OrganizationManagement() {
               onChange={handlePanelSearchChange}
               value={panelSearchTerm}
             />
+            <Select
+              id="organization-status-filter"
+              labelText={intl.formatMessage({
+                id: "organization.management.filter.status",
+              })}
+              value={statusFilter}
+              onChange={(event) => {
+                setPage(1);
+                setSelectedRowIds([]);
+                setStatusFilter(event.target.value);
+              }}
+            >
+              <SelectItem
+                value="all"
+                text={intl.formatMessage({
+                  id: "organization.management.filter.all",
+                })}
+              />
+              <SelectItem
+                value="active"
+                text={intl.formatMessage({
+                  id: "organization.management.filter.active",
+                })}
+              />
+              <SelectItem
+                value="inactive"
+                text={intl.formatMessage({
+                  id: "organization.management.filter.inactive",
+                })}
+              />
+            </Select>
             <p role="status">
               <FormattedMessage
                 id="organization.management.results"
-                values={{ count: organizationsManagmentListShow.length }}
+                values={{ count: visibleOrganizations.length }}
               />
             </p>
+            {refreshing && (
+              <InlineLoading
+                className="admin-list-workspace__refreshing"
+                description={intl.formatMessage({
+                  id: "admin.list.refreshing",
+                })}
+              />
+            )}
           </div>
 
-          {organizationsManagmentListShow.length === 0 ? (
+          {visibleOrganizations.length === 0 ? (
             <div className="admin-list-workspace__empty" role="status">
               <div aria-hidden="true">0</div>
               <h3>
                 <FormattedMessage
                   id={
-                    panelSearchTerm
-                      ? "organization.management.empty.search.title"
+                    appliedSearchTerm || statusFilter !== "all"
+                      ? "organization.management.empty.filtered.title"
                       : "organization.management.empty.title"
                   }
                 />
@@ -407,13 +497,13 @@ function OrganizationManagement() {
               <p>
                 <FormattedMessage
                   id={
-                    panelSearchTerm
-                      ? "organization.management.empty.search.subtitle"
+                    appliedSearchTerm || statusFilter !== "all"
+                      ? "organization.management.empty.filtered.subtitle"
                       : "organization.management.empty.subtitle"
                   }
                 />
               </p>
-              {!panelSearchTerm && (
+              {!appliedSearchTerm && statusFilter === "all" && (
                 <Button size="sm" onClick={openAddOrganization}>
                   <FormattedMessage id="organization.management.action.add" />
                 </Button>
@@ -423,7 +513,7 @@ function OrganizationManagement() {
             <>
               <div className="admin-list-workspace__table-scroll">
                 <DataTable
-                  rows={organizationsManagmentListShow.slice(
+                  rows={visibleOrganizations.slice(
                     (page - 1) * pageSize,
                     page * pageSize,
                   )}
@@ -455,25 +545,15 @@ function OrganizationManagement() {
                       }),
                     },
                     {
-                      key: "internetAddress",
+                      key: "location",
                       header: intl.formatMessage({
-                        id: "organization.internetaddress",
+                        id: "organization.management.column.location",
                       }),
                     },
                     {
-                      key: "streetAddress",
+                      key: "actions",
                       header: intl.formatMessage({
-                        id: "organization.streetAddress",
-                      }),
-                    },
-                    {
-                      key: "city",
-                      header: intl.formatMessage({ id: "organization.city" }),
-                    },
-                    {
-                      key: "cliaNumber",
-                      header: intl.formatMessage({
-                        id: "organization.clia.number",
+                        id: "admin.list.column.actions",
                       }),
                     },
                   ]}
@@ -495,19 +575,7 @@ function OrganizationManagement() {
                         </TableHead>
                         <TableBody>
                           {rows.map((row) => (
-                            <TableRow
-                              key={row.id}
-                              onClick={() => {
-                                const id = row.id;
-                                setSelectedRowIds(
-                                  selectedRowIds.includes(id)
-                                    ? selectedRowIds.filter(
-                                        (selectedId) => selectedId !== id,
-                                      )
-                                    : [...selectedRowIds, id],
-                                );
-                              }}
-                            >
+                            <TableRow key={row.id}>
                               {row.cells.map((cell) => renderCell(cell, row))}
                             </TableRow>
                           ))}
@@ -523,7 +591,7 @@ function OrganizationManagement() {
                 page={page}
                 pageSize={pageSize}
                 pageSizes={[10, 20]}
-                totalItems={totalOrganizations}
+                totalItems={visibleOrganizations.length}
                 forwardText={intl.formatMessage({ id: "pagination.forward" })}
                 backwardText={intl.formatMessage({ id: "pagination.backward" })}
                 itemRangeText={(min, max, total) =>

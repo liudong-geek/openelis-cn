@@ -99,6 +99,18 @@
   align-items: center;
 }
 
+.admin-list-workspace__filters--organization {
+  grid-template-columns: minmax(16rem, 1.4fr) minmax(12rem, 0.7fr) 1fr;
+  align-items: end;
+}
+
+.admin-list-workspace__filters--organization > p {
+  margin: 0 0 0.875rem;
+  color: var(--oe-text-muted);
+  font-size: 0.8125rem;
+  text-align: right;
+}
+
 .admin-list-workspace__filters--search-only > p {
   margin: 0;
   color: var(--oe-text-muted);
@@ -126,6 +138,11 @@
   white-space: nowrap;
 }
 
+.admin-list-workspace__refreshing {
+  grid-column: 1 / -1;
+  min-height: 1.5rem;
+}
+
 .admin-list-workspace__table-scroll {
   overflow-x: auto;
 }
@@ -133,6 +150,11 @@
 .admin-list-workspace__table {
   min-width: 62rem;
   margin: 0;
+}
+
+.user-management-page .admin-list-workspace__table,
+.organization-management-page .admin-list-workspace__table {
+  min-width: 52rem;
 }
 
 .admin-list-workspace__table .cds--data-table-header {
@@ -150,6 +172,11 @@
 .admin-list-workspace__table .cds--data-table td {
   border-color: var(--oe-border);
   color: var(--oe-text);
+}
+
+.admin-list-workspace__table .cds--btn--ghost {
+  min-height: 2rem;
+  padding-block: 0.375rem;
 }
 
 .admin-list-workspace__pagination {
@@ -209,11 +236,17 @@
 
   .admin-list-workspace__overview,
   .admin-list-workspace__filters,
-  .admin-list-workspace__filters--search-only {
+  .admin-list-workspace__filters--search-only,
+  .admin-list-workspace__filters--organization {
     grid-template-columns: 1fr;
   }
 
   .admin-list-workspace__filters--search-only > p {
+    text-align: left;
+  }
+
+  .admin-list-workspace__filters--organization > p {
+    margin-bottom: 0;
     text-align: left;
   }
 

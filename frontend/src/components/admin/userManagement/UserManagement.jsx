@@ -1,6 +1,7 @@
 import React, { useContext, useState, useEffect } from "react";
 import {
   Loading,
+  InlineLoading,
   DataTable,
   Table,
   TableHead,
@@ -16,6 +17,7 @@ import {
   SelectItem,
   Button,
   Tag,
+  Modal,
 } from "@carbon/react";
 import {
   getFromOpenElisServer,
@@ -57,8 +59,6 @@ function UserManagement() {
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [deactivateButton, setDeactivateButton] = useState(true);
-  const [modifyButton, setModifyButton] = useState(true);
   const [selectedRowIds, setSelectedRowIds] = useState([]);
   const [selectedRowCombinedUserID, setSelectedRowCombinedUserID] = useState(
     [],
@@ -66,7 +66,10 @@ function UserManagement() {
   const [selectedRowCombinedUserIDPost, setSelectedRowCombinedUserIDPost] =
     useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [panelSearchTerm, setPanelSearchTerm] = useState("");
+  const [appliedSearchTerm, setAppliedSearchTerm] = useState("");
+  const [confirmDeactivateOpen, setConfirmDeactivateOpen] = useState(false);
   const [roleFilter, setRoleFilter] = useState("");
   const [filters, setFilters] = useState([]);
   const [totalRecordCount, setTotalRecordCount] = useState("");
@@ -74,9 +77,9 @@ function UserManagement() {
   const [userManagementListShow, setUserManagementListShow] = useState([]);
   const [testSectionsShow, setTestSectionsShow] = useState({});
 
-  function deleteDeactivateUserManagement(event) {
-    event.preventDefault();
-    setLoading(true);
+  function deleteDeactivateUserManagement() {
+    setConfirmDeactivateOpen(false);
+    setRefreshing(true);
     postToOpenElisServerJsonResponse(
       `/rest/DeleteUnifiedSystemUser?ID=${selectedRowCombinedUserID.join(
         ",",
@@ -97,8 +100,10 @@ function UserManagement() {
   }, [selectedRowCombinedUserID, userManagementListShow]);
 
   function deleteDeactivateUserManagementCallback(res) {
-    if (res) {
-      setLoading(false);
+    const succeeded =
+      res && !res.error && (!res.status || Number(res.status) < 400);
+    setRefreshing(false);
+    if (succeeded) {
       setNotificationVisible(true);
       addNotification({
         title: intl.formatMessage({
@@ -109,9 +114,7 @@ function UserManagement() {
         }),
         kind: NotificationKinds.success,
       });
-      setTimeout(() => {
-        refreshCurrentRoute();
-      }, 200);
+      setTimeout(() => refreshCurrentRoute(), 200);
     } else {
       addNotification({
         kind: NotificationKinds.error,
@@ -119,9 +122,6 @@ function UserManagement() {
         message: intl.formatMessage({ id: "server.error.msg" }),
       });
       setNotificationVisible(true);
-      setTimeout(() => {
-        refreshCurrentRoute();
-      }, 200);
     }
   }
 
@@ -133,15 +133,39 @@ function UserManagement() {
   };
 
   const handleMenuItems = (res) => {
-    setUserManagementList(res || { menuList: [], testSections: [] });
+    if (!res) {
+      setLoading(false);
+      setRefreshing(false);
+      setNotificationVisible(true);
+      addNotification({
+        kind: NotificationKinds.error,
+        title: intl.formatMessage({ id: "notification.title" }),
+        message: intl.formatMessage({ id: "server.error.msg" }),
+      });
+      return;
+    }
+    setUserManagementList(res);
     setLoading(false);
+    setRefreshing(false);
   };
 
   useEffect(() => {
-    setLoading(true);
-    const searchMode = panelSearchTerm ? "Y" : "N";
-    const searchParameter = panelSearchTerm
-      ? `&searchString=${encodeURIComponent(panelSearchTerm)}`
+    const debounce = window.setTimeout(() => {
+      setPage(1);
+      setAppliedSearchTerm(panelSearchTerm.trim());
+    }, 300);
+    return () => window.clearTimeout(debounce);
+  }, [panelSearchTerm]);
+
+  useEffect(() => {
+    if (userManagementList) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    const searchMode = appliedSearchTerm ? "Y" : "N";
+    const searchParameter = appliedSearchTerm
+      ? `&searchString=${encodeURIComponent(appliedSearchTerm)}`
       : "";
     getFromOpenElisServer(
       `/rest/SearchUnifiedSystemUserMenu?search=${searchMode}&startingRecNo=1${searchParameter}&filter=${filters.join(
@@ -149,7 +173,7 @@ function UserManagement() {
       )}&roleFilter=${encodeURIComponent(roleFilter)}`,
       handleMenuItems,
     );
-  }, [filters, panelSearchTerm, roleFilter]);
+  }, [filters, appliedSearchTerm, roleFilter]);
 
   useEffect(() => {
     if (userManagementListShow) {
@@ -172,17 +196,27 @@ function UserManagement() {
       setTotalRecordCount(userManagementList.totalRecordCount || "0");
 
       const newUserManagementList = userManagementList.menuList.map((item) => {
+        const displayName = [item.firstName, item.lastName]
+          .filter(Boolean)
+          .join(" ");
+        const accountStatus = isEnabledValue(item.disabled)
+          ? "disabled"
+          : isEnabledValue(item.locked)
+            ? "locked"
+            : isEnabledValue(item.active)
+              ? "active"
+              : "inactive";
         return {
           id: item.systemUserId,
           combinedUserID: item.combinedUserID,
-          firstName: item.firstName,
-          lastName: item.lastName,
+          displayName,
           loginName: item.loginName,
           expDate: item.expDate,
-          locked: item.locked,
-          disabled: item.disabled,
-          active: item.active,
+          accountStatus,
           timeout: item.timeout,
+          active: item.active,
+          locked: item.locked,
+          actions: item.combinedUserID,
         };
       });
       const newUserManagementListArray = Object.values(newUserManagementList);
@@ -200,19 +234,6 @@ function UserManagement() {
       setTestSectionsShow(testSections);
     }
   }, [userManagementList]);
-
-  useEffect(() => {
-    if (selectedRowIds.length === 1) {
-      setModifyButton(false);
-    } else {
-      setModifyButton(true);
-    }
-    if (selectedRowIds.length === 0) {
-      setDeactivateButton(true);
-    } else {
-      setDeactivateButton(false);
-    }
-  }, [selectedRowIds]);
 
   const renderCell = (cell, row) => {
     if (cell.info.header === "select") {
@@ -233,24 +254,40 @@ function UserManagement() {
         />
       );
     }
-    if (["active", "locked", "disabled"].includes(cell.info.header)) {
-      const enabled = isEnabledValue(cell.value);
+    if (cell.info.header === "accountStatus") {
+      const statusStyles = {
+        active: ["green", "user.management.status.active"],
+        inactive: ["cool-gray", "user.management.status.inactive"],
+        locked: ["magenta", "user.management.status.locked"],
+        disabled: ["red", "user.management.status.disabled"],
+      };
+      const [type, messageId] =
+        statusStyles[cell.value] || statusStyles.inactive;
       return (
         <TableCell key={cell.id}>
-          <Tag
-            type={
-              cell.info.header === "active"
-                ? enabled
-                  ? "green"
-                  : "cool-gray"
-                : enabled
-                  ? "red"
-                  : "cool-gray"
-            }
-            size="sm"
-          >
-            <FormattedMessage id={enabled ? "label.yes" : "label.no"} />
+          <Tag type={type} size="sm">
+            <FormattedMessage id={messageId} />
           </Tag>
+        </TableCell>
+      );
+    }
+    if (cell.info.header === "actions") {
+      const selectedUser = userManagementListShow.find(
+        (user) => user.id === row.id,
+      );
+      return (
+        <TableCell key={cell.id}>
+          <Button
+            kind="ghost"
+            size="sm"
+            onClick={() =>
+              navigateToInternalPath(
+                `/MasterListsPage/userEdit?ID=${selectedUser?.combinedUserID}&startingRecNo=1&roleFilter=`,
+              )
+            }
+          >
+            <FormattedMessage id="externalconnections.action.edit" />
+          </Button>
         </TableCell>
       );
     }
@@ -258,7 +295,6 @@ function UserManagement() {
   };
 
   const handlePanelSearchChange = (event) => {
-    setLoading(true);
     const query = event.target.value;
     setPanelSearchTerm(query);
     setSelectedRowIds([]);
@@ -293,14 +329,6 @@ function UserManagement() {
       "/MasterListsPage/userEdit?ID=0&startingRecNo=1&roleFilter=",
     );
 
-  const openSelectedUser = () => {
-    if (selectedCount === 1 && selectedRowCombinedUserID[0]) {
-      navigateToInternalPath(
-        `/MasterListsPage/userEdit?ID=${selectedRowCombinedUserID[0]}&startingRecNo=1&roleFilter=`,
-      );
-    }
-  };
-
   const updateFilter = (filterName, enabled) => {
     setPage(1);
     setFilters((currentFilters) =>
@@ -313,6 +341,25 @@ function UserManagement() {
   return (
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
+      <Modal
+        open={confirmDeactivateOpen}
+        danger
+        modalHeading={intl.formatMessage({
+          id: "user.management.deactivate.confirm.title",
+        })}
+        primaryButtonText={intl.formatMessage({
+          id: "externalconnections.action.deactivate",
+        })}
+        secondaryButtonText={intl.formatMessage({ id: "label.button.cancel" })}
+        onRequestClose={() => setConfirmDeactivateOpen(false)}
+        onRequestSubmit={deleteDeactivateUserManagement}
+        preventCloseOnClickOutside
+      >
+        <FormattedMessage
+          id="user.management.deactivate.confirm.message"
+          values={{ count: selectedCount }}
+        />
+      </Modal>
       <div className="adminPageContent admin-list-workspace user-management-page">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
         <ProductPageHeader
@@ -364,18 +411,10 @@ function UserManagement() {
                 />
               </span>
               <Button
-                kind="ghost"
-                size="sm"
-                disabled={modifyButton}
-                onClick={openSelectedUser}
-              >
-                <FormattedMessage id="externalconnections.action.edit" />
-              </Button>
-              <Button
                 kind="danger--ghost"
                 size="sm"
-                disabled={deactivateButton}
-                onClick={deleteDeactivateUserManagement}
+                disabled={selectedCount === 0 || refreshing}
+                onClick={() => setConfirmDeactivateOpen(true)}
               >
                 <FormattedMessage id="externalconnections.action.deactivate" />
               </Button>
@@ -442,6 +481,14 @@ function UserManagement() {
                 onChange={(isChecked) => updateFilter("isAdmin", isChecked)}
               />
             </div>
+            {refreshing && (
+              <InlineLoading
+                className="admin-list-workspace__refreshing"
+                description={intl.formatMessage({
+                  id: "admin.list.refreshing",
+                })}
+              />
+            )}
           </div>
 
           {userManagementListShow.length === 0 ? (
@@ -450,7 +497,7 @@ function UserManagement() {
               <h3>
                 <FormattedMessage
                   id={
-                    panelSearchTerm || roleFilter || filters.length > 0
+                    appliedSearchTerm || roleFilter || filters.length > 0
                       ? "user.management.empty.filtered.title"
                       : "user.management.empty.title"
                   }
@@ -459,13 +506,13 @@ function UserManagement() {
               <p>
                 <FormattedMessage
                   id={
-                    panelSearchTerm || roleFilter || filters.length > 0
+                    appliedSearchTerm || roleFilter || filters.length > 0
                       ? "user.management.empty.filtered.subtitle"
                       : "user.management.empty.subtitle"
                   }
                 />
               </p>
-              {!panelSearchTerm && !roleFilter && filters.length === 0 && (
+              {!appliedSearchTerm && !roleFilter && filters.length === 0 && (
                 <Button size="sm" onClick={openAddUser}>
                   <FormattedMessage id="unifiedSystemUser.browser.button.add" />
                 </Button>
@@ -487,46 +534,40 @@ function UserManagement() {
                       }),
                     },
                     {
-                      key: "firstName",
+                      key: "displayName",
                       header: intl.formatMessage({
-                        id: "systemuser.firstName",
+                        id: "user.management.column.name",
                       }),
-                    },
-                    {
-                      key: "lastName",
-                      header: intl.formatMessage({ id: "systemuser.lastName" }),
                     },
                     {
                       key: "loginName",
                       header: intl.formatMessage({
-                        id: "systemuser.loginName",
+                        id: "user.management.column.loginName",
                       }),
                     },
                     {
                       key: "expDate",
                       header: intl.formatMessage({
-                        id: "login.password.expired.date",
+                        id: "user.management.column.expiration",
                       }),
                     },
                     {
-                      key: "locked",
+                      key: "accountStatus",
                       header: intl.formatMessage({
-                        id: "login.account.locked",
+                        id: "user.management.column.status",
                       }),
-                    },
-                    {
-                      key: "disabled",
-                      header: intl.formatMessage({
-                        id: "login.account.disabled",
-                      }),
-                    },
-                    {
-                      key: "active",
-                      header: intl.formatMessage({ id: "systemuser.isActive" }),
                     },
                     {
                       key: "timeout",
-                      header: intl.formatMessage({ id: "login.timeout" }),
+                      header: intl.formatMessage({
+                        id: "user.management.column.timeout",
+                      }),
+                    },
+                    {
+                      key: "actions",
+                      header: intl.formatMessage({
+                        id: "admin.list.column.actions",
+                      }),
                     },
                   ]}
                 >
@@ -547,19 +588,7 @@ function UserManagement() {
                         </TableHead>
                         <TableBody>
                           {rows.map((row) => (
-                            <TableRow
-                              key={row.id}
-                              onClick={() => {
-                                const id = row.id;
-                                setSelectedRowIds(
-                                  selectedRowIds.includes(id)
-                                    ? selectedRowIds.filter(
-                                        (selectedId) => selectedId !== id,
-                                      )
-                                    : [...selectedRowIds, id],
-                                );
-                              }}
-                            >
+                            <TableRow key={row.id}>
                               {row.cells.map((cell) => renderCell(cell, row))}
                             </TableRow>
                           ))}
@@ -575,7 +604,7 @@ function UserManagement() {
                 page={page}
                 pageSize={pageSize}
                 pageSizes={[10, 20]}
-                totalItems={totalUsers}
+                totalItems={userManagementListShow.length}
                 forwardText={intl.formatMessage({ id: "pagination.forward" })}
                 backwardText={intl.formatMessage({ id: "pagination.backward" })}
                 itemRangeText={(min, max, total) =>
