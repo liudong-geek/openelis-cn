@@ -1,14 +1,7 @@
-import React, { useContext, useState, useEffect, useRef } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import {
-  Grid,
-  Column,
-  Section,
-  Heading,
   Form,
   TextInput,
-  UnorderedList,
-  ListItem,
-  RadioButton,
   Button,
   Loading,
   Select,
@@ -31,7 +24,9 @@ import {
 } from "../../utils/Utils";
 import CustomDatePicker from "../../common/CustomDatePicker";
 import AutoComplete from "../../common/AutoComplete";
+import ProductPageHeader from "../../common/ProductPageHeader";
 import { navigateToInternalPath } from "../../utils/NavigationUtils";
+import "../AdminFormWorkspace.css";
 
 const breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -43,15 +38,26 @@ const breadcrumbs = [
 ];
 
 const passwordPatternRegex = /^(?=.*[*$#!])(?=.*[a-zA-Z0-9]).{7,}$/;
-const loginNameRegex = /^[a-zA-Z]+$/;
-const nameRegex = /^(?=.*[a-zA-Z])[a-zA-Z .'_@-]*$/;
+const loginNameRegex = /^[a-zA-Z][a-zA-Z0-9._-]*$/;
+const nameRegex = /^(?=.*\p{L})[\p{L}\p{M} .'_@-]*$/u;
+const roleMessageIds = {
+  "Analyser Import": "user.editor.role.analyzerImport",
+  "Audit Trail": "user.editor.role.auditTrail",
+  Cytopathologist: "user.editor.role.cytopathologist",
+  "Global Administrator": "user.editor.role.globalAdministrator",
+  Pathologist: "user.editor.role.pathologist",
+  "User Account Administrator": "user.editor.role.userAdministrator",
+  Reception: "user.editor.role.reception",
+  Reports: "user.editor.role.reports",
+  Results: "user.editor.role.results",
+  Validation: "user.editor.role.validation",
+};
 
 function UserAddModify() {
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
   const { configurationProperties } = useContext(ConfigurationContext);
 
-  const componentMounted = useRef(false);
   const intl = useIntl();
 
   const [saveButton, setSaveButton] = useState(true);
@@ -64,9 +70,6 @@ function UserAddModify() {
     secondName: false,
   });
   const [isLoading, setIsLoading] = useState(true);
-  const [isLocked, setIsLocked] = useState("radio-2");
-  const [isDisabled, setIsDisabled] = useState("radio-4");
-  const [isActive, setIsActive] = useState("radio-6");
   const [copyUserPermission, setCopyUserPermission] = useState("0");
   const [copyUserPermissionList, setCopyUserPermissionList] = useState(null);
   const [userData, setUserData] = useState(null);
@@ -94,7 +97,6 @@ function UserAddModify() {
   })();
 
   useEffect(() => {
-    componentMounted.current = true;
     setIsLoading(true);
     if (ID) {
       getFromOpenElisServer(
@@ -108,18 +110,20 @@ function UserAddModify() {
         });
       }, 200);
     }
-    return () => {
-      componentMounted.current = false;
-      setIsLoading(false);
-    };
   }, [ID]);
 
   const handleUserData = (res) => {
     if (!res) {
-      setIsLoading(true);
+      setIsLoading(false);
+      setNotificationVisible(true);
+      addNotification({
+        kind: NotificationKinds.error,
+        title: intl.formatMessage({ id: "notification.title" }),
+        message: intl.formatMessage({ id: "server.error.msg" }),
+      });
     } else {
       setUserData(res);
-      if (res.loginUserId) {
+      if (ID !== "0") {
         setValidation({
           validatepassword: true,
           password: true,
@@ -130,27 +134,20 @@ function UserAddModify() {
         });
       }
       var KeyList = [];
-      Object.keys(res.selectedTestSectionLabUnits).map((key) =>
+      Object.keys(res.selectedTestSectionLabUnits || {}).map((key) =>
         KeyList.push(key),
       );
       setSelectedTestSectionList(KeyList);
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    componentMounted.current = true;
-    setIsLoading(true);
     getFromOpenElisServer(`/rest/users`, handleCopyUserPermissionsList);
-    return () => {
-      componentMounted.current = false;
-      setIsLoading(false);
-    };
   }, []);
 
   const handleCopyUserPermissionsList = (res) => {
-    if (!res) {
-      setIsLoading(true);
-    } else {
+    if (res) {
       setCopyUserPermissionList(res);
     }
   };
@@ -164,7 +161,7 @@ function UserAddModify() {
         allowCopyUserRoles: userData.allowCopyUserRoles,
         cancelAction: userData.cancelAction,
         cancelMethod: userData.cancelMethod,
-        confirmPassword: userData.confirmPassword,
+        confirmPassword: ID === "0" ? "" : userData.confirmPassword,
         expirationDate: userData.expirationDate,
         formAction: userData.formAction,
         formMethod: userData.formMethod,
@@ -176,10 +173,10 @@ function UserAddModify() {
         systemUserIdToCopy: userData.systemUserIdToCopy,
         systemUserLastupdated: userData.systemUserLastupdated,
         timeout: userData.timeout,
-        userFirstName: userData.userFirstName,
-        userLastName: userData.userLastName,
-        userLoginName: userData.userLoginName,
-        userPassword: userData.userPassword,
+        userFirstName: ID === "0" ? "" : userData.userFirstName,
+        userLastName: ID === "0" ? "" : userData.userLastName,
+        userLoginName: ID === "0" ? "" : userData.userLoginName,
+        userPassword: ID === "0" ? "" : userData.userPassword,
       };
 
       const userManagementInfoToPost = {
@@ -189,7 +186,7 @@ function UserAddModify() {
         allowCopyUserRoles: userData.allowCopyUserRoles,
         cancelAction: userData.cancelAction,
         cancelMethod: userData.cancelMethod,
-        confirmPassword: userData.confirmPassword,
+        confirmPassword: ID === "0" ? "" : userData.confirmPassword,
         expirationDate: userData.expirationDate,
         formAction: userData.formAction,
         formMethod: userData.formMethod,
@@ -204,10 +201,10 @@ function UserAddModify() {
         systemUserLastupdated: userData.systemUserLastupdated,
         testSections: userData.testSections,
         timeout: userData.timeout,
-        userFirstName: userData.userFirstName,
-        userLastName: userData.userLastName,
-        userLoginName: userData.userLoginName,
-        userPassword: userData.userPassword,
+        userFirstName: ID === "0" ? "" : userData.userFirstName,
+        userLastName: ID === "0" ? "" : userData.userLastName,
+        userLoginName: ID === "0" ? "" : userData.userLoginName,
+        userPassword: ID === "0" ? "" : userData.userPassword,
       };
       setUserDataShow(userManagementInfoToShow);
       setUserDataPost(userManagementInfoToPost);
@@ -256,7 +253,10 @@ function UserAddModify() {
           };
         });
         const updatedTestSections = [
-          { id: "AllLabUnits", value: "All Lab Units" },
+          {
+            id: "AllLabUnits",
+            value: intl.formatMessage({ id: "user.editor.allLabUnits" }),
+          },
           ...testSections,
         ];
         setUserDataShow((prevUserDataShow) => ({
@@ -287,15 +287,10 @@ function UserAddModify() {
         }
       }
     }
-  }, [userData, ID]);
+  }, [userData, ID, intl]);
 
   useEffect(() => {
     if (userDataShow) {
-      setIsLocked(userDataShow.accountLocked === "Y" ? "radio-1" : "radio-2");
-      setIsDisabled(
-        userDataShow.accountDisabled === "Y" ? "radio-3" : "radio-4",
-      );
-      setIsActive(userDataShow.accountActive === "Y" ? "radio-5" : "radio-6");
       if (
         userDataShow.userPassword &&
         userDataShow.userPassword === userDataShow.confirmPassword
@@ -348,7 +343,11 @@ function UserAddModify() {
   }
 
   function userSavePostCallback(res) {
-    if (res) {
+    const failed =
+      !res ||
+      Boolean(res.error) ||
+      Number(res.status || res.statusCode || 0) >= 400;
+    if (!failed) {
       setIsLoading(false);
       addNotification({
         title: intl.formatMessage({
@@ -366,6 +365,7 @@ function UserAddModify() {
         });
       }, 200);
     } else {
+      setIsLoading(false);
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -762,701 +762,436 @@ function UserAddModify() {
     }
   };
 
-  if (!isLoading) {
-    return (
-      <>
-        <Loading />
-      </>
-    );
-  }
+  const cancel = () =>
+    navigateToInternalPath("/MasterListsPage/userManagement", {
+      replace: true,
+    });
+
+  const formatRoleName = (roleName) => {
+    const messageId = roleMessageIds[String(roleName || "").trim()];
+    return messageId ? intl.formatMessage({ id: messageId }) : roleName;
+  };
+
+  const passwordChanged =
+    passwordTouched.userPassword || passwordTouched.confirmPassword;
+  const passwordValid =
+    ID !== "0" && !passwordChanged
+      ? true
+      : passwordPatternRegex.test(userDataShow.userPassword || "") &&
+        userDataShow.userPassword === userDataShow.confirmPassword;
+  const requiredFieldsValid =
+    loginNameRegex.test(userDataShow.userLoginName || "") &&
+    nameRegex.test(userDataShow.userFirstName || "") &&
+    nameRegex.test(userDataShow.userLastName || "") &&
+    Boolean(userDataShow.expirationDate) &&
+    userDataShow.timeout !== undefined &&
+    userDataShow.timeout !== "" &&
+    passwordValid;
+  const saveDisabled = saveButton || !requiredFieldsValid;
+
+  if (isLoading) return <Loading />;
 
   return (
     <>
-      {notificationVisible === true ? <AlertDialog /> : ""}
-      <div className="adminPageContent">
+      {notificationVisible === true ? <AlertDialog /> : null}
+      <div className="adminPageContent admin-form-workspace user-editor-page">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
-        <Grid>
-          <Column lg={16} md={8} sm={4}>
-            <Section>
-              <Section>
-                <Heading>
-                  {ID === "0" ? (
-                    <FormattedMessage id="unifiedSystemUser.add.user" />
-                  ) : (
-                    <FormattedMessage id="unifiedSystemUser.edit.user" />
-                  )}
-                </Heading>
-              </Section>
-            </Section>
-          </Column>
-        </Grid>
-        <div className="orderLegendBody">
-          <Grid fullWidth={true}>
-            <Column lg={16} md={8} sm={4}>
-              <Form
-              // onSubmit={handleSubmit}
-              // onChange={setSaveButton(false)}
-              // onBlur={handleBlur}
+        <ProductPageHeader
+          title={
+            <FormattedMessage
+              id={
+                ID === "0"
+                  ? "unifiedSystemUser.add.user"
+                  : "unifiedSystemUser.edit.user"
+              }
+            />
+          }
+          subtitle={<FormattedMessage id="user.editor.subtitle" />}
+        />
+
+        <Form className="admin-form-workspace__content">
+          <section className="admin-form-workspace__card">
+            <div className="admin-form-workspace__card-heading">
+              <h2>
+                <FormattedMessage id="user.editor.identity.title" />
+              </h2>
+              <p>
+                <FormattedMessage id="user.editor.identity.subtitle" />
+              </p>
+            </div>
+            <div className="admin-form-workspace__fields">
+              <TextInput
+                id="login-name"
+                labelText={intl.formatMessage({ id: "login.login.name" })}
+                value={userDataShow.userLoginName || ""}
+                invalid={
+                  Boolean(userDataShow.userLoginName) &&
+                  !loginNameRegex.test(userDataShow.userLoginName)
+                }
+                invalidText={intl.formatMessage({
+                  id: "notification.invalid.loginName",
+                })}
+                onChange={handleUserLoginNameChange}
+                required
+              />
+              <CustomDatePicker
+                id="password-expire-date"
+                labelText={intl.formatMessage({
+                  id: "login.password.expired.date",
+                })}
+                disallowPastDate
+                updateStateValue
+                value={userDataShow.expirationDate || ""}
+                onChange={handleExpirationDateChange}
+                required
+              />
+              <TextInput
+                id="first-name"
+                labelText={intl.formatMessage({ id: "login.login.first" })}
+                value={userDataShow.userFirstName || ""}
+                invalid={
+                  Boolean(userDataShow.userFirstName) &&
+                  !nameRegex.test(userDataShow.userFirstName)
+                }
+                invalidText={intl.formatMessage({
+                  id: "notification.invalid.name",
+                })}
+                onChange={handleUserFirstNameChange}
+                required
+              />
+              <TextInput
+                id="last-name"
+                labelText={intl.formatMessage({ id: "login.login.last" })}
+                value={userDataShow.userLastName || ""}
+                invalid={
+                  Boolean(userDataShow.userLastName) &&
+                  !nameRegex.test(userDataShow.userLastName)
+                }
+                invalidText={intl.formatMessage({
+                  id: "notification.invalid.name",
+                })}
+                onChange={handleUserLastNameChange}
+                required
+              />
+              <TextInput
+                id="login-timeout"
+                type="number"
+                min={0}
+                labelText={intl.formatMessage({ id: "login.timeout" })}
+                helperText={intl.formatMessage({
+                  id: "user.editor.timeout.helper",
+                })}
+                value={userDataShow.timeout ?? ""}
+                onChange={handleTimeoutChange}
+                required
+              />
+            </div>
+          </section>
+
+          <section className="admin-form-workspace__card">
+            <div className="admin-form-workspace__card-heading">
+              <h2>
+                <FormattedMessage id="user.editor.security.title" />
+              </h2>
+              <p>
+                <FormattedMessage id="user.editor.security.subtitle" />
+              </p>
+            </div>
+            <div className="admin-form-workspace__fields">
+              <div className="admin-form-workspace__hint admin-form-workspace__field--wide">
+                <strong>
+                  <FormattedMessage id="login.complexity.message" />
+                </strong>
+                <ul>
+                  <li>
+                    <FormattedMessage id="login.complexity.message.1" />
+                  </li>
+                  <li>
+                    <FormattedMessage id="login.complexity.message.2" />
+                  </li>
+                  <li>
+                    <FormattedMessage id="login.complexity.message.3" />
+                  </li>
+                  <li>
+                    <FormattedMessage id="login.complexity.message.4" />
+                  </li>
+                </ul>
+              </div>
+              <PasswordInput
+                id="login-password"
+                labelText={intl.formatMessage({ id: "login.login.password" })}
+                value={userDataShow.userPassword || ""}
+                invalid={
+                  passwordTouched.userPassword &&
+                  !passwordPatternRegex.test(userDataShow.userPassword || "")
+                }
+                invalidText={intl.formatMessage({
+                  id: "notification.invalid.password",
+                })}
+                onChange={handleUserPasswordChange}
+                required={ID === "0"}
+              />
+              <PasswordInput
+                id="login-repeat-password"
+                labelText={intl.formatMessage({
+                  id: "login.login.repeat.password",
+                })}
+                value={userDataShow.confirmPassword || ""}
+                invalid={
+                  passwordTouched.confirmPassword &&
+                  (!passwordPatternRegex.test(
+                    userDataShow.confirmPassword || "",
+                  ) ||
+                    userDataShow.confirmPassword !== userDataShow.userPassword)
+                }
+                invalidText={intl.formatMessage({
+                  id: "user.editor.passwordMismatch",
+                })}
+                onChange={handleConfirmPasswordChange}
+                required={ID === "0"}
+              />
+              <Select
+                id="account-active"
+                labelText={intl.formatMessage({ id: "systemuser.isActive" })}
+                value={userDataShow.accountActive || "N"}
+                onChange={handleAccountActiveChange}
               >
-                <Grid fullWidth={true}>
-                  <Column lg={8} md={4} sm={4}>
-                    <>
-                      <FormattedMessage id="login.login.name" />
-                      <span className="requiredlabel">*</span> :
-                    </>
-                  </Column>
-                  <Column lg={8} md={4} sm={4}>
-                    <TextInput
-                      id="login-name"
-                      className="defalut"
-                      type="text"
-                      labelText=""
-                      placeholder={intl.formatMessage({
-                        id: "login.login.name",
-                      })}
-                      invalid={
-                        userDataShow &&
-                        userDataShow.userLoginName &&
-                        !loginNameRegex.test(userDataShow.userLoginName)
-                      }
-                      // invalidText={errors.order}
-                      required={true}
-                      value={
-                        userDataShow && userDataShow.userLoginName
-                          ? userDataShow.userLoginName
-                          : ""
-                      }
-                      onChange={(e) => handleUserLoginNameChange(e)}
-                    />
-                  </Column>
-                </Grid>
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={16} md={8} sm={4}>
-                    <h5>
-                      <FormattedMessage id="login.complexity.message" />
-                    </h5>
-                    <br />
+                <SelectItem
+                  value="Y"
+                  text={intl.formatMessage({ id: "label.yes" })}
+                />
+                <SelectItem
+                  value="N"
+                  text={intl.formatMessage({ id: "label.no" })}
+                />
+              </Select>
+              <Select
+                id="account-locked"
+                labelText={intl.formatMessage({ id: "login.account.locked" })}
+                value={userDataShow.accountLocked || "N"}
+                onChange={handleAccountLockedChange}
+              >
+                <SelectItem
+                  value="N"
+                  text={intl.formatMessage({ id: "label.no" })}
+                />
+                <SelectItem
+                  value="Y"
+                  text={intl.formatMessage({ id: "label.yes" })}
+                />
+              </Select>
+              <Select
+                id="account-disabled"
+                labelText={intl.formatMessage({ id: "login.account.disabled" })}
+                value={userDataShow.accountDisabled || "N"}
+                onChange={handleAccountDisabledChange}
+              >
+                <SelectItem
+                  value="N"
+                  text={intl.formatMessage({ id: "label.no" })}
+                />
+                <SelectItem
+                  value="Y"
+                  text={intl.formatMessage({ id: "label.yes" })}
+                />
+              </Select>
+            </div>
+          </section>
 
-                    <h6>
-                      <UnorderedList nested={true}>
-                        <ListItem>
-                          <FormattedMessage id="login.complexity.message.1" />
-                        </ListItem>
-                        <ListItem>
-                          <FormattedMessage id="login.complexity.message.2" />
-                        </ListItem>
-                        <ListItem>
-                          <FormattedMessage id="login.complexity.message.3" />
-                        </ListItem>
-                        <ListItem>
-                          <FormattedMessage id="login.complexity.message.4" />
-                        </ListItem>
-                      </UnorderedList>
-                    </h6>
-                  </Column>
-                </Grid>
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={8} md={4} sm={4}>
-                    <>
-                      <FormattedMessage id="login.login.password" />
-                      <span className="requiredlabel">*</span> :
-                    </>
-                  </Column>
-                  <Column lg={8} md={4} sm={4}>
-                    <PasswordInput
-                      id="login-password"
-                      className="defalut"
-                      type="password"
-                      labelText=""
-                      placeholder={intl.formatMessage({
-                        id: "login.login.password",
-                      })}
-                      required={true}
-                      invalid={
-                        passwordTouched.userPassword &&
-                        userDataShow &&
-                        userDataShow.userPassword &&
-                        !passwordPatternRegex.test(userDataShow.userPassword)
-                      }
-                      // invalidText={errors.order}
-                      value={
-                        userDataShow && userDataShow.userPassword
-                          ? userDataShow.userPassword
-                          : ""
-                      }
-                      onChange={(e) => handleUserPasswordChange(e)}
-                    />
-                  </Column>
-                </Grid>
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={8} md={4} sm={4}>
-                    <>
-                      <FormattedMessage id="login.login.repeat.password" />
-                      <span className="requiredlabel">*</span> :
-                    </>
-                  </Column>
-                  <Column lg={8} md={4} sm={4}>
-                    <PasswordInput
-                      id="login-repeat-password"
-                      className="defalut"
-                      type="password"
-                      labelText=""
-                      placeholder={intl.formatMessage({
-                        id: "login.login.repeat.password",
-                      })}
-                      required={true}
-                      invalid={
-                        (passwordTouched.confirmPassword &&
-                          userDataShow &&
-                          userDataShow.userPassword &&
-                          userDataShow.confirmPassword &&
-                          !passwordPatternRegex.test(
-                            userDataShow.confirmPassword,
-                          )) ||
-                        (passwordTouched.confirmPassword &&
-                          userDataShow.confirmPassword !==
-                            userDataShow.userPassword)
-                      }
-                      // invalidText={errors.order}
-                      value={
-                        userDataShow && userDataShow.confirmPassword
-                          ? userDataShow.confirmPassword
-                          : ""
-                      }
-                      onChange={(e) => handleConfirmPasswordChange(e)}
-                    />
-                  </Column>
-                </Grid>
-                <br />
+          <section className="admin-form-workspace__card">
+            <div className="admin-form-workspace__card-heading">
+              <h2>
+                <FormattedMessage id="systemuser.role" />
+              </h2>
+              <p>
+                <FormattedMessage id="user.editor.permissions.subtitle" />
+              </p>
+            </div>
+            <div className="admin-form-workspace__fields">
+              <div className="admin-form-workspace__inline-action admin-form-workspace__field--wide">
+                <AutoComplete
+                  name="copy-permissions"
+                  id="copy-permissions"
+                  allowFreeText={
+                    configurationProperties.restrictFreeTextProviderEntry !==
+                    "true"
+                  }
+                  onChange={handleCopyUserPermissionsChange}
+                  onSelect={handleAutoCompleteCopyUserPermissionsChange}
+                  suggestions={copyUserPermissionList || []}
+                  label={intl.formatMessage({
+                    id: "systemuserrole.copypermissions",
+                  })}
+                />
+                <Button
+                  data-cy="apply-button"
+                  kind="tertiary"
+                  disabled={copyUserPermission === "0"}
+                  type="button"
+                  onClick={handleCopyUserPermissionsChangeClick}
+                >
+                  <FormattedMessage id="systemuserrole.apply" />
+                </Button>
+              </div>
+              <div className="admin-form-workspace__field--wide">
+                <p className="admin-form-workspace__required-note">
+                  <FormattedMessage id="user.editor.copy.helper" />
+                </p>
+              </div>
+              <div className="admin-form-workspace__field--wide">
+                <h3>
+                  <FormattedMessage id="systemuserrole.roles.global" />
+                </h3>
+                <FormGroup legendId="globalRules" legendText="">
+                  <div className="admin-form-workspace__checks">
+                    {userDataShow.globalRoles?.length > 0 ? (
+                      userDataShow.globalRoles.map((role) => (
+                        <Checkbox
+                          key={role.elementID}
+                          id={role.elementID}
+                          value={role.roleId}
+                          labelText={formatRoleName(role.roleName)}
+                          checked={selectedGlobalLabUnitRoles.includes(
+                            role.roleId,
+                          )}
+                          onChange={() => handleCheckboxChange(role.roleId)}
+                        />
+                      ))
+                    ) : (
+                      <p>
+                        <FormattedMessage id="label.no.options.available" />
+                      </p>
+                    )}
+                  </div>
+                </FormGroup>
+              </div>
+            </div>
 
-                <Grid fullWidth={true}>
-                  <Column lg={8} md={4} sm={4}>
-                    <>
-                      <FormattedMessage id="login.login.first" />
-                      <span className="requiredlabel">*</span> :
-                    </>
-                  </Column>
-                  <Column lg={8} md={4} sm={4}>
-                    <TextInput
-                      id="first-name"
-                      className="defalut"
-                      type="text"
-                      labelText=""
-                      placeholder={intl.formatMessage({
-                        id: "login.login.first",
-                      })}
-                      required={true}
-                      invalid={
-                        userDataShow &&
-                        userDataShow.userFirstName &&
-                        !nameRegex.test(userDataShow.userFirstName)
-                      }
-                      // invalidText={errors.order}
-                      value={
-                        userDataShow && userDataShow.userFirstName
-                          ? userDataShow.userFirstName
-                          : ""
-                      }
-                      onChange={(e) => handleUserFirstNameChange(e)}
-                    />
-                  </Column>
-                </Grid>
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={8} md={4} sm={4}>
-                    <>
-                      <FormattedMessage id="login.login.last" />
-                      <span className="requiredlabel">*</span> :
-                    </>
-                  </Column>
-                  <Column lg={8} md={4} sm={4}>
-                    <TextInput
-                      id="last-name"
-                      className="defalut"
-                      type="text"
-                      labelText=""
-                      placeholder={intl.formatMessage({
-                        id: "login.login.last",
-                      })}
-                      required={true}
-                      invalid={
-                        userDataShow &&
-                        userDataShow.userLastName &&
-                        !nameRegex.test(userDataShow.userLastName)
-                      }
-                      // invalidText={errors.order}
-                      value={
-                        userDataShow && userDataShow.userLastName
-                          ? userDataShow.userLastName
-                          : ""
-                      }
-                      onChange={(e) => handleUserLastNameChange(e)}
-                    />
-                  </Column>
-                </Grid>
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={8} md={4} sm={4}>
-                    <>
-                      <FormattedMessage id="login.password.expired.date" />
-                      <span className="requiredlabel">*</span> :
-                    </>
-                  </Column>
-                  <Column lg={8} md={4} sm={4}>
-                    <CustomDatePicker
-                      id="password-expire-date"
-                      className="defalut"
-                      labelText=""
-                      required={true}
-                      disallowPastDate={true}
-                      updateStateValue={true}
-                      value={
-                        userDataShow && userDataShow.expirationDate
-                          ? userDataShow.expirationDate
-                          : ""
-                      }
-                      onChange={(date) => handleExpirationDateChange(date)}
-                    />
-                  </Column>
-                </Grid>
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={8} md={4} sm={4}>
-                    <>
-                      <FormattedMessage id="login.timeout" />
-                      <span className="requiredlabel">*</span> :
-                    </>
-                  </Column>
-                  <Column lg={8} md={4} sm={4}>
-                    <TextInput
-                      id="login-timeout"
-                      className="defalut"
-                      type="number"
-                      placeholder={intl.formatMessage({
-                        id: "login.timeout.placeholder",
-                      })}
-                      required={true}
-                      labelText=""
-                      min={0}
-                      // invalid={errors.order && touched.order}
-                      // invalidText={errors.order}
-                      value={
-                        userDataShow && userDataShow.timeout
-                          ? userDataShow.timeout
-                          : ""
-                      }
-                      onChange={(e) => handleTimeoutChange(e)}
-                    />
-                  </Column>
-                </Grid>
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={8} md={4} sm={4}>
-                    <>
-                      <FormattedMessage id="login.account.locked" />
-                      <span className="requiredlabel">*</span> :
-                    </>
-                  </Column>
-                  <Column lg={8} md={4} sm={4}>
-                    <span style={{ display: "flex", alignItems: "center" }}>
-                      <RadioButton
-                        checked={isLocked === "radio-1"}
-                        labelText="Y"
-                        value="Y"
-                        id="radio-1"
-                        onClick={(e) => {
-                          setIsLocked("radio-1");
-                          handleAccountLockedChange(e);
-                        }}
-                      />
-                      <RadioButton
-                        checked={isLocked === "radio-2"}
-                        labelText="N"
-                        value="N"
-                        id="radio-2"
-                        onClick={(e) => {
-                          setIsLocked("radio-2");
-                          handleAccountLockedChange(e);
-                        }}
-                      />
-                    </span>
-                  </Column>
-                </Grid>
-                <Grid fullWidth={true}>
-                  <Column lg={8} md={4} sm={4}>
-                    <>
-                      <FormattedMessage id="login.account.disabled" />
-                      <span className="requiredlabel">*</span> :
-                    </>
-                  </Column>
-                  <Column lg={8} md={4} sm={4}>
-                    <span style={{ display: "flex", alignItems: "center" }}>
-                      <RadioButton
-                        checked={isDisabled === "radio-3"}
-                        labelText="Y"
-                        value="Y"
-                        id="radio-3"
-                        onClick={(e) => {
-                          setIsDisabled("radio-3");
-                          handleAccountDisabledChange(e);
-                        }}
-                      />
-                      <RadioButton
-                        checked={isDisabled === "radio-4"}
-                        labelText="N"
-                        value="N"
-                        id="radio-4"
-                        onClick={(e) => {
-                          setIsDisabled("radio-4");
-                          handleAccountDisabledChange(e);
-                        }}
-                      />
-                    </span>
-                  </Column>
-                </Grid>
-                <Grid fullWidth={true}>
-                  <Column lg={8} md={4} sm={4}>
-                    <>
-                      <FormattedMessage id="systemuser.isActive" />
-                      <span className="requiredlabel">*</span> :
-                    </>
-                  </Column>
-                  <Column lg={8} md={4} sm={4}>
-                    <span style={{ display: "flex", alignItems: "center" }}>
-                      <RadioButton
-                        checked={isActive === "radio-5"}
-                        labelText="Y"
-                        value="Y"
-                        id="radio-5"
-                        onClick={(e) => {
-                          setIsActive("radio-5");
-                          handleAccountActiveChange(e);
-                        }}
-                      />
-                      <RadioButton
-                        checked={isActive === "radio-6"}
-                        labelText="N"
-                        value="N"
-                        id="radio-6"
-                        onClick={(e) => {
-                          setIsActive("radio-6");
-                          handleAccountActiveChange(e);
-                        }}
-                      />
-                    </span>
-                  </Column>
-                </Grid>
-                <br />
-                <hr />
-                <br />
-                <Grid fullWidth={true} className="gridBoundary">
-                  <Column lg={16} md={8} sm={4}>
-                    <Section>
-                      <Section>
-                        <Heading>
-                          <FormattedMessage id="systemuser.role" />
-                        </Heading>
-                      </Section>
-                    </Section>
-                  </Column>
-                  <Column lg={16} md={8} sm={4}>
-                    <br />
-                    <FormattedMessage id="systemuserrole.instruction.1" />
-                    <br />
-                    <br />
-                    <FormattedMessage id="systemuserrole.instruction.2" />
-                    <br />
-                    <br />
-                    <FormattedMessage id="systemuserrole.instruction.3" />
-                    <br />
-                    <br />
-                    <FormattedMessage id="systemuserrole.instruction.4" />
-                    <br />
-                    <br />
-                    <FormattedMessage id="systemuserrole.instruction.5" />
-                    <br />
-                    <br />
-                  </Column>
-                </Grid>
-                <br />
-                <hr />
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={8} md={4} sm={4}>
-                    <>
-                      <FormattedMessage id="systemuserrole.copypermissions" /> :
-                    </>
-                  </Column>
-                  <Column lg={8} md={4} sm={4}>
-                    <AutoComplete
-                      name="copy-permissions"
-                      id="copy-permissions"
-                      allowFreeText={
-                        !(
-                          configurationProperties.restrictFreeTextProviderEntry ===
-                          "true"
-                        )
-                      }
-                      onChange={handleCopyUserPermissionsChange}
-                      onSelect={handleAutoCompleteCopyUserPermissionsChange}
-                      suggestions={
-                        copyUserPermissionList?.length > 0
-                          ? copyUserPermissionList
-                          : []
-                      }
-                    />
-                  </Column>
-                  <br />
-                  <Button
-                    data-cy="apply-button"
-                    disabled={copyUserPermission === "0"}
-                    type="button"
-                    onClick={() => {
-                      handleCopyUserPermissionsChangeClick();
-                    }}
+            <div className="admin-form-workspace__permission-list">
+              {selectedTestSectionList.map((key) => (
+                <div
+                  className="admin-form-workspace__permission-card"
+                  key={key}
+                >
+                  <Select
+                    id={`select-${key}`}
+                    labelText={intl.formatMessage({
+                      id: "user.editor.labUnit",
+                    })}
+                    value={key}
+                    onChange={(event) =>
+                      handleTestSectionsSelectChange(event, key)
+                    }
                   >
-                    <FormattedMessage id="systemuserrole.apply" />
-                  </Button>
-                </Grid>
-                <hr />
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={8} md={4} sm={4}>
-                    <FormattedMessage id="systemuserrole.roles.global" />
-                    <br />
-                    <FormGroup legendId="globalRules" legendText="">
-                      {userDataShow &&
-                      userDataShow.globalRoles &&
-                      userDataShow.globalRoles.length > 0 ? (
-                        userDataShow.globalRoles.map((section) => (
-                          <Checkbox
-                            key={section.elementID}
-                            id={section.elementID}
-                            value={section.roleId}
-                            labelText={section.roleName}
-                            checked={selectedGlobalLabUnitRoles.includes(
-                              section.roleId,
-                            )}
-                            onChange={() => {
-                              handleCheckboxChange(section.roleId);
-                            }}
-                          />
-                        ))
-                      ) : (
-                        <Checkbox
-                          id="no-options-global-roles"
-                          value=""
-                          labelText={intl.formatMessage({
-                            id: "label.no.options.available",
-                          })}
+                    {userDataShow.testSections
+                      ?.filter(
+                        (section) =>
+                          !Object.keys(selectedTestSectionLabUnits).includes(
+                            section.id,
+                          ) || section.id === key,
+                      )
+                      .map((section) => (
+                        <SelectItem
+                          key={`${section.id}-${key}`}
+                          value={section.id}
+                          text={section.value}
                         />
+                      ))}
+                  </Select>
+                  <FormGroup
+                    legendId={`labUnitRoles-${key}`}
+                    legendText={intl.formatMessage({
+                      id: "user.editor.permissions",
+                    })}
+                  >
+                    <Checkbox
+                      id={`all-permissions-${key}`}
+                      labelText={intl.formatMessage({
+                        id: "user.editor.permissions.all",
+                      })}
+                      checked={["4", "5", "7", "10"].every((roleId) =>
+                        selectedTestSectionLabUnits[key]?.includes(roleId),
                       )}
-                    </FormGroup>
-                    <br />
-                  </Column>
-                </Grid>
-                <Grid fullWidth={true}>
-                  <Column lg={8} md={4} sm={4}>
-                    <FormattedMessage id="systemuserrole.roles.labunit" />
-                  </Column>
-                </Grid>
-                <br />
-                <>
-                  {selectedTestSectionList.map((key) => (
-                    <Grid
-                      fullWidth={true}
-                      key={key}
-                      style={{ paddingBottom: "10px" }}
-                    >
-                      <Column lg={4} md={4} sm={4}>
-                        <Select
-                          id={`select-${key}`}
-                          noLabel={true}
-                          defaultValue={
-                            userDataShow &&
-                            userDataShow.testSections &&
-                            userDataShow.testSections.length > 0
-                              ? userDataShow.testSections.find(
-                                  (section) => section.id === key,
-                                )?.id || userDataShow.testSections[0].id
-                              : ""
-                          }
-                          onChange={(e) =>
-                            handleTestSectionsSelectChange(e, key)
-                          }
-                        >
-                          {userDataShow &&
-                          userDataShow.testSections &&
-                          userDataShow.testSections.length > 0 ? (
-                            userDataShow.testSections
-                              .filter(
-                                (section) =>
-                                  !Object.keys(
-                                    selectedTestSectionLabUnits,
-                                  ).includes(section.id) || section.id === key,
+                      onChange={() => {
+                        const standardRoles = ["4", "5", "7", "10"];
+                        const currentRoles = [
+                          ...(selectedTestSectionLabUnits[key] || []),
+                        ];
+                        const allSelected = standardRoles.every((roleId) =>
+                          currentRoles.includes(roleId),
+                        );
+                        setSelectedTestSectionLabUnits((current) => ({
+                          ...current,
+                          [key]: allSelected
+                            ? currentRoles.filter(
+                                (roleId) => !standardRoles.includes(roleId),
                               )
-                              .map((section) => (
-                                <SelectItem
-                                  key={`${section.id}-${key}`}
-                                  value={section.id}
-                                  text={section.value}
-                                />
-                              ))
-                          ) : (
-                            <SelectItem
-                              key="no-option-test-section"
-                              value=""
-                              text={intl.formatMessage({
-                                id: "label.no.options.available",
-                              })}
-                            />
-                          )}
-                        </Select>
-                        <br />
-                        <Checkbox
-                          id={`all-permissions-${key}`}
-                          data-testid={`all-permissions-${(userDataShow?.testSections?.find((s) => s.id === key)?.value || key).replace(/\s+/g, "-")}`}
-                          labelText={"All Permissions"}
-                          checked={["4", "5", "7", "10"].every(
-                            (num) =>
-                              selectedTestSectionLabUnits[key] &&
-                              selectedTestSectionLabUnits[key].includes(num),
-                          )}
-                          onChange={() => {
-                            const numbersToAdd = ["4", "5", "7", "10"];
-                            const updatedRoles = selectedTestSectionLabUnits[
-                              key
-                            ]
-                              ? [...selectedTestSectionLabUnits[key]]
-                              : [];
-                            const numbersToRemove = numbersToAdd.filter((num) =>
-                              updatedRoles.includes(num),
-                            );
-                            if (numbersToRemove.length > 0) {
-                              numbersToRemove.forEach((num) => {
-                                const index = updatedRoles.indexOf(num);
-                                if (index !== -1) {
-                                  updatedRoles.splice(index, 1);
-                                }
-                              });
-                            } else {
-                              updatedRoles.push(...numbersToAdd);
-                            }
-                            setSelectedTestSectionLabUnits((prev) => ({
-                              ...prev,
-                              [key]: updatedRoles,
-                            }));
-                            setSaveButton(false);
-                            setValidation({ ...validation, selectedLab: true });
-                          }}
-                        />
-                        <FormGroup
-                          key={key}
-                          legendId={`labUnitRoles-${key}`}
-                          legendText=""
-                        >
-                          {userDataShow &&
-                          userDataShow.labUnitRoles &&
-                          userDataShow.labUnitRoles.length > 0 ? (
-                            userDataShow.labUnitRoles.map((section) => (
-                              <Checkbox
-                                key={`${section.elementID}-${key}`}
-                                id={`${section.elementID}-${key}`}
-                                value={section.roleId}
-                                labelText={section.roleName}
-                                checked={
-                                  selectedTestSectionLabUnits[key] &&
-                                  selectedTestSectionLabUnits[key].includes(
-                                    section.roleId,
-                                  )
-                                }
-                                onChange={() => {
-                                  if (
-                                    selectedTestSectionLabUnits[key]?.includes(
-                                      section.roleId,
-                                    )
-                                  ) {
-                                    removeRoleFromSelectedUnits(
-                                      key,
-                                      section.roleId,
-                                    );
-                                  } else {
-                                    addRoleToSelectedUnits(key, section.roleId);
-                                  }
-                                }}
-                              />
-                            ))
-                          ) : (
-                            <Checkbox
-                              id="no-options-lab-units"
-                              value=""
-                              labelText={intl.formatMessage({
-                                id: "label.no.options.available",
-                              })}
-                            />
-                          )}
-                        </FormGroup>
-                      </Column>
-                      <Column lg={4} md={4} sm={4}>
-                        <Button
-                          data-cy="removePermission"
-                          onClick={() => removeSection(key)}
-                          kind="tertiary"
-                          type="button"
-                        >
-                          <FormattedMessage id="systemuserrole.rmpermissions" />
-                        </Button>
-                      </Column>
-                    </Grid>
-                  ))}
-                </>
-                <Grid fullWidth={true}>
-                  <Column lg={16} md={8} sm={4}>
-                    <Button
-                      data-cy="addNewPermission"
-                      onClick={addNewSection}
-                      type="button"
-                    >
-                      <FormattedMessage id="systemuserrole.newpermissions" />
-                    </Button>
-                  </Column>
-                </Grid>
-                <hr />
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={16} md={8} sm={4}>
-                    <Button
-                      disabled={Object.values(validation).some(
-                        (value) => !value,
-                      )}
-                      data-cy="saveButton"
-                      onClick={userSavePostCall}
-                      type="button"
-                    >
-                      <FormattedMessage id="label.button.save" />
-                    </Button>{" "}
-                    <Button
-                      onClick={() =>
-                        navigateToInternalPath(
-                          "/MasterListsPage/userManagement",
-                          { replace: true },
-                        )
-                      }
-                      data-cy="exitButton"
-                      kind="tertiary"
-                      type="button"
-                    >
-                      <FormattedMessage id="label.button.exit" />
-                    </Button>
-                  </Column>
-                </Grid>
-              </Form>
-            </Column>
-          </Grid>
-        </div>
+                            : [...new Set([...currentRoles, ...standardRoles])],
+                        }));
+                        setSaveButton(false);
+                      }}
+                    />
+                    {userDataShow.labUnitRoles?.map((role) => (
+                      <Checkbox
+                        key={`${role.elementID}-${key}`}
+                        id={`${role.elementID}-${key}`}
+                        value={role.roleId}
+                        labelText={formatRoleName(role.roleName)}
+                        checked={selectedTestSectionLabUnits[key]?.includes(
+                          role.roleId,
+                        )}
+                        onChange={() => {
+                          if (
+                            selectedTestSectionLabUnits[key]?.includes(
+                              role.roleId,
+                            )
+                          ) {
+                            removeRoleFromSelectedUnits(key, role.roleId);
+                          } else {
+                            addRoleToSelectedUnits(key, role.roleId);
+                          }
+                        }}
+                      />
+                    ))}
+                  </FormGroup>
+                  <Button
+                    data-cy="removePermission"
+                    onClick={() => removeSection(key)}
+                    kind="danger--ghost"
+                    size="sm"
+                    type="button"
+                  >
+                    <FormattedMessage id="systemuserrole.rmpermissions" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="admin-form-workspace__subactions">
+              <Button
+                data-cy="addNewPermission"
+                onClick={addNewSection}
+                kind="tertiary"
+                type="button"
+              >
+                <FormattedMessage id="systemuserrole.newpermissions" />
+              </Button>
+            </div>
+          </section>
+
+          <div className="admin-form-workspace__actions">
+            <Button kind="secondary" type="button" onClick={cancel}>
+              <FormattedMessage id="label.button.cancel" />
+            </Button>
+            <Button
+              disabled={saveDisabled}
+              data-cy="saveButton"
+              onClick={userSavePostCall}
+              type="button"
+            >
+              <FormattedMessage id="label.button.save" />
+            </Button>
+          </div>
+        </Form>
       </div>
     </>
   );

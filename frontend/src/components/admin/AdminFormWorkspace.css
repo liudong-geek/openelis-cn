@@ -1,0 +1,210 @@
+.admin-form-workspace {
+  padding-bottom: 6rem;
+}
+
+.admin-form-workspace__content {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-form-workspace__card {
+  overflow: hidden;
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  background: var(--oe-surface);
+  box-shadow: var(--oe-surface-shadow);
+}
+
+.admin-form-workspace__card-heading {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--oe-border);
+  background: var(--oe-surface-subtle);
+}
+
+.admin-form-workspace__card-heading h2 {
+  margin: 0;
+  color: var(--oe-text);
+  font-size: 1.05rem;
+  font-weight: 650;
+}
+
+.admin-form-workspace__card-heading p {
+  margin: 0.25rem 0 0;
+  color: var(--oe-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.admin-form-workspace__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  padding: 1.25rem;
+}
+
+.admin-form-workspace__field--wide {
+  grid-column: 1 / -1;
+}
+
+.admin-form-workspace__hint {
+  padding: 0.875rem 1rem;
+  border: 1px solid #cfe0f7;
+  border-radius: 0.375rem;
+  color: #344054;
+  background: var(--oe-brand-soft);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.admin-form-workspace__hint strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--oe-text);
+}
+
+.admin-form-workspace__hint ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.admin-form-workspace__checks {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+}
+
+.admin-form-workspace__checks--types {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 1.25rem;
+}
+
+.admin-form-workspace__check-card {
+  min-height: 4.25rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--oe-border);
+  border-radius: 0.375rem;
+  background: var(--oe-surface);
+}
+
+.admin-form-workspace__check-card p {
+  margin: 0.35rem 0 0 1.75rem;
+  color: var(--oe-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.admin-form-workspace__inline-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.admin-form-workspace__permission-list {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0 1.25rem 1.25rem;
+}
+
+.admin-form-workspace__permission-card {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.4fr) minmax(16rem, 1fr) auto;
+  align-items: start;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--oe-border);
+  border-radius: 0.375rem;
+  background: #fff;
+}
+
+.admin-form-workspace__permission-card .cds--form-group {
+  margin: 0;
+}
+
+.admin-form-workspace__subactions {
+  display: flex;
+  justify-content: flex-start;
+  padding: 0 1.25rem 1.25rem;
+}
+
+.admin-form-workspace__actions {
+  position: sticky;
+  z-index: 4;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.875rem 1.25rem;
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 -6px 20px rgb(16 24 40 / 8%);
+  backdrop-filter: blur(8px);
+}
+
+.admin-form-workspace__required-note {
+  margin: 0;
+  color: var(--oe-text-muted);
+  font-size: 0.75rem;
+}
+
+.admin-form-workspace__empty {
+  display: grid;
+  min-height: 10rem;
+  place-items: center;
+  padding: 2rem;
+  color: var(--oe-text-muted);
+  text-align: center;
+}
+
+.admin-form-workspace__empty > div {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--oe-brand);
+  background: var(--oe-brand-soft);
+}
+
+.admin-form-workspace__empty h3 {
+  margin: 0.75rem 0 0;
+  color: var(--oe-text);
+  font-size: 1rem;
+}
+
+@media (max-width: 66rem) {
+  .admin-form-workspace__permission-card {
+    grid-template-columns: 1fr 1.5fr;
+  }
+
+  .admin-form-workspace__permission-card > .cds--btn {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 42rem) {
+  .admin-form-workspace .oe-page-header,
+  .admin-form-workspace__fields,
+  .admin-form-workspace__checks,
+  .admin-form-workspace__checks--types,
+  .admin-form-workspace__permission-card,
+  .admin-form-workspace__inline-action {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-form-workspace__field--wide {
+    grid-column: auto;
+  }
+
+  .admin-form-workspace__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .admin-form-workspace__actions .cds--btn,
+  .admin-form-workspace__subactions .cds--btn {
+    width: 100%;
+    max-width: none;
+  }
+}
