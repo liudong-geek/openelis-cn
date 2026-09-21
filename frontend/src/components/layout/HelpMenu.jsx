@@ -4,10 +4,12 @@ import { HeaderGlobalAction, HeaderPanel } from "@carbon/react";
 import { Close, Help } from "@carbon/icons-react";
 import { getFromOpenElisServer } from "../utils/Utils";
 
+const LOCAL_USER_MANUAL_URL = "/docs/china-lis-user-manual.html";
+
 const HelpMenu = ({ helpOpen, handlePanelToggle }) => {
   const intl = useIntl();
   const [helpUrls, setHelpUrls] = useState({
-    manual: "",
+    manual: LOCAL_USER_MANUAL_URL,
     tutorials: "",
     "release-notes": "",
   });
@@ -26,13 +28,19 @@ const HelpMenu = ({ helpOpen, handlePanelToggle }) => {
       // not JSON (e.g., auth redirect HTML). Treat that as "no configured help
       // URLs" rather than crashing the entire app.
       if (!properties || typeof properties !== "object") {
-        setHelpUrls({ manual: "", tutorials: "", "release-notes": "" });
+        setHelpUrls({
+          manual: LOCAL_USER_MANUAL_URL,
+          tutorials: "",
+          "release-notes": "",
+        });
         setError(new Error("Help URL configuration unavailable"));
         return;
       }
 
       setHelpUrls({
-        manual: properties["org.openelisglobal.help.manual.url"] || "",
+        manual:
+          properties["org.openelisglobal.help.manual.url"] ||
+          LOCAL_USER_MANUAL_URL,
         tutorials: properties["org.openelisglobal.help.tutorials.url"] || "",
         "release-notes":
           properties["org.openelisglobal.help.release-notes.url"] || "",
@@ -72,7 +80,7 @@ const HelpMenu = ({ helpOpen, handlePanelToggle }) => {
   const openHelp = (type) => {
     const url = helpUrls[type];
     if (url) {
-      window.open(url, "_blank");
+      window.open(url, "_blank", "noopener,noreferrer");
       handlePanelToggle("");
     }
   };

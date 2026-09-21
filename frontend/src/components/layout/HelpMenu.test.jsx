@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import HelpMenu from "./HelpMenu";
@@ -36,6 +36,27 @@ describe("HelpMenu", () => {
         <HelpMenu helpOpen={false} handlePanelToggle={() => {}} />,
       ),
     ).not.toThrow();
+  });
+
+  test("opens the bundled China LIS manual when no server URL is configured", () => {
+    getFromOpenElisServer.mockImplementation((url, callback) => {
+      if (url === "/rest/properties") {
+        callback(undefined);
+      }
+    });
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const handlePanelToggle = vi.fn();
+
+    renderWithIntl(<HelpMenu helpOpen handlePanelToggle={handlePanelToggle} />);
+    fireEvent.click(screen.getByText(messages["banner.menu.help.usermanual"]));
+
+    expect(openSpy).toHaveBeenCalledWith(
+      "/docs/china-lis-user-manual.html",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    expect(handlePanelToggle).toHaveBeenCalledWith("");
+    openSpy.mockRestore();
   });
 
   test("does not crash when /rest/properties returns a valid object", () => {
