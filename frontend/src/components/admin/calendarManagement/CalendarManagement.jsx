@@ -1,277 +1,281 @@
-import React, { useState, useEffect, useContext, useCallback } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
-  DataTable,
-  Table,
-  TableHead,
-  TableRow,
-  TableHeader,
-  TableBody,
-  TableCell,
-  TableContainer,
   Button,
-  Dropdown,
-  Tag,
-  InlineNotification,
+  Checkbox,
   DataTableSkeleton,
-  Modal,
   DatePicker,
   DatePickerInput,
+  Dropdown,
+  InlineLoading,
+  InlineNotification,
+  Modal,
+  Search,
+  Tag,
   TextInput,
-  Checkbox,
 } from "@carbon/react";
-import { Add, Edit, TrashCan, Upload, Download } from "@carbon/react/icons";
+import { Add, Download, Edit, TrashCan, Upload } from "@carbon/icons-react";
 import { FormattedMessage, useIntl } from "react-intl";
 import {
+  deleteFromOpenElisServer,
   getFromOpenElisServer,
   postToOpenElisServerJsonResponse,
   putToOpenElisServer,
-  deleteFromOpenElisServer,
 } from "../../utils/Utils";
 import config from "../../../config.json";
 import { NotificationContext } from "../../layout/Layout";
+import PageBreadCrumb from "../../common/PageBreadCrumb";
+import ProductPageHeader from "../../common/ProductPageHeader";
 import WeekendConfig from "./WeekendConfig";
 import CsvImportPreview from "./CsvImportPreview";
-import PageBreadCrumb from "../../common/PageBreadCrumb";
+import "./CalendarManagement.css";
 
 const currentYear = new Date().getFullYear();
-const yearOptions = Array.from({ length: 5 }, (_, i) => ({
-  id: String(currentYear - 1 + i),
-  text: String(currentYear - 1 + i),
+const yearOptions = Array.from({ length: 5 }, (_, index) => ({
+  id: String(currentYear - 1 + index),
+  text: String(currentYear - 1 + index),
 }));
+const emptyForm = { date: "", name: "", recurring: false };
 
-function CalendarManagement() {
+export default function CalendarManagement() {
   const intl = useIntl();
-
-  const headers = [
-    {
-      key: "date",
-      header: intl.formatMessage({ id: "calendar.management.column.date" }),
-    },
-    {
-      key: "name",
-      header: intl.formatMessage({
-        id: "calendar.management.column.holidayName",
-      }),
-    },
-    {
-      key: "recurring",
-      header: intl.formatMessage({
-        id: "calendar.management.column.recurring",
-      }),
-    },
-    {
-      key: "status",
-      header: intl.formatMessage({ id: "calendar.management.column.status" }),
-    },
-    {
-      key: "actions",
-      header: intl.formatMessage({ id: "calendar.management.column.actions" }),
-    },
-  ];
   const { setNotificationVisible, addNotification } =
     useContext(NotificationContext);
-
+  const requestVersion = useRef(0);
   const [holidays, setHolidays] = useState([]);
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState(String(currentYear));
-  const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({
-    date: "",
-    name: "",
-    recurring: false,
-  });
-  const [isAdding, setIsAdding] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(null);
+  const [query, setQuery] = useState("");
+  const [editor, setEditor] = useState(null);
+  const [editForm, setEditForm] = useState(emptyForm);
+  const [initialForm, setInitialForm] = useState(emptyForm);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [deleteHoliday, setDeleteHoliday] = useState(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [actionPending, setActionPending] = useState(false);
   const [error, setError] = useState(null);
 
   const fetchHolidays = useCallback(() => {
+    const version = ++requestVersion.current;
     setLoading(true);
     setError(null);
     getFromOpenElisServer(
       `/rest/calendar/holidays?year=${year}&includeInactive=true`,
-      (res) => {
-        if (res) {
-          setHolidays(res.holidays || []);
+      (response) => {
+        if (version !== requestVersion.current) return;
+        if (response) {
+          setHolidays(
+            Array.isArray(response.holidays) ? response.holidays : [],
+          );
         } else {
           setError(intl.formatMessage({ id: "calendar.management.loadError" }));
         }
         setLoading(false);
       },
     );
-  }, [year, intl]);
+  }, [intl, year]);
 
   useEffect(() => {
     fetchHolidays();
+    return () => {
+      requestVersion.current += 1;
+    };
   }, [fetchHolidays]);
 
-  const handleAdd = () => {
-    setIsAdding(true);
-    setEditForm({ date: "", name: "", recurring: false });
-    setEditingId(null);
-  };
+  const metrics = useMemo(
+    () => ({
+      active: holidays.filter((holiday) => holiday.isActive).length,
+      recurring: holidays.filter((holiday) => holiday.isRecurring).length,
+    }),
+    [holidays],
+  );
+  const visibleHolidays = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase();
+    if (!normalized) return holidays;
+    return holidays.filter((holiday) =>
+      `${holiday.name || ""} ${holiday.date || ""}`
+        .toLocaleLowerCase()
+        .includes(normalized),
+    );
+  }, [holidays, query]);
 
-  const handleEdit = (holiday) => {
-    setEditingId(holiday.id);
-    setEditForm({
-      date: holiday.date,
-      name: holiday.name,
-      recurring: holiday.isRecurring,
-    });
-    setIsAdding(false);
+  const notify = (kind, messageId) => {
+    addNotification({ kind, title: intl.formatMessage({ id: messageId }) });
+    setNotificationVisible(true);
+  };
+  const openEditor = (holiday = null) => {
+    const next = holiday
+      ? {
+          date: holiday.date,
+          name: holiday.name,
+          recurring: holiday.isRecurring,
+        }
+      : emptyForm;
+    setEditForm(next);
+    setInitialForm(next);
+    setEditor(holiday || { id: null });
+  };
+  const isDirty = useMemo(
+    () => JSON.stringify(editForm) !== JSON.stringify(initialForm),
+    [editForm, initialForm],
+  );
+  const canSave = Boolean(editForm.date && editForm.name.trim());
+  const closeEditor = () => {
+    if (isDirty) {
+      setDiscardOpen(true);
+      return;
+    }
+    setEditor(null);
+  };
+  const finishEditor = () => {
+    setDiscardOpen(false);
+    setEditor(null);
+    setEditForm(emptyForm);
+    setInitialForm(emptyForm);
   };
 
   const handleSave = () => {
-    const body = {
+    if (!canSave || actionPending) return;
+    setActionPending(true);
+    const body = JSON.stringify({
       date: editForm.date,
-      name: editForm.name,
+      name: editForm.name.trim(),
       isRecurring: editForm.recurring,
+    });
+    const onSuccess = () => {
+      setActionPending(false);
+      finishEditor();
+      notify("success", "calendar.management.saved");
+      fetchHolidays();
     };
-
-    if (isAdding) {
+    const onFailure = () => {
+      setActionPending(false);
+      notify("error", "calendar.management.saveError");
+    };
+    if (editor?.id == null) {
       postToOpenElisServerJsonResponse(
         "/rest/calendar/holidays",
-        JSON.stringify(body),
-        (res) => {
-          if (res && !res.error) {
-            fetchHolidays();
-            setIsAdding(false);
-            setEditForm({ date: "", name: "", recurring: false });
-          } else {
-            addNotification({
-              kind: "error",
-              title: intl.formatMessage({
-                id: "calendar.management.saveError",
-              }),
-              message: res?.error || "",
-            });
-            setNotificationVisible(true);
-          }
-        },
+        body,
+        (response) => (response && !response.error ? onSuccess() : onFailure()),
       );
-    } else {
-      putToOpenElisServer(
-        `/rest/calendar/holidays/${editingId}`,
-        JSON.stringify(body),
-        (status) => {
-          if (status === 200) {
-            fetchHolidays();
-            setEditingId(null);
-            setEditForm({ date: "", name: "", recurring: false });
-          } else {
-            addNotification({
-              kind: "error",
-              title: intl.formatMessage({
-                id: "calendar.management.saveError",
-              }),
-            });
-            setNotificationVisible(true);
-          }
-        },
-      );
+      return;
     }
+    putToOpenElisServer(
+      `/rest/calendar/holidays/${editor.id}`,
+      body,
+      (status) => (status === 200 ? onSuccess() : onFailure()),
+    );
   };
 
-  const handleDelete = (id) => {
-    deleteFromOpenElisServer(`/rest/calendar/holidays/${id}`, (status) => {
-      if (status === 204 || status === 200) {
-        fetchHolidays();
-        setShowDeleteModal(null);
-      } else {
-        addNotification({
-          kind: "error",
-          title: intl.formatMessage({ id: "calendar.management.saveError" }),
-        });
-        setNotificationVisible(true);
-      }
-    });
+  const handleDelete = () => {
+    if (!deleteHoliday || actionPending) return;
+    setActionPending(true);
+    deleteFromOpenElisServer(
+      `/rest/calendar/holidays/${deleteHoliday.id}`,
+      (status) => {
+        const success = status === 204 || status === 200;
+        setActionPending(false);
+        setDeleteHoliday(null);
+        notify(
+          success ? "success" : "error",
+          success
+            ? "calendar.management.deleted"
+            : "calendar.management.saveError",
+        );
+        if (success) fetchHolidays();
+      },
+    );
   };
 
-  const handleCancel = () => {
-    setIsAdding(false);
-    setEditingId(null);
-    setEditForm({ date: "", name: "", recurring: false });
-  };
-
-  const canSave = editForm.date && editForm.name.trim();
-  const isEditing = isAdding || editingId !== null;
-
-  const rows = holidays.map((h) => ({
-    id: String(h.id),
-    date: h.date,
-    name: h.name,
-    recurring: h.isRecurring,
-    isActive: h.isActive,
-    isWeekendDay: h.isWeekendDay,
-    dayOfWeek: h.dayOfWeek,
-  }));
-
-  const breadcrumb = [
-    { label: intl.formatMessage({ id: "home.label" }), link: "/" },
+  const breadcrumbs = [
+    { label: "home.label", link: "/" },
+    { label: "breadcrums.admin.managment", link: "/MasterListsPage" },
     {
-      label: intl.formatMessage({ id: "breadcrums.admin.managment" }),
-      link: "/MasterListsPage",
-    },
-    {
-      label: intl.formatMessage({ id: "calendar.management.title" }),
+      label: "calendar.management.title",
       link: "/MasterListsPage/calendarManagement",
     },
   ];
 
   return (
     <>
-      <PageBreadCrumb breadcrumbs={breadcrumb} />
-      <div className="adminPageContent">
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: "1rem",
-          }}
-        >
-          <div>
-            <h2>
-              <FormattedMessage id="calendar.management.title" />
-            </h2>
-            <p style={{ color: "var(--cds-text-secondary)", fontSize: "14px" }}>
-              <FormattedMessage id="calendar.management.description" />
-            </p>
-          </div>
-          <Button
-            renderIcon={Add}
-            onClick={handleAdd}
-            disabled={isEditing}
-            data-testid="add-holiday-button"
-          >
-            <FormattedMessage id="calendar.management.addHoliday" />
-          </Button>
-        </div>
+      <div className="adminPageContent calendar-workspace">
+        <PageBreadCrumb breadcrumbs={breadcrumbs} />
+        <ProductPageHeader
+          title={<FormattedMessage id="calendar.management.title" />}
+          subtitle={<FormattedMessage id="calendar.management.description" />}
+          actions={
+            <Button
+              renderIcon={Add}
+              onClick={() => openEditor()}
+              disabled={actionPending}
+              data-testid="add-holiday-button"
+            >
+              <FormattedMessage id="calendar.management.addHoliday" />
+            </Button>
+          }
+        />
 
-        <div
-          style={{
-            display: "flex",
-            gap: "1rem",
-            alignItems: "flex-end",
-            marginBottom: "1rem",
-          }}
+        <section
+          className="calendar-workspace__metrics"
+          aria-label={intl.formatMessage({
+            id: "calendar.management.summaryLabel",
+          })}
         >
+          <article>
+            <span>
+              <FormattedMessage id="calendar.management.selectedYear" />
+            </span>
+            <strong>{year}</strong>
+          </article>
+          <article>
+            <span>
+              <FormattedMessage id="calendar.management.totalHolidays" />
+            </span>
+            <strong>{holidays.length}</strong>
+          </article>
+          <article>
+            <span>
+              <FormattedMessage id="calendar.management.activeHolidays" />
+            </span>
+            <strong>{metrics.active}</strong>
+          </article>
+          <article>
+            <span>
+              <FormattedMessage id="calendar.management.recurringHolidays" />
+            </span>
+            <strong>{metrics.recurring}</strong>
+          </article>
+        </section>
+
+        <section className="calendar-workspace__controls">
           <Dropdown
             id="year-dropdown"
             data-testid="year-dropdown"
             titleText={intl.formatMessage({ id: "calendar.management.year" })}
+            label={intl.formatMessage({ id: "calendar.management.year" })}
             items={yearOptions}
-            selectedItem={yearOptions.find((y) => y.id === year)}
-            onChange={({ selectedItem }) => setYear(selectedItem.id)}
-            style={{ width: "120px" }}
+            itemToString={(item) => item?.text || ""}
+            selectedItem={yearOptions.find((option) => option.id === year)}
+            onChange={({ selectedItem }) => {
+              if (selectedItem) {
+                setQuery("");
+                setYear(selectedItem.id);
+              }
+            }}
           />
-          <div style={{ display: "flex", gap: "0.5rem" }}>
+          <div className="calendar-workspace__transfer-actions">
             <Button
-              kind="ghost"
+              kind="tertiary"
               size="sm"
               renderIcon={Upload}
               onClick={() => setShowImportModal(true)}
-              disabled={isEditing}
+              disabled={actionPending}
               data-testid="import-csv-button"
             >
               <FormattedMessage id="calendar.management.importCsv" />
@@ -286,344 +290,296 @@ function CalendarManagement() {
                   "_blank",
                 )
               }
-              disabled={isEditing}
+              disabled={actionPending}
               data-testid="export-csv-button"
             >
               <FormattedMessage id="calendar.management.exportCsv" />
             </Button>
           </div>
-        </div>
+        </section>
 
         <WeekendConfig />
 
-        {error && (
-          <InlineNotification
-            kind="error"
-            title={error}
-            onClose={() => setError(null)}
-            style={{ marginBottom: "1rem" }}
-          />
-        )}
+        <section className="calendar-workspace__holiday-panel">
+          <header>
+            <div>
+              <h2>
+                <FormattedMessage id="calendar.management.holidayList" />
+              </h2>
+              <p data-testid="holiday-count-footer">
+                <FormattedMessage
+                  id="calendar.management.holidayCount"
+                  values={{ count: holidays.length, year }}
+                />
+              </p>
+            </div>
+            <Search
+              id="holiday-search"
+              labelText={intl.formatMessage({
+                id: "calendar.management.searchLabel",
+              })}
+              placeholder={intl.formatMessage({
+                id: "calendar.management.searchPlaceholder",
+              })}
+              closeButtonLabelText={intl.formatMessage({
+                id: "calendar.management.clearSearch",
+              })}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </header>
 
-        {loading ? (
-          <DataTableSkeleton headers={headers} rowCount={5} />
-        ) : (
-          <DataTable rows={rows} headers={headers} data-testid="holiday-table">
-            {({ rows: tableRows, headers: tableHeaders, getTableProps }) => (
-              <TableContainer>
-                <Table {...getTableProps()}>
-                  <TableHead>
-                    <TableRow>
-                      {tableHeaders.map((header) => (
-                        <TableHeader key={header.key}>
-                          {header.header}
-                        </TableHeader>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {isAdding && (
-                      <TableRow data-testid="holiday-inline-row">
-                        <TableCell>
-                          <DatePicker
-                            datePickerType="single"
-                            onChange={([date]) =>
-                              setEditForm((f) => ({
-                                ...f,
-                                date: date
-                                  ? date.toISOString().split("T")[0]
-                                  : "",
-                              }))
-                            }
-                          >
-                            <DatePickerInput
-                              id="new-holiday-date"
-                              placeholder="yyyy-mm-dd"
-                              size="sm"
-                              autoFocus
-                            />
-                          </DatePicker>
-                        </TableCell>
-                        <TableCell>
-                          <TextInput
-                            id="new-holiday-name"
-                            value={editForm.name}
-                            onChange={(e) =>
-                              setEditForm((f) => ({
-                                ...f,
-                                name: e.target.value,
-                              }))
-                            }
-                            placeholder={intl.formatMessage({
-                              id: "calendar.management.holidayName",
-                            })}
-                            size="sm"
-                            maxLength={100}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Checkbox
-                            id="new-holiday-recurring"
-                            labelText={intl.formatMessage({
-                              id: "calendar.management.annual",
-                            })}
-                            checked={editForm.recurring}
-                            onChange={(_, { checked }) =>
-                              setEditForm((f) => ({
-                                ...f,
-                                recurring: checked,
-                              }))
-                            }
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Tag type="green">
-                            <FormattedMessage id="calendar.management.active" />
-                          </Tag>
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            size="sm"
-                            onClick={handleSave}
-                            disabled={!canSave}
-                            data-testid="save-holiday-button"
-                          >
-                            <FormattedMessage id="calendar.management.save" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            kind="ghost"
-                            onClick={handleCancel}
-                            data-testid="cancel-holiday-button"
-                          >
-                            <FormattedMessage id="calendar.management.cancel" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {tableRows.map((row) => {
-                      const holiday = holidays.find(
-                        (h) => String(h.id) === row.id,
-                      );
-                      if (!holiday) return null;
+          {error && (
+            <InlineNotification
+              kind="error"
+              title={error}
+              subtitle={intl.formatMessage({
+                id: "calendar.management.loadErrorHelper",
+              })}
+              onClose={() => setError(null)}
+              actionButtonLabel={intl.formatMessage({
+                id: "calendar.management.retry",
+              })}
+              onActionButtonClick={fetchHolidays}
+            />
+          )}
 
-                      if (editingId === holiday.id) {
-                        return (
-                          <TableRow
-                            key={row.id}
-                            data-testid="holiday-inline-row"
-                          >
-                            <TableCell>
-                              <DatePicker
-                                datePickerType="single"
-                                value={editForm.date}
-                                onChange={([date]) =>
-                                  setEditForm((f) => ({
-                                    ...f,
-                                    date: date
-                                      ? date.toISOString().split("T")[0]
-                                      : "",
-                                  }))
-                                }
-                              >
-                                <DatePickerInput
-                                  id="edit-holiday-date"
-                                  placeholder="yyyy-mm-dd"
-                                  size="sm"
-                                />
-                              </DatePicker>
-                            </TableCell>
-                            <TableCell>
-                              <TextInput
-                                id="edit-holiday-name"
-                                value={editForm.name}
-                                onChange={(e) =>
-                                  setEditForm((f) => ({
-                                    ...f,
-                                    name: e.target.value,
-                                  }))
-                                }
-                                size="sm"
-                                maxLength={100}
-                                autoFocus
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Checkbox
-                                id="edit-holiday-recurring"
-                                labelText={intl.formatMessage({
-                                  id: "calendar.management.annual",
-                                })}
-                                checked={editForm.recurring}
-                                onChange={(_, { checked }) =>
-                                  setEditForm((f) => ({
-                                    ...f,
-                                    recurring: checked,
-                                  }))
-                                }
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Tag type={holiday.isActive ? "green" : "gray"}>
-                                <FormattedMessage
-                                  id={
-                                    holiday.isActive
-                                      ? "calendar.management.active"
-                                      : "calendar.management.inactive"
-                                  }
-                                />
-                              </Tag>
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                size="sm"
-                                onClick={handleSave}
-                                disabled={!canSave}
-                                data-testid="save-holiday-button"
-                              >
-                                <FormattedMessage id="calendar.management.save" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                kind="ghost"
-                                onClick={handleCancel}
-                                data-testid="cancel-holiday-button"
-                              >
-                                <FormattedMessage id="calendar.management.cancel" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      }
-
-                      return (
-                        <TableRow
-                          key={row.id}
-                          style={{
-                            opacity: holiday.isActive ? 1 : 0.5,
-                          }}
-                        >
-                          <TableCell>
-                            <div>
-                              <span style={{ fontWeight: 500 }}>
-                                {holiday.date}
-                              </span>
-                              <br />
-                              <span
-                                style={{
-                                  fontSize: "12px",
-                                  color: holiday.isWeekendDay
-                                    ? "var(--cds-support-warning)"
-                                    : "var(--cds-text-helper)",
-                                }}
-                              >
-                                {holiday.dayOfWeek}
-                                {holiday.isWeekendDay && (
-                                  <>
-                                    {" "}
-                                    (
-                                    <FormattedMessage id="calendar.management.weekend" />
-                                    )
-                                  </>
-                                )}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell>{holiday.name}</TableCell>
-                          <TableCell>
-                            <Tag type={holiday.isRecurring ? "teal" : "gray"}>
-                              <FormattedMessage
-                                id={
-                                  holiday.isRecurring
-                                    ? "calendar.management.annual"
-                                    : "calendar.management.oneTime"
-                                }
-                              />
-                            </Tag>
-                          </TableCell>
-                          <TableCell>
-                            <Tag type={holiday.isActive ? "green" : "gray"}>
-                              <FormattedMessage
-                                id={
-                                  holiday.isActive
-                                    ? "calendar.management.active"
-                                    : "calendar.management.inactive"
-                                }
-                              />
-                            </Tag>
-                          </TableCell>
-                          <TableCell>
-                            <Button
-                              kind="ghost"
-                              size="sm"
-                              hasIconOnly
-                              renderIcon={Edit}
-                              iconDescription={intl.formatMessage({
-                                id: "calendar.management.editHoliday",
-                              })}
-                              onClick={() => handleEdit(holiday)}
-                              disabled={isEditing}
-                            />
-                            <Button
-                              kind="ghost"
-                              size="sm"
-                              hasIconOnly
-                              renderIcon={TrashCan}
-                              iconDescription={intl.formatMessage({
-                                id: "label.delete",
-                              })}
-                              onClick={() => setShowDeleteModal(holiday.id)}
-                              disabled={isEditing}
-                            />
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                    {holidays.length === 0 && !isAdding && (
-                      <TableRow>
-                        <TableCell colSpan={5} style={{ textAlign: "center" }}>
-                          <FormattedMessage
-                            id="calendar.management.noHolidays"
-                            values={{ year }}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </DataTable>
-        )}
-
-        <div
-          style={{
-            padding: "0.75rem 1rem",
-            fontSize: "12px",
-            color: "var(--cds-text-helper)",
-          }}
-          data-testid="holiday-count-footer"
-        >
-          <FormattedMessage
-            id="calendar.management.holidayCount"
-            values={{ count: holidays.length, year }}
-          />
-        </div>
+          {loading ? (
+            <DataTableSkeleton columnCount={4} rowCount={4} />
+          ) : visibleHolidays.length === 0 ? (
+            <div className="calendar-workspace__empty">
+              <h3>
+                <FormattedMessage
+                  id={
+                    query
+                      ? "calendar.management.noSearchResults"
+                      : "calendar.management.noHolidaysTitle"
+                  }
+                />
+              </h3>
+              <p>
+                <FormattedMessage
+                  id={
+                    query
+                      ? "calendar.management.noSearchResultsHelper"
+                      : "calendar.management.noHolidays"
+                  }
+                  values={{ year }}
+                />
+              </p>
+              <Button
+                kind="tertiary"
+                size="sm"
+                onClick={() => (query ? setQuery("") : openEditor())}
+              >
+                <FormattedMessage
+                  id={
+                    query
+                      ? "calendar.management.clearFilters"
+                      : "calendar.management.addHoliday"
+                  }
+                />
+              </Button>
+            </div>
+          ) : (
+            <div className="calendar-workspace__holiday-grid">
+              {visibleHolidays.map((holiday) => (
+                <article
+                  className={`calendar-holiday-card${holiday.isActive ? "" : " calendar-holiday-card--inactive"}`}
+                  key={holiday.id}
+                >
+                  <div className="calendar-holiday-card__date">
+                    <strong>{holiday.date}</strong>
+                    <span>{holiday.dayOfWeek}</span>
+                  </div>
+                  <div className="calendar-holiday-card__body">
+                    <div className="calendar-holiday-card__tags">
+                      <Tag type={holiday.isActive ? "green" : "gray"} size="sm">
+                        <FormattedMessage
+                          id={
+                            holiday.isActive
+                              ? "calendar.management.active"
+                              : "calendar.management.inactive"
+                          }
+                        />
+                      </Tag>
+                      <Tag
+                        type={holiday.isRecurring ? "teal" : "cool-gray"}
+                        size="sm"
+                      >
+                        <FormattedMessage
+                          id={
+                            holiday.isRecurring
+                              ? "calendar.management.annual"
+                              : "calendar.management.oneTime"
+                          }
+                        />
+                      </Tag>
+                      {holiday.isWeekendDay && (
+                        <Tag type="warm-gray" size="sm">
+                          <FormattedMessage id="calendar.management.weekend" />
+                        </Tag>
+                      )}
+                    </div>
+                    <h3>{holiday.name}</h3>
+                  </div>
+                  <div className="calendar-holiday-card__actions">
+                    <Button
+                      kind="ghost"
+                      size="sm"
+                      renderIcon={Edit}
+                      onClick={() => openEditor(holiday)}
+                      disabled={actionPending}
+                    >
+                      <FormattedMessage id="calendar.management.editHoliday" />
+                    </Button>
+                    <Button
+                      kind="ghost"
+                      size="sm"
+                      renderIcon={TrashCan}
+                      onClick={() => setDeleteHoliday(holiday)}
+                      disabled={actionPending}
+                    >
+                      <FormattedMessage id="label.delete" />
+                    </Button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
 
-      <Modal
-        open={showDeleteModal !== null}
-        modalHeading={intl.formatMessage({
-          id: "calendar.management.deleteConfirm",
-        })}
-        primaryButtonText={intl.formatMessage({ id: "label.delete" })}
-        secondaryButtonText={intl.formatMessage({
-          id: "calendar.management.cancel",
-        })}
-        onRequestSubmit={() => handleDelete(showDeleteModal)}
-        onRequestClose={() => setShowDeleteModal(null)}
-        danger
-      />
+      {editor && (
+        <Modal
+          open
+          size="sm"
+          className="calendar-holiday-editor"
+          modalHeading={intl.formatMessage({
+            id:
+              editor.id == null
+                ? "calendar.management.addHoliday"
+                : "calendar.management.editHoliday",
+          })}
+          modalLabel={intl.formatMessage(
+            { id: "calendar.management.editorLabel" },
+            { year },
+          )}
+          primaryButtonText={intl.formatMessage({
+            id: "calendar.management.save",
+          })}
+          secondaryButtonText={intl.formatMessage({
+            id: "calendar.management.cancel",
+          })}
+          primaryButtonDisabled={!canSave || actionPending}
+          onRequestClose={closeEditor}
+          onRequestSubmit={handleSave}
+          preventCloseOnClickOutside
+        >
+          <div
+            className="calendar-holiday-editor__form"
+            data-testid="holiday-inline-row"
+          >
+            <DatePicker
+              datePickerType="single"
+              dateFormat="Y-m-d"
+              value={editForm.date}
+              onChange={([date]) =>
+                setEditForm((current) => ({
+                  ...current,
+                  date: date ? date.toISOString().split("T")[0] : "",
+                }))
+              }
+            >
+              <DatePickerInput
+                id="holiday-date"
+                labelText={intl.formatMessage({
+                  id: "calendar.management.date",
+                })}
+                placeholder="yyyy-mm-dd"
+                autoFocus
+              />
+            </DatePicker>
+            <TextInput
+              id="holiday-name"
+              labelText={intl.formatMessage({
+                id: "calendar.management.holidayName",
+              })}
+              value={editForm.name}
+              onChange={(event) =>
+                setEditForm((current) => ({
+                  ...current,
+                  name: event.target.value,
+                }))
+              }
+              maxLength={100}
+            />
+            <Checkbox
+              id="holiday-recurring"
+              labelText={intl.formatMessage({
+                id: "calendar.management.recurringHelper",
+              })}
+              checked={editForm.recurring}
+              onChange={(_event, { checked }) =>
+                setEditForm((current) => ({ ...current, recurring: checked }))
+              }
+            />
+            {actionPending && (
+              <InlineLoading
+                description={intl.formatMessage({
+                  id: "calendar.management.saving",
+                })}
+              />
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {discardOpen && (
+        <Modal
+          open
+          danger
+          modalHeading={intl.formatMessage({
+            id: "calendar.management.discardTitle",
+          })}
+          primaryButtonText={intl.formatMessage({
+            id: "calendar.management.discard",
+          })}
+          secondaryButtonText={intl.formatMessage({
+            id: "calendar.management.cancel",
+          })}
+          onRequestClose={() => setDiscardOpen(false)}
+          onRequestSubmit={finishEditor}
+        >
+          <p>
+            <FormattedMessage id="calendar.management.discardMessage" />
+          </p>
+        </Modal>
+      )}
+
+      {deleteHoliday && (
+        <Modal
+          open
+          danger
+          modalHeading={intl.formatMessage({
+            id: "calendar.management.deleteTitle",
+          })}
+          primaryButtonText={intl.formatMessage({ id: "label.delete" })}
+          secondaryButtonText={intl.formatMessage({
+            id: "calendar.management.cancel",
+          })}
+          primaryButtonDisabled={actionPending}
+          onRequestSubmit={handleDelete}
+          onRequestClose={() => setDeleteHoliday(null)}
+        >
+          <p>
+            <FormattedMessage
+              id="calendar.management.deleteConfirmNamed"
+              values={{ name: deleteHoliday.name }}
+            />
+          </p>
+        </Modal>
+      )}
 
       {showImportModal && (
         <CsvImportPreview
@@ -638,5 +594,3 @@ function CalendarManagement() {
     </>
   );
 }
-
-export default CalendarManagement;

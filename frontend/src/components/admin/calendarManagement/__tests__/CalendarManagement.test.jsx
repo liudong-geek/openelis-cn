@@ -7,6 +7,13 @@ import messages from "../../../../languages/en.json";
 import CalendarManagement from "../CalendarManagement";
 import { getFromOpenElisServer } from "../../../utils/Utils";
 
+const apiMocks = vi.hoisted(() => ({
+  get: vi.fn(),
+  post: vi.fn(),
+  put: vi.fn(),
+  remove: vi.fn(),
+}));
+
 vi.mock("../../../../components/common/PageBreadCrumb", () => {
   return {
     default: function MockBreadCrumb() {
@@ -23,8 +30,10 @@ vi.mock("../../../layout/Layout", () => ({
 }));
 
 vi.mock("../../../utils/Utils", () => ({
-  getFromOpenElisServer: vi.fn(),
-  postToOpenElisServerJsonResponse: vi.fn(),
+  getFromOpenElisServer: apiMocks.get,
+  postToOpenElisServerJsonResponse: apiMocks.post,
+  putToOpenElisServer: apiMocks.put,
+  deleteFromOpenElisServer: apiMocks.remove,
 }));
 
 // Replaced inline utils require
@@ -114,7 +123,7 @@ describe("CalendarManagement", () => {
     renderWithIntl(<CalendarManagement />);
     fireEvent.click(screen.getByTestId("add-holiday-button"));
     await waitFor(() => {
-      expect(screen.getByTestId("save-holiday-button")).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     });
   });
 
@@ -129,7 +138,9 @@ describe("CalendarManagement", () => {
 
   test("renders year dropdown", async () => {
     renderWithIntl(<CalendarManagement />);
-    expect(screen.getByTestId("year-dropdown")).toBeInTheDocument();
+    const dropdown = screen.getByTestId("year-dropdown");
+    expect(dropdown).toBeInTheDocument();
+    expect(dropdown).toHaveTextContent("2026");
   });
 
   test("renders import and export buttons", async () => {
@@ -141,9 +152,10 @@ describe("CalendarManagement", () => {
   test("inactive holidays are visually dimmed (opacity)", async () => {
     renderWithIntl(<CalendarManagement />);
     await waitFor(() => {
-      // Christmas Day (id: 3) is inactive
-      const christmasRow = screen.getByText("Christmas Day").closest("tr");
-      expect(christmasRow).toHaveStyle("opacity: 0.5");
+      const christmasCard = screen
+        .getByText("Christmas Day")
+        .closest("article");
+      expect(christmasCard).toHaveClass("calendar-holiday-card--inactive");
     });
   });
 
@@ -174,7 +186,9 @@ describe("CalendarManagement", () => {
     });
     renderWithIntl(<CalendarManagement />);
     await waitFor(() => {
-      expect(screen.getByText(/No holidays configured/)).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "No holidays configured" }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -205,5 +219,29 @@ describe("CalendarManagement", () => {
     );
 
     window.open = originalOpen;
+  });
+
+  test("shows calendar metrics and filters holiday cards", async () => {
+    renderWithIntl(<CalendarManagement />);
+    await screen.findByText("New Year's Day");
+
+    expect(
+      screen.getByRole("region", { name: "Calendar overview" }),
+    ).toHaveTextContent("2026");
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "Christmas" },
+    });
+    expect(screen.getByText("Christmas Day")).toBeInTheDocument();
+    expect(screen.queryByText("New Year's Day")).not.toBeInTheDocument();
+  });
+
+  test("asks before closing a changed holiday editor", async () => {
+    renderWithIntl(<CalendarManagement />);
+    fireEvent.click(screen.getByTestId("add-holiday-button"));
+    fireEvent.change(screen.getByLabelText("Holiday Name"), {
+      target: { value: "Lab anniversary" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByText("Discard unsaved changes?")).toBeInTheDocument();
   });
 });

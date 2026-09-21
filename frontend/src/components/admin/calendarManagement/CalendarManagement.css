@@ -1,0 +1,251 @@
+.calendar-workspace {
+  padding-bottom: 2rem;
+}
+.calendar-workspace__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.calendar-workspace__metrics article {
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  background: var(--oe-surface);
+  box-shadow: var(--oe-surface-shadow);
+}
+.calendar-workspace__metrics span {
+  display: block;
+  color: var(--oe-text-muted);
+  font-size: 0.75rem;
+}
+.calendar-workspace__metrics strong {
+  display: block;
+  margin-top: 0.375rem;
+  color: var(--oe-text);
+  font-size: 1.5rem;
+  font-weight: 650;
+}
+.calendar-workspace__controls {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  background: var(--oe-surface-subtle);
+}
+.calendar-workspace__controls .cds--dropdown {
+  width: 10rem;
+}
+.calendar-workspace__transfer-actions,
+.calendar-holiday-card__tags,
+.calendar-holiday-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.calendar-weekend-panel,
+.calendar-workspace__holiday-panel {
+  margin-top: 1rem;
+  overflow: hidden;
+  border: 1px solid var(--oe-border);
+  border-radius: var(--oe-surface-radius);
+  background: var(--oe-surface);
+  box-shadow: var(--oe-surface-shadow);
+}
+.calendar-weekend-panel > header,
+.calendar-workspace__holiday-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--oe-border);
+  background: var(--oe-surface-subtle);
+}
+.calendar-weekend-panel h2,
+.calendar-workspace__holiday-panel h2 {
+  margin: 0;
+  color: var(--oe-text);
+  font-size: 1rem;
+  font-weight: 650;
+}
+.calendar-weekend-panel header p,
+.calendar-workspace__holiday-panel header p {
+  margin: 0.25rem 0 0;
+  color: var(--oe-text-muted);
+  font-size: 0.75rem;
+}
+.calendar-weekend-panel__status {
+  min-width: 8rem;
+  color: var(--cds-support-success);
+  font-size: 0.75rem;
+  text-align: right;
+}
+.calendar-weekend-panel__days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.625rem;
+  padding: 1rem 1.25rem;
+}
+.calendar-weekend-panel__day {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--oe-border);
+  border-radius: calc(var(--oe-surface-radius) - 2px);
+  background: var(--oe-surface-subtle);
+}
+.calendar-weekend-panel__day--selected {
+  border-color: color-mix(in srgb, var(--oe-accent) 42%, var(--oe-border));
+  background: color-mix(in srgb, var(--oe-accent) 7%, #fff);
+}
+.calendar-workspace__holiday-panel > header .cds--search {
+  width: min(22rem, 45%);
+}
+.calendar-workspace__holiday-grid {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem 1.25rem;
+}
+.calendar-holiday-card {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--oe-border);
+  border-radius: calc(var(--oe-surface-radius) - 2px);
+  background: var(--oe-surface);
+}
+.calendar-holiday-card--inactive {
+  background: var(--oe-surface-subtle);
+}
+.calendar-holiday-card__date {
+  align-self: stretch;
+  padding: 1rem;
+  border-right: 1px solid var(--oe-border);
+  background: var(--oe-surface-subtle);
+}
+.calendar-holiday-card__date strong,
+.calendar-holiday-card__date span {
+  display: block;
+}
+.calendar-holiday-card__date strong {
+  color: var(--oe-text);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.875rem;
+}
+.calendar-holiday-card__date span {
+  margin-top: 0.25rem;
+  color: var(--oe-text-muted);
+  font-size: 0.75rem;
+}
+.calendar-holiday-card__body {
+  min-width: 0;
+  padding: 0.75rem 0;
+}
+.calendar-holiday-card__body h3 {
+  margin: 0.5rem 0 0;
+  overflow-wrap: anywhere;
+  color: var(--oe-text);
+  font-size: 0.9375rem;
+}
+.calendar-holiday-card__actions {
+  justify-content: flex-end;
+  padding-right: 0.75rem;
+}
+.calendar-workspace__empty {
+  padding: 3rem 1.25rem;
+  text-align: center;
+}
+.calendar-workspace__empty h3 {
+  margin: 0;
+  color: var(--oe-text);
+  font-size: 1.125rem;
+}
+.calendar-workspace__empty p {
+  margin: 0.5rem 0 1rem;
+  color: var(--oe-text-muted);
+}
+.calendar-holiday-editor__form {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.calendar-holiday-editor .cds--modal-content {
+  overflow-x: hidden;
+}
+.calendar-holiday-editor__form > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.calendar-holiday-editor__form .cds--date-picker,
+.calendar-holiday-editor__form .cds--date-picker-container,
+.calendar-holiday-editor__form .cds--date-picker-input__wrapper,
+.calendar-holiday-editor__form .cds--date-picker__input {
+  width: 100%;
+}
+@media (max-width: 64rem) {
+  .calendar-weekend-panel__days {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+@media (max-width: 42rem) {
+  .calendar-workspace .oe-page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .calendar-workspace .oe-page-header__actions,
+  .calendar-workspace .oe-page-header__actions .cds--btn,
+  .calendar-workspace__controls .cds--dropdown,
+  .calendar-workspace__holiday-panel > header .cds--search {
+    width: 100%;
+    max-width: none;
+  }
+  .calendar-workspace__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .calendar-workspace__controls,
+  .calendar-weekend-panel > header,
+  .calendar-workspace__holiday-panel > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .calendar-workspace__transfer-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .calendar-workspace__transfer-actions .cds--btn {
+    width: 100%;
+    max-width: none;
+  }
+  .calendar-weekend-panel__status {
+    min-width: 0;
+    text-align: left;
+  }
+  .calendar-weekend-panel__days {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .calendar-holiday-card {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .calendar-holiday-card__date {
+    border-right: 0;
+    border-bottom: 1px solid var(--oe-border);
+  }
+  .calendar-holiday-card__body,
+  .calendar-holiday-card__actions {
+    padding: 0.875rem;
+  }
+  .calendar-holiday-card__actions {
+    justify-content: stretch;
+    border-top: 1px solid var(--oe-border);
+  }
+  .calendar-holiday-card__actions .cds--btn {
+    flex: 1;
+  }
+}

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useContext } from "react";
-import { Checkbox, InlineNotification } from "@carbon/react";
+import React, { useContext, useEffect, useRef, useState } from "react";
+import { Checkbox, InlineLoading } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { getFromOpenElisServer, putToOpenElisServer } from "../../utils/Utils";
 import { NotificationContext } from "../../layout/Layout";
@@ -14,94 +14,105 @@ const DAY_KEYS = [
   "calendar.management.day.sat",
 ];
 
-function WeekendConfig() {
+export default function WeekendConfig() {
   const intl = useIntl();
   const { addNotification, setNotificationVisible } =
     useContext(NotificationContext);
-  const [weekendDays, setWeekendDays] = useState([]);
-  const [showSaved, setShowSaved] = useState(false);
   const savedTimerRef = useRef(null);
+  const [weekendDays, setWeekendDays] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
 
   useEffect(() => {
+    getFromOpenElisServer("/rest/calendar/weekends", (response) => {
+      setWeekendDays(
+        Array.isArray(response?.weekendDays) ? response.weekendDays : [],
+      );
+      setLoading(false);
+    });
     return () => {
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
     };
   }, []);
 
-  useEffect(() => {
-    getFromOpenElisServer("/rest/calendar/weekends", (res) => {
-      if (res && res.weekendDays) {
-        setWeekendDays(res.weekendDays);
-      }
-    });
-  }, []);
-
-  const handleToggle = (dayNum, checked) => {
-    const prev = [...weekendDays];
-    const newDays = checked
-      ? [...weekendDays, dayNum]
-      : weekendDays.filter((d) => d !== dayNum);
-
-    setWeekendDays(newDays);
-
+  const handleToggle = (dayNumber, checked) => {
+    const previous = [...weekendDays];
+    const next = (
+      checked
+        ? [...weekendDays, dayNumber]
+        : weekendDays.filter((day) => day !== dayNumber)
+    ).sort((left, right) => left - right);
+    setWeekendDays(next);
+    setSaving(true);
+    setShowSaved(false);
     putToOpenElisServer(
       "/rest/calendar/weekends",
-      JSON.stringify({ weekendDays: newDays }),
+      JSON.stringify({ weekendDays: next }),
       (status) => {
+        setSaving(false);
         if (status === 200) {
           setShowSaved(true);
+          if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
           savedTimerRef.current = setTimeout(() => setShowSaved(false), 3000);
-        } else {
-          setWeekendDays(prev);
-          addNotification({
-            kind: "error",
-            title: intl.formatMessage({ id: "calendar.management.saveError" }),
-          });
-          setNotificationVisible(true);
+          return;
         }
+        setWeekendDays(previous);
+        addNotification({
+          kind: "error",
+          title: intl.formatMessage({ id: "calendar.management.saveError" }),
+        });
+        setNotificationVisible(true);
       },
     );
   };
 
   return (
-    <div
-      style={{
-        marginBottom: "1rem",
-        padding: "1rem",
-        border: "1px solid var(--cds-border-subtle)",
-        borderRadius: "4px",
-      }}
-    >
-      <label
-        style={{ fontSize: "12px", fontWeight: 600, marginBottom: "0.5rem" }}
-      >
-        <FormattedMessage id="calendar.management.weekendDays" />
-      </label>
-      <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-        {DAY_KEYS.map((key, idx) => (
-          <Checkbox
-            key={idx}
-            id={`weekend-checkbox-${idx}`}
-            data-testid={`weekend-checkbox-${idx}`}
-            labelText={intl.formatMessage({ id: key })}
-            checked={weekendDays.includes(idx)}
-            onChange={(_, { checked }) => handleToggle(idx, checked)}
-          />
+    <section className="calendar-weekend-panel">
+      <header>
+        <div>
+          <h2>
+            <FormattedMessage id="calendar.management.weekendDays" />
+          </h2>
+          <p>
+            <FormattedMessage id="calendar.management.weekendHelper" />
+          </p>
+        </div>
+        <div className="calendar-weekend-panel__status" role="status">
+          {loading || saving ? (
+            <InlineLoading
+              description={intl.formatMessage({
+                id: loading
+                  ? "calendar.management.weekendLoading"
+                  : "calendar.management.weekendUpdating",
+              })}
+            />
+          ) : showSaved ? (
+            <FormattedMessage id="calendar.management.weekendSaved" />
+          ) : null}
+        </div>
+      </header>
+      <div className="calendar-weekend-panel__days">
+        {DAY_KEYS.map((key, index) => (
+          <div
+            className={
+              weekendDays.includes(index)
+                ? "calendar-weekend-panel__day calendar-weekend-panel__day--selected"
+                : "calendar-weekend-panel__day"
+            }
+            key={key}
+          >
+            <Checkbox
+              id={`weekend-checkbox-${index}`}
+              data-testid={`weekend-checkbox-${index}`}
+              labelText={intl.formatMessage({ id: key })}
+              checked={weekendDays.includes(index)}
+              disabled={loading || saving}
+              onChange={(_event, { checked }) => handleToggle(index, checked)}
+            />
+          </div>
         ))}
       </div>
-      {showSaved && (
-        <InlineNotification
-          kind="success"
-          title={intl.formatMessage({
-            id: "calendar.management.weekendSaved",
-          })}
-          lowContrast
-          hideCloseButton
-          style={{ marginTop: "0.5rem" }}
-        />
-      )}
-    </div>
+    </section>
   );
 }
-
-export default WeekendConfig;
