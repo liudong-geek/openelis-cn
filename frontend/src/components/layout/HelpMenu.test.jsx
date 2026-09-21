@@ -78,4 +78,25 @@ describe("HelpMenu", () => {
       ),
     ).not.toThrow();
   });
+
+  test("keeps the bundled manual when the server exposes a generic manual", () => {
+    getFromOpenElisServer.mockImplementation((url, callback) => {
+      if (url === "/rest/properties") {
+        callback({
+          "org.openelisglobal.help.manual.url": "https://example.com/manual",
+        });
+      }
+    });
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+
+    renderWithIntl(<HelpMenu helpOpen handlePanelToggle={() => {}} />);
+    fireEvent.click(screen.getByText(messages["banner.menu.help.usermanual"]));
+
+    expect(openSpy).toHaveBeenCalledWith(
+      "/docs/china-lis-user-manual.html",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    openSpy.mockRestore();
+  });
 });

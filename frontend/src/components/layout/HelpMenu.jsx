@@ -38,9 +38,9 @@ const HelpMenu = ({ helpOpen, handlePanelToggle }) => {
       }
 
       setHelpUrls({
-        manual:
-          properties["org.openelisglobal.help.manual.url"] ||
-          LOCAL_USER_MANUAL_URL,
+        // This distribution ships a manual that matches its current China
+        // workflow. Keep the generic server URL from replacing that content.
+        manual: LOCAL_USER_MANUAL_URL,
         tutorials: properties["org.openelisglobal.help.tutorials.url"] || "",
         "release-notes":
           properties["org.openelisglobal.help.release-notes.url"] || "",
