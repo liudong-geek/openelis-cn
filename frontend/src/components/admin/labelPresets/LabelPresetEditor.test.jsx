@@ -173,6 +173,10 @@ describe("LabelPresetEditor", () => {
       onClose,
     );
 
+    fireEvent.change(
+      screen.getByLabelText(messages["admin.labelPresets.field.name"]),
+      { target: { value: "updated preset" } },
+    );
     fireEvent.click(screen.getByText(messages["label.button.save"]));
 
     await waitFor(() => {
@@ -227,5 +231,28 @@ describe("LabelPresetEditor", () => {
         messages["admin.labelPresets.editor.section.printScope"],
       ),
     ).toBeInTheDocument();
+  });
+
+  test("updates the live preview when the preset name changes", () => {
+    renderEditor();
+    fireEvent.change(
+      screen.getByLabelText(messages["admin.labelPresets.field.name"]),
+      { target: { value: "Chemistry tube" } },
+    );
+    expect(screen.getByText("Chemistry tube")).toBeInTheDocument();
+  });
+
+  test("asks before discarding unsaved changes", () => {
+    const onClose = vi.fn();
+    renderEditor(null, onClose);
+    fireEvent.change(
+      screen.getByLabelText(messages["admin.labelPresets.field.name"]),
+      { target: { value: "Unsaved preset" } },
+    );
+    fireEvent.click(screen.getByText(messages["label.button.cancel"]));
+    expect(
+      screen.getByText(messages["admin.labelPresets.editor.discardTitle"]),
+    ).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

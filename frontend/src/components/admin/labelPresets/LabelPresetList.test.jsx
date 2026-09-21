@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { waitFor } from "@testing-library/dom";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
@@ -166,5 +166,25 @@ describe("LabelPresetList", () => {
         expect.any(Function),
       );
     });
+  });
+
+  test("shows summary counts and filters cards by name", async () => {
+    getFromOpenElisServer.mockImplementation((url, callback) => {
+      callback(mockPresets);
+    });
+    renderWithProviders(<LabelPresetList />);
+
+    await waitFor(() => {
+      expect(screen.getByText("2 presets")).toBeInTheDocument();
+    });
+    fireEvent.change(
+      screen.getByLabelText(
+        messages["admin.labelPresets.workspace.searchLabel"],
+      ),
+      { target: { value: "system" } },
+    );
+    expect(screen.queryByText("standard order")).not.toBeInTheDocument();
+    expect(screen.getByText("system preset")).toBeInTheDocument();
+    expect(screen.getByText("1 preset")).toBeInTheDocument();
   });
 });
