@@ -1107,7 +1107,7 @@ describe("Header Component - M2b Enhancement Tests", () => {
       ).not.toBeInTheDocument();
     });
 
-    test("opening a top-level menu collapses its open sibling", async () => {
+    test("top-level menus expand and collapse independently", async () => {
       const { container } = renderHeader();
 
       await waitFor(() => {
@@ -1126,6 +1126,18 @@ describe("Header Component - M2b Enhancement Tests", () => {
       });
 
       fireEvent.click(getResultsToggle());
+      await waitFor(() => {
+        expect(getOrderToggle()).toHaveAttribute("aria-expanded", "true");
+        expect(getResultsToggle()).toHaveAttribute("aria-expanded", "true");
+      });
+
+      fireEvent.click(container.querySelector("#menu_sample_add_nav"));
+      await waitFor(() => {
+        expect(getOrderToggle()).toHaveAttribute("aria-expanded", "true");
+        expect(getResultsToggle()).toHaveAttribute("aria-expanded", "true");
+      });
+
+      fireEvent.click(getOrderToggle());
       await waitFor(() => {
         expect(getOrderToggle()).toHaveAttribute("aria-expanded", "false");
         expect(getResultsToggle()).toHaveAttribute("aria-expanded", "true");

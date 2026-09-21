@@ -67,7 +67,9 @@ const expandMenuForRoute = (items, pathname) => {
       return {
         ...item,
         expanded:
-          childResult.items.length > 0 ? childResult.branchMatches : false,
+          childResult.items.length > 0
+            ? item.expanded === true || childResult.branchMatches
+            : false,
         childMenus: childResult.items,
       };
     });
@@ -750,8 +752,9 @@ function OEHeader({
               toggleButton?.parentElement?.parentElement ===
               event.currentTarget;
             if (ownsToggle) {
-              // Carbon is remounted when sibling expansion changes. Preserve
-              // focus on the operated workspace button across that remount.
+              // Carbon is remounted when this item's expansion changes.
+              // Preserve focus on the operated workspace button across that
+              // remount.
               if (
                 isClinicalWorkspace &&
                 toggleButton === document.activeElement
@@ -764,9 +767,8 @@ function OEHeader({
         >
           {sectionTitle}
           <SideNavMenu
-            // Carbon owns its internal expanded state. Changing the key only
-            // when our accordion state changes re-syncs defaultExpanded for a
-            // sibling that must close.
+            // Carbon owns its internal expanded state. Changing the key when
+            // this item changes re-syncs defaultExpanded with our menu state.
             key={`${itemId}-${carbonExpanded ? "expanded" : "collapsed"}`}
             // IMPORTANT: use stable key (elementId) to prevent React from reusing the wrong subtree
             // when the menu list shape changes (roles/plugins/async load).
@@ -892,36 +894,22 @@ function OEHeader({
       const newMenus = { ...prev };
       const targetId = menuItem?.menu?.elementId;
 
-      // Toggle by stable elementId and use accordion behavior at the target's
-      // level. This keeps the long laboratory menu scannable without changing
-      // expansion state in unrelated ancestor levels.
-      const toggleAccordionById = (items) => {
-        const currentItems = items || [];
-        const targetAtThisLevel = currentItems.some(
-          (it) => it?.menu?.elementId === targetId,
-        );
-
-        if (targetAtThisLevel) {
-          return currentItems.map((it) => {
-            const id = it?.menu?.elementId;
-            if (!id) return it;
-            return {
-              ...it,
-              expanded: id === targetId ? !it.expanded : false,
-            };
-          });
-        }
-
-        return currentItems.map((it) => {
+      // Toggle only the selected group. Other groups keep their state so users
+      // can keep several parts of the laboratory workflow visible at once.
+      const toggleExpandedById = (items) => {
+        return (items || []).map((it) => {
+          if (it?.menu?.elementId === targetId) {
+            return { ...it, expanded: !it.expanded };
+          }
           if (!it.childMenus || it.childMenus.length === 0) return it;
           return {
             ...it,
-            childMenus: toggleAccordionById(it.childMenus),
+            childMenus: toggleExpandedById(it.childMenus),
           };
         });
       };
 
-      newMenus.menu = toggleAccordionById(newMenus.menu || []);
+      newMenus.menu = toggleExpandedById(newMenus.menu || []);
 
       // Persist expanded state map for this context
       try {
