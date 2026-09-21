@@ -13,7 +13,10 @@ export const ADMIN_NAVIGATION_DOMAINS = [
     titleId: "admin.dashboard.domain.catalog",
     descriptionId: "admin.dashboard.domain.catalog.description",
     icon: Catalog,
-    links: [["workspace.masterData.title", "testManagementConfigMenu"]],
+    links: [
+      ["workspace.masterData.title", "testManagementConfigMenu"],
+      ["workspace.rules.title", "rulesWorkspace"],
+    ],
     routeRoots: [
       "testManagementConfigMenu",
       "reflex",
@@ -23,6 +26,7 @@ export const ADMIN_NAVIGATION_DOMAINS = [
       "SampleTypeManagement",
       "calculatedValue",
       "batchTestReassignment",
+      "rulesWorkspace",
       "TestCatalog",
       "TestModifyEntry",
       "TestSectionManagement",
@@ -103,10 +107,7 @@ export const ADMIN_NAVIGATION_DOMAINS = [
     titleId: "admin.dashboard.domain.security",
     descriptionId: "admin.dashboard.domain.security.description",
     icon: Security,
-    links: [
-      ["sidenav.label.admin.menu", "globalMenuManagement"],
-      ["sidenav.label.admin.commonproperties", "commonproperties"],
-    ],
+    links: [["workspace.system.title", "systemOperations"]],
     routeRoots: [
       "globalMenuManagement",
       "billingMenuManagement",
@@ -120,6 +121,7 @@ export const ADMIN_NAVIGATION_DOMAINS = [
       "translationManagement",
       "NotifyUser",
       "DatabaseCleaning",
+      "systemOperations",
     ],
   },
   {
@@ -130,12 +132,14 @@ export const ADMIN_NAVIGATION_DOMAINS = [
     links: [
       ["masterData.title", "masterDataIdentity"],
       ["sidenav.label.admin.program", "program"],
+      ["workspace.delivery.title", "deliveryReadiness"],
     ],
     routeRoots: [
       "masterDataIdentity",
       "program",
       "PluginFile",
       "calendarManagement",
+      "deliveryReadiness",
     ],
   },
 ];

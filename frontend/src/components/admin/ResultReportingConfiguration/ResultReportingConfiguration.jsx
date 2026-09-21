@@ -8,6 +8,7 @@ import {
   Section,
   RadioButton,
   Loading,
+  Tag,
 } from "@carbon/react";
 import {
   getFromOpenElisServer,
@@ -23,6 +24,8 @@ import ReportGroupingConfiguration from "./ReportGroupingConfiguration";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 import HisResultOutboxPanel from "./HisResultOutboxPanel";
+import ProductPageHeader from "../../common/ProductPageHeader";
+import "./ResultReportingConfiguration.css";
 
 let breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -104,6 +107,10 @@ function ResultReportingConfiguration() {
       });
     }
     setLoading(false);
+    if (res) {
+      setReportsResp((current) => ({ ...current, reports: reportsShow }));
+      setSaveButton(true);
+    }
   }
 
   function handleSubmit(event) {
@@ -116,9 +123,6 @@ function ResultReportingConfiguration() {
         displayStatus(res);
       },
     );
-    setTimeout(() => {
-      refreshCurrentRoute();
-    }, 1000);
   }
 
   const handleRadioChange = (index, value) => {
@@ -181,85 +185,116 @@ function ResultReportingConfiguration() {
       {notificationVisible && <AlertDialog />}
       <div className="adminPageContent">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
-        <Grid fullWidth={true}>
-          <Column lg={16} md={8} sm={4}>
-            <Section>
-              <Heading>
-                <FormattedMessage id="resultreporting.browse.title" />
-              </Heading>
-            </Section>
-          </Column>
-        </Grid>
-        <div className="orderLegendBody">
+        <ProductPageHeader
+          title={<FormattedMessage id="resultreporting.browse.title" />}
+          subtitle={
+            <FormattedMessage id="resultreporting.workspace.subtitle" />
+          }
+        />
+        <div className="result-reporting-workspace">
           <ReportGroupingConfiguration />
           <HisResultOutboxPanel />
-          {reportsShow &&
-            reportsShow.map((report, index) => (
-              <div key={index}>
-                <Section>
-                  <Section>
-                    <Section>
-                      <Heading>
-                        <FormattedMessage id={report.title} />
-                      </Heading>
-                    </Section>
-                  </Section>
-                </Section>
-                <hr />
-                <br />
-                <div style={{ display: "flex", alignItems: "center" }}>
-                  <RadioButton
-                    id={`enabled-${index}-yes`}
-                    labelText="Enabled"
-                    value="enable"
-                    checked={report.enabled === "enable"}
-                    onChange={() => handleRadioChange(index, "enable")}
-                  />
-                  <RadioButton
-                    id={`enabled-${index}-no`}
-                    labelText="Disabled"
-                    value="disable"
-                    checked={report.enabled === "disable"}
-                    onChange={() => handleRadioChange(index, "disable")}
-                  />
-                </div>
-                <br />
-                <div>
-                  <FormattedMessage id="resultreporting.config.url" />
-                </div>
-                <br />
-                <Grid fullWidth={true}>
-                  <Column lg={16} md={8} sm={4}>
-                    <TextInput
-                      id={`url-${index}`}
-                      className="default"
-                      type="text"
-                      labelText=""
-                      placeholder={intl.formatMessage({
-                        id: "resultreporting.config.url.placeholder",
+          <div className="result-reporting-workspace__summary">
+            <div>
+              <strong>{reportsShow.length}</strong>
+              <span>
+                <FormattedMessage id="resultreporting.summary.channels" />
+              </span>
+            </div>
+            <div>
+              <strong>
+                {
+                  reportsShow.filter((report) => report.enabled === "enable")
+                    .length
+                }
+              </strong>
+              <span>
+                <FormattedMessage id="resultreporting.summary.enabled" />
+              </span>
+            </div>
+            <div>
+              <strong>
+                {reportsShow.reduce(
+                  (sum, report) => sum + Number(report.backlogSize || 0),
+                  0,
+                )}
+              </strong>
+              <span>
+                <FormattedMessage id="resultreporting.summary.backlog" />
+              </span>
+            </div>
+          </div>
+          <div className="result-reporting-workspace__channels">
+            {reportsShow &&
+              reportsShow.map((report, index) => (
+                <section
+                  className="result-reporting-workspace__channel"
+                  key={index}
+                >
+                  <header>
+                    <h2>
+                      <FormattedMessage id={report.title} />
+                    </h2>
+                    <Tag type={report.enabled === "enable" ? "green" : "gray"}>
+                      <FormattedMessage
+                        id={
+                          report.enabled === "enable"
+                            ? "resultreporting.enabled"
+                            : "resultreporting.disabled"
+                        }
+                      />
+                    </Tag>
+                  </header>
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <RadioButton
+                      id={`enabled-${index}-yes`}
+                      labelText={intl.formatMessage({
+                        id: "resultreporting.enabled",
                       })}
-                      required={true}
-                      value={report.url || ""}
-                      onChange={(e) => handleUrlChange(index, e)}
+                      value="enable"
+                      checked={report.enabled === "enable"}
+                      onChange={() => handleRadioChange(index, "enable")}
                     />
-                  </Column>
-                </Grid>
-                <br />
-                <div>
-                  <FormattedMessage id="testnotification.patiententry.info" />
-                </div>
-                <br />
-                <div>
-                  <span>
-                    <FormattedMessage id="result.report.queue.size" />{" "}
-                    {report.backlogSize}
-                  </span>
-                </div>
-                <hr />
-                <br />
-                <br />
-              </div>
-            ))}
+                    <RadioButton
+                      id={`enabled-${index}-no`}
+                      labelText={intl.formatMessage({
+                        id: "resultreporting.disabled",
+                      })}
+                      value="disable"
+                      checked={report.enabled === "disable"}
+                      onChange={() => handleRadioChange(index, "disable")}
+                    />
+                  </div>
+                  <Grid fullWidth={true}>
+                    <Column lg={16} md={8} sm={4}>
+                      <TextInput
+                        id={`url-${index}`}
+                        className="default"
+                        type="text"
+                        labelText={intl.formatMessage({
+                          id: "resultreporting.config.url",
+                        })}
+                        placeholder={intl.formatMessage({
+                          id: "resultreporting.config.url.placeholder",
+                        })}
+                        required={true}
+                        value={report.url || ""}
+                        onChange={(e) => handleUrlChange(index, e)}
+                      />
+                    </Column>
+                  </Grid>
+                  <p className="result-reporting-workspace__help">
+                    <FormattedMessage id="testnotification.patiententry.info" />
+                  </p>
+                  <div className="result-reporting-workspace__backlog">
+                    <span>
+                      <FormattedMessage id="result.report.queue.size" />{" "}
+                      {report.backlogSize}
+                    </span>
+                  </div>
+                </section>
+              ))}
+          </div>
           <Grid fullWidth={true}>
             <Column lg={16} md={8} sm={4}>
               <Button

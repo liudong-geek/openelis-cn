@@ -57,7 +57,7 @@ describe("Admin", () => {
       ).toHaveLength(6);
       expect(
         container.querySelectorAll(".admin-dashboard__domain-links a"),
-      ).toHaveLength(8);
+      ).toHaveLength(9);
       expect(document.querySelector(".cds--side-nav")).not.toBeInTheDocument();
     },
   );

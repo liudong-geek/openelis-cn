@@ -8,6 +8,7 @@ import PageBreadCrumb from "../../common/PageBreadCrumb";
 import ProductPageHeader from "../../common/ProductPageHeader";
 
 const ANALYSER_IMPORT_ROLE = "Analyser Import";
+const LAB_SUPERVISOR_ROLE = "Lab Supervisor";
 
 export const INTERFACE_GROUPS = [
   { id: "all", label: "workspace.interface.group.all" },
@@ -42,6 +43,14 @@ export const INTERFACE_AREAS = [
     description: "workspace.interface.monitor.helper",
     path: "dataExportStatus",
     group: "monitor",
+  },
+  {
+    title: "qc.dashboard.title",
+    description: "workspace.interface.qc.helper",
+    path: "/analyzers/qc/db",
+    group: "monitor",
+    externalRoute: true,
+    requiredRole: LAB_SUPERVISOR_ROLE,
   },
 ];
 

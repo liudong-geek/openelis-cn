@@ -35,7 +35,7 @@ import OrganizationAddModify from "./OrganizationManagement/OrganizationAddModif
 import UserManagement from "./userManagement/UserManagement";
 import UserAddModify from "./userManagement/UserAddModify";
 import ManageMethod from "./testManagement/ManageMethod";
-import BatchTestReassignmentAndCancelation from "./BatchTestReassignmentAndCancellation/BatchTestReassignmentAndCancelation";
+import BatchTestReassignmentAndCancelation from "./BatchTestReassignmentAndCancellation/BatchTestReassignmentWorkspace";
 import TestNotificationConfigMenu from "./testNotificationConfigMenu/TestNotificationConfigMenu";
 import TestNotificationConfigEdit from "./testNotificationConfigMenu/TestNotificationConfigEdit";
 import SearchIndexManagement from "./searchIndexManagement/SearchIndexManagement";
@@ -80,6 +80,9 @@ import ManagementWorkspaceSwitcher from "../management/ManagementWorkspaceSwitch
 import OrganizationPeopleWorkspace from "./organizationPeopleWorkspace/OrganizationPeopleWorkspace";
 import WorkflowReportWorkspace from "./workflowReportWorkspace/WorkflowReportWorkspace";
 import InterfaceWorkspace from "./interfaceWorkspace/InterfaceWorkspace";
+import RulesWorkspace from "./rulesWorkspace/RulesWorkspace";
+import SystemOperationsWorkspace from "./systemOperationsWorkspace/SystemOperationsWorkspace";
+import DeliveryReadinessWorkspace from "./deliveryReadiness/DeliveryReadinessWorkspace";
 
 function Admin() {
   const { path } = useRouteMatch();
@@ -88,6 +91,15 @@ function Admin() {
     <>
       <ManagementWorkspaceSwitcher activeView="configuration" />
       <Switch>
+        <Route path={`${path}/rulesWorkspace`} component={RulesWorkspace} />
+        <Route
+          path={`${path}/systemOperations`}
+          component={SystemOperationsWorkspace}
+        />
+        <Route
+          path={`${path}/deliveryReadiness`}
+          component={DeliveryReadinessWorkspace}
+        />
         <Route
           path={`${path}/calendarManagement`}
           component={CalendarManagement}

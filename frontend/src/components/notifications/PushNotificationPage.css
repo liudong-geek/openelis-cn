@@ -1,0 +1,102 @@
+.notification-workspace {
+  padding-bottom: 4rem;
+}
+.notification-workspace__tabs {
+  display: flex;
+  margin-top: 1rem;
+  border-bottom: 1px solid var(--cds-border-subtle);
+}
+.notification-workspace__tabs button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 10rem;
+  padding: 0.9rem 1rem;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: var(--cds-layer-02);
+  cursor: pointer;
+}
+.notification-workspace__tabs button.is-active {
+  border-bottom-color: var(--cds-link-primary);
+  background: var(--cds-layer-01);
+  font-weight: 600;
+}
+.notification-workspace__panel {
+  padding: 1.5rem;
+  background: var(--cds-layer-01);
+  border: 1px solid var(--cds-border-subtle);
+  border-top: 0;
+}
+.notification-workspace__panel header h2 {
+  margin: 0 0 0.35rem;
+}
+.notification-workspace__panel header p,
+.notification-workspace__panel footer p {
+  margin: 0 0 1.25rem;
+  color: var(--cds-text-secondary);
+}
+.notification-workspace__form {
+  display: grid;
+  grid-template-columns: minmax(15rem, 0.7fr) minmax(20rem, 1.3fr);
+  gap: 1rem;
+}
+.notification-workspace__template-save {
+  display: grid;
+  grid-template-columns: minmax(15rem, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+  max-width: 40rem;
+  margin-top: 1rem;
+}
+.notification-workspace__panel footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--cds-border-subtle);
+}
+.notification-workspace__panel footer p {
+  margin: 0;
+}
+.notification-workspace__empty {
+  padding: 3rem;
+  text-align: center;
+  color: var(--cds-text-secondary);
+  background: var(--cds-layer-02);
+}
+.notification-workspace__list {
+  display: grid;
+  gap: 1px;
+  background: var(--cds-border-subtle);
+  border: 1px solid var(--cds-border-subtle);
+}
+.notification-workspace__list article {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  background: var(--cds-layer-01);
+}
+.notification-workspace__list h3,
+.notification-workspace__list p {
+  margin: 0 0 0.5rem;
+}
+.notification-workspace__list small {
+  color: var(--cds-text-secondary);
+}
+@media (max-width: 672px) {
+  .notification-workspace__form,
+  .notification-workspace__template-save {
+    grid-template-columns: 1fr;
+  }
+  .notification-workspace__tabs {
+    overflow: auto;
+  }
+  .notification-workspace__panel footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

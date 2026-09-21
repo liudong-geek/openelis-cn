@@ -26,6 +26,8 @@ import {
   postToOpenElisServerFullResponse,
 } from "../../utils/Utils";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import ProductPageHeader from "../../common/ProductPageHeader";
+import "./DataExportStatus.css";
 
 const breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -277,150 +279,194 @@ function DataExportStatus() {
     () => Object.fromEntries(rows.map((r) => [String(r.id), r])),
     [rows],
   );
+  const summary = useMemo(
+    () => ({
+      total: rows.length,
+      healthy: rows.filter(
+        (row) =>
+          row.lastStatus === "SUCCEEDED" && (row.failedLast24h || 0) === 0,
+      ).length,
+      attention: rows.filter(
+        (row) =>
+          row.lastStatus === "FAILED" ||
+          row.lastStatus === "INCOMPLETE" ||
+          (row.failedLast24h || 0) > 0,
+      ).length,
+      failures: rows.reduce(
+        (total, row) => total + (row.failedLast24h || 0),
+        0,
+      ),
+    }),
+    [rows],
+  );
 
   return (
     <>
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          <Section>
-            <Section>
-              <Heading>
-                <FormattedMessage id="dataexport.status.title" />
-              </Heading>
-            </Section>
-          </Section>
-        </Column>
-      </Grid>
-      <br />
-      {loading && (
-        <Loading
-          description={intl.formatMessage({ id: "loading" })}
-          withOverlay={false}
+      <div className="adminPageContent data-export-status">
+        <ProductPageHeader
+          title={<FormattedMessage id="dataexport.status.title" />}
+          subtitle={<FormattedMessage id="dataexport.status.subtitle" />}
+          actions={
+            <Button kind="tertiary" onClick={fetchStatuses} size="sm">
+              <FormattedMessage id="dataexport.status.refresh" />
+            </Button>
+          }
         />
-      )}
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          <DataTable rows={tableRows} headers={headers}>
-            {({
-              rows: dtRows,
-              headers: dtHeaders,
-              getHeaderProps,
-              getRowProps,
-              getTableProps,
-            }) => (
-              <TableContainer>
-                <Table {...getTableProps()}>
-                  <TableHead>
-                    <TableRow>
-                      <TableExpandHeader />
-                      {dtHeaders.map((header) => (
-                        <TableHeader
-                          key={header.key}
-                          {...getHeaderProps({ header })}
-                        >
-                          {header.header}
-                        </TableHeader>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {dtRows.length === 0 && !loading && (
-                      <TableRow>
-                        <TableCell colSpan={dtHeaders.length + 1}>
-                          <FormattedMessage id="dataexport.status.empty" />
-                        </TableCell>
-                      </TableRow>
-                    )}
-                    {dtRows.map((row) => {
-                      const source = sourceById[row.id];
-                      return (
-                        <React.Fragment key={row.id}>
-                          <TableExpandRow {...getRowProps({ row })}>
-                            {row.cells.map((cell) => {
-                              if (cell.info.header === "lastStatus") {
-                                return (
-                                  <TableCell key={cell.id}>
-                                    <Tag
-                                      type={statusTagType(
-                                        source?.lastStatus,
-                                        source?.failedLast24h ?? 0,
-                                      )}
-                                    >
-                                      {cell.value}
-                                    </Tag>
-                                  </TableCell>
-                                );
-                              }
-                              if (cell.info.header === "actions") {
-                                const isTriggering =
-                                  triggeringId === source?.id;
-                                return (
-                                  <TableCell key={cell.id}>
-                                    {isTriggering ? (
-                                      <InlineLoading
-                                        description={intl.formatMessage({
-                                          id: "dataexport.status.retryInFlight",
-                                        })}
-                                      />
-                                    ) : (
-                                      <Button
-                                        kind="ghost"
-                                        size="sm"
-                                        disabled={
-                                          !source ||
-                                          triggeringId != null ||
-                                          loading
-                                        }
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          if (source) triggerRetry(source.id);
-                                        }}
-                                        data-cy={`retry-${source?.id}`}
-                                      >
-                                        <FormattedMessage id="dataexport.status.retry" />
-                                      </Button>
-                                    )}
-                                  </TableCell>
-                                );
-                              }
-                              return (
-                                <TableCell key={cell.id}>
-                                  {cell.value}
-                                </TableCell>
-                              );
-                            })}
-                          </TableExpandRow>
-                          <TableExpandedRow colSpan={dtHeaders.length + 1}>
-                            {row.isExpanded && source && (
-                              <AttemptHistory taskId={source.id} />
-                            )}
-                          </TableExpandedRow>
-                        </React.Fragment>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </DataTable>
-          <br />
-          <Button kind="ghost" onClick={fetchStatuses} size="sm">
-            <FormattedMessage id="dataexport.status.refresh" />
-          </Button>
-          {lastRefreshed && (
-            <span
-              style={{
-                marginLeft: "1rem",
-                color: "var(--cds-text-secondary)",
-              }}
-            >
-              <FormattedMessage id="dataexport.status.lastRefreshed" />:{" "}
-              {lastRefreshed.toLocaleTimeString(intl.locale)}
+        <section
+          className="data-export-status__summary"
+          aria-label={intl.formatMessage({ id: "dataexport.status.summary" })}
+        >
+          <div>
+            <strong>{summary.total}</strong>
+            <span>
+              <FormattedMessage id="dataexport.status.summary.total" />
             </span>
-          )}
-        </Column>
-      </Grid>
+          </div>
+          <div>
+            <strong>{summary.healthy}</strong>
+            <span>
+              <FormattedMessage id="dataexport.status.summary.healthy" />
+            </span>
+          </div>
+          <div>
+            <strong>{summary.attention}</strong>
+            <span>
+              <FormattedMessage id="dataexport.status.summary.attention" />
+            </span>
+          </div>
+          <div>
+            <strong>{summary.failures}</strong>
+            <span>
+              <FormattedMessage id="dataexport.status.summary.failures" />
+            </span>
+          </div>
+        </section>
+        {loading && (
+          <Loading
+            description={intl.formatMessage({ id: "loading" })}
+            withOverlay={false}
+          />
+        )}
+        <Grid fullWidth={true}>
+          <Column lg={16} md={8} sm={4}>
+            <DataTable rows={tableRows} headers={headers}>
+              {({
+                rows: dtRows,
+                headers: dtHeaders,
+                getHeaderProps,
+                getRowProps,
+                getTableProps,
+              }) => (
+                <TableContainer>
+                  <Table {...getTableProps()}>
+                    <TableHead>
+                      <TableRow>
+                        <TableExpandHeader />
+                        {dtHeaders.map((header) => (
+                          <TableHeader
+                            key={header.key}
+                            {...getHeaderProps({ header })}
+                          >
+                            {header.header}
+                          </TableHeader>
+                        ))}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {dtRows.length === 0 && !loading && (
+                        <TableRow>
+                          <TableCell colSpan={dtHeaders.length + 1}>
+                            <FormattedMessage id="dataexport.status.empty" />
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {dtRows.map((row) => {
+                        const source = sourceById[row.id];
+                        return (
+                          <React.Fragment key={row.id}>
+                            <TableExpandRow {...getRowProps({ row })}>
+                              {row.cells.map((cell) => {
+                                if (cell.info.header === "lastStatus") {
+                                  return (
+                                    <TableCell key={cell.id}>
+                                      <Tag
+                                        type={statusTagType(
+                                          source?.lastStatus,
+                                          source?.failedLast24h ?? 0,
+                                        )}
+                                      >
+                                        {cell.value}
+                                      </Tag>
+                                    </TableCell>
+                                  );
+                                }
+                                if (cell.info.header === "actions") {
+                                  const isTriggering =
+                                    triggeringId === source?.id;
+                                  return (
+                                    <TableCell key={cell.id}>
+                                      {isTriggering ? (
+                                        <InlineLoading
+                                          description={intl.formatMessage({
+                                            id: "dataexport.status.retryInFlight",
+                                          })}
+                                        />
+                                      ) : (
+                                        <Button
+                                          kind="ghost"
+                                          size="sm"
+                                          disabled={
+                                            !source ||
+                                            triggeringId != null ||
+                                            loading
+                                          }
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (source) triggerRetry(source.id);
+                                          }}
+                                          data-cy={`retry-${source?.id}`}
+                                        >
+                                          <FormattedMessage id="dataexport.status.retry" />
+                                        </Button>
+                                      )}
+                                    </TableCell>
+                                  );
+                                }
+                                return (
+                                  <TableCell key={cell.id}>
+                                    {cell.value}
+                                  </TableCell>
+                                );
+                              })}
+                            </TableExpandRow>
+                            <TableExpandedRow colSpan={dtHeaders.length + 1}>
+                              {row.isExpanded && source && (
+                                <AttemptHistory taskId={source.id} />
+                              )}
+                            </TableExpandedRow>
+                          </React.Fragment>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </DataTable>
+            {lastRefreshed && (
+              <span
+                style={{
+                  marginLeft: "1rem",
+                  color: "var(--cds-text-secondary)",
+                }}
+              >
+                <FormattedMessage id="dataexport.status.lastRefreshed" />:{" "}
+                {lastRefreshed.toLocaleTimeString(intl.locale)}
+              </span>
+            )}
+          </Column>
+        </Grid>
+      </div>
     </>
   );
 }
