@@ -4,7 +4,7 @@ import { Switch, Route, useRouteMatch } from "react-router-dom";
 import "../Style.css";
 import ReflexTestManagement from "./reflexTests/ReflexTestManagement";
 import CalendarManagement from "./calendarManagement";
-import ProgramManagement from "./program/ProgramManagement";
+import ProgramManagement from "./program/ProgramWorkspace";
 import LabNumberManagement from "./labNumber/LabNumberManagement";
 import {
   GlobalMenuManagement,
