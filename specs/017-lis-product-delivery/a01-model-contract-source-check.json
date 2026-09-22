@@ -414,9 +414,10 @@
       "matches_fixed_commit": false,
       "lines": 1864,
       "evidence_matches_fixed_commit": true,
-      "fixed_evidence_path": "Fixed Git blob evidence (see fixed_commit and blob identifiers)",
       "evidence_blob": "4b1550fa536d142a885c85a128430bf366a4244f",
-      "evidence_sha256": "5967c4c10862263b1bfeb5c128519699cb401e992715a7d2bae702c8283e0235"
+      "evidence_sha256": "5967c4c10862263b1bfeb5c128519699cb401e992715a7d2bae702c8283e0235",
+      "fixed_evidence_reference": "Fixed Git blob evidence (see fixed_commit and blob identifiers)",
+      "fixed_evidence_git_ref": "a52cafa4f5c87b2016fd9a325d857ae3bb517d94:frontend/src/components/resultPage/unified/UnifiedResults.tsx"
     },
     {
       "reference": "F3",
