@@ -57,7 +57,7 @@ const expectedClinicalTerms = {
   "validation.empty.message":
     "请选择专业组，或输入实验室编号，加载待审核检验结果。",
   "validation.label.nonconform": "= 标本或检验申请不合格，或检验项目已被拒绝",
-  "validation.reject.all": "全部复检",
+  "validation.reject.all": "全部退回",
   "validation.save.error": "结果审核失败",
   "validation.save.success": "结果审核成功",
   "validation.search.noresult": "未找到待审核结果",

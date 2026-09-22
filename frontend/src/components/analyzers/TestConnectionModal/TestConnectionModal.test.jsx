@@ -259,6 +259,28 @@ describe("TestConnectionModal", () => {
     });
   });
 
+  test.each([undefined, null])(
+    "missing connection response (%s) shows an error and never success",
+    async (response) => {
+      testConnection.mockImplementation((_id, callback) => callback(response));
+      renderWithIntl(
+        <TestConnectionModal
+          analyzer={createMockAnalyzer()}
+          open={true}
+          onClose={mockOnClose}
+        />,
+      );
+
+      await user.click(screen.getByTestId("test-connection-test-button"));
+
+      expect(screen.getByTestId("test-connection-error")).toBeInTheDocument();
+      expect(screen.queryByTestId("test-connection-success")).toBeNull();
+      expect(screen.getByTestId("test-connection-log-1")).toHaveTextContent(
+        messages["analyzer.form.testConnection.error"],
+      );
+    },
+  );
+
   /**
    * Test: Close button calls onClose handler
    */

@@ -39,6 +39,25 @@ import { SignatureMeaning, isEsigEnabled } from "./api";
  * - className: string - Custom CSS class (optional)
  * - children: node - Custom button content (optional, overrides label)
  * - skipEsigCheck: boolean - Skip checking if e-sig is enabled (optional, for testing)
+ *
+ * @param {{
+ *   meaning: string,
+ *   context: string,
+ *   recordType: string,
+ *   recordId: string | number,
+ *   onSign: (signature: unknown) => void | Promise<void>,
+ *   onCancel?: () => void,
+ *   onBeforeSign?: () => void,
+ *   label?: import("react").ReactNode,
+ *   kind?: import("react").ComponentProps<typeof Button>["kind"],
+ *   size?: import("react").ComponentProps<typeof Button>["size"],
+ *   disabled?: boolean,
+ *   style?: import("react").CSSProperties,
+ *   className?: string,
+ *   children?: import("react").ReactNode,
+ *   skipEsigCheck?: boolean,
+ *   signatureApi?: import("../resultPage/unified/resultSignatureApi").ResultSignatureApi
+ * }} props
  */
 const ESignatureButton = ({
   meaning,

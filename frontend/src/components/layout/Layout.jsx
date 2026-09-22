@@ -17,8 +17,32 @@ import RouteErrorBoundary from "../common/RouteErrorBoundary";
 import config from "../../config.json";
 import { resolveNavigationProfile } from "./navigationProfile";
 
-export const ConfigurationContext = createContext(null);
-export const NotificationContext = createContext(null);
+/**
+ * @typedef {Object} LayoutConfigurationValue
+ * @property {Record<string, string | null>} configurationProperties
+ * @property {() => void} reloadConfiguration
+ * @property {Array<{localeCode: string, displayName: string, fallback?: boolean}>} supportedLocales
+ * @property {ReturnType<typeof buildLanguagesFromConfig>} enabledLanguages
+ *
+ * @typedef {Object} LayoutNotificationBody
+ * @property {string} kind
+ * @property {import("react").ReactNode} title
+ * @property {import("react").ReactNode} message
+ * @property {import("react").ReactNode} [subtitle]
+ *
+ * @typedef {Object} LayoutNotificationValue
+ * @property {boolean} notificationVisible
+ * @property {import("react").Dispatch<import("react").SetStateAction<boolean>>} setNotificationVisible
+ * @property {LayoutNotificationBody[]} notifications
+ * @property {(body: LayoutNotificationBody) => void} addNotification
+ * @property {(index: number) => void} removeNotification
+ */
+export const ConfigurationContext = createContext(
+  /** @type {LayoutConfigurationValue | null} */ (null),
+);
+export const NotificationContext = createContext(
+  /** @type {LayoutNotificationValue | null} */ (null),
+);
 
 const isAdminNavRoute = (pathname) =>
   pathname === "/admin" ||

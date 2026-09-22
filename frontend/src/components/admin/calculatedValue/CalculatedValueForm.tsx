@@ -97,8 +97,9 @@ const CalculatedValue: React.FC<CalculatedValueProps> = () => {
   const [sampleTestList, setSampleTestList] = useState(TestListObj);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // This page is rendered inside Layout's required notification provider.
   const { notificationVisible, setNotificationVisible, addNotification } =
-    useContext<NotificationContextType>(NotificationContext);
+    useContext(NotificationContext)!;
   const [mathFunctions, setMathFunctions] = useState([mathFunction]);
   const intl = useIntl();
 

@@ -1,0 +1,554 @@
+{
+  "fixed_commit": "a52cafa4f5c87b2016fd9a325d857ae3bb517d94",
+  "method": "Read-only byte-for-byte Git blob comparison against fixed commit tree; no backend tests executed.",
+  "total_files": 54,
+  "matching_files": 53,
+  "mismatches": ["F2"],
+  "files": [
+    {
+      "reference": "M1",
+      "path": "src/main/resources/hibernate/hbm/Patient.hbm.xml",
+      "head_blob": "064fc575f92f3e753c48ac93528e7e0da699e2a0",
+      "readable_blob": "064fc575f92f3e753c48ac93528e7e0da699e2a0",
+      "sha256": "5c09f9c36b47ad34d021eee4fde8ccf1964770dd576c89b93ee1c0b75a6e0a19",
+      "matches_fixed_commit": true,
+      "lines": 93,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "M2",
+      "path": "src/main/resources/hibernate/hbm/SampleHuman.hbm.xml",
+      "head_blob": "834cf7f36f6fe4bba866bd095b79f3f88bb50bd4",
+      "readable_blob": "834cf7f36f6fe4bba866bd095b79f3f88bb50bd4",
+      "sha256": "140e006bc94699f77d76b861e795a7ab385558e6cdd4d28301f2c64c049d4ab1",
+      "matches_fixed_commit": true,
+      "lines": 34,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "M3",
+      "path": "src/main/resources/hibernate/hbm/SampleItem.hbm.xml",
+      "head_blob": "2d8638b8e9bc02a353a3c6183e74f496b3543bff",
+      "readable_blob": "2d8638b8e9bc02a353a3c6183e74f496b3543bff",
+      "sha256": "867f44b5e0f9068247c65cc2cdd8c46289148bdb4ed56ecac7712f559b31bef4",
+      "matches_fixed_commit": true,
+      "lines": 105,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "M4",
+      "path": "src/main/resources/hibernate/hbm/Analysis.hbm.xml",
+      "head_blob": "0cd4561e8b73cab6c45e27a578718ce89aac0017",
+      "readable_blob": "0cd4561e8b73cab6c45e27a578718ce89aac0017",
+      "sha256": "5772a9c08898c024ff7729bad993463926e91fc7ce487e5913a173677199a43a",
+      "matches_fixed_commit": true,
+      "lines": 390,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "M5",
+      "path": "src/main/resources/hibernate/hbm/Result.hbm.xml",
+      "head_blob": "a2f66cc9ee8b89a1594cce351afb9bb31f5e404f",
+      "readable_blob": "a2f66cc9ee8b89a1594cce351afb9bb31f5e404f",
+      "sha256": "7f6d0821c10e77b0f4e29414caa706610733cc37391c94e75d9a18d7daff579d",
+      "matches_fixed_commit": true,
+      "lines": 63,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "M6",
+      "path": "src/main/resources/liquibase/3.5.x.x/085-report-document-release-scope.xml",
+      "head_blob": "2ef7f0476d206757c6fc8e875a101fa893e18700",
+      "readable_blob": "2ef7f0476d206757c6fc8e875a101fa893e18700",
+      "sha256": "1be2a61d22b2f6f3cb872fb6e8fc52284490de6ca7a8792235d048a4edb2ba1c",
+      "matches_fixed_commit": true,
+      "lines": 54,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "E1",
+      "path": "src/main/java/org/openelisglobal/sample/valueholder/Sample.java",
+      "head_blob": "29f6d15afa99430362985657c983c4d87e1f5153",
+      "readable_blob": "29f6d15afa99430362985657c983c4d87e1f5153",
+      "sha256": "73eea93c6be0a3be043b34ff1616ace2b45d7b696f89466cdf71c1128ab8bf10",
+      "matches_fixed_commit": true,
+      "lines": 523,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "E2",
+      "path": "src/main/java/org/openelisglobal/sampletyperequest/valueholder/SampleTypeRequest.java",
+      "head_blob": "d0ef6e55ce496a325568e997925a443d714c9e90",
+      "readable_blob": "d0ef6e55ce496a325568e997925a443d714c9e90",
+      "sha256": "ff231429f818a592793f18fdfd798e9d1f7a4f574f6ca5171c7c569d317b0367",
+      "matches_fixed_commit": true,
+      "lines": 198,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "E3",
+      "path": "src/main/java/org/openelisglobal/sampleitem/valueholder/SampleItem.java",
+      "head_blob": "c17318d032eaf5c5ff804d81d4c4463156c832b1",
+      "readable_blob": "c17318d032eaf5c5ff804d81d4c4463156c832b1",
+      "sha256": "2b5192dca75db0f1e02100ac80b9ebc65a67982fcd23a96c3f1a161889f6e872",
+      "matches_fixed_commit": true,
+      "lines": 499,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "E4",
+      "path": "src/main/java/org/openelisglobal/result/valueholder/ResultSignature.java",
+      "head_blob": "fb0c515239fcb2c2c64f3f0517016bb2798303ef",
+      "readable_blob": "fb0c515239fcb2c2c64f3f0517016bb2798303ef",
+      "sha256": "d9d33893e50bcb316461ea74c9439456039300d86fa5f431b3708ddcff4c1f5c",
+      "matches_fixed_commit": true,
+      "lines": 75,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "E5",
+      "path": "src/main/java/org/openelisglobal/report/valueholder/ReportDocument.java",
+      "head_blob": "5dfbd5711ccbe26b5616ee034674cafc1f9beb86",
+      "readable_blob": "5dfbd5711ccbe26b5616ee034674cafc1f9beb86",
+      "sha256": "c9b2d8bd3968c2928d4247d76d139e5db0981c358677e96cda7597439ba237b1",
+      "matches_fixed_commit": true,
+      "lines": 205,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "E6",
+      "path": "src/main/java/org/openelisglobal/report/valueholder/ReportDocumentMember.java",
+      "head_blob": "78db2bab3c59190f62e8f6e787818429599fcd21",
+      "readable_blob": "78db2bab3c59190f62e8f6e787818429599fcd21",
+      "sha256": "8aa754fba7cb4462d8731f0a14d1ae87e8cbd4d6b0c92a67f6def9145c501afe",
+      "matches_fixed_commit": true,
+      "lines": 89,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "E7",
+      "path": "src/main/java/org/openelisglobal/report/valueholder/PatientReportRelease.java",
+      "head_blob": "65cf0588dc9197452510ae345bddd61baaa7498a",
+      "readable_blob": "65cf0588dc9197452510ae345bddd61baaa7498a",
+      "sha256": "3dee19ac5dfbb1d8214851d4df6f63fb83c6dcc9143ffc3f369d7c92eb42e0ee",
+      "matches_fixed_commit": true,
+      "lines": 367,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S1",
+      "path": "src/main/java/org/openelisglobal/sample/service/OrderEntryActorGuard.java",
+      "head_blob": "ca089fe9ea67e99f1b8b93a60441a2894ed298b7",
+      "readable_blob": "ca089fe9ea67e99f1b8b93a60441a2894ed298b7",
+      "sha256": "3b1af8366792a032c2d7c822e6cfc215cd00845401b8b8d5d34f8579108d5b94",
+      "matches_fixed_commit": true,
+      "lines": 278,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S2",
+      "path": "src/main/java/org/openelisglobal/sample/service/SpecimenReceiptService.java",
+      "head_blob": "5bbf316fa3e9edf53413b77eb0806c2a2eec70b1",
+      "readable_blob": "5bbf316fa3e9edf53413b77eb0806c2a2eec70b1",
+      "sha256": "c18e2ddb09bcd3ce6dd5995baef9d13fd4d4d3cf6f44041ffd503dce5672ddec",
+      "matches_fixed_commit": true,
+      "lines": 226,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S3",
+      "path": "src/main/java/org/openelisglobal/sample/service/SpecimenIntakeDecisionService.java",
+      "head_blob": "2a5d099797d0549990e642763a73324ca2046d60",
+      "readable_blob": "2a5d099797d0549990e642763a73324ca2046d60",
+      "sha256": "782e275fb200df3bf8ec9834fa029181bc80c69e25ed9321e2eba662f64343b7",
+      "matches_fixed_commit": true,
+      "lines": 526,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S4",
+      "path": "src/main/java/org/openelisglobal/sample/service/EntryCurrentStateReader.java",
+      "head_blob": "0293b2e2f4c270a9fb6454715fa5a76f43009827",
+      "readable_blob": "0293b2e2f4c270a9fb6454715fa5a76f43009827",
+      "sha256": "fae70e5aa1c64efa0292655f6a14104d102cee5b30901190c0e3e50452974fbe",
+      "matches_fixed_commit": true,
+      "lines": 471,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S5",
+      "path": "src/main/java/org/openelisglobal/sample/service/SamplePatientEntryServiceImpl.java",
+      "head_blob": "c19f212895e58ab73bcb27cde3a9ce52322e5954",
+      "readable_blob": "c19f212895e58ab73bcb27cde3a9ce52322e5954",
+      "sha256": "11bf54bf2c23f1b3d1fa61d6bd580249f186e0a63d13ffe74a4f414d233cb325",
+      "matches_fixed_commit": true,
+      "lines": 1275,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S6",
+      "path": "src/main/java/org/openelisglobal/result/service/LogbookPersistServiceImpl.java",
+      "head_blob": "76ee560977239a3d12ba9532b8c8077ed23a90b7",
+      "readable_blob": "76ee560977239a3d12ba9532b8c8077ed23a90b7",
+      "sha256": "86b5eebc60d1596677c3a86afd501e4bfa6f95650041657e62bab5292be6c7f8",
+      "matches_fixed_commit": true,
+      "lines": 390,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S7",
+      "path": "src/main/java/org/openelisglobal/resultvalidation/service/ReviewQueryContextService.java",
+      "head_blob": "612b1d41fd4c3cddf597eb19e632d98b5e50cc99",
+      "readable_blob": "612b1d41fd4c3cddf597eb19e632d98b5e50cc99",
+      "sha256": "eeae888edd39235d5a2c317f918032fe61d98743fee3c381b77fede0b592e059",
+      "matches_fixed_commit": true,
+      "lines": 300,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S8",
+      "path": "src/main/java/org/openelisglobal/resultvalidation/service/ReviewSubmissionService.java",
+      "head_blob": "73e1b8b25fe0b5f218b94e30fc4d6b037193553e",
+      "readable_blob": "73e1b8b25fe0b5f218b94e30fc4d6b037193553e",
+      "sha256": "214b9e26a8ad6aabaa0aa91feb5d9a331b5e15facfd034f76f9a01b1cff2931d",
+      "matches_fixed_commit": true,
+      "lines": 302,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S9",
+      "path": "src/main/java/org/openelisglobal/resultvalidation/service/ReviewWriteGuard.java",
+      "head_blob": "f6a0e4621c34fa6db99841f970fcc9966977ea75",
+      "readable_blob": "f6a0e4621c34fa6db99841f970fcc9966977ea75",
+      "sha256": "7b2ef210c84f42e2ae0908e64efcf4a4a7240a9c2e6105d8ff11b74327bade3a",
+      "matches_fixed_commit": true,
+      "lines": 291,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S10",
+      "path": "src/main/java/org/openelisglobal/report/service/impl/ReportDocumentServiceImpl.java",
+      "head_blob": "e0ee271faaa5bbab32a4f99e7c40c4bb2e47c8d2",
+      "readable_blob": "e0ee271faaa5bbab32a4f99e7c40c4bb2e47c8d2",
+      "sha256": "64a00b4548571350f4fe0fa02d00c0e5dc7d8dcc0bca78a4c4f1184a6cd63fb3",
+      "matches_fixed_commit": true,
+      "lines": 291,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S11",
+      "path": "src/main/java/org/openelisglobal/report/service/impl/PatientReportReleaseServiceImpl.java",
+      "head_blob": "3f0438d5251f3f892def69a4e508655457747d71",
+      "readable_blob": "3f0438d5251f3f892def69a4e508655457747d71",
+      "sha256": "9bef03e297313000a6c3462a35ad3a25755c759a5443d223a3a07aa924127345",
+      "matches_fixed_commit": true,
+      "lines": 466,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S12",
+      "path": "src/main/java/org/openelisglobal/reports/service/ReportAnalysisAuthorizationService.java",
+      "head_blob": "61b989b0d4455116f1707266478aafa8308829de",
+      "readable_blob": "61b989b0d4455116f1707266478aafa8308829de",
+      "sha256": "014c71a43a13b074848c9fe1d2ee1f44d4eb573af05dfd6915f0aa899405dd30",
+      "matches_fixed_commit": true,
+      "lines": 937,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S13",
+      "path": "src/main/java/org/openelisglobal/report/service/impl/ReportFrozenContentService.java",
+      "head_blob": "937ce3814b854187edd863c39f4a86b0b55067dd",
+      "readable_blob": "937ce3814b854187edd863c39f4a86b0b55067dd",
+      "sha256": "2180ecbd18cd2ae0f49195fc66ae8d8405b1d3ae852b79fb111a6a95f19de000",
+      "matches_fixed_commit": true,
+      "lines": 144,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S14",
+      "path": "src/main/java/org/openelisglobal/result/service/ResultIntakeAdmission.java",
+      "head_blob": "5fa25a5047ff68b7b482e2b013e166cb7e98af23",
+      "readable_blob": "5fa25a5047ff68b7b482e2b013e166cb7e98af23",
+      "sha256": "8e09d5b49edfc6311088c17fc08559f9facaa6951b2d83489c08a3a6fcf3d0be",
+      "matches_fixed_commit": true,
+      "lines": 103,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S15",
+      "path": "src/main/java/org/openelisglobal/result/service/ResultSpecimenWriteGuard.java",
+      "head_blob": "dbcbc7b9a3cc80a4de537f81a636dd08b84f6912",
+      "readable_blob": "dbcbc7b9a3cc80a4de537f81a636dd08b84f6912",
+      "sha256": "d22efded96a63ab340d41303e4cfb0f696ac16a52553c5726f5885e7a12c7385",
+      "matches_fixed_commit": true,
+      "lines": 267,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S16",
+      "path": "src/main/java/org/openelisglobal/result/service/OrdinaryResultReviewPolicy.java",
+      "head_blob": "ebd9a85e2bf2f4271ac957e9a6608387829079de",
+      "readable_blob": "ebd9a85e2bf2f4271ac957e9a6608387829079de",
+      "sha256": "7d3c45a96aae7b07382611770ea78b1d9007e03d4d2de44cb930a63b3ce7cb41",
+      "matches_fixed_commit": true,
+      "lines": 81,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S17",
+      "path": "src/main/java/org/openelisglobal/sample/service/EntrySubmissionService.java",
+      "head_blob": "a70b542e2bb4c0e2a370831d21e511c2cf0d1426",
+      "readable_blob": "a70b542e2bb4c0e2a370831d21e511c2cf0d1426",
+      "sha256": "10512d0a443eebf8e78ad705ddc121c980c8801f13ce19c91962bd6f798a4920",
+      "matches_fixed_commit": true,
+      "lines": 342,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S18",
+      "path": "src/main/java/org/openelisglobal/sample/service/SpecimenRecollectionService.java",
+      "head_blob": "f0479d324774cdc64047cc26a39fca932b293222",
+      "readable_blob": "f0479d324774cdc64047cc26a39fca932b293222",
+      "sha256": "2ace1898557f817dc05d2f5401ef33d913d346dd8959dc2b1e5671487ffe66a9",
+      "matches_fixed_commit": true,
+      "lines": 385,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "S19",
+      "path": "src/main/java/org/openelisglobal/result/service/ResultEntryWorklistServiceImpl.java",
+      "head_blob": "37df40404077db3700378df2d3dc357f6b355aac",
+      "readable_blob": "37df40404077db3700378df2d3dc357f6b355aac",
+      "sha256": "7d2e8201a3a47820a8d838737f543a1a6e994de603c2683561c65a8470a3f350",
+      "matches_fixed_commit": true,
+      "lines": 63,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "U1",
+      "path": "src/main/java/org/openelisglobal/common/util/ControllerUtills.java",
+      "head_blob": "257297bed9c2d17d436ec1380a7b9a89fc278642",
+      "readable_blob": "257297bed9c2d17d436ec1380a7b9a89fc278642",
+      "sha256": "d93513647c609f796d8c6e62bd1639d10966f1d31843d7733dac94b93e043fca",
+      "matches_fixed_commit": true,
+      "lines": 81,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "C1",
+      "path": "src/main/java/org/openelisglobal/result/controller/rest/ResultEntryRestController.java",
+      "head_blob": "e09a590138300519ccf4a8784b55e3a282a8ae92",
+      "readable_blob": "e09a590138300519ccf4a8784b55e3a282a8ae92",
+      "sha256": "547171eca5d0b337a090c176e4f9ca374c4fb20fb78dc02df56f1f7e86b883c5",
+      "matches_fixed_commit": true,
+      "lines": 267,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "C2",
+      "path": "src/main/java/org/openelisglobal/report/controller/ReportDocumentRestController.java",
+      "head_blob": "cd58eea166885fa082383c76f216030e1b01ecb3",
+      "readable_blob": "cd58eea166885fa082383c76f216030e1b01ecb3",
+      "sha256": "56b08dfa1a78943b3b2962de891e2843786c25eec1d879dcbfda48d152cd8a2b",
+      "matches_fixed_commit": true,
+      "lines": 190,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "C3",
+      "path": "src/main/java/org/openelisglobal/resultvalidation/controller/rest/AccessionValidationRestController.java",
+      "head_blob": "557c40a37b26db1dc812e9014a04ca0980d7f1fb",
+      "readable_blob": "557c40a37b26db1dc812e9014a04ca0980d7f1fb",
+      "sha256": "eb89e06c911cb3d56a65907e9b3d3dc8643333c6f71e96d672629aa95d9192d8",
+      "matches_fixed_commit": true,
+      "lines": 526,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "H1",
+      "path": "src/main/java/org/openelisglobal/common/rest/provider/PatientDashBoardProvider.java",
+      "head_blob": "9f6510e92e0d2651b1ed5ac1ab15fc2f47b6a06b",
+      "readable_blob": "9f6510e92e0d2651b1ed5ac1ab15fc2f47b6a06b",
+      "sha256": "6b40914d503c24f03bb4ac79ceb237f832be136cc904ddb264a18c4e6339de64",
+      "matches_fixed_commit": true,
+      "lines": 482,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "H2",
+      "path": "src/main/java/org/openelisglobal/analysis/daoimpl/AnalysisDAOImpl.java",
+      "head_blob": "e81a37b04f91a1d17fac374ebb9806b8c3003672",
+      "readable_blob": "e81a37b04f91a1d17fac374ebb9806b8c3003672",
+      "sha256": "51fc85b992b7ed032f1ca41d5af7313d8610dbc72b9763c1f3d3e63dbd9aa2d9",
+      "matches_fixed_commit": true,
+      "lines": 1907,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "H3",
+      "path": "frontend/src/components/home/Dashboard.tsx",
+      "head_blob": "27443ba3770fef15edc8c77742d6877397a6e39d",
+      "readable_blob": "27443ba3770fef15edc8c77742d6877397a6e39d",
+      "sha256": "5acbfe5f1cc34200e67dfac3bf9d914cb4fc09480fcdcd25a0c53b12b095379a",
+      "matches_fixed_commit": true,
+      "lines": 1244,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "F1",
+      "path": "frontend/src/components/order/OrderContext.jsx",
+      "head_blob": "e4c5aa91553ca606cfb9df694bb08cb58c4769bd",
+      "readable_blob": "e4c5aa91553ca606cfb9df694bb08cb58c4769bd",
+      "sha256": "55f3a1014fc0f919653a09bf0345f0ed37db8851cbd3b169405186c7e2c3908a",
+      "matches_fixed_commit": true,
+      "lines": 2412,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "F2",
+      "path": "frontend/src/components/resultPage/unified/UnifiedResults.tsx",
+      "head_blob": "4b1550fa536d142a885c85a128430bf366a4244f",
+      "readable_blob": "65571fec21d4dbb6022006d8e40a84da2c41619a",
+      "sha256": "cca8d1cc32be6745b8800c7c6d338af4731a2c3ab3a58e7285f9f2697d208c03",
+      "matches_fixed_commit": false,
+      "lines": 1864,
+      "evidence_matches_fixed_commit": true,
+      "fixed_evidence_path": "Fixed Git blob evidence (see fixed_commit and blob identifiers)",
+      "evidence_blob": "4b1550fa536d142a885c85a128430bf366a4244f",
+      "evidence_sha256": "5967c4c10862263b1bfeb5c128519699cb401e992715a7d2bae702c8283e0235"
+    },
+    {
+      "reference": "F3",
+      "path": "frontend/src/components/resultPage/unified/routeGates.tsx",
+      "head_blob": "c210f947fd34914a03c01c9f974e8e9aadd41825",
+      "readable_blob": "c210f947fd34914a03c01c9f974e8e9aadd41825",
+      "sha256": "917d7ab597388cddc1f71b2e1cbb300bfebd5361fd50697f51c03521900eb1cf",
+      "matches_fixed_commit": true,
+      "lines": 76,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "T1",
+      "path": "src/test/java/org/openelisglobal/sample/service/OrderEntryActorGuardTest.java",
+      "head_blob": "5320f3f3e2ae67e67ddaff604e8a7bacfbc55a28",
+      "readable_blob": "5320f3f3e2ae67e67ddaff604e8a7bacfbc55a28",
+      "sha256": "ddcab9b2827979e98fab6a3da4de67e21bca195203243f8bed7cc090ebd8d5a6",
+      "matches_fixed_commit": true,
+      "lines": 419,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "T2",
+      "path": "src/test/java/org/openelisglobal/sample/service/SpecimenReceiptServiceTest.java",
+      "head_blob": "0a69b53e78989b5f2a1dc3eb4e17ce56f628b04d",
+      "readable_blob": "0a69b53e78989b5f2a1dc3eb4e17ce56f628b04d",
+      "sha256": "ece5729213877dd2b3c4daff7ab28004f65e81dcd490a9789901d94e19f6c79c",
+      "matches_fixed_commit": true,
+      "lines": 575,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "T3",
+      "path": "src/test/java/org/openelisglobal/sample/service/SpecimenIntakeDecisionServiceTest.java",
+      "head_blob": "47e2631a9f6d0eb06ba10bf4d573e6bc02cfc073",
+      "readable_blob": "47e2631a9f6d0eb06ba10bf4d573e6bc02cfc073",
+      "sha256": "b4a17d7ff1128a03e49a9140fba45ba55ee2d58612834dfac9cbc6b0fd50269f",
+      "matches_fixed_commit": true,
+      "lines": 1088,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "T4",
+      "path": "src/test/java/org/openelisglobal/sample/service/SpecimenRecollectionServiceTest.java",
+      "head_blob": "ef05a47e34bebcf7ee6506940d1bd290b80aeb6a",
+      "readable_blob": "ef05a47e34bebcf7ee6506940d1bd290b80aeb6a",
+      "sha256": "73014000b8fee57e68a6584abd80507d4a9774b82e4332f1c3cd92ac96820d15",
+      "matches_fixed_commit": true,
+      "lines": 395,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "T5",
+      "path": "src/test/java/org/openelisglobal/result/service/ResultIntakeAdmissionTest.java",
+      "head_blob": "4ba01280cb702ea8e45c7083ca1b005e13144393",
+      "readable_blob": "4ba01280cb702ea8e45c7083ca1b005e13144393",
+      "sha256": "67aeb60f59aaea512b174b10ca138895798d1b5cba2f0c9264701a68cf2331fb",
+      "matches_fixed_commit": true,
+      "lines": 178,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "T6",
+      "path": "src/test/java/org/openelisglobal/result/service/ResultEntryWorklistServiceTest.java",
+      "head_blob": "7d60a17cae28be7bb979a862b0967f201532f17a",
+      "readable_blob": "7d60a17cae28be7bb979a862b0967f201532f17a",
+      "sha256": "f9f580a34bf6ea76ce7e7af19c1d6eedab36be0e75bb5984b078ab93efc5f3dd",
+      "matches_fixed_commit": true,
+      "lines": 86,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "T7",
+      "path": "src/test/java/org/openelisglobal/resultvalidation/service/ReviewSubmissionServiceTest.java",
+      "head_blob": "bad07f98a4070b8f58e0a424d65f71e98a2454dd",
+      "readable_blob": "bad07f98a4070b8f58e0a424d65f71e98a2454dd",
+      "sha256": "68ce939e4240b8d709100dc5f8970f7be5bf83fae13b4f357f8d64a0b8eff216",
+      "matches_fixed_commit": true,
+      "lines": 230,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "T8",
+      "path": "src/test/java/org/openelisglobal/resultvalidation/service/ReviewWriteGuardTest.java",
+      "head_blob": "b1ad420f625b4f4b061a0b45201f255611f35efb",
+      "readable_blob": "b1ad420f625b4f4b061a0b45201f255611f35efb",
+      "sha256": "134e37eb8b60bae27dcd0556af27522b224ed9fa7cc03d9347a1545d96639884",
+      "matches_fixed_commit": true,
+      "lines": 257,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "T9",
+      "path": "src/test/java/org/openelisglobal/report/service/impl/ReportDocumentServiceImplTest.java",
+      "head_blob": "8b7e40129bf8573648814e7b881f98094387cffa",
+      "readable_blob": "8b7e40129bf8573648814e7b881f98094387cffa",
+      "sha256": "4eee5d3a2a05fe75dbc822e3fabdf7f52c6d29ddfd162e95db143c3d0b5bb1dd",
+      "matches_fixed_commit": true,
+      "lines": 290,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "T10",
+      "path": "src/test/java/org/openelisglobal/report/service/impl/PatientReportReleaseServiceImplTest.java",
+      "head_blob": "a16db6c073128ece55f18ad17fb72e41f07dee51",
+      "readable_blob": "a16db6c073128ece55f18ad17fb72e41f07dee51",
+      "sha256": "f8ea34243eb4f038871e5ec3ccd2ff6da65cea94738d48f4fcbb7d3b1ae27eb4",
+      "matches_fixed_commit": true,
+      "lines": 176,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "T11",
+      "path": "src/test/java/org/openelisglobal/report/service/impl/ReportFrozenReleaseServiceTest.java",
+      "head_blob": "a69ae49ff4906c1e3df5b87eadca6d79332465d7",
+      "readable_blob": "a69ae49ff4906c1e3df5b87eadca6d79332465d7",
+      "sha256": "9a6fd75d23866e9b9c0ed0789b959f3b946d7773efa23b6138225d6589a221b0",
+      "matches_fixed_commit": true,
+      "lines": 345,
+      "evidence_matches_fixed_commit": true
+    },
+    {
+      "reference": "T12",
+      "path": "src/test/java/org/openelisglobal/report/service/impl/ReportFrozenContentServiceTest.java",
+      "head_blob": "b775e57ead68c72ce3b1cd0fe74b770441f0596f",
+      "readable_blob": "b775e57ead68c72ce3b1cd0fe74b770441f0596f",
+      "sha256": "b873c4b18eca692a9f035e3251c4343e4be1d484462d47ad12df4ffabefd7e21",
+      "matches_fixed_commit": true,
+      "lines": 210,
+      "evidence_matches_fixed_commit": true
+    }
+  ],
+  "evidence_matching_files": 54,
+  "note": "F2 changed concurrently by parent: added one explanatory comment and TypeScript non-null assertion on NotificationContext. F2 citations use extracted fixed-commit blob, not current working file lines."
+}

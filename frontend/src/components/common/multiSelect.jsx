@@ -1,6 +1,16 @@
 import { Column, MultiSelect } from "@carbon/react";
 import { useMemo } from "react";
 
+/**
+ * @param {{
+ *   id: string,
+ *   name?: string,
+ *   dictionaryValues?: Array<{id: string | number, value: string}>,
+ *   value?: string,
+ *   autoAlign?: boolean,
+ *   onChange: (event: {target: {id: string, name?: string, value: string}}) => void
+ * }} props
+ */
 export default function ResultMultiSelect({
   id,
   name,

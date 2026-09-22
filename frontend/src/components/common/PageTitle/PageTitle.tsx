@@ -85,7 +85,9 @@ const PageTitle = ({
                 {crumb.link ? (
                   <button
                     className="page-title-breadcrumb-link"
-                    onClick={() => history.push(crumb.link)}
+                    onClick={() => {
+                      if (crumb.link) history.push(crumb.link);
+                    }}
                     data-testid={`breadcrumb-link-${index}`}
                   >
                     {crumb.label}

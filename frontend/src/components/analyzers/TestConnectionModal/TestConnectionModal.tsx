@@ -13,7 +13,7 @@ import {
 import { useIntl } from "react-intl";
 import { testConnection } from "../../../services/analyzerService";
 import { resolveAnalyzerApiMessage } from "../constants";
-import type { Analyzer, AnalyzerApiResponse } from "../types";
+import type { Analyzer } from "../types";
 import "./TestConnectionModal.css";
 
 type ConnectionStatus = "initial" | "testing" | "success" | "error";
@@ -81,14 +81,15 @@ const TestConnectionModal = ({
       });
     }, 200);
 
-    testConnection(analyzer.id, (response: AnalyzerApiResponse) => {
+    testConnection(analyzer.id, (response) => {
       clearInterval(progressInterval);
       setProgress(100);
 
       // Check for errors: HTTP errors, network errors, OR success=false from backend
       if (
+        !response ||
         response.error ||
-        response.statusCode >= 400 ||
+        (response.statusCode ?? 0) >= 400 ||
         response.success === false
       ) {
         setStatus("error");
@@ -98,7 +99,7 @@ const TestConnectionModal = ({
             level: "error",
             message: resolveAnalyzerApiMessage(
               intl,
-              response,
+              response || {},
               "analyzer.form.testConnection.error",
             ),
           },

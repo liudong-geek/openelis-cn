@@ -1,6 +1,6 @@
 import React, { useContext } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { waitFor } from "@testing-library/dom";
+import { waitFor, within } from "@testing-library/dom";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import { MemoryRouter } from "react-router-dom";
@@ -461,11 +461,30 @@ describe("Layout", () => {
       expect(sideNavs).toHaveLength(1);
       expect(sideNavs[0]).toHaveClass("cds--side-nav--expanded");
       expect(sideNavs[0]).toHaveClass("admin-shell-side-nav");
+      const contextNav = within(sideNavs[0]);
       expect(
-        screen.getByText(enMessages["admin.dashboard.domain.organization"]),
-      ).toBeInTheDocument();
+        contextNav.getByRole("button", {
+          name: enMessages["admin.dashboard.domain.organization"],
+        }),
+      ).toHaveAttribute("aria-expanded", "true");
+      const workspaceLink = contextNav.getByRole("link", {
+        name: enMessages["workspace.organizationPeople.title"],
+      });
+      expect(workspaceLink).toHaveAttribute(
+        "href",
+        "/MasterListsPage/organizationPeopleWorkspace",
+      );
+      expect(workspaceLink).not.toHaveAttribute("aria-current");
+      expect(contextNav.getAllByRole("link")).toHaveLength(2);
       expect(
-        screen.queryByText(enMessages["admin.dashboard.domain.catalog"]),
+        contextNav.getByRole("link", {
+          name: enMessages["admin.navigation.backToCenter"],
+        }),
+      ).toHaveAttribute("href", "/MasterListsPage");
+      expect(
+        contextNav.queryByRole("button", {
+          name: enMessages["admin.dashboard.domain.catalog"],
+        }),
       ).not.toBeInTheDocument();
     });
 

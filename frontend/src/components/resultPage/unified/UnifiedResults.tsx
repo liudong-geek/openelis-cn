@@ -260,8 +260,9 @@ const UnifiedResults: React.FC = () => {
   const stamp = entrySession(session);
   const worklistStamp = useRef<SessionStamp | null>(stamp);
   const revokedSession = useRef<string | null>(null);
+  // The results route is rendered inside Layout's notification provider.
   const { addNotification, setNotificationVisible } =
-    useContext(NotificationContext);
+    useContext(NotificationContext)!;
 
   const initialUrlState = useMemo(
     () => new URLSearchParams(window.location.search),

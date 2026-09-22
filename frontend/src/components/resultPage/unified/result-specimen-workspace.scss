@@ -220,3 +220,373 @@
     gap: 0.25rem;
   }
 }
+
+/* B-02 / C-02 layout increment for the existing UnifiedResults workspace.
+ * INCREMENT ONLY: append after the verified original stylesheet.
+ * Do not replace result-specimen-workspace.scss with this file.
+ * No business warnings, fields, status gates or event handlers are removed.
+ */
+.oe-main-content .results-workbench {
+  min-width: 0;
+  margin-inline: var(--oe-page-gutter, 1.5rem);
+  padding-bottom: var(--cds-spacing-05, 1rem);
+
+  > .oe-page-breadcrumb {
+    margin-inline: 0;
+    padding: 0.375rem 0 0.125rem;
+  }
+
+  header.oe-page-header[aria-labelledby="results-title"] {
+    gap: var(--cds-spacing-04, 0.75rem);
+    margin-inline: 0;
+    padding: 0.375rem 0 var(--cds-spacing-04, 0.75rem);
+
+    .oe-page-header__title {
+      font-size: 1.5rem;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    .oe-page-header__subtitle {
+      margin-top: var(--cds-spacing-02, 0.25rem);
+      font-size: 0.8125rem;
+      line-height: 1.5;
+    }
+  }
+
+  .results-workbench__filters {
+    display: grid;
+    grid-template-columns: minmax(12rem, 1fr) minmax(0, auto);
+    gap: var(--cds-spacing-03, 0.5rem) var(--cds-spacing-05, 1rem);
+    padding: var(--cds-spacing-04, 0.75rem) 0.875rem;
+    margin-bottom: var(--cds-spacing-04, 0.75rem);
+
+    > .results-workbench__section-heading {
+      grid-column: 1;
+      grid-row: 1;
+      align-self: center;
+      margin: 0;
+    }
+
+    > .results-workbench__status-filters {
+      display: flex;
+      grid-column: 2;
+      grid-row: 1;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: var(--cds-spacing-02, 0.25rem);
+      min-width: 0;
+      padding: 0;
+      margin: 0;
+      border: 0;
+    }
+  }
+
+  .results-workbench__section-heading {
+    gap: var(--cds-spacing-04, 0.75rem);
+
+    h2 {
+      font-size: 0.9375rem;
+      line-height: 1.5;
+    }
+
+    p {
+      margin-top: var(--cds-spacing-02, 0.25rem);
+      font-size: 0.75rem;
+      line-height: 1.5;
+    }
+  }
+
+  .results-workbench__status-filters .cds--btn {
+    min-height: 2rem;
+    padding: 0.375rem var(--cds-spacing-04, 0.75rem);
+    white-space: normal;
+  }
+
+  .results-workbench__filter-grid {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    grid-template-columns:
+      minmax(11.25rem, 1.4fr) minmax(10rem, 1fr)
+      minmax(9rem, 1fr) auto;
+    align-items: end;
+    gap: var(--cds-spacing-04, 0.75rem);
+
+    > * {
+      min-width: 0;
+    }
+
+    > .cds--btn {
+      min-height: 2.5rem;
+      padding: 0.625rem var(--cds-spacing-05, 1rem);
+    }
+
+    .cds--search-input,
+    .cds--select-input,
+    .cds--date-picker__input {
+      height: 2.5rem;
+    }
+  }
+
+  .result-specimen-workspace {
+    grid-template-columns: 14rem minmax(0, 1fr);
+    align-items: start;
+    gap: var(--cds-spacing-04, 0.75rem);
+  }
+
+  .result-specimen-queue {
+    top: calc(var(--oe-header-height, 3.75rem) + 0.75rem);
+    min-width: 0;
+  }
+
+  .result-specimen-queue__heading {
+    padding: var(--cds-spacing-04, 0.75rem);
+
+    p {
+      margin-top: var(--cds-spacing-02, 0.25rem);
+    }
+  }
+
+  .result-specimen-queue__all {
+    width: calc(100% - 1rem);
+    margin: 0 var(--cds-spacing-03, 0.5rem) var(--cds-spacing-03, 0.5rem);
+  }
+
+  .result-specimen-queue__items {
+    max-height: 65vh;
+    padding: var(--cds-spacing-02, 0.25rem) 0.375rem 0.375rem;
+  }
+
+  .result-specimen-queue__item {
+    gap: var(--cds-spacing-02, 0.25rem);
+    min-width: 0;
+    min-height: 0;
+    margin-top: var(--cds-spacing-01, 0.125rem);
+    padding: 0.5625rem;
+
+    .results-workbench__subject {
+      display: grid;
+      min-width: 0;
+      gap: 0.1875rem;
+    }
+
+    .results-workbench__patient-name {
+      grid-row: 1;
+      font-size: 0.875rem;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+
+    .results-workbench__accession,
+    .results-workbench__specimen-barcode,
+    .results-workbench__sample-type {
+      font-size: 0.75rem;
+      line-height: 1.5;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .result-specimen-queue__meta {
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  .result-specimen-detail {
+    min-width: 0;
+    padding: var(--cds-spacing-04, 0.75rem);
+
+    > .results-workbench__section-heading {
+      margin-bottom: var(--cds-spacing-03, 0.5rem);
+    }
+  }
+
+  .result-specimen-detail__identity {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--cds-spacing-04, 0.75rem);
+    padding: 0.625rem var(--cds-spacing-04, 0.75rem);
+    margin-bottom: var(--cds-spacing-04, 0.75rem);
+
+    .results-workbench__subject {
+      display: flex;
+      min-width: 0;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: var(--cds-spacing-02, 0.25rem) var(--cds-spacing-04, 0.75rem);
+    }
+
+    .results-workbench__patient-name {
+      order: -1;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .results-workbench__accession,
+    .results-workbench__specimen-barcode,
+    .results-workbench__sample-type {
+      font-size: 0.75rem;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .result-specimen-detail .results-workbench__table-scroll {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+
+    .cds--data-table-container,
+    .cds--data-table-content {
+      min-width: 0;
+      min-inline-size: 0;
+      overflow: visible;
+    }
+  }
+
+  .result-specimen-detail .results-workbench__table {
+    table-layout: fixed;
+    width: 100%;
+    min-width: 54rem;
+
+    .results-workbench__column--subject {
+      width: 20%;
+    }
+    .results-workbench__column--test {
+      width: 20%;
+    }
+    .results-workbench__column--range {
+      width: 12%;
+    }
+    .results-workbench__column--result {
+      width: 22%;
+    }
+    .results-workbench__column--status {
+      width: 13%;
+    }
+    .results-workbench__column--actions {
+      width: 13%;
+    }
+
+    th {
+      height: 2.25rem;
+      padding: var(--cds-spacing-03, 0.5rem);
+      font-size: 0.75rem;
+    }
+
+    td {
+      padding: 0.625rem var(--cds-spacing-03, 0.5rem);
+      font-size: 0.8125rem;
+      line-height: 1.5;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
+    td[colspan] {
+      padding: var(--cds-spacing-02, 0.25rem) var(--cds-spacing-03, 0.5rem)
+        var(--cds-spacing-03, 0.5rem);
+    }
+
+    .cds--inline-notification {
+      min-width: 0;
+      max-width: 100%;
+      margin: 0;
+    }
+
+    .cds--inline-notification__details {
+      padding-block: var(--cds-spacing-03, 0.5rem);
+    }
+
+    .cds--inline-notification__title,
+    .cds--inline-notification__subtitle {
+      font-size: 0.8125rem;
+      line-height: 1.5;
+      white-space: normal;
+    }
+
+    .results-workbench__cell--actions .cds--btn {
+      min-width: 0;
+      padding: 0.375rem var(--cds-spacing-03, 0.5rem);
+      white-space: normal;
+    }
+  }
+
+  .result-specimen-detail--focused .results-workbench__table {
+    min-width: 40rem;
+
+    .results-workbench__column--test {
+      width: 25%;
+    }
+    .results-workbench__column--range {
+      width: 17%;
+    }
+    .results-workbench__column--result {
+      width: 28%;
+    }
+    .results-workbench__column--status {
+      width: 16%;
+    }
+    .results-workbench__column--actions {
+      width: 14%;
+    }
+  }
+
+  .result-specimen-detail__footer {
+    margin-top: 0.625rem;
+    padding-top: 0.625rem;
+  }
+}
+
+@media (max-width: 65.9375rem) {
+  .oe-main-content .results-workbench {
+    .result-specimen-workspace {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .result-specimen-queue {
+      position: static;
+    }
+
+    .result-specimen-queue__items {
+      max-height: 11.25rem;
+    }
+
+    .results-workbench__filter-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}
+
+@media (max-width: 47.9375rem) {
+  .oe-main-content .results-workbench {
+    margin-inline: var(--oe-page-gutter-compact, 1rem);
+
+    .results-workbench__filters {
+      grid-template-columns: minmax(0, 1fr);
+
+      > .results-workbench__status-filters {
+        grid-column: 1;
+        grid-row: 2;
+        justify-content: flex-start;
+      }
+    }
+
+    .results-workbench__filter-grid {
+      grid-row: 3;
+    }
+
+    .result-specimen-detail__identity .results-workbench__subject {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+  }
+}
+
+@media (max-width: 30rem) {
+  .oe-main-content .results-workbench .results-workbench__filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

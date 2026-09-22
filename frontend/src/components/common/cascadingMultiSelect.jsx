@@ -3,6 +3,16 @@ import { Button, Column, MultiSelect } from "@carbon/react";
 import { Add, TrashCan } from "@carbon/icons-react";
 import { useIntl } from "react-intl";
 
+/**
+ * @param {{
+ *   id: string,
+ *   name?: string,
+ *   dictionaryValues?: Array<{id: string | number, value: string}>,
+ *   value?: string,
+ *   autoAlign?: boolean,
+ *   onChange: (event: {target: {id: string, name?: string, value: string}}) => void
+ * }} props
+ */
 export default function CascadingMultiSelect({
   id,
   name,

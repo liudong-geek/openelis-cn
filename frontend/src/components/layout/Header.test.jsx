@@ -1,6 +1,6 @@
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { waitFor } from "@testing-library/dom";
+import { waitFor, within } from "@testing-library/dom";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import { MemoryRouter, Route } from "react-router-dom";
@@ -1264,22 +1264,57 @@ describe("Header Component - M2b Enhancement Tests", () => {
       expect(statusCalls).toHaveLength(1);
     });
 
-    test("admin domain items expose href and current-route state", async () => {
-      renderHeader({
-        initialRoute: "/MasterListsPage/globalMenuManagement",
-        navContext: "admin",
-      });
+    test.each([
+      ["/MasterListsPage/systemOperations", true],
+      ["/MasterListsPage/globalMenuManagement", false],
+    ])(
+      "admin workspace link preserves current-route and legacy context for %s",
+      async (initialRoute, isCurrentWorkspace) => {
+        const { container } = renderHeader({
+          initialRoute,
+          navContext: "admin",
+        });
 
-      const menuLink = (
-        await screen.findByText(messages["sidenav.label.admin.menu"])
-      ).closest("a");
-
-      expect(menuLink).toHaveAttribute(
-        "href",
-        "/MasterListsPage/globalMenuManagement",
-      );
-      expect(menuLink).toHaveAttribute("aria-current", "page");
-    });
+        const sideNavs = container.querySelectorAll(".cds--side-nav");
+        expect(sideNavs).toHaveLength(1);
+        expect(sideNavs[0]).toHaveClass("cds--side-nav--expanded");
+        expect(sideNavs[0]).toHaveClass("admin-shell-side-nav");
+        const contextNav = within(sideNavs[0]);
+        expect(
+          await contextNav.findByRole("button", {
+            name: messages["admin.dashboard.domain.security"],
+          }),
+        ).toHaveAttribute("aria-expanded", "true");
+        const workspaceLink = contextNav.getByRole("link", {
+          name: messages["workspace.system.title"],
+        });
+        expect(workspaceLink).toHaveAttribute(
+          "href",
+          "/MasterListsPage/systemOperations",
+        );
+        if (isCurrentWorkspace) {
+          expect(workspaceLink).toHaveAttribute("aria-current", "page");
+        } else {
+          expect(workspaceLink).not.toHaveAttribute("aria-current");
+        }
+        expect(contextNav.getAllByRole("link")).toHaveLength(2);
+        expect(
+          contextNav.getByRole("link", {
+            name: messages["admin.navigation.backToCenter"],
+          }),
+        ).toHaveAttribute("href", "/MasterListsPage");
+        expect(
+          contextNav.queryByRole("link", {
+            name: messages["sidenav.label.admin.menu"],
+          }),
+        ).not.toBeInTheDocument();
+        expect(
+          contextNav.queryByRole("button", {
+            name: messages["admin.dashboard.domain.catalog"],
+          }),
+        ).not.toBeInTheDocument();
+      },
+    );
 
     test("admin back control navigates to the management center", async () => {
       renderHeader({
