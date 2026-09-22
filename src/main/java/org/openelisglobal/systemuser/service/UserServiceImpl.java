@@ -13,6 +13,7 @@ import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.constants.Constants;
+import org.openelisglobal.common.exception.LIMSRuntimeException;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.services.DisplayListService;
 import org.openelisglobal.common.services.DisplayListService.ListType;
@@ -211,8 +212,7 @@ public class UserServiceImpl implements UserService {
                 String adminRoleId = roleService.getRoleByName(Constants.ROLE_GLOBAL_ADMIN).getId();
                 Boolean isadmin = userRoleService.getRoleIdsForUser(systemUserId).contains(adminRoleId);
                 if (requireLabUnitAtLogin && !isadmin) {
-                    return localizeTestSectionsForDisplay(
-                            restrictRequiredLoginTestSection(systemUserId, roleId, usd));
+                    return localizeTestSectionsForDisplay(restrictRequiredLoginTestSection(systemUserId, roleId, usd));
                 }
 
                 List<String> userLabUnits = new ArrayList<>();
@@ -281,8 +281,8 @@ public class UserServiceImpl implements UserService {
 
     /**
      * Localizes only the display labels after the caller's authorized section set
-     * has been resolved. Returning fresh pairs keeps the cached display list and the
-     * IDs used by authorization unchanged.
+     * has been resolved. Returning fresh pairs keeps the cached display list and
+     * the IDs used by authorization unchanged.
      */
     List<IdValuePair> localizeTestSectionsForDisplay(List<IdValuePair> authorizedTestSections) {
         if (authorizedTestSections == null || authorizedTestSections.isEmpty()) {
@@ -429,26 +429,34 @@ public class UserServiceImpl implements UserService {
     @Override
     public List<TestResultItem> filterResultsByLabUnitRoles(String systemUserId, List<TestResultItem> results,
             String roleName) {
-        String resultsRoleId = roleService.getRoleByName(roleName).getId();
-        List<IdValuePair> testSections = getUserTestSections(systemUserId, resultsRoleId);
-        List<String> testUnitIds = new ArrayList<>();
-        if (testSections != null) {
-            testSections.forEach(testSection -> testUnitIds.add(testSection.getId()));
-        }
-        org.openelisglobal.common.log.LogEvent.logInfo(this.getClass().getSimpleName(), "filterResultsByLabUnitRoles",
-                "User " + systemUserId + " has " + (testSections != null ? testSections.size() : 0) + " test sections: "
-                        + testUnitIds);
+        Set<String> allowedTestIds = getTestIdsForLabUnitRole(systemUserId, roleName);
+        return results.stream().filter(result -> allowedTestIds.contains(result.getTestId()))
+                .collect(Collectors.toList());
+    }
 
-        List<Test> allTests = testService.getTestsByTestSectionIds(testUnitIds);
-        List<String> allTestsIds = new ArrayList<>();
-        allTests.forEach(test -> allTestsIds.add(test.getId()));
-        // Log which test IDs are in the results and which are allowed
-        List<String> resultTestIds = results.stream().map(r -> r.getTestId()).collect(Collectors.toList());
-        org.openelisglobal.common.log.LogEvent.logInfo(this.getClass().getSimpleName(), "filterResultsByLabUnitRoles",
-                "Input results: " + results.size() + " (test IDs: " + resultTestIds + "), Allowed test IDs: "
-                        + allTestsIds.size() + ", Filtered results: "
-                        + results.stream().filter(result -> allTestsIds.contains(result.getTestId())).count());
-        return results.stream().filter(result -> allTestsIds.contains(result.getTestId())).collect(Collectors.toList());
+    /**
+     * The existing row filter and pending queries share the same session-aware
+     * permission scope.
+     */
+    @Override
+    public Set<String> getTestIdsForLabUnitRole(String systemUserId, String roleName) {
+        Role role = roleService.getRoleByName(roleName);
+        if (role == null || StringUtils.isBlank(role.getId())) {
+            throw new LIMSRuntimeException("Unable to resolve lab-unit role");
+        }
+        List<IdValuePair> sections = getUserTestSections(systemUserId, role.getId());
+        if (sections == null) {
+            throw new LIMSRuntimeException("Unable to resolve lab-unit permissions");
+        }
+        if (sections.isEmpty()) {
+            return Set.of();
+        }
+        List<String> sectionIds = sections.stream().map(IdValuePair::getId).collect(Collectors.toList());
+        List<Test> tests = testService.getTestsByTestSectionIds(sectionIds);
+        if (tests == null) {
+            throw new LIMSRuntimeException("Unable to resolve authorized tests");
+        }
+        return tests.stream().map(Test::getId).collect(Collectors.toSet());
     }
 
     @Override

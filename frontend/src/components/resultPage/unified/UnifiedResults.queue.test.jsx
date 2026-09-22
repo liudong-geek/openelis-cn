@@ -115,6 +115,19 @@ test("同申请的不同标本独立选择，同一项目的多组件留在一�
     row("101", "201", { testResultComponentId: "702", testName: "模拟组件乙" }),
     row("102", "202"),
   ]);
+  // A component is an editable row, not an additional laboratory task.
+  expect(
+    screen.getByText(
+      zh["results.workbench.pendingCount"].replace("{count}", "2"),
+    ),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: /^全部 \(\s*2\s*\)$/ }),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: /^未开始 \(\s*2\s*\)$/ }),
+  ).toBeVisible();
+  expect(table().getAllByRole("row")).toHaveLength(4);
   const requests = io.read.mock.calls.length;
   fireEvent.click(tube("201"));
   expect(tube("201")).toHaveAttribute("aria-pressed", "true");
@@ -127,6 +140,40 @@ test("同申请的不同标本独立选择，同一项目的多组件留在一�
   expect(table().queryByText("模拟项目101")).toBeNull();
   expect(table().getByText("模拟项目102")).toBeVisible();
   expect(io.read).toHaveBeenCalledTimes(requests);
+  expect(io.save).not.toHaveBeenCalled();
+});
+
+test("待办加载失败不显示为零，成功重试的空列表才显示零任务", () => {
+  let complete;
+  io.read.mockImplementation((url, callback) => {
+    if (url.includes("lab-units") || url.includes("status-types")) callback([]);
+    else complete = callback;
+  });
+  open();
+  const emptyCount = zh["results.workbench.pendingCount"].replace(
+    "{count}",
+    "0",
+  );
+  expect(screen.queryByText(emptyCount)).toBeNull();
+  expect(
+    screen.getAllByText(zh["results.workbench.loading"]).length,
+  ).toBeGreaterThan(0);
+  act(() =>
+    complete(undefined, { status: 500, errorKey: "common.api.networkError" }),
+  );
+  expect(
+    screen.getByText(zh["results.workbench.countUnavailable"]),
+  ).toBeVisible();
+  expect(screen.queryByText(emptyCount)).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: /^全部 \(\s*0\s*\)$/ }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "应用筛选" }));
+  act(() => complete({ testResult: [] }));
+  expect(screen.getByText(emptyCount)).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: /^全部 \(\s*0\s*\)$/ }),
+  ).toBeVisible();
   expect(io.save).not.toHaveBeenCalled();
 });
 

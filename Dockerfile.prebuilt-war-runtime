@@ -1,0 +1,7 @@
+# The caller supplies a runtime image reference whose image ID was verified,
+# plus a minimal build context
+# containing only the WAR produced by the current source/tested Maven build.
+# Keep the provisioned Tomcat, plugins and startup configuration unchanged.
+ARG RUNTIME_BASE_IMAGE
+FROM ${RUNTIME_BASE_IMAGE}
+COPY OpenELIS-Global.war /usr/local/tomcat/webapps/OpenELIS-Global.war

@@ -20,6 +20,8 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
+import org.openelisglobal.analysis.form.PendingResultSpecimenCount;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.dao.BaseDAO;
 import org.openelisglobal.common.exception.LIMSRuntimeException;
@@ -124,6 +126,11 @@ public interface AnalysisDAO extends BaseDAO<Analysis, String> {
     List<Analysis> getMaxRevisionParentTestAnalysesBySample(SampleItem sampleItem) throws LIMSRuntimeException;
 
     List<Analysis> getAnalysesForStatusId(String statusId) throws LIMSRuntimeException;
+
+    List<Analysis> getPendingResultAnalyses(List<String> statusIds, Set<String> allowedTestIds, int offset, int limit);
+
+    void visitPendingResultSpecimenCounts(List<String> statusIds, Set<String> allowedTestIds,
+            Consumer<PendingResultSpecimenCount> consumer);
 
     List<Analysis> getAnalysisStartedOnExcludedByStatusId(Date collectionDate, Set<String> statusIds)
             throws LIMSRuntimeException;

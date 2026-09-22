@@ -11,11 +11,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.validator.GenericValidator;
 import org.hl7.fhir.r4.model.Coding;
 import org.hl7.fhir.r4.model.ServiceRequest;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
+import org.openelisglobal.common.paging.PagingProperties;
 import org.openelisglobal.common.rest.provider.bean.homedashboard.AverageTimeDisplayBean;
 import org.openelisglobal.common.rest.provider.bean.homedashboard.DashBoardMetrics;
 import org.openelisglobal.common.rest.provider.bean.homedashboard.DashBoardTile;
@@ -25,11 +25,13 @@ import org.openelisglobal.common.rest.util.PatientDashBoardPaging;
 import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.StatusService.AnalysisStatus;
 import org.openelisglobal.common.services.StatusService.ExternalOrderStatus;
+import org.openelisglobal.common.util.ControllerUtills;
 import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.dataexchange.fhir.FhirConfig;
 import org.openelisglobal.dataexchange.fhir.FhirUtil;
 import org.openelisglobal.dataexchange.order.valueholder.ElectronicOrder;
 import org.openelisglobal.dataexchange.service.order.ElectronicOrderService;
+import org.openelisglobal.result.service.ResultEntryWorklistService;
 import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.samplehuman.service.SampleHumanService;
@@ -38,13 +40,17 @@ import org.openelisglobal.systemuser.valueholder.SystemUser;
 import org.openelisglobal.test.service.TestService;
 import org.openelisglobal.test.valueholder.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.server.ResponseStatusException;
 
 @Controller
 @RequestMapping(value = "/rest/")
@@ -52,6 +58,12 @@ public class PatientDashBoardProvider {
 
     @Autowired
     AnalysisService analysisService;
+
+    @Autowired
+    private ResultEntryWorklistService resultEntryWorklistService;
+
+    @Autowired
+    private PagingProperties pagingProperties;
 
     @Autowired
     IStatusService iStatusService;
@@ -298,7 +310,7 @@ public class PatientDashBoardProvider {
 
     @GetMapping(value = "home-dashboard/metrics", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
-    public DashBoardMetrics getDasBoardTiles() {
+    public DashBoardMetrics getDasBoardTiles(HttpServletRequest request) {
 
         DashBoardMetrics metrics = new DashBoardMetrics();
         java.sql.Timestamp startTimestamp = DateUtil
@@ -310,9 +322,15 @@ public class PatientDashBoardProvider {
             Set<String> statusIdSet;
             switch (type) {
             case ORDERS_IN_PROGRESS:
-                statusIdList = new ArrayList<>();
-                statusIdList.add(iStatusService.getStatusID(AnalysisStatus.NotStarted));
-                metrics.setOrdersInProgress(analysisService.getCountOfAnalysesForStatusIds(statusIdList));
+                // Preserve the legacy field, but never expose a global count as
+                // the current actor's result-entry work. Other metrics keep their
+                // existing independent scope in this A-02 sub-batch.
+                Long pendingCount = hasResultsRole()
+                        ? resultEntryWorklistService.getPendingSummaryForUser(ControllerUtills.getSysUserId(request))
+                                .analysisCount()
+                        : null;
+                metrics.setOrdersInProgress(
+                        pendingCount != null && pendingCount <= Integer.MAX_VALUE ? pendingCount.intValue() : null);
                 break;
             case ORDERS_READY_FOR_VALIDATION:
                 statusIdList = new ArrayList<>();
@@ -376,29 +394,44 @@ public class PatientDashBoardProvider {
      */
     @GetMapping(value = "home-dashboard/{listType}", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
+    @PreAuthorize("#listType.name() != 'ORDERS_IN_PROGRESS' or hasRole('RESULTS')")
     public PatientDashBoardForm getDashBoardDisplayList(HttpServletRequest request,
             @PathVariable DashBoardTile.TileType listType, @RequestParam(required = false) String systemUserId)
             throws InvocationTargetException, IllegalAccessException, NoSuchMethodException {
-
-        PatientDashBoardForm response = new PatientDashBoardForm();
-        PatientDashBoardPaging paging = new PatientDashBoardPaging();
-        List<OrderDisplayBean> orderDisplayBeans = new ArrayList<>();
-
-        String requestedPage = request.getParameter("page");
-        if (GenericValidator.isBlankOrNull(requestedPage)) {
-            orderDisplayBeans = retreiveOrders(listType, systemUserId);
-
-            // All the orders retreived are fed into paging to return the first page of the
-            // list.
-            paging.setDatabaseResults(request, response, orderDisplayBeans);
-        } else {
-            int requestedPageNumber = Integer.parseInt(requestedPage);
-
-            // Sets the requested page in the response.
-            paging.page(request, response, requestedPageNumber);
+        int page = dashboardPage(request.getParameter("page"));
+        if (listType == DashBoardTile.TileType.ORDERS_IN_PROGRESS) {
+            // Never trust a user ID query parameter or a previous tile's session
+            // cache for this role-scoped result queue, including subsequent pages.
+            return resultEntryWorklistService.getPendingDashboardPageForUser(ControllerUtills.getSysUserId(request),
+                    page, pagingProperties.getResultsPageSize());
         }
-
+        PatientDashBoardForm response = new PatientDashBoardForm();
+        // Rebuild the requested tile on every page; a shared cache may contain a
+        // different list type or data produced before the current permissions.
+        List<OrderDisplayBean> orders = retreiveOrders(listType, systemUserId);
+        new PatientDashBoardPaging().setDatabaseResults(response, orders, page);
         return response;
+    }
+
+    private int dashboardPage(String value) {
+        if (value == null || value.isBlank()) {
+            return 1;
+        }
+        try {
+            int page = Integer.parseInt(value);
+            if (page > 0) {
+                return page;
+            }
+        } catch (NumberFormatException ignored) {
+            // Malformed and overflowing page numbers share the same HTTP error.
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid dashboard page");
+    }
+
+    private boolean hasResultsRole() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.isAuthenticated()
+                && authentication.getAuthorities().stream().anyMatch(a -> "ROLE_RESULTS".equals(a.getAuthority()));
     }
 
     /**
@@ -414,8 +447,7 @@ public class PatientDashBoardProvider {
                 .convertStringDateStringTimeToTimestamp(DateUtil.getCurrentDateAsText(), "23:59:59");
         switch (listType) {
         case ORDERS_IN_PROGRESS:
-            analyses = analysisService.getAnalysesForStatusId(iStatusService.getStatusID(AnalysisStatus.NotStarted));
-            return convertAnalysesToOrderBean(analyses);
+            throw new IllegalStateException("Pending results must use the actor-scoped worklist service");
         case ORDERS_READY_FOR_VALIDATION:
             analyses = analysisService
                     .getAnalysesForStatusId(iStatusService.getStatusID(AnalysisStatus.TechnicalAcceptance));

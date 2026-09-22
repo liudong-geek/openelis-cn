@@ -21,6 +21,8 @@ import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
 import org.openelisglobal.result.controller.LogbookResultsBaseController;
 import org.openelisglobal.result.exception.ResultSaveValidationException;
 import org.openelisglobal.result.form.LogbookResultsForm;
+import org.openelisglobal.result.form.PendingResultSummary;
+import org.openelisglobal.result.form.PendingResultWorklist;
 import org.openelisglobal.result.form.SingleResultEntryForm;
 import org.openelisglobal.result.service.LogbookResultsPersistService;
 import org.openelisglobal.result.service.ResultEntryPresenceService;
@@ -121,20 +123,23 @@ public class ResultEntryRestController extends LogbookResultsBaseController {
     }
 
     /**
-     * Canonical dashboard-to-results task list. Its predicate deliberately matches
-     * the dashboard's ORDERS_IN_PROGRESS metric (analysis status NotStarted), then
-     * applies the current user's Results lab-unit permissions.
+     * Current actor's pending results, with a summary of these exact returned rows.
      */
     @GetMapping(value = "pending", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     @PreAuthorize("hasRole('RESULTS')")
-    public Map<String, Object> getPendingResults(HttpServletRequest request) {
-        List<TestResultItem> pendingResults = resultEntryWorklistService
-                .getPendingResultsForUser(getSysUserId(request));
-        Map<String, Object> response = new HashMap<>();
-        response.put("testResult", pendingResults);
-        response.put("total", pendingResults.size());
-        return response;
+    public PendingResultWorklist getPendingResults(HttpServletRequest request) {
+        return resultEntryWorklistService.getPendingWorklistForUser(getSysUserId(request));
+    }
+
+    /**
+     * Lightweight counts only: no result values, patients, or clinical object IDs.
+     */
+    @GetMapping(value = "pending/summary", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    @PreAuthorize("hasRole('RESULTS')")
+    public PendingResultSummary getPendingSummary(HttpServletRequest request) {
+        return resultEntryWorklistService.getPendingSummaryForUser(getSysUserId(request));
     }
 
     /**

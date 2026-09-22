@@ -21,12 +21,15 @@ import org.openelisglobal.common.action.IActionConstants;
 import org.openelisglobal.common.paging.IPageDivider;
 import org.openelisglobal.common.paging.IPageFlattener;
 import org.openelisglobal.common.paging.IPageUpdater;
+import org.openelisglobal.common.paging.PagingBean;
 import org.openelisglobal.common.paging.PagingProperties;
 import org.openelisglobal.common.paging.PagingUtility;
 import org.openelisglobal.common.rest.provider.bean.homedashboard.OrderDisplayBean;
 import org.openelisglobal.common.rest.provider.form.PatientDashBoardForm;
 import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.spring.util.SpringContext;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Responsible for building a page by accepting all display and paging
@@ -39,6 +42,24 @@ public class PatientDashBoardPaging {
                                                                                         // data
     private static final PatientDashboardPageHelper pagingHelper = new PatientDashboardPageHelper(); // Implement helper
                                                                                                      // class
+
+    /**
+     * Pages freshly authorized data without reading or writing the shared session
+     * cache.
+     */
+    public void setDatabaseResults(PatientDashBoardForm form, List<OrderDisplayBean> orders, int requestedPage) {
+        List<List<OrderDisplayBean>> pages = new ArrayList<>();
+        pagingHelper.createPages(orders, pages);
+        if (requestedPage < 1 || requestedPage > pages.size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid dashboard page");
+        }
+        PagingBean bean = new PagingBean();
+        bean.setCurrentPage(String.valueOf(requestedPage));
+        bean.setTotalPages(String.valueOf(pages.size()));
+        bean.setSearchTermToPage(pagingHelper.createSearchToPageMapping(pages));
+        form.setOrderDisplayBeans(pages.get(requestedPage - 1));
+        form.setPaging(bean);
+    }
 
     public void setDatabaseResults(HttpServletRequest request, PatientDashBoardForm form, List<OrderDisplayBean> orders)
             throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
@@ -79,22 +100,16 @@ public class PatientDashBoardPaging {
         public void createPages(List<OrderDisplayBean> orders, List<List<OrderDisplayBean>> pagedResults) {
             List<OrderDisplayBean> page = new ArrayList<>();
 
-            Boolean createNewPage = false;
-            int resultCount = 0;
-
+            int pageSize = SpringContext.getBean(PagingProperties.class).getResultsPageSize();
+            if (pageSize < 1) {
+                throw new IllegalStateException("Invalid configured results page size");
+            }
             for (OrderDisplayBean item : orders) {
-                if (createNewPage) {
-                    resultCount = 0;
-                    createNewPage = false;
+                if (page.size() == pageSize) {
                     pagedResults.add(page);
                     page = new ArrayList<>();
                 }
-                if (resultCount >= SpringContext.getBean(PagingProperties.class).getResultsPageSize()) {
-                    createNewPage = true;
-                }
-
                 page.add(item);
-                resultCount++;
             }
 
             if (!page.isEmpty() || pagedResults.isEmpty()) {

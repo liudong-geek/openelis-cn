@@ -5,6 +5,8 @@ import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
+import org.openelisglobal.analysis.form.PendingResultSpecimenCount;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.service.BaseObjectService;
 import org.openelisglobal.panel.valueholder.Panel;
@@ -108,6 +110,11 @@ public interface AnalysisService extends BaseObjectService<Analysis, String> {
     List<Analysis> getAnalysisCompleteInRange(Timestamp lowDate, Timestamp highDate);
 
     List<Analysis> getAnalysesForStatusId(String statusId);
+
+    List<Analysis> getPendingResultAnalyses(List<String> statusIds, Set<String> allowedTestIds, int offset, int limit);
+
+    void visitPendingResultSpecimenCounts(List<String> statusIds, Set<String> allowedTestIds,
+            Consumer<PendingResultSpecimenCount> consumer);
 
     int getCountOfAnalysesForStatusIds(List<String> statusIdList);
 

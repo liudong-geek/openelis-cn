@@ -13,7 +13,7 @@
 
 .dashboard-shift-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
   margin: 0 0 1rem;
   overflow: hidden;
   border: 1px solid var(--oe-border, #e4e8ef);
@@ -171,6 +171,22 @@
   color: var(--oe-text-muted, #667085);
   font-size: 0.75rem;
   line-height: 1.25;
+}
+
+.dashboard-result-summary-status {
+  display: block;
+  margin-top: var(--cds-spacing-02, 0.25rem);
+  color: var(--oe-text-muted, #667085);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.dashboard-result-summary-status small {
+  display: block;
+}
+
+.dashboard-task-item[aria-disabled="true"] {
+  cursor: not-allowed;
 }
 
 .dashboard-task-action {

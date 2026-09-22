@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { waitFor } from "@testing-library/dom";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
@@ -11,6 +11,25 @@ import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { NotificationContext } from "../layout/Layout";
 import messages from "../../languages/en.json";
 import { getFromOpenElisServer, Roles } from "../utils/Utils";
+import {
+  readPendingResultSummary,
+  PendingSummaryError,
+} from "./pendingResultSummary";
+
+vi.mock("./pendingResultSummary", async () => ({
+  ...(await vi.importActual("./pendingResultSummary")),
+  readPendingResultSummary: vi.fn(),
+}));
+
+const summary = {
+  scope: "pending",
+  state: "ready",
+  analysisCount: 0,
+  specimenCount: 0,
+  displayRowCount: 0,
+  missingSpecimenAnalysisCount: 0,
+  generatedAt: "2026-09-23T06:20:00Z",
+};
 
 vi.mock("../utils/Utils", async () => {
   const actualUtils = await vi.importActual("../utils/Utils");
@@ -62,6 +81,10 @@ const renderDashboard = (metricOverrides = {}, roles = allWorkflowRoles) => {
           value={{
             userSessionDetails: {
               authenticated: true,
+              userId: "17",
+              sessionId: "synthetic-session",
+              csrf: "synthetic-csrf",
+              loginLabUnit: "4",
               roles,
             },
           }}
@@ -85,6 +108,8 @@ const renderDashboard = (metricOverrides = {}, roles = allWorkflowRoles) => {
 describe("HomeDashBoard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem("CSRF", "synthetic-csrf");
+    readPendingResultSummary.mockResolvedValue(summary);
   });
 
   test("puts pending work and a primary task in the first dashboard view", async () => {
@@ -211,5 +236,78 @@ describe("HomeDashBoard", () => {
         }),
       ).toBeInTheDocument();
     });
+  });
+
+  test("uses test tasks from the partial summary without adding unlike counters", async () => {
+    readPendingResultSummary.mockResolvedValue({
+      ...summary,
+      state: "partial",
+      analysisCount: 7,
+      specimenCount: 2,
+      displayRowCount: null,
+    });
+    renderDashboard({ ordersInProgress: 9999, ordersReadyForValidation: 3 });
+    const task = await screen.findByRole("button", {
+      name: /Results awaiting entry/i,
+    });
+    await waitFor(() => expect(task).toHaveTextContent("7test tasks"));
+    expect(task).toHaveTextContent("Other counts are temporarily unavailable.");
+    expect(task).not.toHaveTextContent("9999");
+    expect(screen.queryByText("10 pending")).not.toBeInTheDocument();
+    expect(readPendingResultSummary).toHaveBeenCalledTimes(1);
+  });
+
+  test("only a confirmed zero shows an empty result worklist", async () => {
+    renderDashboard({ ordersInProgress: 9999 });
+    const task = await screen.findByRole("button", {
+      name: /Results awaiting entry/i,
+    });
+    await waitFor(() =>
+      expect(task).toHaveTextContent("No test tasks are awaiting entry."),
+    );
+    expect(task).toHaveTextContent("0test tasks");
+    expect(task).not.toHaveTextContent("9999");
+  });
+
+  test("an unavailable count stays unknown while the permitted worklist remains reachable", async () => {
+    readPendingResultSummary.mockRejectedValue(
+      new PendingSummaryError("unavailable"),
+    );
+    const user = userEvent.setup();
+    const { history } = renderDashboard({ ordersInProgress: 9999 });
+    const task = await screen.findByRole("button", {
+      name: /Results awaiting entry/i,
+    });
+    await within(task).findByText(
+      "The count is unavailable. You can still open the worklist.",
+    );
+    expect(task).toHaveTextContent("—test tasks");
+    expect(task).not.toHaveTextContent("No test tasks");
+    expect(task).not.toHaveTextContent("Last successful count");
+    expect(task).not.toHaveTextContent("9999");
+    await user.click(task);
+    expect(history.location.pathname + history.location.search).toBe(
+      "/Results?scope=pending",
+    );
+  });
+
+  test.each([
+    ["forbidden", "You do not have access to this worklist."],
+    [
+      "unauthenticated",
+      "Your session is unavailable. Sign in again to view tasks.",
+    ],
+  ])("a confirmed %s response disables the result task", async (kind, text) => {
+    readPendingResultSummary.mockRejectedValue(new PendingSummaryError(kind));
+    const user = userEvent.setup();
+    const { history } = renderDashboard();
+    const task = await screen.findByRole("button", {
+      name: /Results awaiting entry/i,
+    });
+    await within(task).findByText(text);
+    expect(task).toHaveAttribute("aria-disabled", "true");
+    expect(task).toHaveTextContent("—test tasks");
+    await user.click(task);
+    expect(history.location.pathname).toBe("/Dashboard");
   });
 });

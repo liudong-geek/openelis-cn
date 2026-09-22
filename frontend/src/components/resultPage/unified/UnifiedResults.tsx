@@ -628,7 +628,7 @@ const UnifiedResults: React.FC = () => {
   // The result workbench opens as a real pending task list. Deep links with
   // accession/unit/date filters still load the narrower legacy-compatible
   // search, while an unfiltered dashboard entry loads every authorized
-  // NotStarted analysis through /rest/results-entry/pending.
+  // NotStarted/BiologistRejected analysis through /rest/results-entry/pending.
   useEffect(() => {
     if (!initialLoadStarted.current) {
       initialLoadStarted.current = true;
@@ -652,13 +652,21 @@ const UnifiedResults: React.FC = () => {
     );
   }, [statusFilter]);
 
+  const pendingTaskCount = useMemo(
+    () => new Set(rows.map((row) => row.analysisId)).size,
+    [rows],
+  );
+  const taskCountsAvailable = hasLoaded && !loading && !loadErrorKey;
+
   const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
+    const analyses: Record<string, Set<string>> = {};
     for (const row of rows) {
       const key = row.analysisStatusId || "";
-      counts[key] = (counts[key] || 0) + 1;
+      (analyses[key] ||= new Set()).add(row.analysisId);
     }
-    return counts;
+    return Object.fromEntries(
+      Object.entries(analyses).map(([status, ids]) => [status, ids.size]),
+    );
   }, [rows]);
 
   const filteredRows = useMemo(
@@ -1295,10 +1303,20 @@ const UnifiedResults: React.FC = () => {
           title={<FormattedMessage id="results.workbench.title" />}
           subtitle={<FormattedMessage id="results.workbench.subtitle" />}
           actions={
-            <Tag type={rows.length > 0 ? "blue" : "gray"}>
+            <Tag
+              type={
+                taskCountsAvailable && pendingTaskCount > 0 ? "blue" : "gray"
+              }
+            >
               <FormattedMessage
-                id="results.workbench.pendingCount"
-                values={{ count: rows.length }}
+                id={
+                  loadErrorKey
+                    ? "results.workbench.countUnavailable"
+                    : taskCountsAvailable
+                      ? "results.workbench.pendingCount"
+                      : "results.workbench.loading"
+                }
+                values={{ count: pendingTaskCount }}
               />
             </Tag>
           }
@@ -1391,10 +1409,13 @@ const UnifiedResults: React.FC = () => {
               size="sm"
               onClick={() => setStatusFilter("ALL")}
             >
-              <FormattedMessage id="label.results.status.all" /> ({rows.length})
+              <FormattedMessage id="label.results.status.all" />
+              {taskCountsAvailable ? ` (${pendingTaskCount})` : ""}
             </Button>
             {statusOptions
-              .filter((status) => statusCounts[status.id])
+              .filter(
+                (status) => taskCountsAvailable && statusCounts[status.id],
+              )
               .map((status) => (
                 <Button
                   key={status.id}

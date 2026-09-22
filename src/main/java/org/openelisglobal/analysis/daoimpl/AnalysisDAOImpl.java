@@ -20,7 +20,9 @@ import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.apache.commons.beanutils.PropertyUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.GenericValidator;
@@ -28,6 +30,7 @@ import org.hibernate.HibernateException;
 import org.hibernate.Session;
 import org.hibernate.query.Query;
 import org.openelisglobal.analysis.dao.AnalysisDAO;
+import org.openelisglobal.analysis.form.PendingResultSpecimenCount;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.daoimpl.BaseDAOImpl;
 import org.openelisglobal.common.exception.LIMSRuntimeException;
@@ -993,6 +996,65 @@ public class AnalysisDAOImpl extends BaseDAOImpl<Analysis, String> implements An
         return list;
     }
 
+    // Both list/page and scalar summary use this exact scope. The final clause
+    // mirrors ResultsLoadUtility's existence rule: no results -> a blank row;
+    // parentless result -> a row; multiple active components -> blank component
+    // rows even when every stored result is a child. Never require a result value
+    // or a valid component link, because legacy rows fall back to primary.
+    private static final String PENDING_RESULT_FROM = " from Analysis a"
+            + " left join a.sampleItem si left join si.sample s"
+            + " where a.statusId in (:statusIds) and a.test.id in (:allowedTestIds)"
+            + " and a.releasedDate is null and a.printedDate is null"
+            + " and (not exists (select r.id from Result r where r.analysis.id = a.id)"
+            + " or exists (select r.id from Result r where r.analysis.id = a.id and r.parentResult is null)"
+            + " or (select count(c.id) from TestResultComponent c"
+            + " where c.testId = a.test.id and c.isActive = 'Y') > 1)";
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Analysis> getPendingResultAnalyses(List<String> statusIds, Set<String> allowedTestIds, int offset,
+            int limit) {
+        if (statusIds.isEmpty() || allowedTestIds.isEmpty()) {
+            return List.of();
+        }
+        if (offset < 0 || limit < 0) {
+            throw new IllegalArgumentException("Invalid pending result page");
+        }
+        Query<Analysis> query = entityManager.unwrap(Session.class).createQuery(
+                "select a" + PENDING_RESULT_FROM + " order by s.accessionNumber, si.id, a.id", Analysis.class);
+        query.setParameterList("statusIds", statusIds);
+        query.setParameterList("allowedTestIds", allowedTestIds);
+        query.setFirstResult(offset);
+        if (limit > 0) {
+            query.setMaxResults(limit);
+        }
+        return query.list();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void visitPendingResultSpecimenCounts(List<String> statusIds, Set<String> allowedTestIds,
+            Consumer<PendingResultSpecimenCount> consumer) {
+        if (statusIds.isEmpty() || allowedTestIds.isEmpty()) {
+            return;
+        }
+        Query<Object[]> query = entityManager.unwrap(Session.class)
+                .createQuery("select si.id, coalesce(s.accessionNumber, ''), count(a.id),"
+                        + " min(cast(a.id as long)), max(cast(a.id as long))" + PENDING_RESULT_FROM
+                        + " group by si.id, coalesce(s.accessionNumber, '')", Object[].class);
+        query.setParameterList("statusIds", statusIds);
+        query.setParameterList("allowedTestIds", allowedTestIds);
+        query.setReadOnly(true);
+        query.setFetchSize(128);
+        // Closing the stream closes Hibernate's forward-only cursor. The caller
+        // accumulates scalar counts, so queue size does not grow Java memory.
+        try (Stream<Object[]> groups = query.stream()) {
+            groups.forEach(group -> consumer.accept(new PendingResultSpecimenCount((String) group[0], (String) group[1],
+                    ((Number) group[2]).longValue(), ((Number) group[3]).longValue(),
+                    ((Number) group[4]).longValue())));
+        }
+    }
+
     @Override
     @Transactional(readOnly = true)
     public List<Analysis> getAnalysesForStatusId(String statusId) throws LIMSRuntimeException {
@@ -1289,11 +1351,9 @@ public class AnalysisDAOImpl extends BaseDAOImpl<Analysis, String> implements An
             List<String> analysisStatusList, List<String> sampleStatusList, Timestamp startInclusive,
             Timestamp endExclusive) {
         try {
-            String sql = "from Analysis a where a.test.id IN (:testList)"
-                    + " and a.statusId IN (:analysisStatusList)"
+            String sql = "from Analysis a where a.test.id IN (:testList)" + " and a.statusId IN (:analysisStatusList)"
                     + " and a.sampleItem.sample.statusId IN (:sampleStatusList)"
-                    + " and a.completedDate >= :startInclusive"
-                    + " and a.completedDate < :endExclusive"
+                    + " and a.completedDate >= :startInclusive" + " and a.completedDate < :endExclusive"
                     + " order by a.sampleItem.sample.accessionNumber";
 
             Query<Analysis> query = entityManager.unwrap(Session.class).createQuery(sql, Analysis.class);

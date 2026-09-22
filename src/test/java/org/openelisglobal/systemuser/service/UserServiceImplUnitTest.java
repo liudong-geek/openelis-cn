@@ -8,8 +8,8 @@ import static org.mockito.Mockito.when;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
-import java.util.Locale;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import org.junit.After;
 import org.junit.Before;
@@ -115,8 +115,7 @@ public class UserServiceImplUnitTest {
         List<IdValuePair> cachedSections = List.of(new IdValuePair("301", "Biochemistry"),
                 new IdValuePair("302", "Hematology"));
         when(displayListService.getList(ListType.TEST_SECTION_ACTIVE)).thenReturn(cachedSections);
-        when(userRoleService.getUserLabUnitRoles("7"))
-                .thenReturn(labUnitRoles("AllLabUnits", Set.of("77")));
+        when(userRoleService.getUserLabUnitRoles("7")).thenReturn(labUnitRoles("AllLabUnits", Set.of("77")));
         mockLocalizedSection("301", "Biochemistry", "生物化学");
         mockLocalizedSection("302", "Hematology", "血液学");
         LocaleContextHolder.setLocale(Locale.CHINESE);
@@ -255,6 +254,46 @@ public class UserServiceImplUnitTest {
         assertTrue(service.filterAnalysesByLabUnitRoles("7", List.of(analysis), "Reports").isEmpty());
     }
 
+    @Test
+    public void pendingQueryAndExistingResultFilterShareAuthorizedTestIds() {
+        org.openelisglobal.test.service.TestService tests = mock(org.openelisglobal.test.service.TestService.class);
+        ReflectionTestUtils.setField(service, "testService", tests);
+        service.setAuthorizedSections("302");
+        Role resultsRole = new Role();
+        resultsRole.setId("88");
+        when(roleService.getRoleByName(Constants.ROLE_RESULTS)).thenReturn(resultsRole);
+        org.openelisglobal.test.valueholder.Test allowed = new org.openelisglobal.test.valueholder.Test();
+        allowed.setId("22");
+        when(tests.getTestsByTestSectionIds(List.of("302"))).thenReturn(List.of(allowed));
+        org.openelisglobal.test.beanItems.TestResultItem allowedRow = new org.openelisglobal.test.beanItems.TestResultItem();
+        allowedRow.setTestId("22");
+        org.openelisglobal.test.beanItems.TestResultItem forbiddenRow = new org.openelisglobal.test.beanItems.TestResultItem();
+        forbiddenRow.setTestId("11");
+        assertEquals(Set.of("22"), service.getTestIdsForLabUnitRole("7", Constants.ROLE_RESULTS));
+        assertEquals(List.of(allowedRow),
+                service.filterResultsByLabUnitRoles("7", List.of(forbiddenRow, allowedRow), Constants.ROLE_RESULTS));
+    }
+
+    @Test
+    public void emptySectionsDoNotTriggerAnUnrestrictedTestLookup() {
+        org.openelisglobal.test.service.TestService tests = mock(org.openelisglobal.test.service.TestService.class);
+        ReflectionTestUtils.setField(service, "testService", tests);
+        assertTrue(service.getTestIdsForLabUnitRole("7", "Reports").isEmpty());
+        org.mockito.Mockito.verifyZeroInteractions(tests);
+    }
+
+    @Test
+    public void missingRoleOrFailedTestLookupDoesNotBecomeAConfirmedEmptyScope() {
+        org.junit.Assert.assertThrows(org.openelisglobal.common.exception.LIMSRuntimeException.class,
+                () -> service.getTestIdsForLabUnitRole("7", "Missing"));
+        org.openelisglobal.test.service.TestService tests = mock(org.openelisglobal.test.service.TestService.class);
+        ReflectionTestUtils.setField(service, "testService", tests);
+        service.setAuthorizedSections("302");
+        when(tests.getTestsByTestSectionIds(List.of("302"))).thenReturn(null);
+        org.junit.Assert.assertThrows(org.openelisglobal.common.exception.LIMSRuntimeException.class,
+                () -> service.getTestIdsForLabUnitRole("7", "Reports"));
+    }
+
     private UserLabUnitRoles labUnitRoles(String labUnitId, Set<String> roleIds) {
         LabUnitRoleMap map = new LabUnitRoleMap();
         map.setLabUnit(labUnitId);
@@ -274,8 +313,10 @@ public class UserServiceImplUnitTest {
     private void mockLocalizedSection(String id, String englishName, String chineseName) {
         TestSection section = mock(TestSection.class);
         when(section.getId()).thenReturn(id);
-        when(section.getLocalizedName()).thenAnswer(invocation -> LocaleContextHolder.getLocale().getLanguage()
-                .equals(Locale.CHINESE.getLanguage()) ? chineseName : englishName);
+        when(section.getLocalizedName()).thenAnswer(
+                invocation -> LocaleContextHolder.getLocale().getLanguage().equals(Locale.CHINESE.getLanguage())
+                        ? chineseName
+                        : englishName);
         when(testSectionService.getTestSectionById(id)).thenReturn(section);
     }
 

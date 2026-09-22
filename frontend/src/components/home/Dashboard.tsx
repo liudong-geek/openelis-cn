@@ -19,7 +19,6 @@ import {
   Tab,
   Tabs,
   TabList,
-  Tag,
   Stack,
 } from "@carbon/react";
 import "./Dashboard.css";
@@ -68,6 +67,7 @@ import { useHistory } from "react-router-dom";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { NotificationContext } from "../layout/Layout";
 import { AlertDialog, NotificationKinds } from "../common/CustomNotification";
+import { usePendingResultSummary } from "./usePendingResultSummary";
 
 interface DashBoardProps {}
 
@@ -90,10 +90,6 @@ type MetricType =
   | "AVERAGE_TURN_AROUND_TIME"
   | "DELAYED_TURN_AROUND"
   | "ORDERS_FOR_USER";
-
-interface UserSessionDetails {
-  userSessionDetails: any;
-}
 
 interface Notification {
   notificationVisible: any;
@@ -158,9 +154,20 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
   const [currentApiPage, setCurrentApiPage] = useState(null);
   const [totalApiPages, setTotalApiPages] = useState(null);
   const [url, setUrl] = useState("");
-  const { userSessionDetails } = useContext(
-    UserSessionDetailsContext,
-  ) as UserSessionDetails;
+  const sessionContext = useContext(UserSessionDetailsContext);
+  const { userSessionDetails } = sessionContext;
+  const resultSummary = usePendingResultSummary(sessionContext);
+  const resultCount = resultSummary.summary?.analysisCount ?? null;
+  const resultCountText =
+    resultCount === null ? "—" : intl.formatNumber(resultCount);
+  const resultSummaryMessage =
+    resultSummary.status === "ready"
+      ? resultCount === 0
+        ? "dashboard.results.summary.empty"
+        : "dashboard.results.summary.description"
+      : resultSummary.status === "partial" && resultCount === null
+        ? "dashboard.results.summary.unavailable"
+        : `dashboard.results.summary.${resultSummary.status}`;
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext) as Notification;
 
@@ -171,7 +178,7 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
   }, []);
 
   useEffect(() => {
-    refreshMetrics();
+    getFromOpenElisServer("/rest/home-dashboard/metrics", loadCount);
 
     return () => {
       // This code runs when component is unmounted
@@ -182,6 +189,7 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
   const refreshMetrics = () => {
     setLoading(true);
     getFromOpenElisServer("/rest/home-dashboard/metrics", loadCount);
+    resultSummary.refresh();
   };
 
   useEffect(() => {
@@ -310,12 +318,6 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
 
   const tileList: Array<Tile> = [
     {
-      title: <FormattedMessage id="dashboard.in.progress.label" />,
-      subTitle: <FormattedMessage id="dashboard.in.progress.subtitle.label" />,
-      type: "ORDERS_IN_PROGRESS",
-      value: counts.ordersInProgress,
-    },
-    {
       title: <FormattedMessage id="dashboard.validation.ready.label" />,
       subTitle: (
         <FormattedMessage id="dashboard.validation.ready.subtitle.label" />
@@ -420,8 +422,8 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
     {
       type: "ORDERS_IN_PROGRESS",
       titleId: "dashboard.task.results.title",
-      descriptionId: "dashboard.task.results.description",
-      value: counts.ordersInProgress,
+      descriptionId: "dashboard.results.summary.description",
+      value: resultCount,
       route: "/Results?scope=pending",
       icon: InProgress,
       roles: [Roles.RESULTS],
@@ -706,7 +708,7 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                   <span className="dashboard-last-updated">
                     {" · "}
                     <FormattedMessage
-                      id="dashboard.last.updated"
+                      id="dashboard.otherMetrics.updated"
                       values={{ time: intl.formatTime(lastUpdated) }}
                     />
                   </span>
@@ -730,17 +732,14 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
             className="dashboard-shift-strip"
             aria-label={intl.formatMessage({ id: "dashboard.shift.summary" })}
           >
-            <div className="dashboard-shift-item">
-              <span>
-                <FormattedMessage id="dashboard.shift.pending" />
-              </span>
-              <strong>
-                {visibleWorkItems.reduce(
-                  (total, item) => total + Number(item.value || 0),
-                  0,
-                )}
-              </strong>
-            </div>
+            {hasRole(userSessionDetails, Roles.RESULTS) && (
+              <div className="dashboard-shift-item">
+                <span>
+                  <FormattedMessage id="dashboard.results.summary.heading" />
+                </span>
+                <strong>{resultCountText}</strong>
+              </div>
+            )}
             <div className="dashboard-shift-item is-success">
               <span>
                 <FormattedMessage id="dashboard.shift.completed" />
@@ -773,17 +772,6 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                       <FormattedMessage id="dashboard.task.subtitle" />
                     </p>
                   </div>
-                  <Tag type="blue">
-                    <FormattedMessage
-                      id="dashboard.task.total"
-                      values={{
-                        count: visibleWorkItems.reduce(
-                          (total, item) => total + Number(item.value || 0),
-                          0,
-                        ),
-                      }}
-                    />
-                  </Tag>
                 </div>
 
                 <Stack gap={3} className="dashboard-task-list">
@@ -794,16 +782,31 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                   )}
                   {visibleWorkItems.map((item) => {
                     const TaskIcon = item.icon;
+                    const isResults = item.type === "ORDERS_IN_PROGRESS";
+                    const denied =
+                      isResults &&
+                      (resultSummary.status === "forbidden" ||
+                        resultSummary.status === "unauthenticated");
+                    const className =
+                      isResults && resultCount === null
+                        ? "is-unavailable"
+                        : Number(item.value) > 0
+                          ? "has-work"
+                          : "is-clear";
                     return (
                       <ClickableTile
                         key={item.type}
-                        className={`dashboard-task-item ${Number(item.value || 0) > 0 ? "has-work" : "is-clear"}`}
+                        className={`dashboard-task-item ${className}`}
                         role="button"
-                        onClick={() => history.push(item.route)}
+                        aria-disabled={denied || undefined}
+                        tabIndex={denied ? -1 : 0}
+                        onClick={() => {
+                          if (!denied) history.push(item.route);
+                        }}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
                             event.preventDefault();
-                            history.push(item.route);
+                            if (!denied) history.push(item.route);
                           }
                         }}
                       >
@@ -820,19 +823,45 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                             <span className="dashboard-task-description">
                               <FormattedMessage id={item.descriptionId} />
                             </span>
+                            {isResults && (
+                              <span
+                                className="dashboard-result-summary-status"
+                                role="status"
+                                aria-live="polite"
+                              >
+                                {resultSummary.status !== "ready" ||
+                                resultCount === 0 ? (
+                                  <FormattedMessage id={resultSummaryMessage} />
+                                ) : null}
+                                {resultSummary.lastSuccessAt && (
+                                  <small>
+                                    <FormattedMessage
+                                      id="dashboard.results.summary.updated"
+                                      values={{
+                                        time: intl.formatTime(
+                                          resultSummary.lastSuccessAt,
+                                        ),
+                                      }}
+                                    />
+                                  </small>
+                                )}
+                              </span>
+                            )}
                           </Column>
                           <Column lg={2} md={1} sm={1}>
                             <span className="dashboard-task-action">
                               <span className="dashboard-task-state">
                                 <span className="dashboard-task-count">
-                                  {item.value}
+                                  {isResults ? resultCountText : item.value}
                                 </span>
                                 <small>
                                   <FormattedMessage
                                     id={
-                                      Number(item.value || 0) > 0
-                                        ? "dashboard.task.pending"
-                                        : "dashboard.task.clear"
+                                      isResults
+                                        ? "dashboard.results.summary.unit"
+                                        : Number(item.value || 0) > 0
+                                          ? "dashboard.task.pending"
+                                          : "dashboard.task.clear"
                                     }
                                   />
                                 </small>
