@@ -9,7 +9,7 @@ import Admin from "../admin/Admin";
 import Layout, { ConfigurationContext, NotificationContext } from "./Layout";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import enMessages from "../../languages/en.json";
-import { getFromOpenElisServer, getFromOpenElisServerV2 } from "../utils/Utils";
+import { getFromOpenElisServer } from "../utils/Utils";
 
 /**
  * Integration tests for Layout.js
@@ -30,6 +30,22 @@ vi.mock("../utils/Utils", () => ({
     } else if (url === "/rest/open-configuration-properties") {
       callback({ releaseNumber: "3.0.0" });
     } else if (url === "/rest/menu") {
+      callback([
+        {
+          menu: {
+            elementId: "menu_home",
+            displayKey: "banner.menu.home",
+            actionURL: "/Dashboard",
+            isActive: true,
+          },
+          childMenus: [],
+        },
+      ]);
+    } else if (url === "/rest/properties") {
+      callback({});
+    } else if (url === "/rest/notification/pnconfig") {
+      callback({ subscribed: false });
+    } else if (url === "/rest/notifications") {
       callback([]);
     } else if (url === "/rest/database-cleaning/status") {
       callback({ trainingInstallation: false });
@@ -41,10 +57,14 @@ vi.mock("../utils/Utils", () => ({
   deleteToOpenElisServer: vi.fn(async () => ({})),
 }));
 
+const defaultGetFromServer = getFromOpenElisServer.getMockImplementation();
+
 // Mock user session context value
 const mockUserSessionContextValue = {
   userSessionDetails: {
     authenticated: true,
+    userId: "SIM-layout-user",
+    sessionId: "SIM-layout-session",
     firstName: "Test",
     lastName: "User",
     loginLabUnit: "Main Lab",
@@ -121,6 +141,7 @@ describe("Layout", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    getFromOpenElisServer.mockImplementation(defaultGetFromServer);
     window.localStorage.clear();
     viewportIsDesktop = true;
   });
@@ -182,26 +203,56 @@ describe("Layout", () => {
     });
 
     test("notification configuration failure degrades silently without retrying", async () => {
+      vi.useFakeTimers();
       const consoleError = vi
         .spyOn(console, "error")
         .mockImplementation(() => {});
-      getFromOpenElisServerV2.mockRejectedValueOnce(
-        new Error("push configuration is unavailable"),
-      );
-
-      renderWithProviders(
-        <Layout>
-          <div>Content</div>
-        </Layout>,
-      );
-
-      await waitFor(() =>
-        expect(getFromOpenElisServerV2).toHaveBeenCalledTimes(1),
-      );
-      expect(consoleError.mock.calls.flat().join(" ")).not.toContain(
-        "Error checking subscription status",
-      );
-      consoleError.mockRestore();
+      let view;
+      try {
+        getFromOpenElisServer.mockImplementation((url, callback, signal) => {
+          if (url === "/rest/notification/pnconfig") {
+            // The callback API represents an unavailable/non-JSON response as
+            // undefined. Exercise the real current component's fallback.
+            callback(undefined);
+          } else {
+            defaultGetFromServer(url, callback, signal);
+          }
+        });
+        await act(async () => {
+          view = renderWithProviders(
+            <Layout>
+              <div>Content</div>
+            </Layout>,
+          );
+        });
+        const configurationReads = () =>
+          getFromOpenElisServer.mock.calls.filter(
+            ([url]) => url === "/rest/notification/pnconfig",
+          );
+        expect(configurationReads()).toHaveLength(1);
+        expect(configurationReads()[0][2]).toBeInstanceOf(AbortSignal);
+        fireEvent.click(view.container.querySelector("#notification-Icon"));
+        expect(screen.getByRole("button", { name: "Subscribe" })).toBeEnabled();
+        expect(screen.getByText("Content")).toBeVisible();
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        // Observe a bounded interval without sleeping or loosening the test
+        // timeout. Optional push must not schedule retries.
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(12000);
+        });
+        expect(configurationReads()).toHaveLength(1);
+        expect(
+          getFromOpenElisServer.mock.calls.filter(
+            ([url]) => url === "/rest/menu",
+          ),
+        ).toHaveLength(1);
+        expect(screen.getByRole("button", { name: "Subscribe" })).toBeEnabled();
+        expect(consoleError).not.toHaveBeenCalled();
+      } finally {
+        view?.unmount();
+        vi.useRealTimers();
+        consoleError.mockRestore();
+      }
     });
 
     /**
@@ -697,10 +748,8 @@ describe("Layout", () => {
               fallback: true,
             },
           ]);
-        } else if (url === "/rest/menu") {
-          callback([]);
-        } else if (url === "/rest/database-cleaning/status") {
-          callback({ trainingInstallation: false });
+        } else {
+          defaultGetFromServer(url, callback);
         }
       });
 
