@@ -472,11 +472,11 @@ export default function App() {
           <Router>
             <Layout onChangeLanguage={onChangeLanguage}>
               <Switch key={routeRefreshKey}>
-                <Route path="/login" exact component={() => <Login />} />
+                <Route path="/login" exact component={Login} />
                 <Route
                   path="/ChangePasswordLogin"
                   exact
-                  component={() => <ChangePassword />}
+                  component={ChangePassword}
                 />
                 <Route
                   path="/landing"
