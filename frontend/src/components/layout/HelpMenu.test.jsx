@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import HelpMenu from "./HelpMenu";
+import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import messages from "../../languages/en.json";
 import { getFromOpenElisServer } from "../utils/Utils";
 
@@ -15,7 +16,17 @@ vi.mock("../utils/Utils", () => ({
 const renderWithIntl = (component) =>
   render(
     <IntlProvider locale="en" messages={messages}>
-      {component}
+      <UserSessionDetailsContext.Provider
+        value={{
+          userSessionDetails: {
+            authenticated: true,
+            userId: "SIM-help",
+            sessionId: "SIM-session",
+          },
+        }}
+      >
+        {component}
+      </UserSessionDetailsContext.Provider>
     </IntlProvider>,
   );
 

@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import { waitFor, within } from "@testing-library/dom";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
@@ -10,7 +10,12 @@ import OEHeader from "./Header";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { ConfigurationContext, NotificationContext } from "./Layout";
 import messages from "../../languages/en.json";
-import { getFromOpenElisServer } from "../utils/Utils";
+import {
+  getFromOpenElisServer,
+  getFromOpenElisServerV2,
+  putToOpenElisServer,
+  postToOpenElisServer,
+} from "../utils/Utils";
 
 // Mock Utils
 vi.mock("../utils/Utils", async () => {
@@ -53,6 +58,7 @@ const mockUserSessionDetails = {
   authenticated: true,
   roles: ["ROLE_USER"],
   userId: "1",
+  sessionId: "SIM-header-session",
   firstName: "Test",
   lastName: "User",
   loginLabUnit: "Test Lab",
@@ -1442,4 +1448,692 @@ describe("Header Component - M2b Enhancement Tests", () => {
       });
     });
   });
+});
+
+// Keep all three header components real; control only I/O and session context.
+describe("Header protected reads follow the authenticated session", () => {
+  const paths = [
+    "/rest/properties",
+    "/rest/notification/pnconfig",
+    "/rest/notifications",
+  ];
+  const ownerA = {
+    ...mockUserSessionDetails,
+    userId: "SIM-A",
+    sessionId: "SIM-session-A",
+  };
+  const ownerB = {
+    ...mockUserSessionDetails,
+    userId: "SIM-B",
+    sessionId: "SIM-session-B",
+  };
+  let reads,
+    writes,
+    originalServiceWorker,
+    originalPushManager,
+    getSubscription;
+  const respond = async (read, body) => {
+    await act(async () => {
+      read.callback(body);
+    });
+  };
+  const request = (path, index = 0) =>
+    reads.filter((read) => read.path === path)[index];
+  const expectCount = async (count) => {
+    await waitFor(() => {
+      paths.forEach((path) =>
+        expect(reads.filter((read) => read.path === path)).toHaveLength(count),
+      );
+    });
+  };
+  const renderSession = (initialSession, logout = vi.fn()) => {
+    const tree = (session) => (
+      <MemoryRouter initialEntries={["/login"]}>
+        <IntlProvider locale="en" messages={messages}>
+          <UserSessionDetailsContext.Provider
+            value={{ userSessionDetails: session, logout }}
+          >
+            <ConfigurationContext.Provider value={mockConfigurationContext}>
+              <NotificationContext.Provider value={mockNotificationContext}>
+                <OEHeader
+                  onChangeLanguage={vi.fn()}
+                  navOpen={false}
+                  toggleSideNav={vi.fn()}
+                  closeSideNav={vi.fn()}
+                />
+              </NotificationContext.Provider>
+            </ConfigurationContext.Provider>
+          </UserSessionDetailsContext.Provider>
+        </IntlProvider>
+      </MemoryRouter>
+    );
+    const view = render(tree(initialSession));
+    return { ...view, setSession: (session) => view.rerender(tree(session)) };
+  };
+  const openNotifications = (view) =>
+    fireEvent.click(view.container.querySelector("#notification-Icon"));
+  const exitSession = (view) => {
+    fireEvent.click(view.container.querySelector("#user-Icon"));
+    fireEvent.click(view.container.querySelector('[data-cy="logOut"]'));
+  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    reads = [];
+    writes = [];
+    originalServiceWorker = Object.getOwnPropertyDescriptor(
+      navigator,
+      "serviceWorker",
+    );
+    originalPushManager = Object.getOwnPropertyDescriptor(
+      window,
+      "PushManager",
+    );
+    Object.defineProperty(window, "PushManager", {
+      configurable: true,
+      value: function PushManager() {},
+    });
+    getSubscription = vi.fn().mockResolvedValue({ endpoint: "SIM-device" });
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { ready: Promise.resolve({ pushManager: { getSubscription } }) },
+    });
+    getFromOpenElisServer.mockImplementation((path, callback, signal) => {
+      if (paths.includes(path)) reads.push({ path, callback, signal });
+      else if (path === "/rest/menu") callback(MOCK_MENU_DATA);
+      else if (path === "/rest/database-cleaning/status")
+        callback({ trainingInstallation: false });
+    });
+    // Capture the old pnconfig Promise API too for the pre-fix red run.
+    getFromOpenElisServerV2.mockImplementation(
+      (path) => new Promise((callback) => reads.push({ path, callback })),
+    );
+    putToOpenElisServer.mockImplementation((path, body, callback) =>
+      writes.push({ path, callback }),
+    );
+    postToOpenElisServer.mockImplementation((path, body, callback) =>
+      writes.push({ path, body, callback }),
+    );
+  });
+  afterEach(() => {
+    if (originalServiceWorker)
+      Object.defineProperty(navigator, "serviceWorker", originalServiceWorker);
+    else delete navigator.serviceWorker;
+    if (originalPushManager)
+      Object.defineProperty(window, "PushManager", originalPushManager);
+    else delete window.PushManager;
+    vi.restoreAllMocks();
+  });
+
+  test("does not request protected data before a real identity exists and keeps the local manual", async () => {
+    const view = renderSession({});
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(reads).toEqual([]);
+    view.setSession({ authenticated: false });
+    view.setSession({ authenticated: true });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(reads).toEqual([]);
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    fireEvent.click(view.container.querySelector("#user-Help"));
+    fireEvent.click(screen.getByText(messages["banner.menu.help.usermanual"]));
+    expect(open).toHaveBeenCalledWith(
+      "/docs/china-lis-user-manual.html",
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
+
+  test("initializes after authentication, preserves same-session data, and refreshes a rotated session", async () => {
+    const view = renderSession({ authenticated: false });
+    view.setSession(ownerA);
+    await expectCount(1);
+    await respond(request("/rest/notifications"), [
+      {
+        id: "SIM-note",
+        message: "SIM current notification",
+        createdDate: "2026-09-24",
+      },
+    ]);
+    await respond(request("/rest/properties"), {
+      "org.openelisglobal.help.tutorials.url": "https://example.test/SIM-A",
+    });
+    await respond(request("/rest/notification/pnconfig"), {
+      subscribed: true,
+      pfEndpoint: "SIM-device",
+    });
+    openNotifications(view);
+    expect(screen.getByText("SIM current notification")).toBeVisible();
+    expect(
+      screen.getByRole("button", {
+        name: messages["notification.slideover.button.unsubscribe"],
+      }),
+    ).toBeVisible();
+    view.setSession({ ...ownerA, csrf: "SIM-refreshed" });
+    await expectCount(1);
+    expect(screen.getByText("SIM current notification")).toBeVisible();
+    view.setSession({ ...ownerA, sessionId: "SIM-A-rotated" });
+    await expectCount(2);
+    expect(
+      screen.queryByText("SIM current notification"),
+    ).not.toBeInTheDocument();
+    paths.forEach((path) => expect(request(path).signal.aborted).toBe(true));
+  });
+
+  test("cancels old reads and ignores their callbacks after account change and logout", async () => {
+    const view = renderSession(ownerA);
+    await expectCount(1);
+    view.setSession(ownerB);
+    await expectCount(2);
+    paths.forEach((path) => expect(request(path).signal.aborted).toBe(true));
+    await respond(request("/rest/notifications", 1), [
+      { id: "SIM-B-note", message: "SIM B notification" },
+    ]);
+    await respond(request("/rest/properties", 1), {
+      "org.openelisglobal.help.tutorials.url": "https://example.test/SIM-B",
+    });
+    await respond(request("/rest/notification/pnconfig", 1), {
+      subscribed: false,
+    });
+    await respond(request("/rest/notifications"), [
+      { message: "SIM stale A notification" },
+    ]);
+    await respond(request("/rest/properties"), {
+      "org.openelisglobal.help.tutorials.url": "https://example.test/SIM-A",
+    });
+    await respond(request("/rest/notification/pnconfig"), {
+      subscribed: true,
+      pfEndpoint: "SIM-device",
+    });
+    openNotifications(view);
+    expect(screen.getByText("SIM B notification")).toBeVisible();
+    expect(
+      screen.queryByText("SIM stale A notification"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: messages["notification.slideover.button.subscribe"],
+      }),
+    ).toBeVisible();
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    fireEvent.click(view.container.querySelector("#user-Help"));
+    fireEvent.click(screen.getByText(messages["banner.menu.help.about"]));
+    expect(open).toHaveBeenLastCalledWith(
+      "https://example.test/SIM-B",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    view.setSession({ authenticated: false });
+    paths.forEach((path) => expect(request(path, 1).signal.aborted).toBe(true));
+    await respond(request("/rest/notifications", 1), [
+      { message: "SIM late B notification" },
+    ]);
+    await respond(request("/rest/properties", 1), {
+      "org.openelisglobal.help.tutorials.url": "https://example.test/SIM-late",
+    });
+    expect(screen.queryByText("SIM B notification")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("SIM late B notification"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(view.container.querySelector("#user-Help"));
+    fireEvent.click(screen.getByText(messages["banner.menu.help.about"]));
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  test("ends protected reads on the logout click before the logout response", async () => {
+    let abortedAtLogout;
+    const logout = vi.fn(() => {
+      abortedAtLogout = paths.map((path) => request(path).signal?.aborted);
+    });
+    const view = renderSession(ownerA, logout);
+    await expectCount(1);
+    exitSession(view);
+    expect(logout).toHaveBeenCalledTimes(1);
+    expect(abortedAtLogout).toEqual([true, true, true]);
+    paths.forEach((path) => expect(request(path).signal.aborted).toBe(true));
+    await respond(request("/rest/notifications"), [
+      { message: "SIM after exit" },
+    ]);
+    expect(screen.queryByText("SIM after exit")).not.toBeInTheDocument();
+    view.setSession({ ...ownerA });
+    await expectCount(1);
+    view.setSession({ authenticated: false });
+    view.setSession(ownerB);
+    await expectCount(2);
+  });
+
+  test("refreshes after a current mark-as-read but never after its owner logs out", async () => {
+    const view = renderSession(ownerA);
+    await expectCount(1);
+    await respond(request("/rest/notifications"), [
+      { id: "SIM-note", message: "SIM to mark" },
+    ]);
+    openNotifications(view);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: messages["notification.slideover.button.markasread"],
+      }),
+    );
+    expect(writes[0].path).toBe("/rest/notification/markasread/SIM-note");
+    await act(async () => {
+      writes[0].callback({});
+    });
+    await waitFor(() =>
+      expect(
+        reads.filter((read) => read.path === "/rest/notifications"),
+      ).toHaveLength(2),
+    );
+    await respond(request("/rest/notifications", 1), [
+      { id: "SIM-note", message: "SIM to mark again" },
+    ]);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: messages["notification.slideover.button.markallasread"],
+      }),
+    );
+    expect(writes[1].path).toBe("/rest/notification/markasread/all");
+    exitSession(view);
+    await act(async () => {
+      writes[1].callback({});
+    });
+    expect(
+      reads.filter((read) => read.path === "/rest/notifications"),
+    ).toHaveLength(2);
+  });
+
+  test("discards a subscription lookup that completes after its session changes", async () => {
+    let resolveSubscription;
+    getSubscription.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveSubscription = resolve;
+      }),
+    );
+    const view = renderSession(ownerA);
+    await expectCount(1);
+    await respond(request("/rest/notification/pnconfig"), {
+      subscribed: true,
+      pfEndpoint: "SIM-device",
+    });
+    expect(getSubscription).toHaveBeenCalledTimes(1);
+    view.setSession(ownerB);
+    await expectCount(2);
+    await respond(request("/rest/notification/pnconfig", 1), {
+      subscribed: false,
+    });
+    await act(async () => {
+      resolveSubscription({ endpoint: "SIM-device" });
+    });
+    openNotifications(view);
+    expect(
+      screen.getByRole("button", {
+        name: messages["notification.slideover.button.subscribe"],
+      }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", {
+        name: messages["notification.slideover.button.unsubscribe"],
+      }),
+    ).not.toBeInTheDocument();
+  });
+  test("does not reuse old write callbacks after the same identity reenters or the header unmounts", async () => {
+    const view = renderSession(ownerA);
+    await expectCount(1);
+    await respond(request("/rest/notifications"), [
+      { id: "SIM-old", message: "SIM old cycle" },
+    ]);
+    openNotifications(view);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: messages["notification.slideover.button.markallasread"],
+      }),
+    );
+    view.setSession({ authenticated: false });
+    view.setSession({ ...ownerA });
+    await expectCount(2);
+    await act(async () => {
+      writes[0].callback({});
+    });
+    expect(
+      reads.filter((read) => read.path === "/rest/notifications"),
+    ).toHaveLength(2);
+    await respond(request("/rest/notifications", 1), [
+      { id: "SIM-new", message: "SIM new cycle" },
+    ]);
+    openNotifications(view);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: messages["notification.slideover.button.markallasread"],
+      }),
+    );
+    view.unmount();
+    await act(async () => {
+      writes[1].callback({});
+    });
+    expect(
+      reads.filter((read) => read.path === "/rest/notifications"),
+    ).toHaveLength(2);
+  });
+
+  test("does not continue an old service-worker lookup after the owner changes", async () => {
+    let resolveReady;
+    navigator.serviceWorker.ready = new Promise((resolve) => {
+      resolveReady = resolve;
+    });
+    const oldGetSubscription = vi
+      .fn()
+      .mockResolvedValue({ endpoint: "SIM-old-device" });
+    const view = renderSession(ownerA);
+    await expectCount(1);
+    await respond(request("/rest/notification/pnconfig"), {
+      subscribed: true,
+      pfEndpoint: "SIM-old-device",
+    });
+    view.setSession(ownerB);
+    await expectCount(2);
+    navigator.serviceWorker.ready = Promise.resolve({
+      pushManager: { getSubscription },
+    });
+    await respond(request("/rest/notification/pnconfig", 1), {
+      subscribed: false,
+    });
+    await act(async () => {
+      resolveReady({ pushManager: { getSubscription: oldGetSubscription } });
+    });
+    expect(oldGetSubscription).not.toHaveBeenCalled();
+    expect(getSubscription).toHaveBeenCalledTimes(1);
+  });
+  test.each([
+    { authenticated: true, userId: "SIM-A" },
+    { ...ownerA, userId: "  " },
+    { ...ownerA, sessionId: "  " },
+    { ...ownerA, userId: 42 },
+    { ...ownerA, sessionId: 42 },
+  ])(
+    "requires complete string identity before reading: %j",
+    async (session) => {
+      renderSession(session);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      expect(reads).toEqual([]);
+    },
+  );
+
+  const subscriptionFlow = (stage) => {
+    let resolve, reject;
+    const promise = new Promise((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
+    const push = {
+      endpoint: "SIM-device",
+      getKey: () => new Uint8Array([1, 2]).buffer,
+    };
+    const subscribe = vi
+      .fn()
+      .mockImplementation(() =>
+        stage === "push" ? promise : Promise.resolve(push),
+      );
+    const registration = { pushManager: { getSubscription, subscribe } };
+    navigator.serviceWorker.register = vi
+      .fn()
+      .mockImplementation(() =>
+        stage === "register" ? promise : Promise.resolve(registration),
+      );
+    navigator.serviceWorker.ready =
+      stage === "ready" ? promise : Promise.resolve(registration);
+    getFromOpenElisServerV2.mockImplementation((path) => {
+      if (path === "/rest/notification/pnconfig") {
+        return new Promise((callback) => reads.push({ path, callback }));
+      }
+      expect(path).toBe("/rest/notification/public_key");
+      return stage === "publicKey"
+        ? promise
+        : Promise.resolve({ publicKey: "SIM-key" });
+    });
+    return {
+      subscribe,
+      resolve: () =>
+        resolve(
+          stage === "push"
+            ? push
+            : stage === "publicKey"
+              ? { publicKey: "SIM-key" }
+              : registration,
+        ),
+      reject,
+    };
+  };
+  const clickSubscribe = async (view) => {
+    openNotifications(view);
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: messages["notification.slideover.button.subscribe"],
+        }),
+      );
+    });
+  };
+
+  test.each(["register", "ready", "publicKey", "push"])(
+    "stops a subscription after account change during %s",
+    async (stage) => {
+      const flow = subscriptionFlow(stage);
+      const view = renderSession(ownerA);
+      await expectCount(1);
+      await clickSubscribe(view);
+      expect(navigator.serviceWorker.register).toHaveBeenCalledTimes(1);
+      if (stage === "publicKey" || stage === "push")
+        expect(
+          getFromOpenElisServerV2.mock.calls.filter(
+            ([path]) => path === "/rest/notification/public_key",
+          ),
+        ).toHaveLength(1);
+      if (stage === "push") expect(flow.subscribe).toHaveBeenCalledTimes(1);
+      view.setSession(ownerB);
+      await expectCount(2);
+      await act(async () => {
+        flow.resolve();
+      });
+      expect(postToOpenElisServer).not.toHaveBeenCalled();
+      expect(mockNotificationContext.addNotification).not.toHaveBeenCalled();
+      if (stage === "register" || stage === "ready")
+        expect(
+          getFromOpenElisServerV2.mock.calls.filter(
+            ([path]) => path === "/rest/notification/public_key",
+          ),
+        ).toHaveLength(0);
+      if (stage !== "push") expect(flow.subscribe).not.toHaveBeenCalled();
+    },
+  );
+
+  test("does not publish an old subscription error after logout", async () => {
+    const flow = subscriptionFlow("publicKey");
+    const view = renderSession(ownerA);
+    await expectCount(1);
+    await clickSubscribe(view);
+    expect(
+      getFromOpenElisServerV2.mock.calls.filter(
+        ([path]) => path === "/rest/notification/public_key",
+      ),
+    ).toHaveLength(1);
+    exitSession(view);
+    await act(async () => {
+      flow.reject(new Error("SIM old request failed"));
+    });
+    expect(postToOpenElisServer).not.toHaveBeenCalled();
+    expect(mockNotificationContext.addNotification).not.toHaveBeenCalled();
+  });
+
+  test("ignores an unsubscribe callback after the same identity starts a new session cycle", async () => {
+    subscriptionFlow();
+    const view = renderSession(ownerA);
+    await expectCount(1);
+    await respond(request("/rest/notification/pnconfig"), {
+      subscribed: true,
+      pfEndpoint: "SIM-device",
+    });
+    openNotifications(view);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: messages["notification.slideover.button.unsubscribe"],
+      }),
+    );
+    expect(writes[0].path).toBe("/rest/notification/unsubscribe");
+    view.setSession({ authenticated: false });
+    view.setSession({ ...ownerA });
+    await expectCount(2);
+    await respond(request("/rest/notification/pnconfig", 1), {
+      subscribed: true,
+      pfEndpoint: "SIM-device",
+    });
+    await act(async () => {
+      writes[0].callback(200);
+    });
+    expect(mockNotificationContext.addNotification).not.toHaveBeenCalled();
+    openNotifications(view);
+    expect(
+      screen.getByRole("button", {
+        name: messages["notification.slideover.button.unsubscribe"],
+      }),
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: messages["notification.slideover.button.unsubscribe"],
+      }),
+    );
+    await act(async () => {
+      writes[1].callback(200);
+    });
+    expect(mockNotificationContext.addNotification).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByRole("button", {
+        name: messages["notification.slideover.button.subscribe"],
+      }),
+    ).toBeVisible();
+  });
+
+  test("waits for subscription persistence and ignores its callback after logout", async () => {
+    subscriptionFlow();
+    const view = renderSession(ownerA);
+    await expectCount(1);
+    await clickSubscribe(view);
+    expect(writes[0].path).toBe("/rest/notification/subscribe");
+    expect(JSON.parse(writes[0].body).pfEndpoint).toBe("SIM-device");
+    expect(mockNotificationContext.addNotification).not.toHaveBeenCalled();
+    exitSession(view);
+    await act(async () => {
+      writes[0].callback(200);
+    });
+    expect(mockNotificationContext.addNotification).not.toHaveBeenCalled();
+  });
+
+  test.each([200, 204, 503, 0])(
+    "reports the current subscription persistence outcome %s",
+    async (status) => {
+      subscriptionFlow();
+      const view = renderSession(ownerA);
+      await expectCount(1);
+      await clickSubscribe(view);
+      expect(mockNotificationContext.addNotification).not.toHaveBeenCalled();
+      await act(async () => {
+        writes[0].callback(status);
+      });
+      expect(mockNotificationContext.addNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: status >= 200 && status < 300 ? "success" : "warning",
+        }),
+      );
+      expect(
+        screen.getByRole("button", {
+          name: messages[
+            status >= 200 && status < 300
+              ? "notification.slideover.button.unsubscribe"
+              : "notification.slideover.button.subscribe"
+          ],
+        }),
+      ).toBeVisible();
+    },
+  );
+  test.each([200, 204, 503, 0])(
+    "reports the current unsubscribe persistence outcome %s",
+    async (status) => {
+      subscriptionFlow();
+      const view = renderSession(ownerA);
+      await expectCount(1);
+      await respond(request("/rest/notification/pnconfig"), {
+        subscribed: true,
+        pfEndpoint: "SIM-device",
+      });
+      openNotifications(view);
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: messages["notification.slideover.button.unsubscribe"],
+        }),
+      );
+      expect(mockNotificationContext.addNotification).not.toHaveBeenCalled();
+      await act(async () => {
+        writes[0].callback(status);
+      });
+      expect(mockNotificationContext.addNotification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: status >= 200 && status < 300 ? "success" : "warning",
+        }),
+      );
+      expect(
+        screen.getByRole("button", {
+          name: messages[
+            status >= 200 && status < 300
+              ? "notification.slideover.button.subscribe"
+              : "notification.slideover.button.unsubscribe"
+          ],
+        }),
+      ).toBeVisible();
+    },
+  );
+
+  test.each(["subscribe", "unsubscribe"])(
+    "discards an old %s failure response without changing the new user's state",
+    async (operation) => {
+      subscriptionFlow();
+      const view = renderSession(ownerA);
+      await expectCount(1);
+      if (operation === "subscribe") await clickSubscribe(view);
+      else {
+        await respond(request("/rest/notification/pnconfig"), {
+          subscribed: true,
+          pfEndpoint: "SIM-device",
+        });
+        openNotifications(view);
+        fireEvent.click(
+          screen.getByRole("button", {
+            name: messages["notification.slideover.button.unsubscribe"],
+          }),
+        );
+      }
+      view.setSession(ownerB);
+      await expectCount(2);
+      await respond(request("/rest/notification/pnconfig", 1), {
+        subscribed: true,
+        pfEndpoint: "SIM-device",
+      });
+      mockNotificationContext.addNotification.mockClear();
+      mockNotificationContext.setNotificationVisible.mockClear();
+      await act(async () => {
+        writes[0].callback(0);
+      });
+      expect(mockNotificationContext.addNotification).not.toHaveBeenCalled();
+      expect(
+        mockNotificationContext.setNotificationVisible,
+      ).not.toHaveBeenCalled();
+      openNotifications(view);
+      expect(
+        screen.getByRole("button", {
+          name: messages["notification.slideover.button.unsubscribe"],
+        }),
+      ).toBeVisible();
+    },
+  );
 });

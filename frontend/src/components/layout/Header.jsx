@@ -16,8 +16,10 @@ import HelpMenu from "./HelpMenu";
 import AdminSideNav from "../admin/AdminSideNav";
 import React, {
   createRef,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -96,6 +98,35 @@ function OEHeader({
   const { configurationProperties, enabledLanguages } =
     useContext(ConfigurationContext);
   const { userSessionDetails, logout } = useContext(UserSessionDetailsContext);
+  const sessionOwner =
+    userSessionDetails.authenticated === true &&
+    typeof userSessionDetails.userId === "string" &&
+    userSessionDetails.userId.trim() &&
+    typeof userSessionDetails.sessionId === "string" &&
+    userSessionDetails.sessionId.trim()
+      ? JSON.stringify([
+          userSessionDetails.userId,
+          userSessionDetails.sessionId,
+        ])
+      : null;
+  const [endingSessionOwner, setEndingSessionOwner] = useState(null);
+  const requestOwner =
+    sessionOwner === endingSessionOwner ? null : sessionOwner;
+  const requestOwnerRef = useRef(requestOwner);
+  requestOwnerRef.current = requestOwner;
+  const notificationsRequestRef = useRef(null);
+  // This signal identifies one continuous authenticated lifetime, even if the
+  // same user/session text later reappears after logout or an account switch.
+  const sessionReadController = useMemo(
+    () => new AbortController(),
+    [requestOwner],
+  );
+  useEffect(() => () => sessionReadController.abort(), [sessionReadController]);
+
+  useEffect(() => {
+    if (!sessionOwner) setEndingSessionOwner(null);
+  }, [sessionOwner]);
+
   // Use enabled languages from config, fall back to default if not loaded yet
   const languages = enabledLanguages || defaultLanguages;
   const showLanguageSelector = Object.keys(languages).length > 1;
@@ -348,28 +379,59 @@ function OEHeader({
     setHelpOpen(panel === "help");
   };
 
-  const getNotifications = async () => {
+  const getNotifications = useCallback(() => {
+    if (
+      !requestOwner ||
+      sessionReadController.signal.aborted ||
+      requestOwnerRef.current !== requestOwner
+    )
+      return;
+    notificationsRequestRef.current?.controller.abort();
+    const request = { owner: requestOwner, controller: new AbortController() };
+    notificationsRequestRef.current = request;
     setLoading(true);
-    try {
-      getFromOpenElisServer("/rest/notifications", (data) => {
-        setReadNotifications([]);
-        setUnReadNotifications([]);
-        data?.forEach((element) => {
-          if (element.readAt) {
-            setReadNotifications((prev) => [...prev, element]);
-          } else {
-            setUnReadNotifications((prev) => [...prev, element]);
-          }
-        });
-      });
-    } catch (error) {
-      console.error("Failed to fetch notifications", error);
-    } finally {
-      setLoading(false);
-    }
+    getFromOpenElisServer(
+      "/rest/notifications",
+      (data) => {
+        if (
+          request.controller.signal.aborted ||
+          requestOwnerRef.current !== request.owner ||
+          notificationsRequestRef.current !== request
+        )
+          return;
+        const notifications = Array.isArray(data) ? data : [];
+        setReadNotifications(
+          notifications.filter((notification) => notification.readAt),
+        );
+        setUnReadNotifications(
+          notifications.filter((notification) => !notification.readAt),
+        );
+        setLoading(false);
+      },
+      request.controller.signal,
+    );
+  }, [requestOwner, sessionReadController]);
+
+  const endSession = () => {
+    // Stop reads before the logout request completes; the session context may
+    // still describe the old account until the server response arrives.
+    requestOwnerRef.current = null;
+    sessionReadController.abort();
+    notificationsRequestRef.current?.controller.abort();
+    setEndingSessionOwner(sessionOwner);
+    setNotificationsOpen(false);
+    setReadNotifications([]);
+    setUnReadNotifications([]);
+    logout();
   };
 
   const markNotificationAsRead = async (notificationId) => {
+    if (
+      !requestOwner ||
+      sessionReadController.signal.aborted ||
+      requestOwnerRef.current !== requestOwner
+    )
+      return;
     try {
       putToOpenElisServer(
         `/rest/notification/markasread/${notificationId}`,
@@ -385,6 +447,12 @@ function OEHeader({
   };
 
   const markAllNotificationsAsRead = async () => {
+    if (
+      !requestOwner ||
+      sessionReadController.signal.aborted ||
+      requestOwnerRef.current !== requestOwner
+    )
+      return;
     try {
       putToOpenElisServer(
         `/rest/notification/markasread/all`,
@@ -400,12 +468,18 @@ function OEHeader({
   };
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      getNotifications();
-    }, 0);
-
-    return () => window.clearTimeout(timer);
-  }, []);
+    setReadNotifications([]);
+    setUnReadNotifications([]);
+    setShowRead(false);
+    setLoading(false);
+    setNotificationsOpen(false);
+    if (!requestOwner) return;
+    const timer = window.setTimeout(getNotifications, 0);
+    return () => {
+      window.clearTimeout(timer);
+      notificationsRequestRef.current?.controller.abort();
+    };
+  }, [requestOwner, getNotifications]);
 
   // Click-outside handler: close the drawer whenever the nav is an overlay
   // (small viewports, or desktop with the nav unpinned)
@@ -1112,6 +1186,8 @@ function OEHeader({
                 {panelSwitchIcon()}
               </HeaderGlobalAction>
               <HelpMenu
+                requestsEnabled={Boolean(requestOwner)}
+                requestSignal={sessionReadController.signal}
                 helpOpen={helpOpen}
                 handlePanelToggle={handlePanelToggle}
               />
@@ -1188,7 +1264,7 @@ function OEHeader({
                         type="button"
                         data-cy="logOut"
                         className="oe-header-panel-action"
-                        onClick={logout}
+                        onClick={endSession}
                       >
                         <Logout style={{ marginRight: "3px" }} />
                         <FormattedMessage id="header.label.logout" />
@@ -1312,6 +1388,8 @@ function OEHeader({
               title={intl.formatMessage({ id: "header.icon.notifications" })}
             >
               <SlideOverNotifications
+                requestsEnabled={Boolean(requestOwner)}
+                requestSignal={sessionReadController.signal}
                 loading={loading}
                 notifications={
                   showRead ? readNotifications : unReadNotifications

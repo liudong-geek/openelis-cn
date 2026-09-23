@@ -23,6 +23,7 @@ const deferred = () => {
 let sessionResponses;
 let sessionRequests;
 let unexpectedRequests;
+let protectedRequests;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -30,10 +31,19 @@ beforeEach(() => {
   sessionResponses = [];
   sessionRequests = 0;
   unexpectedRequests = [];
+  protectedRequests = [];
   vi.stubGlobal(
     "fetch",
     vi.fn((input) => {
       const url = new URL(String(input), window.location.origin);
+      if (
+        [
+          "/rest/properties",
+          "/rest/notification/pnconfig",
+          "/rest/notifications",
+        ].some((path) => url.pathname.endsWith(path))
+      )
+        protectedRequests.push(url.pathname);
       if (url.pathname.endsWith("/session")) {
         sessionRequests += 1;
         const response = sessionResponses.shift();
@@ -138,6 +148,7 @@ describe("authentication route session updates", () => {
       expectFieldsPreserved(view, originalNodes, values);
       expect(window.location.pathname).toBe(pathname);
       expect(unexpectedRequests).toEqual([]);
+      expect(protectedRequests).toEqual([]);
     },
   );
 
@@ -177,5 +188,6 @@ describe("authentication route session updates", () => {
     expect(view.container.querySelector("#current-password")).toBeVisible();
     expect(view.container.querySelector("#loginName")).toHaveValue("");
     expect(unexpectedRequests).toEqual([]);
+    expect(protectedRequests).toEqual([]);
   });
 });

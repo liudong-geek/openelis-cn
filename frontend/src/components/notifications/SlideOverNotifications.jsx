@@ -7,6 +7,7 @@ import {
 } from "@carbon/icons-react";
 import {
   formatTimestamp,
+  getFromOpenElisServer,
   getFromOpenElisServerV2,
   postToOpenElisServer,
   putToOpenElisServer,
@@ -14,12 +15,35 @@ import {
 } from "../utils/Utils";
 import Spinner from "../common/Spinner";
 import { useIntl } from "react-intl";
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { NotificationContext } from "../layout/Layout";
 import { AlertDialog } from "../common/CustomNotification";
 import NoNotificationSVG from "./NoNotificationSVG";
+import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 
 export default function SlideOverNotifications(props) {
+  const { userSessionDetails = {} } = useContext(UserSessionDetailsContext);
+  const requestOwner =
+    props.requestsEnabled !== false &&
+    userSessionDetails.authenticated === true &&
+    typeof userSessionDetails.userId === "string" &&
+    userSessionDetails.userId.trim() &&
+    typeof userSessionDetails.sessionId === "string" &&
+    userSessionDetails.sessionId.trim()
+      ? JSON.stringify([
+          userSessionDetails.userId,
+          userSessionDetails.sessionId,
+        ])
+      : null;
+  const requestOwnerRef = useRef(requestOwner);
+  requestOwnerRef.current = requestOwner;
+  const requestScopeRef = useRef(null);
+  const isCurrentScope = (scope) =>
+    scope &&
+    requestScopeRef.current === scope &&
+    !scope.controller.signal.aborted &&
+    requestOwnerRef.current === scope.owner;
+
   const intl = useIntl();
   const { notificationVisible, addNotification, setNotificationVisible } =
     useContext(NotificationContext);
@@ -31,168 +55,150 @@ export default function SlideOverNotifications(props) {
   const [subscriptionState, setSubscriptionState] = useState(null);
 
   useEffect(() => {
-    let mounted = true;
+    setSubscriptionState(null);
+    setIconLoading({ icon: null, loading: false });
+    requestScopeRef.current = null;
+    if (!requestOwner || props.requestSignal?.aborted) return;
+    const controller = new AbortController();
+    const scope = { owner: requestOwner, controller };
+    requestScopeRef.current = scope;
+    const cancelRequest = () => controller.abort();
+    props.requestSignal?.addEventListener("abort", cancelRequest, {
+      once: true,
+    });
+    const isCurrent = () => isCurrentScope(scope);
 
-    const initializeSubscriptionState = async () => {
-      try {
-        const res = await getFromOpenElisServerV2(
-          "/rest/notification/pnconfig",
-        );
-        const reg = await navigator.serviceWorker.ready;
-        const subscription = await reg.pushManager.getSubscription();
-        if (!mounted) return;
-
-        if (!res?.subscribed) {
-          setSubscriptionState("NotSubscribed");
-        } else if (subscription?.endpoint === res?.pfEndpoint) {
-          setSubscriptionState("SubscribedOnThisDevice");
-        } else {
-          setSubscriptionState("SubscribedOnAnotherDevice");
+    getFromOpenElisServer(
+      "/rest/notification/pnconfig",
+      async (res) => {
+        if (!isCurrent()) return;
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          if (!isCurrent()) return;
+          const subscription = await reg.pushManager.getSubscription();
+          if (!isCurrent()) return;
+          if (!res?.subscribed) {
+            setSubscriptionState("NotSubscribed");
+          } else if (subscription?.endpoint === res?.pfEndpoint) {
+            setSubscriptionState("SubscribedOnThisDevice");
+          } else {
+            setSubscriptionState("SubscribedOnAnotherDevice");
+          }
+        } catch {
+          // Push is optional; only the account that started this read owns it.
+          if (isCurrent()) setSubscriptionState("NotSubscribed");
         }
-      } catch {
-        // Push notifications are optional. A local installation without push
-        // configuration must remain usable and should not emit a console error.
-        if (mounted) setSubscriptionState("NotSubscribed");
-      }
-    };
-
-    initializeSubscriptionState();
+      },
+      controller.signal,
+    );
     return () => {
-      mounted = false;
+      props.requestSignal?.removeEventListener("abort", cancelRequest);
+      controller.abort();
+      if (requestScopeRef.current === scope) requestScopeRef.current = null;
     };
-  }, []);
+  }, [requestOwner, props.requestSignal]);
 
-  async function unsubscribe() {
+  const completeSubscription = (scope, status) => {
+    if (!isCurrentScope(scope)) return;
+    const succeeded = status >= 200 && status < 300;
+    setIconLoading({ icon: null, loading: false });
+    setSubscriptionState(
+      succeeded ? "SubscribedOnThisDevice" : "NotSubscribed",
+    );
+    addNotification({
+      kind: succeeded ? "success" : "warning",
+      message: intl.formatMessage({
+        id: succeeded
+          ? "notification.slideover.button.subscribe.success"
+          : "notification.slideover.button.subscribe.fail",
+      }),
+      title: intl.formatMessage({ id: "notification.title" }),
+    });
+    setNotificationVisible(true);
+  };
+
+  const completeUnsubscribe = (scope, status) => {
+    if (!isCurrentScope(scope)) return;
+    const succeeded = status >= 200 && status < 300;
+    if (succeeded) setSubscriptionState("NotSubscribed");
+    addNotification({
+      kind: succeeded ? "success" : "warning",
+      message: intl.formatMessage({
+        id: succeeded
+          ? "notification.slideover.button.unsubscribe.success"
+          : "notification.slideover.button.unsubscribe.fail",
+      }),
+      title: intl.formatMessage({ id: "notification.title" }),
+    });
+    setNotificationVisible(true);
+  };
+
+  function unsubscribe() {
+    const scope = requestScopeRef.current;
+    if (!isCurrentScope(scope)) return;
     try {
-      putToOpenElisServer("/rest/notification/unsubscribe", null, (res) => {
-        addNotification({
-          kind: "success",
-          message: intl.formatMessage({
-            id: "notification.slideover.button.unsubscribe.success",
-          }),
-          title: intl.formatMessage({ id: "notification.title" }),
-        });
-        setNotificationVisible(true);
-        setSubscriptionState("NotSubscribed");
+      putToOpenElisServer("/rest/notification/unsubscribe", null, (status) => {
+        completeUnsubscribe(scope, status);
       });
-    } catch (e) {
-      addNotification({
-        kind: "warning",
-        message: intl.formatMessage({
-          id: "notification.slideover.button.unsubscribe.fail",
-        }),
-        title: intl.formatMessage({ id: "notification.title" }),
-      });
-      setNotificationVisible(true);
+    } catch {
+      completeUnsubscribe(scope, 0);
     }
   }
 
   async function subscribe() {
+    const scope = requestScopeRef.current;
+    if (!isCurrentScope(scope)) return;
+    setIconLoading({ icon: "NOTIFICATION", loading: true });
     try {
-      // Set the loading state
-      setIconLoading({ icon: "NOTIFICATION", loading: true });
-
-      // Check if service workers are supported
       if (!("serviceWorker" in navigator)) {
         throw new Error("Service workers are not supported in this browser.");
       }
-
-      // Check if push messaging is supported
       if (!("PushManager" in window)) {
         throw new Error("Push messaging is not supported in this browser.");
       }
-
-      // Register the service worker if not already registered
-      const registration = await navigator.serviceWorker
-        .register("/service-worker.js")
-        .catch((error) => {
-          throw new Error(
-            "Service worker registration failed: " + error.message,
-          );
-        });
-
-      // Ensure the service worker is ready
+      await navigator.serviceWorker.register("/service-worker.js");
+      if (!isCurrentScope(scope)) return;
       const sw = await navigator.serviceWorker.ready;
-
-      // Attempt to retrieve the public key from the server
-      let pbKeyData = await getFromOpenElisServerV2(
+      if (!isCurrentScope(scope)) return;
+      const pbKeyData = await getFromOpenElisServerV2(
         "/rest/notification/public_key",
-      ).catch((error) => {
-        throw new Error(
-          "Failed to retrieve public key from server: " + error.message,
-        );
-      });
-
-      // Convert the public key to a Uint8Array
+      );
+      if (!isCurrentScope(scope)) return;
       const applicationServerKey = urlBase64ToUint8Array(pbKeyData.publicKey);
-
-      // Attempt to subscribe to push notifications
-      const push = await sw.pushManager
-        .subscribe({
-          userVisibleOnly: true,
-          applicationServerKey,
-        })
-        .catch((error) => {
-          throw new Error("Push subscription failed: " + error.message);
-        });
-
-      // Encode the subscription keys
-      const p256dh = btoa(
-        String.fromCharCode.apply(null, new Uint8Array(push.getKey("p256dh"))),
-      );
-      const auth = btoa(
-        String.fromCharCode.apply(null, new Uint8Array(push.getKey("auth"))),
-      );
-
-      // Construct the data object
+      const push = await sw.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey,
+      });
+      if (!isCurrentScope(scope)) return;
       const data = {
         pfEndpoint: push.endpoint,
-        pfP256dh: p256dh,
-        pfAuth: auth,
+        pfP256dh: btoa(
+          String.fromCharCode.apply(
+            null,
+            new Uint8Array(push.getKey("p256dh")),
+          ),
+        ),
+        pfAuth: btoa(
+          String.fromCharCode.apply(null, new Uint8Array(push.getKey("auth"))),
+        ),
       };
-
-      // Send the subscription data to the server
+      // The callback owns both persistence success and UI feedback. A response
+      // from an ended session must never change a later account's state.
+      if (!isCurrentScope(scope)) return;
       postToOpenElisServer(
         "/rest/notification/subscribe",
         JSON.stringify(data),
-        (res) => {
-          console.log("res", res);
+        (status) => {
+          completeSubscription(scope, status);
         },
       );
-
-      // Set the loading state to false
-      setIconLoading({ icon: null, loading: false });
-      addNotification({
-        kind: "success",
-        message: intl.formatMessage({
-          id: "notification.slideover.button.subscribe.success",
-        }),
-        title: intl.formatMessage({ id: "notification.title" }),
-      });
-      setNotificationVisible(true);
-      setSubscriptionState("SubscribedOnThisDevice");
     } catch (error) {
-      // Handle any errors that occurred during the process
+      if (!isCurrentScope(scope)) return;
       console.error(
         "An error occurred during the subscription process:",
         error,
       );
-
-      // let a = NotificationKinds.
-
-      addNotification({
-        kind: "warning",
-        message: intl.formatMessage({
-          id: "notification.slideover.button.subscribe.fail",
-        }),
-        title: intl.formatMessage({ id: "notification.title" }),
-      });
-      setNotificationVisible(true);
-      setSubscriptionState("NotSubscribed");
-
-      setIconLoading({ icon: null, loading: false });
-
-      // Optionally set an error state here or provide user feedback
+      completeSubscription(scope, 0);
     }
   }
 

@@ -1,12 +1,33 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useContext } from "react";
 import { useIntl } from "react-intl";
 import { HeaderGlobalAction, HeaderPanel } from "@carbon/react";
 import { Close, Help } from "@carbon/icons-react";
 import { getFromOpenElisServer } from "../utils/Utils";
+import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 
 const LOCAL_USER_MANUAL_URL = "/docs/china-lis-user-manual.html";
 
-const HelpMenu = ({ helpOpen, handlePanelToggle }) => {
+const HelpMenu = ({
+  helpOpen,
+  handlePanelToggle,
+  requestsEnabled = true,
+  requestSignal,
+}) => {
+  const { userSessionDetails = {} } = useContext(UserSessionDetailsContext);
+  const requestOwner =
+    requestsEnabled &&
+    userSessionDetails.authenticated === true &&
+    typeof userSessionDetails.userId === "string" &&
+    userSessionDetails.userId.trim() &&
+    typeof userSessionDetails.sessionId === "string" &&
+    userSessionDetails.sessionId.trim()
+      ? JSON.stringify([
+          userSessionDetails.userId,
+          userSessionDetails.sessionId,
+        ])
+      : null;
+  const requestOwnerRef = useRef(requestOwner);
+  requestOwnerRef.current = requestOwner;
   const intl = useIntl();
   const [helpUrls, setHelpUrls] = useState({
     manual: LOCAL_USER_MANUAL_URL,
@@ -17,40 +38,58 @@ const HelpMenu = ({ helpOpen, handlePanelToggle }) => {
   const panelRef = useRef(null);
   const buttonRef = useRef(null);
 
-  // Fetch help URLs on mount
+  // Remote help is protected; the bundled manual remains available anonymously.
   useEffect(() => {
-    let isMounted = true;
-
-    getFromOpenElisServer("/rest/properties", (properties) => {
-      if (!isMounted) return;
-
-      // The API helper calls the callback with `undefined` when the response is
-      // not JSON (e.g., auth redirect HTML). Treat that as "no configured help
-      // URLs" rather than crashing the entire app.
-      if (!properties || typeof properties !== "object") {
-        setHelpUrls({
-          manual: LOCAL_USER_MANUAL_URL,
-          tutorials: "",
-          "release-notes": "",
-        });
-        setError(new Error("Help URL configuration unavailable"));
-        return;
-      }
-
-      setHelpUrls({
-        // This distribution ships a manual that matches its current China
-        // workflow. Keep the generic server URL from replacing that content.
-        manual: LOCAL_USER_MANUAL_URL,
-        tutorials: properties["org.openelisglobal.help.tutorials.url"] || "",
-        "release-notes":
-          properties["org.openelisglobal.help.release-notes.url"] || "",
-      });
+    setHelpUrls({
+      manual: LOCAL_USER_MANUAL_URL,
+      tutorials: "",
+      "release-notes": "",
     });
+    setError(null);
+    if (!requestOwner || requestSignal?.aborted) return;
+    const controller = new AbortController();
+    const cancelRequest = () => controller.abort();
+    requestSignal?.addEventListener("abort", cancelRequest, { once: true });
+
+    getFromOpenElisServer(
+      "/rest/properties",
+      (properties) => {
+        if (
+          controller.signal.aborted ||
+          requestOwnerRef.current !== requestOwner
+        )
+          return;
+
+        // The API helper calls the callback with `undefined` when the response is
+        // not JSON (e.g., auth redirect HTML). Treat that as "no configured help
+        // URLs" rather than crashing the entire app.
+        if (!properties || typeof properties !== "object") {
+          setHelpUrls({
+            manual: LOCAL_USER_MANUAL_URL,
+            tutorials: "",
+            "release-notes": "",
+          });
+          setError(new Error("Help URL configuration unavailable"));
+          return;
+        }
+
+        setHelpUrls({
+          // This distribution ships a manual that matches its current China
+          // workflow. Keep the generic server URL from replacing that content.
+          manual: LOCAL_USER_MANUAL_URL,
+          tutorials: properties["org.openelisglobal.help.tutorials.url"] || "",
+          "release-notes":
+            properties["org.openelisglobal.help.release-notes.url"] || "",
+        });
+      },
+      controller.signal,
+    );
 
     return () => {
-      isMounted = false;
+      requestSignal?.removeEventListener("abort", cancelRequest);
+      controller.abort();
     };
-  }, []);
+  }, [requestOwner, requestSignal]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
