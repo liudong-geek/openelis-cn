@@ -1,0 +1,301 @@
+{
+  "kind": "synthetic-fixture-design-not-executed",
+  "sourceCommit": "3e1e3b402fc549236c28446cc53cd652c913385b",
+  "actor": {
+    "name": "reviewer-1",
+    "role": "Validation",
+    "authorizedAnalysisSections": [
+      "101"
+    ]
+  },
+  "mode": "non-RETROCI",
+  "samples": [
+    {
+      "id": "1",
+      "accessionNumber": "SIM-A02-R-A",
+      "sampleItems": [
+        "10",
+        "11"
+      ]
+    },
+    {
+      "id": "2",
+      "accessionNumber": "SIM-A02-R-B",
+      "sampleItems": [
+        "20"
+      ]
+    },
+    {
+      "id": "3",
+      "accessionNumber": "SIM-A02-R-C",
+      "sampleItems": [
+        "30"
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "id": "11",
+      "currentSectionId": "101"
+    },
+    {
+      "id": "12",
+      "currentSectionId": "102",
+      "activeComponents": [
+        "c12a",
+        "c12b"
+      ]
+    },
+    {
+      "id": "13",
+      "currentSectionId": "101"
+    },
+    {
+      "id": "14",
+      "currentSectionId": "101",
+      "activeComponents": [
+        "c14primary"
+      ],
+      "primaryComponent": "c14primary"
+    }
+  ],
+  "analyses": [
+    {
+      "analysisId": "1",
+      "sampleId": "1",
+      "sampleItemId": "10",
+      "testId": "11",
+      "analysisSectionId": "101",
+      "status": "TechnicalAcceptance",
+      "resultFixture": "numeric-one",
+      "releasedAt": null,
+      "printedAt": null,
+      "analyzerId": null
+    },
+    {
+      "analysisId": "2",
+      "sampleId": "1",
+      "sampleItemId": "10",
+      "testId": "12",
+      "analysisSectionId": "101",
+      "status": "TechnicalAcceptance",
+      "resultFixture": "numeric-two-components",
+      "releasedAt": null,
+      "printedAt": null,
+      "analyzerId": null
+    },
+    {
+      "analysisId": "3",
+      "sampleId": "1",
+      "sampleItemId": "11",
+      "testId": "11",
+      "analysisSectionId": "102",
+      "status": "TechnicalAcceptance",
+      "resultFixture": "numeric-one",
+      "releasedAt": null,
+      "printedAt": null,
+      "analyzerId": null
+    },
+    {
+      "analysisId": "4",
+      "sampleId": "2",
+      "sampleItemId": "20",
+      "testId": "13",
+      "analysisSectionId": "101",
+      "status": "TechnicalRejected",
+      "resultFixture": "numeric-one",
+      "releasedAt": null,
+      "printedAt": null,
+      "analyzerId": null
+    },
+    {
+      "analysisId": "5",
+      "sampleId": "2",
+      "sampleItemId": "20",
+      "testId": "11",
+      "analysisSectionId": "101",
+      "status": "BiologistRejected",
+      "resultFixture": "numeric-one",
+      "releasedAt": null,
+      "printedAt": null,
+      "analyzerId": null
+    },
+    {
+      "analysisId": "6",
+      "sampleId": "2",
+      "sampleItemId": "20",
+      "testId": "11",
+      "analysisSectionId": "101",
+      "status": "Finalized",
+      "resultFixture": "numeric-one",
+      "releasedAt": null,
+      "printedAt": null,
+      "analyzerId": null
+    },
+    {
+      "analysisId": "7",
+      "sampleId": "2",
+      "sampleItemId": "20",
+      "testId": "11",
+      "analysisSectionId": "101",
+      "status": "TechnicalAcceptance",
+      "resultFixture": "numeric-one",
+      "releasedAt": "2026-09-23T00:00:00Z",
+      "printedAt": null,
+      "analyzerId": null
+    },
+    {
+      "analysisId": "8",
+      "sampleId": "2",
+      "sampleItemId": "20",
+      "testId": "11",
+      "analysisSectionId": "101",
+      "status": "TechnicalAcceptance",
+      "resultFixture": "numeric-one",
+      "releasedAt": null,
+      "printedAt": "2026-09-23T00:00:00Z",
+      "analyzerId": null
+    },
+    {
+      "analysisId": "9",
+      "sampleId": "3",
+      "sampleItemId": "30",
+      "testId": "14",
+      "analysisSectionId": "101",
+      "status": "TechnicalAcceptance",
+      "resultFixture": "multi-select-three-values-same-primary",
+      "releasedAt": null,
+      "printedAt": null,
+      "analyzerId": "I1"
+    },
+    {
+      "analysisId": "10",
+      "sampleId": "3",
+      "sampleItemId": "30",
+      "testId": "14",
+      "analysisSectionId": "101",
+      "status": "TechnicalAcceptance",
+      "resultFixture": "numeric-one",
+      "releasedAt": null,
+      "printedAt": null,
+      "analyzerId": null
+    },
+    {
+      "analysisId": "11",
+      "sampleId": "3",
+      "sampleItemId": "30",
+      "testId": "11",
+      "analysisSectionId": "101",
+      "status": "TechnicalAcceptance",
+      "resultFixture": "no-result",
+      "releasedAt": null,
+      "printedAt": null,
+      "analyzerId": null
+    },
+    {
+      "analysisId": "12",
+      "sampleId": "3",
+      "sampleItemId": "30",
+      "testId": "11",
+      "analysisSectionId": "101",
+      "status": "NotStarted",
+      "resultFixture": "no-result",
+      "releasedAt": null,
+      "printedAt": null,
+      "analyzerId": null
+    },
+    {
+      "analysisId": "13",
+      "sampleId": "3",
+      "sampleItemId": "30",
+      "testId": "11",
+      "analysisSectionId": "101",
+      "status": "TechnicalAcceptance",
+      "resultFixture": "root-result-null-value",
+      "releasedAt": null,
+      "printedAt": null,
+      "analyzerId": null
+    }
+  ],
+  "qcViolations": [
+    {
+      "id": "V1",
+      "instrumentId": "I1",
+      "testId": "14",
+      "severity": "REJECTION",
+      "resolutionStatus": "UNRESOLVED"
+    },
+    {
+      "id": "V2",
+      "instrumentId": "I1",
+      "testId": "14",
+      "severity": "REJECTION",
+      "resolutionStatus": "ACKNOWLEDGED"
+    },
+    {
+      "id": "V3",
+      "instrumentId": "I1",
+      "testId": "14",
+      "severity": "WARNING",
+      "resolutionStatus": "UNRESOLVED"
+    },
+    {
+      "id": "V4",
+      "instrumentId": "I1",
+      "testId": "14",
+      "severity": "REJECTION",
+      "resolutionStatus": "RESOLVED"
+    }
+  ],
+  "expectations": {
+    "validateRejectedFalse": {
+      "analysisIds": [
+        "1",
+        "2",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "13"
+      ],
+      "analysisCount": 8,
+      "accessionCount": 3,
+      "displayRowCount": 9,
+      "qcBlockedAnalysisCount": 1,
+      "readOnlyAnalysisIds": [
+        "7",
+        "8"
+      ]
+    },
+    "validateRejectedTrue": {
+      "analysisIds": [
+        "1",
+        "2",
+        "4",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "13"
+      ],
+      "analysisCount": 9,
+      "accessionCount": 3,
+      "displayRowCount": 10,
+      "qcBlockedAnalysisCount": 1,
+      "readOnlyAnalysisIds": [
+        "7",
+        "8"
+      ]
+    }
+  },
+  "instructionsForFutureFixtureImplementation": [
+    "Resolve named statuses to distinct positive synthetic IDs using the test status service; these are not claimed production values.",
+    "Create real result/test-result/component references; no broken foreign keys as shortcuts.",
+    "Use the actual multi-select enum/code from TypeOfTestResultServiceImpl.",
+    "Run candidate membership and aggregates through the actual production DAO, not approximate SQL.",
+    "Use the existing ResultsValidationUtility projection to prove displayRowCount expectations; if the fixed projection disagrees, investigate before accepting or changing expected counts.",
+    "Never insert these fixtures into the running clinical database."
+  ]
+}

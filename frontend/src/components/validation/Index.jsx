@@ -42,6 +42,10 @@ const Index = () => {
   const resultsSession = useRef(sessionKey);
   const lastSession = useRef(sessionKey);
   const [results, setResults] = useState({ resultList: [] });
+  const [queryState, setQueryState] = useState({
+    phase: "unqueried",
+    scope: "filtered",
+  });
   const [params, setParams] = useState("");
   const [queryVersion, setQueryVersion] = useState(0);
   const loadedResults = useRef({ resultList: [] });
@@ -69,6 +73,7 @@ const Index = () => {
     if (lastSession.current === sessionKey) return;
     lastSession.current = sessionKey;
     submissionPending.current = false;
+    setQueryState({ phase: "error", scope: "filtered" });
     replaceResults({ resultList: [] });
     addNotification({
       kind: NotificationKinds.warning,
@@ -141,16 +146,21 @@ const Index = () => {
           setParams={setParams}
           setResults={replaceResults}
           beforeQuery={beforeQuery}
+          onQueryStateChange={setQueryState}
         />
         <Validation
           key={`${sessionKey}:${queryVersion}`}
           params={params}
+          queryState={queryState}
           results={
             sessionAvailable && resultsSession.current === sessionKey
               ? results
               : { resultList: [] }
           }
-          onContextInvalid={() => replaceResults({ resultList: [] })}
+          onContextInvalid={() => {
+            replaceResults({ resultList: [] });
+            setQueryState({ phase: "unqueried", scope: "filtered" });
+          }}
           onSubmissionChange={(pending) => {
             submissionPending.current = pending;
           }}

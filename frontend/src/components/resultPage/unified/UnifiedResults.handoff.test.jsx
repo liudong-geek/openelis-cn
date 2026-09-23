@@ -177,6 +177,14 @@ test("the shortcut follows the actual Validation role and disappears on session 
     },
   };
   rendered.rerender(view());
+  expect(screen.queryByRole("button", { name: reviewLabel })).toBeNull();
+  fireEvent.change(screen.getByRole("searchbox"), {
+    target: { value: "SIM-ORDER-301&part=2" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: en["results.workbench.applyFilters"] }),
+  );
+  act(() => readback({ testResult: records }));
   expect(screen.getByRole("button", { name: reviewLabel })).toBeEnabled();
   session = {
     userSessionDetails: {

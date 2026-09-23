@@ -255,6 +255,40 @@ public class UserServiceImplUnitTest {
     }
 
     @Test
+    public void reviewScopeHelperUsesActualAuthorizedSectionsWithoutLoadingCurrentTestCatalog() {
+        service.setAuthorizedSections("302");
+        assertEquals(Set.of("302"), service.getAnalysisSectionIdsForLabUnitRole("7", "Reports"));
+        Analysis allowed = analysisWithDefaultAndActualSection("301", "302");
+        assertEquals(List.of(allowed), service.filterAnalysesByLabUnitRoles("7", List.of(allowed), "Reports"));
+        org.junit.Assert.assertThrows(org.openelisglobal.common.exception.LIMSRuntimeException.class,
+                () -> service.getAnalysisSectionIdsForLabUnitRole("7", "Missing"));
+    }
+
+    @Test
+    public void invalidRoleAndSectionIdentitiesCannotBecomeConfirmedNoPermission() {
+        var subject = org.mockito.Mockito.spy(service);
+        for (String invalid : new String[] { "0", "-1", "bad", "" }) {
+            var role = new Role();
+            role.setId(invalid);
+            when(roleService.getRoleByName("Reports")).thenReturn(role);
+            org.junit.Assert.assertThrows(org.openelisglobal.common.exception.LIMSRuntimeException.class,
+                    () -> subject.getAnalysisSectionIdsForLabUnitRole("7", "Reports"));
+        }
+        org.mockito.Mockito.verify(subject, org.mockito.Mockito.never()).getUserTestSections(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+        var role = new Role();
+        role.setId("77");
+        when(roleService.getRoleByName("Reports")).thenReturn(role);
+        for (String invalid : new String[] { "0", "-1", "bad", "" }) {
+            subject.setAuthorizedSections(invalid);
+            org.junit.Assert.assertThrows(org.openelisglobal.common.exception.LIMSRuntimeException.class,
+                    () -> subject.getAnalysisSectionIdsForLabUnitRole("7", "Reports"));
+        }
+        subject.setAuthorizedSections();
+        assertTrue(subject.getAnalysisSectionIdsForLabUnitRole("7", "Reports").isEmpty());
+    }
+
+    @Test
     public void pendingQueryAndExistingResultFilterShareAuthorizedTestIds() {
         org.openelisglobal.test.service.TestService tests = mock(org.openelisglobal.test.service.TestService.class);
         ReflectionTestUtils.setField(service, "testService", tests);

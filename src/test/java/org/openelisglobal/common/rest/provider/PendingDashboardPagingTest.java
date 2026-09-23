@@ -32,6 +32,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class PendingDashboardPagingTest {
     private PatientDashBoardProvider controller;
     private ResultEntryWorklistService service;
+    private org.openelisglobal.resultvalidation.service.ReviewPendingService reviews;
     private MockHttpServletRequest request;
     private Object previousFactory;
 
@@ -49,6 +50,8 @@ public class PendingDashboardPagingTest {
         ReflectionTestUtils.setField(SpringContext.class, "factory", factory);
         service = mock(ResultEntryWorklistService.class);
         PatientDashBoardProvider target = new PatientDashBoardProvider();
+        reviews = mock(org.openelisglobal.resultvalidation.service.ReviewPendingService.class);
+        ReflectionTestUtils.setField(target, "reviewPendingService", reviews);
         ReflectionTestUtils.setField(target, "resultEntryWorklistService", service);
         ReflectionTestUtils.setField(target, "pagingProperties", properties);
         ProxyFactory proxy = new ProxyFactory(target);
@@ -112,6 +115,24 @@ public class PendingDashboardPagingTest {
         assertThrows(ResponseStatusException.class,
                 () -> controller.getDashBoardDisplayList(request, TileType.AVERAGE_TURN_AROUND_TIME, null));
         verifyZeroInteractions(service);
+    }
+
+    @Test
+    public void reviewPageUsesCurrentActorAndOwnRoleWithForeignOldCache() throws Exception {
+        request.setParameter("page", "2");
+        SecurityContextHolder.getContext()
+                .setAuthentication(new TestingAuthenticationToken("user", "N/A", "ROLE_VALIDATION"));
+        PatientDashBoardForm current = new PatientDashBoardForm();
+        current.setOrderDisplayBeans(List.of(item("review-allowed")));
+        when(reviews.dashboardPage("7", 2, 100)).thenReturn(current);
+        assertSame(current, controller.getDashBoardDisplayList(request, TileType.ORDERS_READY_FOR_VALIDATION, "999"));
+        verify(reviews).dashboardPage("7", 2, 100);
+        verifyZeroInteractions(service);
+        SecurityContextHolder.getContext()
+                .setAuthentication(new TestingAuthenticationToken("user", "N/A", "ROLE_RESULTS"));
+        assertThrows(AccessDeniedException.class,
+                () -> controller.getDashBoardDisplayList(request, TileType.ORDERS_READY_FOR_VALIDATION, "999"));
+        verifyNoMoreInteractions(reviews);
     }
 
     @Test

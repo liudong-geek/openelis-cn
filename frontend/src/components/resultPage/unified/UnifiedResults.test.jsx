@@ -155,6 +155,7 @@ const renderWorkbench = (
                   sessionId: "SIM-RESULT-SESSION",
                   csrf: "SIM-CSRF",
                   loginName: "SIM-USER",
+                  roles: ["Results"],
                 },
               }}
             >
@@ -441,6 +442,11 @@ describe("UnifiedResults", () => {
     expect(getFromOpenElisServer).toHaveBeenCalledWith(
       "/rest/results-entry/pending",
       expect.any(Function),
+      expect.objectContaining({
+        sessionKey: expect.any(String),
+        signal: expect.any(AbortSignal),
+        current: expect.any(Function),
+      }),
     );
   });
 

@@ -12,6 +12,8 @@ import java.util.function.Consumer;
 import org.apache.commons.validator.GenericValidator;
 import org.openelisglobal.analysis.dao.AnalysisDAO;
 import org.openelisglobal.analysis.form.PendingResultSpecimenCount;
+import org.openelisglobal.analysis.form.ReviewPendingAccessionCount;
+import org.openelisglobal.analysis.form.ReviewPendingQuery;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.service.AuditableBaseObjectServiceImpl;
 import org.openelisglobal.common.services.IReportTrackingService;
@@ -824,5 +826,19 @@ public class AnalysisServiceImpl extends AuditableBaseObjectServiceImpl<Analysis
     @Transactional(readOnly = true)
     public Analysis getAnalysisBySampleItemAndTest(String sampleItemId, String testId) {
         return baseObjectDAO.getAnalysisBySampleItemAndTest(sampleItemId, testId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Analysis> getReviewPendingAnalyses(List<String> statusIds, Set<String> sectionIds,
+            ReviewPendingQuery criteria, int offset, int limit) {
+        return baseObjectDAO.getReviewPendingAnalyses(statusIds, sectionIds, criteria, offset, limit);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void visitReviewPendingAccessionCounts(List<String> statusIds, Set<String> sectionIds,
+            Consumer<ReviewPendingAccessionCount> consumer) {
+        baseObjectDAO.visitReviewPendingAccessionCounts(statusIds, sectionIds, consumer);
     }
 }

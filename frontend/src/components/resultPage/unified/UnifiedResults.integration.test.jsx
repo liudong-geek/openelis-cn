@@ -59,6 +59,14 @@ beforeEach(() => {
     vi.fn(async (url, init = {}) => {
       const path = new URL(String(url), "http://localhost").pathname;
       requests.push({ path, init });
+      if (path.endsWith("/session"))
+        return json({
+          authenticated: true,
+          userId: "701",
+          sessionId: "SIM-SESSION",
+          roles: ["Results"],
+          csrf: "SIM-OTHER-MASK",
+        });
       if (path.endsWith("/results-entry/lab-units")) return metadata();
       if (path.endsWith("/analysis-status-types")) return json([]);
       if (
@@ -114,6 +122,7 @@ const open = () =>
               sessionId: "SIM-SESSION",
               csrf: "SIM-CSRF",
               loginName: "SIM-USER",
+              roles: ["Results"],
             },
           }}
         >

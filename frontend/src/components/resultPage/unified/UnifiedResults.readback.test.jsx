@@ -42,6 +42,7 @@ beforeEach(() => {
       sessionId: "SIM-SESSION",
       csrf: "SIM-CSRF",
       loginName: "SIM-USER",
+      roles: ["Results"],
     },
   };
   localStorage.setItem("CSRF", "SIM-CSRF");
@@ -52,6 +53,8 @@ beforeEach(() => {
       const parsed = new URL(String(url), "http://localhost"),
         path = parsed.pathname;
       requests.push({ path, query: parsed.searchParams, init });
+      if (path.endsWith("/session"))
+        return json({ ...session.userSessionDetails, csrf: "SIM-OTHER-MASK" });
       if (
         path.endsWith("/results-entry/lab-units") ||
         path.endsWith("/analysis-status-types")

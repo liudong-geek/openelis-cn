@@ -11,22 +11,23 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import java.util.function.BooleanSupplier;
-import org.openelisglobal.common.formfields.FormFields;
-import org.openelisglobal.common.formfields.FormFields.Field;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.constants.Constants;
+import org.openelisglobal.common.formfields.FormFields;
+import org.openelisglobal.common.formfields.FormFields.Field;
 import org.openelisglobal.common.paging.PagingBean;
 import org.openelisglobal.common.paging.PagingProperties;
 import org.openelisglobal.common.util.IdValuePair;
+import org.openelisglobal.qc.service.QCReleaseGateService;
 import org.openelisglobal.resultvalidation.bean.AnalysisItem;
 import org.openelisglobal.resultvalidation.form.ResultValidationForm;
+import org.openelisglobal.resultvalidation.form.ReviewPendingSummary;
 import org.openelisglobal.resultvalidation.util.ResultsValidationUtility;
-import org.openelisglobal.qc.service.QCReleaseGateService;
 import org.openelisglobal.systemuser.service.UserService;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +36,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Server-owned review snapshots; deliberately separate from legacy shared paging. */
+/**
+ * Server-owned review snapshots; deliberately separate from legacy shared
+ * paging.
+ */
 @Service
 @Transactional(readOnly = true)
 public class ReviewQueryContextService {
@@ -49,38 +53,61 @@ public class ReviewQueryContextService {
     private final ResultsValidationUtility utility;
     private final QCReleaseGateService qcReleaseGate;
     private final BooleanSupplier depersonalized;
+    private final ReviewScopeService scopes;
 
     @Autowired
     public ReviewQueryContextService(AnalysisService analysisService, UserService userService,
-            PagingProperties pagingProperties, ResultsValidationUtility utility, QCReleaseGateService qcReleaseGate) {
-        this(analysisService, userService, pagingProperties, utility, qcReleaseGate, Clock.systemUTC(),
+            PagingProperties pagingProperties, ResultsValidationUtility utility, QCReleaseGateService qcReleaseGate,
+            ReviewScopeService scopes) {
+        this(analysisService, userService, pagingProperties, utility, qcReleaseGate, scopes, Clock.systemUTC(),
                 () -> FormFields.getInstance().useField(Field.DepersonalizedResults));
     }
 
     ReviewQueryContextService(AnalysisService analysisService, UserService userService,
             PagingProperties pagingProperties, ResultsValidationUtility utility, QCReleaseGateService qcReleaseGate,
-            Clock clock, BooleanSupplier depersonalized) {
+            ReviewScopeService scopes, Clock clock, BooleanSupplier depersonalized) {
         this.analysisService = analysisService;
         this.userService = userService;
         this.pagingProperties = pagingProperties;
         this.clock = clock;
+        this.scopes = scopes;
         this.utility = utility;
         this.qcReleaseGate = qcReleaseGate;
         this.depersonalized = depersonalized;
     }
 
-    public void create(HttpSession session, String actor, ResultValidationForm form, List<AnalysisItem> rows, boolean masked) {
+    public void create(HttpSession session, String actor, ResultValidationForm form, List<AnalysisItem> rows,
+            boolean masked) {
+        create(session, actor, form, rows, masked, scopes.capture(actor));
+    }
+
+    public void create(HttpSession session, String actor, ResultValidationForm form, List<AnalysisItem> rows,
+            boolean masked, ReviewScopeSnapshot policy) {
         requireActor(actor);
+        if (!Objects.equals(actor, policy.actor()) || masked != policy.depersonalized())
+            throw stale();
         Map<String, Analysis> analyses = loadAnalyses(rows);
         Set<String> visible = authorizedIds(actor, analyses);
         List<AnalysisItem> allowed = rows.stream().filter(row -> visible.contains(row.getAnalysisId()))
                 .map(SerializationUtils::clone).collect(Collectors.toList());
+        for (AnalysisItem row : allowed) {
+            Analysis analysis = analyses.get(row.getAnalysisId());
+            boolean released = analysis.getReleasedDate() != null;
+            boolean printed = analysis.getPrintedDate() != null;
+            if (released || printed) {
+                row.setReadOnly(true);
+                row.setReviewReadOnlyReason(
+                        released && printed ? "released_and_printed" : released ? "released" : "printed");
+            }
+        }
         annotateQualityControl(allowed, analyses);
         utility.populateReviewPatientInfo(allowed, masked);
         if (masked != depersonalized.getAsBoolean()) {
             throw stale();
         }
-        Context context = new Context(actor, Criteria.from(form), clock.millis(), divide(allowed), masked);
+        scopes.requireUnchanged(policy);
+        Context context = new Context(actor, Criteria.from(form), clock.millis(), divide(allowed), masked, policy,
+                ReviewSummaryFactory.fromRows(form.getReviewScope(), allowed));
         synchronized (session) {
             Map<String, Context> contexts = contexts(session);
             while (contexts.size() >= MAX_CONTEXTS) {
@@ -97,6 +124,7 @@ public class ReviewQueryContextService {
             Context context = requireContext(session, actor, form, queryId);
             int pageNumber = pageNumber(page, context);
             requireFreshAccess(actor, context);
+            scopes.requireUnchanged(context.policy());
             display(form, queryId, context, pageNumber);
         }
     }
@@ -104,9 +132,17 @@ public class ReviewQueryContextService {
     /**
      * Validate the complete issued page before copying any edits. Consumption is
      * atomic within the session, so retries or concurrent submissions must requery.
-     * Clinical persistence and optimistic locking remain the save service's concern.
+     * Clinical persistence and optimistic locking remain the save service's
+     * concern.
      */
     public List<AnalysisItem> consumeForSave(HttpSession session, String actor, ResultValidationForm form) {
+        return consumeSubmission(session, actor, form).rows();
+    }
+
+    public record Submission(List<AnalysisItem> rows, ReviewScopeSnapshot policy) {
+    }
+
+    public Submission consumeSubmission(HttpSession session, String actor, ResultValidationForm form) {
         synchronized (session) {
             Context context = requireContext(session, actor, form, form.getQueryId());
             int pageNumber = pageNumber(form.getPaging() == null ? null : form.getPaging().getCurrentPage(), context);
@@ -137,12 +173,14 @@ public class ReviewQueryContextService {
                 row.setNote(posted.get(i).getNote());
                 submission.add(row);
             }
+            scopes.requireUnchanged(context.policy());
             contexts(session).remove(form.getQueryId());
-            return submission;
+            return new Submission(submission, context.policy());
         }
     }
 
     private void requireFreshAccess(String actor, Context context) {
+        scopes.requireUnchanged(context.policy());
         if (context.depersonalized() != depersonalized.getAsBoolean()) {
             throw stale();
         }
@@ -181,8 +219,9 @@ public class ReviewQueryContextService {
     }
 
     private Set<String> authorizedIds(String actor, Map<String, Analysis> analyses) {
-        return userService.filterAnalysesByLabUnitRoles(actor, new ArrayList<>(analyses.values()),
-                Constants.ROLE_VALIDATION).stream().map(Analysis::getId).collect(Collectors.toSet());
+        return userService
+                .filterAnalysesByLabUnitRoles(actor, new ArrayList<>(analyses.values()), Constants.ROLE_VALIDATION)
+                .stream().map(Analysis::getId).collect(Collectors.toSet());
     }
 
     private void annotateQualityControl(List<AnalysisItem> rows, Map<String, Analysis> analyses) {
@@ -190,8 +229,8 @@ public class ReviewQueryContextService {
         for (AnalysisItem row : rows) {
             Analysis analysis = analyses.get(row.getAnalysisId());
             row.setAnalyzerId(analysis == null ? null : analysis.getAnalyzerId());
-            row.setQcBlockingViolations(blockers.computeIfAbsent(row.getAnalysisId(),
-                    ignored -> qcReleaseGate.blockersFor(analysis)));
+            row.setQcBlockingViolations(
+                    blockers.computeIfAbsent(row.getAnalysisId(), ignored -> qcReleaseGate.blockersFor(analysis)));
         }
     }
 
@@ -239,6 +278,8 @@ public class ReviewQueryContextService {
 
     private void display(ResultValidationForm form, String queryId, Context context, int pageNumber) {
         form.setQueryId(queryId);
+        form.setReviewScope(context.criteria().scope());
+        form.setSummary(context.summary());
         form.setDoRange(context.criteria().doRange());
         form.setSearchFinished(true);
         form.setResultList(context.pages().get(pageNumber - 1).stream().map(SerializationUtils::clone)
@@ -286,15 +327,16 @@ public class ReviewQueryContextService {
         return new ResponseStatusException(HttpStatus.CONFLICT, "Review query expired or changed; search again");
     }
 
-    private record Context(String actor, Criteria criteria, long createdAt, List<List<AnalysisItem>> pages, boolean depersonalized)
-            implements Serializable {
+    private record Context(String actor, Criteria criteria, long createdAt, List<List<AnalysisItem>> pages,
+            boolean depersonalized, ReviewScopeSnapshot policy, ReviewPendingSummary summary) implements Serializable {
     }
 
-    private record Criteria(String accession, String date, String section, boolean doRange) implements Serializable {
+    private record Criteria(String scope, String accession, String date, String section,
+            boolean doRange) implements Serializable {
         static Criteria from(ResultValidationForm form) {
-            return new Criteria(StringUtils.trimToEmpty(form.getAccessionNumber()),
-                    StringUtils.trimToEmpty(form.getTestDate()), StringUtils.trimToEmpty(form.getTestSectionId()),
-                    !Boolean.FALSE.equals(form.getDoRange()));
+            return new Criteria(StringUtils.defaultIfBlank(form.getReviewScope(), "filtered"),
+                    StringUtils.trimToEmpty(form.getAccessionNumber()), StringUtils.trimToEmpty(form.getTestDate()),
+                    StringUtils.trimToEmpty(form.getTestSectionId()), !Boolean.FALSE.equals(form.getDoRange()));
         }
     }
 }

@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.openelisglobal.analysis.form.PendingResultSpecimenCount;
+import org.openelisglobal.analysis.form.ReviewPendingAccessionCount;
+import org.openelisglobal.analysis.form.ReviewPendingQuery;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.dao.BaseDAO;
 import org.openelisglobal.common.exception.LIMSRuntimeException;
@@ -270,4 +272,11 @@ public interface AnalysisDAO extends BaseDAO<Analysis, String> {
      * @return the existing Analysis or null if not found
      */
     Analysis getAnalysisBySampleItemAndTest(String sampleItemId, String testId);
+
+    List<Analysis> getReviewPendingAnalyses(List<String> statusIds, Set<String> sectionIds, ReviewPendingQuery criteria,
+            int offset, int limit);
+
+    void visitReviewPendingAccessionCounts(List<String> statusIds, Set<String> sectionIds,
+            Consumer<ReviewPendingAccessionCount> consumer);
+
 }

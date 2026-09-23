@@ -10,16 +10,42 @@ import HomeDashBoard, { getDashboardLabNumberRoute } from "./Dashboard";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { NotificationContext } from "../layout/Layout";
 import messages from "../../languages/en.json";
+import { readPendingReviewSummary } from "./pendingReviewSummary";
 import { getFromOpenElisServer, Roles } from "../utils/Utils";
 import {
   readPendingResultSummary,
   PendingSummaryError,
 } from "./pendingResultSummary";
 
+import {
+  pendingSummarySessionKey,
+  readPendingSummarySession,
+} from "./pendingSummarySession";
+
+vi.mock("./pendingSummarySession", async () => ({
+  ...(await vi.importActual("./pendingSummarySession")),
+  readPendingSummarySession: vi.fn(),
+}));
+
 vi.mock("./pendingResultSummary", async () => ({
   ...(await vi.importActual("./pendingResultSummary")),
   readPendingResultSummary: vi.fn(),
 }));
+
+vi.mock("./pendingReviewSummary", async () => ({
+  ...(await vi.importActual("./pendingReviewSummary")),
+  readPendingReviewSummary: vi.fn(),
+}));
+
+const reviewSummary = {
+  scope: "pending",
+  state: "ready",
+  analysisCount: 0,
+  accessionCount: 0,
+  displayRowCount: 0,
+  qcBlockedAnalysisCount: 0,
+  generatedAt: "2026-09-23T06:20:00Z",
+};
 
 const summary = {
   scope: "pending",
@@ -73,6 +99,18 @@ const renderDashboard = (metricOverrides = {}, roles = allWorkflowRoles) => {
     callback({ displayItems: [], paging: null });
   });
 
+  readPendingSummarySession.mockImplementation(async (_signal, requiredRole) =>
+    pendingSummarySessionKey(
+      {
+        authenticated: true,
+        userId: "17",
+        sessionId: "synthetic-session",
+        loginLabUnit: "4",
+        roles,
+      },
+      requiredRole,
+    ),
+  );
   const history = createMemoryHistory({ initialEntries: ["/Dashboard"] });
   const view = render(
     <Router history={history}>
@@ -110,6 +148,7 @@ describe("HomeDashBoard", () => {
     vi.clearAllMocks();
     localStorage.setItem("CSRF", "synthetic-csrf");
     readPendingResultSummary.mockResolvedValue(summary);
+    readPendingReviewSummary.mockResolvedValue(reviewSummary);
   });
 
   test("puts pending work and a primary task in the first dashboard view", async () => {
@@ -136,12 +175,12 @@ describe("HomeDashBoard", () => {
     const { history } = renderDashboard();
 
     const validationTask = await screen.findByRole("button", {
-      name: /Results awaiting validation/i,
+      name: /Test tasks awaiting review/i,
     });
     await user.click(validationTask);
 
     expect(history.location.pathname).toBe("/validation");
-    expect(history.location.search).toBe("?type=routine");
+    expect(history.location.search).toBe("?scope=pending");
   });
 
   test("pending result task opens the unified pending workbench", async () => {
@@ -184,7 +223,7 @@ describe("HomeDashBoard", () => {
       screen.queryByRole("button", { name: "Create new order" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /Results awaiting validation/i }),
+      screen.queryByRole("button", { name: /Test tasks awaiting review/i }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Reports awaiting printing/i }),
@@ -251,10 +290,172 @@ describe("HomeDashBoard", () => {
       name: /Results awaiting entry/i,
     });
     await waitFor(() => expect(task).toHaveTextContent("7test tasks"));
-    expect(task).toHaveTextContent("Other counts are temporarily unavailable.");
+    expect(task).not.toHaveTextContent(
+      "Other counts are temporarily unavailable.",
+    );
+    expect(task).toHaveTextContent(
+      messages["dashboard.results.summary.description"],
+    );
     expect(task).not.toHaveTextContent("9999");
     expect(screen.queryByText("10 pending")).not.toBeInTheDocument();
     expect(readPendingResultSummary).toHaveBeenCalledTimes(1);
+  });
+
+  test("review uses authorized analysis tasks from its light summary, never the old global order number", async () => {
+    readPendingReviewSummary.mockResolvedValue({
+      ...reviewSummary,
+      state: "partial",
+      analysisCount: 7,
+      accessionCount: 2,
+      displayRowCount: null,
+      qcBlockedAnalysisCount: null,
+    });
+    renderDashboard({ ordersReadyForValidation: 9999, ordersInProgress: 3 });
+    const task = await screen.findByRole("button", {
+      name: /Test tasks awaiting review/i,
+    });
+    await waitFor(() => expect(task).toHaveTextContent("7test tasks"));
+    expect(task).toHaveTextContent(
+      messages["dashboard.review.summary.description"],
+    );
+    expect(task).not.toHaveTextContent("9999");
+    expect(task).not.toHaveTextContent("Other counts");
+    expect(screen.queryByText("10 pending")).toBeNull();
+    expect(readPendingReviewSummary).toHaveBeenCalledTimes(1);
+  });
+
+  test("a Validation-only actor can load review counts without Results permission", async () => {
+    readPendingReviewSummary.mockResolvedValue({
+      ...reviewSummary,
+      state: "partial",
+      analysisCount: 2,
+      accessionCount: 1,
+      displayRowCount: null,
+      qcBlockedAnalysisCount: null,
+    });
+    renderDashboard({}, [Roles.VALIDATION]);
+    const task = await screen.findByRole("button", {
+      name: /Test tasks awaiting review/i,
+    });
+    await waitFor(() => expect(task).toHaveTextContent("2test tasks"));
+    expect(readPendingResultSummary).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: /Results awaiting entry/i }),
+    ).toBeNull();
+  });
+
+  test("without Validation permission the review card is absent and its summary is never requested", async () => {
+    renderDashboard({}, [Roles.RESULTS]);
+    await waitFor(() =>
+      expect(readPendingResultSummary).toHaveBeenCalledTimes(1),
+    );
+    expect(readPendingReviewSummary).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: /Test tasks awaiting review/i }),
+    ).toBeNull();
+  });
+
+  test("only a confirmed empty review summary displays zero and an empty-review explanation", async () => {
+    renderDashboard({ ordersReadyForValidation: 9999 });
+    const task = await screen.findByRole("button", {
+      name: /Test tasks awaiting review/i,
+    });
+    await within(task).findByText(messages["dashboard.review.summary.empty"]);
+    expect(task).toHaveTextContent("0test tasks");
+    expect(task).not.toHaveTextContent("9999");
+  });
+
+  test("review loading remains unknown without blocking an authorized worklist link", async () => {
+    readPendingReviewSummary.mockReturnValue(new Promise(() => {}));
+    const user = userEvent.setup();
+    const { history } = renderDashboard({ ordersReadyForValidation: 9999 });
+    const task = await screen.findByRole("button", {
+      name: /Test tasks awaiting review/i,
+    });
+    expect(task).toHaveTextContent("—test tasks");
+    expect(task).toHaveTextContent(
+      messages["dashboard.review.summary.loading"],
+    );
+    await user.click(task);
+    expect(history.location.pathname + history.location.search).toBe(
+      "/validation?scope=pending",
+    );
+  });
+
+  test("an unknown partial review analysis count does not become zero", async () => {
+    readPendingReviewSummary.mockResolvedValue({
+      ...reviewSummary,
+      state: "partial",
+      analysisCount: null,
+      accessionCount: null,
+      displayRowCount: null,
+      qcBlockedAnalysisCount: null,
+    });
+    renderDashboard({ ordersReadyForValidation: 9999 });
+    const task = await screen.findByRole("button", {
+      name: /Test tasks awaiting review/i,
+    });
+    await within(task).findByText(
+      messages["dashboard.review.summary.unavailable"],
+    );
+    expect(task).toHaveTextContent("—test tasks");
+    expect(task).not.toHaveTextContent(
+      messages["dashboard.review.summary.empty"],
+    );
+  });
+
+  test.each(["forbidden", "unauthenticated", "unavailable"])(
+    "review %s responses keep counts unknown and navigation follows actual authority",
+    async (kind) => {
+      readPendingReviewSummary.mockRejectedValue(new PendingSummaryError(kind));
+      const user = userEvent.setup();
+      const { history } = renderDashboard({ ordersReadyForValidation: 9999 });
+      const task = await screen.findByRole("button", {
+        name: /Test tasks awaiting review/i,
+      });
+      await within(task).findByText(
+        messages[`dashboard.review.summary.${kind}`],
+      );
+      expect(task).toHaveTextContent("—test tasks");
+      expect(task).not.toHaveTextContent("9999");
+      await user.click(task);
+      expect(history.location.pathname).toBe(
+        kind === "unavailable" ? "/validation" : "/Dashboard",
+      );
+      if (kind !== "unavailable")
+        expect(task).toHaveAttribute("aria-disabled", "true");
+    },
+  );
+
+  test("a failed review refresh hides its previous count without changing its last successful timestamp", async () => {
+    readPendingReviewSummary
+      .mockResolvedValueOnce({
+        ...reviewSummary,
+        state: "partial",
+        analysisCount: 7,
+        accessionCount: 2,
+        displayRowCount: null,
+        qcBlockedAnalysisCount: null,
+      })
+      .mockRejectedValueOnce(new PendingSummaryError("unavailable"));
+    const user = userEvent.setup();
+    renderDashboard();
+    const task = await screen.findByRole("button", {
+      name: /Test tasks awaiting review/i,
+    });
+    const time = (await within(task).findByText(/Last successful count:/))
+      .textContent;
+    await user.click(
+      screen.getByRole("button", { name: messages["dashboard.refresh"] }),
+    );
+    await within(task).findByText(
+      messages["dashboard.review.summary.unavailable"],
+    );
+    expect(task).toHaveTextContent("—test tasks");
+    expect(within(task).getByText(/Last successful count:/).textContent).toBe(
+      time,
+    );
+    expect(readPendingReviewSummary).toHaveBeenCalledTimes(2);
   });
 
   test("only a confirmed zero shows an empty result worklist", async () => {

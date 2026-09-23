@@ -68,6 +68,7 @@ import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { NotificationContext } from "../layout/Layout";
 import { AlertDialog, NotificationKinds } from "../common/CustomNotification";
 import { usePendingResultSummary } from "./usePendingResultSummary";
+import { usePendingReviewSummary } from "./usePendingReviewSummary";
 
 interface DashBoardProps {}
 
@@ -99,7 +100,6 @@ interface Notification {
 
 const EMPTY_COUNTS = {
   ordersInProgress: 0,
-  ordersReadyForValidation: 0,
   ordersCompletedToday: 0,
   patiallyCompletedToday: 0,
   orderEnterdByUserToday: 0,
@@ -157,17 +157,11 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
   const sessionContext = useContext(UserSessionDetailsContext);
   const { userSessionDetails } = sessionContext;
   const resultSummary = usePendingResultSummary(sessionContext);
+  const reviewSummary = usePendingReviewSummary(sessionContext);
   const resultCount = resultSummary.summary?.analysisCount ?? null;
+  const reviewCount = reviewSummary.summary?.analysisCount ?? null;
   const resultCountText =
     resultCount === null ? "—" : intl.formatNumber(resultCount);
-  const resultSummaryMessage =
-    resultSummary.status === "ready"
-      ? resultCount === 0
-        ? "dashboard.results.summary.empty"
-        : "dashboard.results.summary.description"
-      : resultSummary.status === "partial" && resultCount === null
-        ? "dashboard.results.summary.unavailable"
-        : `dashboard.results.summary.${resultSummary.status}`;
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext) as Notification;
 
@@ -190,6 +184,7 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
     setLoading(true);
     getFromOpenElisServer("/rest/home-dashboard/metrics", loadCount);
     resultSummary.refresh();
+    reviewSummary.refresh();
   };
 
   useEffect(() => {
@@ -318,14 +313,6 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
 
   const tileList: Array<Tile> = [
     {
-      title: <FormattedMessage id="dashboard.validation.ready.label" />,
-      subTitle: (
-        <FormattedMessage id="dashboard.validation.ready.subtitle.label" />
-      ),
-      type: "ORDERS_READY_FOR_VALIDATION",
-      value: counts.ordersReadyForValidation,
-    },
-    {
       title: <FormattedMessage id="dashboard.complete.orders.label" />,
       type: "ORDERS_COMPLETED_TODAY",
       value: counts.ordersCompletedToday,
@@ -430,10 +417,10 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
     },
     {
       type: "ORDERS_READY_FOR_VALIDATION",
-      titleId: "dashboard.task.validation.title",
-      descriptionId: "dashboard.task.validation.description",
-      value: counts.ordersReadyForValidation,
-      route: "/validation?type=routine",
+      titleId: "dashboard.review.summary.title",
+      descriptionId: "dashboard.review.summary.description",
+      value: reviewCount,
+      route: "/validation?scope=pending",
       icon: TaskView,
       roles: [Roles.VALIDATION],
     },
@@ -472,7 +459,7 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
     },
     {
       labelId: "dashboard.quick.validate",
-      route: "/validation?type=routine",
+      route: "/validation?scope=pending",
       icon: CheckmarkFilled,
       kind: "tertiary",
       roles: [Roles.VALIDATION],
@@ -510,7 +497,7 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
     {
       labelId: "dashboard.flow.validation",
       descriptionId: "dashboard.flow.validation.description",
-      route: "/validation?type=routine",
+      route: "/validation?scope=pending",
       roles: [Roles.VALIDATION],
     },
     {
@@ -783,12 +770,27 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                   {visibleWorkItems.map((item) => {
                     const TaskIcon = item.icon;
                     const isResults = item.type === "ORDERS_IN_PROGRESS";
+                    const taskSummary = isResults
+                      ? resultSummary
+                      : item.type === "ORDERS_READY_FOR_VALIDATION"
+                        ? reviewSummary
+                        : null;
+                    const summaryPrefix = isResults
+                      ? "dashboard.results.summary"
+                      : "dashboard.review.summary";
+                    const knownCount =
+                      taskSummary &&
+                      ["ready", "partial"].includes(taskSummary.status) &&
+                      item.value !== null;
+                    const summaryMessage = taskSummary
+                      ? `${summaryPrefix}.${knownCount ? (item.value === 0 ? "empty" : "description") : taskSummary.status === "partial" ? "unavailable" : taskSummary.status}`
+                      : null;
                     const denied =
-                      isResults &&
-                      (resultSummary.status === "forbidden" ||
-                        resultSummary.status === "unauthenticated");
+                      taskSummary &&
+                      (taskSummary.status === "forbidden" ||
+                        taskSummary.status === "unauthenticated");
                     const className =
-                      isResults && resultCount === null
+                      taskSummary && item.value === null
                         ? "is-unavailable"
                         : Number(item.value) > 0
                           ? "has-work"
@@ -823,23 +825,23 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                             <span className="dashboard-task-description">
                               <FormattedMessage id={item.descriptionId} />
                             </span>
-                            {isResults && (
+                            {taskSummary && (
                               <span
                                 className="dashboard-result-summary-status"
                                 role="status"
                                 aria-live="polite"
                               >
-                                {resultSummary.status !== "ready" ||
-                                resultCount === 0 ? (
-                                  <FormattedMessage id={resultSummaryMessage} />
+                                {summaryMessage &&
+                                (!knownCount || item.value === 0) ? (
+                                  <FormattedMessage id={summaryMessage} />
                                 ) : null}
-                                {resultSummary.lastSuccessAt && (
+                                {taskSummary.lastSuccessAt && (
                                   <small>
                                     <FormattedMessage
-                                      id="dashboard.results.summary.updated"
+                                      id={`${summaryPrefix}.updated`}
                                       values={{
                                         time: intl.formatTime(
-                                          resultSummary.lastSuccessAt,
+                                          taskSummary.lastSuccessAt,
                                         ),
                                       }}
                                     />
@@ -852,13 +854,17 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                             <span className="dashboard-task-action">
                               <span className="dashboard-task-state">
                                 <span className="dashboard-task-count">
-                                  {isResults ? resultCountText : item.value}
+                                  {taskSummary
+                                    ? item.value === null
+                                      ? "—"
+                                      : intl.formatNumber(item.value)
+                                    : item.value}
                                 </span>
                                 <small>
                                   <FormattedMessage
                                     id={
-                                      isResults
-                                        ? "dashboard.results.summary.unit"
+                                      taskSummary
+                                        ? `${summaryPrefix}.unit`
                                         : Number(item.value || 0) > 0
                                           ? "dashboard.task.pending"
                                           : "dashboard.task.clear"

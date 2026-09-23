@@ -48,6 +48,8 @@ public class ReviewSubmissionServiceTest {
     private ReviewSignature credentials;
     private IResultUpdate updater;
     private QCReleaseGateService qcReleaseGate;
+    private ReviewScopeService scopes;
+    private ReviewScopeSnapshot policy;
 
     @Before
     public void setup() {
@@ -64,16 +66,18 @@ public class ReviewSubmissionServiceTest {
         fhir = mock(FhirTransformService.class);
         notifications = mock(TestNotificationService.class);
         qcReleaseGate = mock(QCReleaseGateService.class);
+        scopes = mock(ReviewScopeService.class);
+        policy = new ReviewScopeSnapshot("801", java.util.Set.of("501"), List.of("15"), false, "NORMAL", "en", false);
+        when(scopes.capture("801")).thenReturn(policy);
         var users = mock(SystemUserService.class);
         var user = new SystemUser();
         user.setId("801");
         user.setLoginName("sim-reviewer");
         user.setIsActive("Y");
         when(users.get("801")).thenReturn(user);
-        service = spy(
-                new ReviewSubmissionService(fixture.guard, analyses, fixture.statuses, notes, mock(SampleService.class),
-                        mock(SampleHumanService.class), signatures, users, fixture.specimens, fhir, notifications,
-                        qcReleaseGate));
+        service = spy(new ReviewSubmissionService(fixture.guard, analyses, fixture.statuses, notes,
+                mock(SampleService.class), mock(SampleHumanService.class), signatures, users, fixture.specimens, fhir,
+                notifications, qcReleaseGate, scopes));
         updater = mock(IResultUpdate.class);
         doReturn(List.of(updater)).when(service).registeredUpdaters();
         request = new MockHttpServletRequest();
@@ -125,7 +129,8 @@ public class ReviewSubmissionServiceTest {
         verify(qcReleaseGate, atLeast(2)).requireReleasable(anyMap(), anyMap());
     }
 
-    @Test public void qcReleaseBlockerStopsAcceptanceBeforeSignatureOrMutation() {
+    @Test
+    public void qcReleaseBlockerStopsAcceptanceBeforeSignatureOrMutation() {
         doThrow(QCReleaseGateService.blocked()).when(qcReleaseGate).requireReleasable(anyMap(), anyMap());
         assertEquals(422, assertThrows(ResponseStatusException.class, this::save).getStatusCode().value());
         verify(signatures, never()).executeSignatureForSnapshot(anyString(), anyString(), any(), anyString(), anyLong(),
@@ -214,6 +219,49 @@ public class ReviewSubmissionServiceTest {
                     var signature = new ElectronicSignature(); signature.setId(901L); return signature; });
         assertEquals(403, assertThrows(ResponseStatusException.class, this::save).getStatusCode().value());
         assertEquals("15", fixture.analysis.getStatusId()); verify(analyses, never()).update(any());
+    }
+
+    @Test
+    public void existingSaveCapturesCurrentPolicyAndExplicitSaveUsesOnlyServerSnapshot() {
+        service.save(request, "801", List.of(fixture.row), credentials, policy);
+        verify(scopes, never()).capture(anyString());
+        verify(scopes, atLeast(2)).requireUnchanged(same(policy));
+    }
+
+    @Test public void legacySavePolicyCaptureFailureStillClearsSigningPassword() {
+        when(scopes.capture("801")).thenThrow(ReviewScopeService.stale());
+        assertEquals(409, assertThrows(ResponseStatusException.class, this::save).getStatusCode().value());
+        assertNull(credentials.getPassword()); verifyZeroInteractions(signatures, analyses, notes);
+    }
+
+    @Test
+    public void configurationChangedDuringUpdaterStopsBeforeExternalEffects() {
+        doAnswer(call -> {
+            doThrow(ReviewScopeService.stale()).when(scopes).requireUnchanged(same(policy));
+            return null;
+        }).when(updater).transactionalUpdate(any());
+        assertEquals(409, assertThrows(ResponseStatusException.class, this::save).getStatusCode().value());
+        verify(scopes).capture("801");
+        verifyZeroInteractions(fhir, notifications);
+        verify(updater, never()).postTransactionalCommitUpdate(any());
+        assertNull(credentials.getPassword());
+    }
+
+    @Test
+    public void policyIsCheckedAtBeforeCommitAndCannotBelongToAnotherActor() {
+        save();
+        doThrow(ReviewScopeService.stale()).when(scopes).requireUnchanged(same(policy));
+        assertEquals(409, assertThrows(ResponseStatusException.class, () -> {
+            for (var synchronization : TransactionSynchronizationManager.getSynchronizations())
+                synchronization.beforeCommit(false);
+        }).getStatusCode().value());
+        verifyZeroInteractions(fhir, notifications);
+        var foreign = new ReviewScopeSnapshot("802", java.util.Set.of("501"), List.of("15"), false, "NORMAL", "en",
+                false);
+        assertEquals(403,
+                assertThrows(ResponseStatusException.class,
+                        () -> service.save(request, "801", List.of(fixture.row), null, foreign)).getStatusCode()
+                        .value());
     }
 
     @Test

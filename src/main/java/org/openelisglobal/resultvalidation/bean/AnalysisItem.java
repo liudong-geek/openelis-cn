@@ -203,6 +203,15 @@ public class AnalysisItem implements Serializable {
     private String multiSelectResultValues = "{}";
 
     private boolean readOnly = false;
+    private String reviewReadOnlyReason;
+
+    public String getReviewReadOnlyReason() {
+        return reviewReadOnlyReason;
+    }
+
+    public void setReviewReadOnlyReason(String reason) {
+        this.reviewReadOnlyReason = reason;
+    }
 
     private boolean isReflexGroup = false;
 

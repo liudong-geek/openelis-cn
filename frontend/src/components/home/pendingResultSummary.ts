@@ -67,13 +67,15 @@ export function parsePendingResultSummary(
 
 // A summary is a small JSON document. Do not follow login redirects, cache it,
 // load clinical rows for counting, log response bodies, or retry in the background.
-export async function readPendingResultSummary(
+export async function readPendingSummaryJson(
+  endpoint:
+    | "/session"
+    | "/rest/results-entry/pending/summary"
+    | "/rest/review/pending/summary",
   signal: AbortSignal,
-): Promise<PendingResultSummary> {
-  const response = await readOpenElisResponse(
-    "/rest/results-entry/pending/summary",
-    signal,
-  );
+): Promise<unknown> {
+  if (signal.aborted) throw new PendingSummaryError("unavailable");
+  const response = await readOpenElisResponse(endpoint, signal);
   if (response.status === 401) throw new PendingSummaryError("unauthenticated");
   if (response.status === 403) throw new PendingSummaryError("forbidden");
   const limit = 32 * 1024;
@@ -103,9 +105,17 @@ export async function readPendingResultSummary(
     }
     text += decoder.decode();
     if (signal.aborted) throw new PendingSummaryError("unavailable");
-    return parsePendingResultSummary(JSON.parse(text));
+    return JSON.parse(text);
   } finally {
     void reader.cancel().catch(() => {});
     reader.releaseLock();
   }
+}
+
+export async function readPendingResultSummary(
+  signal: AbortSignal,
+): Promise<PendingResultSummary> {
+  return parsePendingResultSummary(
+    await readPendingSummaryJson("/rest/results-entry/pending/summary", signal),
+  );
 }

@@ -96,6 +96,7 @@ beforeEach(() => {
       sessionId: "SIM-SESSION",
       csrf: "SIM-CSRF",
       loginName: "SIM-USER",
+      roles: ["Results"],
     },
   };
   io.read.mockImplementation((url, callback) => {
@@ -223,10 +224,11 @@ test("状态筛选排除当前标本时队列和明细同步，恢复筛选后�
   fireEvent.click(tube("201"));
   enter("101", "0");
   fireEvent.click(screen.getByRole("button", { name: /待审核 \(\s*1\s*\)/ }));
-  expect(queue().getByRole("button", { name: /全部标本/ })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  expect(
+    queue().getByRole("button", {
+      name: new RegExp(zh["results.workbench.queue.all"]),
+    }),
+  ).toHaveAttribute("aria-pressed", "true");
   expect(table().queryByText("模拟项目101")).toBeNull();
   expect(table().getByText("模拟项目102")).toBeVisible();
   expect(

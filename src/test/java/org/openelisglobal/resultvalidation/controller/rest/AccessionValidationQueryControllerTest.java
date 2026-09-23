@@ -48,6 +48,7 @@ public class AccessionValidationQueryControllerTest {
     private AccessionValidationRestController controller;
     private ReviewQueryContextService contexts;
     private ResultValidationService persistence;
+    private org.openelisglobal.resultvalidation.service.ReviewPendingService pending;
     private org.openelisglobal.resultvalidation.service.ReviewSubmissionService submissions;
     private MockHttpServletRequest request;
 
@@ -67,6 +68,9 @@ public class AccessionValidationQueryControllerTest {
                 mock(SystemUserService.class), references, documentTypes, persistence, mock(NoteService.class),
                 mock(FhirTransformService.class));
         contexts = mock(ReviewQueryContextService.class);
+        pending = mock(org.openelisglobal.resultvalidation.service.ReviewPendingService.class);
+        ReflectionTestUtils.setField(controller, "reviewPendingService", pending);
+        when(pending.query(any(), anyString(), any(), any(), any())).thenAnswer(call -> call.getArgument(2));
         ReflectionTestUtils.setField(controller, "reviewQueryContextService", contexts);
         submissions = mock(org.openelisglobal.resultvalidation.service.ReviewSubmissionService.class);
         ReflectionTestUtils.setField(controller, "reviewSubmissionService", submissions);
@@ -85,10 +89,13 @@ public class AccessionValidationQueryControllerTest {
         credentials.setPassword("SIM-secret");
         form.setReviewSignature(credentials);
         var serverRows = java.util.List.of(new org.openelisglobal.resultvalidation.bean.AnalysisItem());
-        when(contexts.consumeForSave(request.getSession(), "7", form)).thenReturn(serverRows);
+        var policy = new org.openelisglobal.resultvalidation.service.ReviewScopeSnapshot("7", java.util.Set.of("10"),
+                java.util.List.of("15"), false, "NORMAL", "en", false);
+        when(contexts.consumeSubmission(request.getSession(), "7", form))
+                .thenReturn(new ReviewQueryContextService.Submission(serverRows, policy));
         var response = controller.showAccessionValidationRangeSave(request, form,
                 new BeanPropertyBindingResult(form, "form"));
-        verify(submissions).save(request, "7", serverRows, credentials);
+        verify(submissions).save(request, "7", serverRows, credentials, policy);
         assertEquals("SIM-query-A", response.getQueryId());
         assertTrue(response.getResultList().isEmpty());
         assertNull(response.getReviewSignature());
@@ -99,8 +106,8 @@ public class AccessionValidationQueryControllerTest {
     public void actualHttpMappingPreservesStaleAndForbiddenStatuses() throws Exception {
         var mvc = MockMvcBuilders.standaloneSetup(controller).setControllerAdvice(new ControllerSetup()).build();
         for (HttpStatus error : new HttpStatus[] { HttpStatus.CONFLICT, HttpStatus.FORBIDDEN }) {
-            doThrow(new ResponseStatusException(error)).when(contexts).page(any(), eq("7"), any(), eq("SIM-query-A"),
-                    eq("1"));
+            doThrow(new ResponseStatusException(error)).when(pending).query(any(), eq("7"), any(), eq("1"),
+                    eq("SIM-query-A"));
             mvc.perform(get("/rest/AccessionValidation").session((MockHttpSession) request.getSession())
                     .param("accessionNumber", "SIM-A").param("doRange", "false").param("queryId", "SIM-query-A")
                     .param("page", "1")).andExpect(status().is(error.value()));
@@ -109,7 +116,7 @@ public class AccessionValidationQueryControllerTest {
     }
 
     @Test
-    public void missingSampleInitialGetStillCreatesAnEmptyIndependentQuery() throws Exception {
+    public void initialGetDelegatesExactAccessionToUnifiedService() throws Exception {
         Object oldForms = ReflectionTestUtils.getField(FormFields.class, "instance");
         Object oldFactory = ReflectionTestUtils.getField(SpringContext.class, "factory");
         Object oldDisplay = ReflectionTestUtils.getField(DisplayListService.class, "instance");
@@ -129,9 +136,8 @@ public class AccessionValidationQueryControllerTest {
             ReflectionTestUtils.setField(controller, "sampleService", samples);
             ResultValidationForm response = controller.showAccessionValidationRange(request, "SIM-missing", null, null,
                     false);
-            verify(samples).getSampleByAccessionNumber("SIM-missing");
-            verify(contexts).create(eq(request.getSession()), eq("7"), same(response), eq(java.util.List.of()),
-                    eq(false));
+            verify(pending).query(eq(request.getSession()), eq("7"), same(response), isNull(), isNull());
+            verifyZeroInteractions(samples, contexts);
             assertEquals("SIM-missing", response.getAccessionNumber());
             assertEquals(Boolean.FALSE, response.getDoRange());
         } finally {
@@ -146,7 +152,7 @@ public class AccessionValidationQueryControllerTest {
         request.setParameter("queryId", "SIM-query-A");
         request.setParameter("page", "2");
         ResultValidationForm response = controller.showAccessionValidationRange(request, "SIM-A", null, null, false);
-        verify(contexts).page(eq(request.getSession()), eq("7"), same(response), eq("SIM-query-A"), eq("2"));
+        verify(pending).query(eq(request.getSession()), eq("7"), same(response), eq("2"), eq("SIM-query-A"));
         assertEquals("SIM-A", response.getAccessionNumber());
         assertEquals(Boolean.FALSE, response.getDoRange());
         verifyZeroInteractions(persistence);
@@ -156,8 +162,8 @@ public class AccessionValidationQueryControllerTest {
     public void missingPageTokenNeverFallsBackToLegacySessionCache() throws Exception {
         request.getSession().setAttribute(IActionConstants.RESULTS_SESSION_CACHE, java.util.List.of("SIM-old"));
         request.setParameter("page", "1");
-        doThrow(new ResponseStatusException(HttpStatus.CONFLICT)).when(contexts).page(any(), anyString(), any(),
-                isNull(), eq("1"));
+        doThrow(new ResponseStatusException(HttpStatus.CONFLICT)).when(pending).query(any(), anyString(), any(),
+                eq("1"), isNull());
         try {
             controller.showAccessionValidationRange(request, "SIM-A", null, null, false);
             fail();
@@ -199,7 +205,7 @@ public class AccessionValidationQueryControllerTest {
         for (HttpStatus status : new HttpStatus[] { HttpStatus.CONFLICT, HttpStatus.FORBIDDEN }) {
             ResultValidationForm form = new ResultValidationForm();
             form.setQueryId("SIM-query-A");
-            when(contexts.consumeForSave(same(request.getSession()), eq("7"), same(form)))
+            when(contexts.consumeSubmission(same(request.getSession()), eq("7"), same(form)))
                     .thenThrow(new ResponseStatusException(status));
             try {
                 controller.showAccessionValidationRangeSave(request, form, new BeanPropertyBindingResult(form, "form"));

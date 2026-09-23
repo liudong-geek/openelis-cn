@@ -55,6 +55,25 @@ public class ResultValidationForm extends BaseForm implements ValidationPagingFo
         }
     }
 
+    private String reviewScope = "filtered";
+    private ReviewPendingSummary summary;
+
+    public String getReviewScope() {
+        return reviewScope;
+    }
+
+    public void setReviewScope(String reviewScope) {
+        this.reviewScope = reviewScope;
+    }
+
+    public ReviewPendingSummary getSummary() {
+        return summary;
+    }
+
+    public void setSummary(ReviewPendingSummary summary) {
+        this.summary = summary;
+    }
+
     private String queryId;
     private Boolean doRange = true;
 

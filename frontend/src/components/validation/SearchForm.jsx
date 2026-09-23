@@ -24,8 +24,10 @@ import {
   hasReviewQuery,
   reviewContextErrorKey,
 } from "./reviewTransport";
+import { parseReviewQuerySummary } from "./reviewQuerySummary";
 
 const REVIEW_MODES = [
+  ["pending", "validation.search.mode.pending"],
   ["routine", "validation.search.mode.section"],
   ["order", "validation.search.mode.order"],
   ["range", "validation.search.mode.range"],
@@ -100,11 +102,31 @@ const SearchForm = (props) => {
     setDoRagnge(mode !== "order");
     props.setParams("");
     props.setResults({ resultList: [] });
-    window.history.pushState({}, "", `/validation?type=${mode}`);
+    props.onQueryStateChange?.({ phase: "unqueried", scope: "filtered" });
+    window.history.pushState(
+      {},
+      "",
+      mode === "pending"
+        ? "/validation?scope=pending"
+        : `/validation?type=${mode}`,
+    );
     if (mode === "routine") loadTestSections();
+    if (mode === "pending") {
+      const endpoint = "/rest/AccessionValidation?scope=pending";
+      setUrl(endpoint);
+      props.setParams("?scope=pending");
+      requestResults(endpoint);
+    }
   };
 
-  const validationResults = (data, status, expectedQueryId, expectedPage) => {
+  const validationResults = (
+    data,
+    status,
+    expectedQueryId,
+    expectedPage,
+    expectedScope,
+    allowUnqueried,
+  ) => {
     setPagination(false);
     setCurrentApiPage(null);
     setTotalApiPages(null);
@@ -129,11 +151,29 @@ const SearchForm = (props) => {
         (!expectedPage || returnedPage === expectedPage);
     const validContext =
       validPayload &&
+      (data.reviewScope ?? "filtered") === expectedScope &&
       hasReviewQuery(data.queryId) &&
       validPaging &&
       (!expectedQueryId || data.queryId === expectedQueryId);
     queryId.current = validContext ? data.queryId : null;
+    const unqueried =
+      validPayload &&
+      allowUnqueried &&
+      expectedScope === "filtered" &&
+      !expectedQueryId &&
+      !expectedPage &&
+      data.reviewScope === "filtered" &&
+      data.searchFinished === false &&
+      data.queryId === null &&
+      data.resultList.length === 0 &&
+      parseReviewQuerySummary(data.summary, "filtered")?.state === "unqueried";
+    if (unqueried) {
+      props.setResults(data);
+      props.onQueryStateChange?.({ phase: "unqueried", scope: "filtered" });
+      return;
+    }
     if (validContext) {
+      props.onQueryStateChange?.({ phase: "ready", scope: expectedScope });
       if (data.paging) {
         const { totalPages, currentPage } = data.paging;
         if (totalPages > 1) {
@@ -172,6 +212,7 @@ const SearchForm = (props) => {
       }
     } else {
       props.setResults({ resultList: [] });
+      props.onQueryStateChange?.({ phase: "error", scope: expectedScope });
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -190,6 +231,11 @@ const SearchForm = (props) => {
     resultRequest.current.controller?.abort();
     const expectedPage =
       Number(new URLSearchParams(endpoint.split("?")[1]).get("page")) || null;
+    const expectedScope =
+      new URLSearchParams(endpoint.split("?")[1]).get("scope") || "filtered";
+    const allowUnqueried = !["accessionNumber", "unitType", "date"].some(
+      (key) => new URLSearchParams(endpoint.split("?")[1]).get(key)?.trim(),
+    );
     const controller = new AbortController();
     const generation = resultRequest.current.generation + 1;
     resultRequest.current = { generation, controller };
@@ -199,6 +245,7 @@ const SearchForm = (props) => {
     setPreviousPage(null);
     // A new query must not leave the previous order available for review.
     props.setResults({ resultList: [] });
+    props.onQueryStateChange?.({ phase: "loading", scope: expectedScope });
     getReviewResults(
       endpoint,
       (data, status) => {
@@ -208,7 +255,14 @@ const SearchForm = (props) => {
         ) {
           return;
         }
-        validationResults(data, status, expectedQueryId, expectedPage);
+        validationResults(
+          data,
+          status,
+          expectedQueryId,
+          expectedPage,
+          expectedScope,
+          allowUnqueried,
+        );
       },
       controller.signal,
     );
@@ -228,6 +282,14 @@ const SearchForm = (props) => {
     exactAccessionNumber,
   ) => {
     if (props.disabled || props.beforeQuery?.() === false) return;
+    if (requestedSearchBy === "pending") {
+      const endpoint = "/rest/AccessionValidation?scope=pending";
+      setUrl(endpoint);
+      props.setParams("?scope=pending");
+      window.history.replaceState({}, "", "/validation?scope=pending");
+      requestResults(endpoint);
+      return;
+    }
     setNextPage(null);
     setPreviousPage(null);
     setPagination(false);
@@ -340,8 +402,33 @@ const SearchForm = (props) => {
   useEffect(() => {
     var param = "";
     if (window.location.pathname == "/validation") {
+      const initial = new URLSearchParams(window.location.search);
       param =
-        new URLSearchParams(window.location.search).get("type") || "routine";
+        initial.get("scope") === "pending"
+          ? "pending"
+          : initial.get("type") || "routine";
+      if (
+        (initial.has("scope") &&
+          !["pending", "filtered"].includes(initial.get("scope"))) ||
+        (initial.get("scope") === "pending" &&
+          (["accessionNumber", "date", "unitType", "testSectionId"].some(
+            (key) => initial.get(key)?.trim(),
+          ) ||
+            (initial.has("doRange") && initial.get("doRange") !== "true")))
+      ) {
+        setSearchBy(param);
+        props.onQueryStateChange?.({
+          phase: "error",
+          scope: param === "pending" ? "pending" : "filtered",
+        });
+        addNotification({
+          kind: NotificationKinds.error,
+          title: intl.formatMessage({ id: "notification.title" }),
+          message: intl.formatMessage({ id: "validation.query.scopeInvalid" }),
+        });
+        setNotificationVisible(true);
+        return;
+      }
     } else if (window.location.pathname == "/ResultValidation") {
       param = "routine";
     } else if (window.location.pathname == "/AccessionValidation") {
@@ -355,6 +442,9 @@ const SearchForm = (props) => {
     const rangeSearch = param !== "order";
     setDoRagnge(rangeSearch);
     switch (param) {
+      case "pending":
+        handleSubmit({}, "pending", true);
+        break;
       case "routine": {
         let testSectionId = new URLSearchParams(window.location.search).get(
           "testSectionId",

@@ -67,12 +67,14 @@ public class ReviewSubmissionService {
     private final FhirTransformService fhir;
     private final TestNotificationService notifications;
     private final QCReleaseGateService qcReleaseGate;
+    private final ReviewScopeService reviewScopes;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public ReviewSubmissionService(ReviewWriteGuard guard, AnalysisService analyses, IStatusService statuses,
             NoteService notes, SampleService samples, SampleHumanService sampleHumans,
             ElectronicSignatureService signatures, SystemUserService users, OrdinaryResultSaveStateDAO states,
-            FhirTransformService fhir, TestNotificationService notifications, QCReleaseGateService qcReleaseGate) {
+            FhirTransformService fhir, TestNotificationService notifications, QCReleaseGateService qcReleaseGate,
+            ReviewScopeService reviewScopes) {
         this.guard = guard;
         this.analyses = analyses;
         this.statuses = statuses;
@@ -85,12 +87,32 @@ public class ReviewSubmissionService {
         this.fhir = fhir;
         this.notifications = notifications;
         this.qcReleaseGate = qcReleaseGate;
+        this.reviewScopes = reviewScopes;
     }
 
     @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     public void save(HttpServletRequest request, String actor, List<AnalysisItem> rows, ReviewSignature credentials) {
+        try {
+            saveWithinTransaction(request, actor, rows, credentials, reviewScopes.capture(actor));
+        } finally {
+            if (credentials != null)
+                credentials.setPassword(null);
+        }
+    }
+
+    @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
+    public void save(HttpServletRequest request, String actor, List<AnalysisItem> rows, ReviewSignature credentials,
+            ReviewScopeSnapshot expectedPolicy) {
+        saveWithinTransaction(request, actor, rows, credentials, expectedPolicy);
+    }
+
+    private void saveWithinTransaction(HttpServletRequest request, String actor, List<AnalysisItem> rows,
+            ReviewSignature credentials, ReviewScopeSnapshot expectedPolicy) {
         var session = request.getSession(false);
         Runnable verifyActor = () -> {
+            if (expectedPolicy == null || !Objects.equals(actor, expectedPolicy.actor()))
+                throw ReviewWriteGuard.forbidden();
+            reviewScopes.requireUnchanged(expectedPolicy);
             if (session == null || request.getSession(false) != session
                     || !Objects.equals(actor, ControllerUtills.getSysUserId(request)))
                 throw ReviewWriteGuard.forbidden();
@@ -115,7 +137,8 @@ public class ReviewSubmissionService {
             Map<String, String> contents = new LinkedHashMap<>();
             Map<String, Long> signatureIds = new LinkedHashMap<>();
             for (var entry : locked.decisions().entrySet()) {
-                String content = content(entry.getKey(), actor, entry.getValue(), locked.analyses().get(entry.getKey()));
+                String content = content(entry.getKey(), actor, entry.getValue(),
+                        locked.analyses().get(entry.getKey()));
                 contents.put(entry.getKey(), content);
                 var decision = entry.getValue().get(0);
                 if (esigEnabled) {

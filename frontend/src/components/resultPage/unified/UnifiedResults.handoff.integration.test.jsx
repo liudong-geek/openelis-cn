@@ -41,6 +41,14 @@ test("the real frontend save/readback/navigation/search chain queries the comple
       const parsed = new URL(String(url), window.location.origin);
       const path = parsed.pathname;
       requests.push({ path, query: parsed.searchParams, init });
+      if (path.endsWith("/session"))
+        return json({
+          authenticated: true,
+          userId: "701",
+          sessionId: "SIM-SESSION",
+          roles: ["Results", "Validation"],
+          csrf: "SIM-OTHER-MASK",
+        });
       if (
         path.endsWith("/results-entry/lab-units") ||
         path.endsWith("/analysis-status-types")

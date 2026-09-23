@@ -92,6 +92,9 @@ import "./result-specimen-workspace.scss";
 import { hasRole, Roles } from "../../utils/Utils";
 import { resultReviewHandoffPath } from "./resultReviewHandoff";
 import TestingWorkspaceSwitcher from "../TestingWorkspaceSwitcher";
+import ResultSpecimenBlockSummary from "./ResultSpecimenBlockSummary";
+import { resultSpecimenBlocks, SpecimenBlock } from "./resultSpecimenBlocks";
+import { resultReadSessionKey } from "./resultReadSession";
 
 /**
  * OGC-1020 (R1 of OGC-811) — unified /Results worklist.
@@ -260,6 +263,16 @@ const UnifiedResults: React.FC = () => {
   const stamp = entrySession(session);
   const worklistStamp = useRef<SessionStamp | null>(stamp);
   const revokedSession = useRef<string | null>(null);
+  const readSuspended = useRef(false);
+  const readGeneration = useRef(0);
+  const worklistReadEpoch = useRef(0);
+  const worklistReadRequest = useRef<AbortController | null>(null);
+  const activeReads = useRef(new Set<AbortController>());
+  const renderedReadKey = resultReadSessionKey(session);
+  const lastReadKey = useRef(renderedReadKey);
+  const [readContentConfirmed, setReadContentConfirmed] = useState(false);
+  const readReady = (expected = resultReadSessionKey(sessionRef.current)) =>
+    Boolean(expected && resultReadSessionKey(sessionRef.current) === expected);
   // The results route is rendered inside Layout's notification provider.
   const { addNotification, setNotificationVisible } =
     useContext(NotificationContext)!;
@@ -286,6 +299,22 @@ const UnifiedResults: React.FC = () => {
   const [rows, setRows] = useState<WorklistRow[]>([]);
   const rowsRef = useRef<WorklistRow[]>([]);
   const drafts = useRef(new Map<string, EntryDraft>());
+  // Held clinical drafts remain private to the permission scope where the
+  // intent was entered. A successful read in another scope does not rebind it.
+  const draftReadScopes = useRef(new Map<string, string | null>());
+  const rememberDraft = (
+    key: string,
+    draft: EntryDraft,
+    scope = resultReadSessionKey(sessionRef.current),
+  ) => {
+    if (!draftReadScopes.current.has(key))
+      draftReadScopes.current.set(key, scope);
+    drafts.current.set(key, draft);
+  };
+  const draftInCurrentScope = (key: string) => {
+    const current = resultReadSessionKey(sessionRef.current);
+    return Boolean(current && draftReadScopes.current.get(key) === current);
+  };
   const reviewConfirmations = useRef(new Map<string, WorklistRow>());
   const signatureApis = useRef(
     new Map<
@@ -304,6 +333,8 @@ const UnifiedResults: React.FC = () => {
   const ready = (expected = worklistStamp.current) =>
     Boolean(
       expected &&
+      readReady() &&
+      !readSuspended.current &&
       revokedSession.current !== expected.identity &&
       sessionReady(sessionRef.current, expected),
     );
@@ -335,9 +366,13 @@ const UnifiedResults: React.FC = () => {
   const [selectedSpecimenKey, setSelectedSpecimenKey] = useState<string | null>(
     null,
   );
+  const pendingBlockFocus = useRef<{ groupKey: string; reason: string } | null>(
+    null,
+  );
   const [loading, setLoading] = useState<boolean>(false);
   const [hasLoaded, setHasLoaded] = useState<boolean>(false);
   const [loadErrorKey, setLoadErrorKey] = useState<string | null>(null);
+  const queueCountsAvailable = hasLoaded && !loading && !loadErrorKey;
   const loadEpoch = useRef(0);
   const worklistLoading = useRef(false);
   const mounted = useRef(true);
@@ -350,11 +385,62 @@ const UnifiedResults: React.FC = () => {
   const initialLoadStarted = useRef(false);
   const initialLabUnitEffect = useRef(true);
 
+  const invalidateReads = () => {
+    readGeneration.current += 1;
+    for (const controller of activeReads.current) controller.abort();
+    activeReads.current.clear();
+  };
+  const holdPrivateReadState = (errorKey: string) => {
+    invalidateReads();
+    readSuspended.current = true;
+    loadEpoch.current += 1;
+    for (const draft of drafts.current.values()) draft.held = true;
+    for (const value of signatureApis.current.values()) value.api.dispose();
+    signatureApis.current.clear();
+    updateRows(() => []);
+    setReadContentConfirmed(false);
+    setSearchText("");
+    setSelectedLabUnit("");
+    setCollectionDate("");
+    setStatusFilter("ALL");
+    window.history.replaceState(null, "", "/Results?scope=pending");
+    setSelectedSpecimenKey(null);
+    setEditingAnalysisId(null);
+    setLabUnits([]);
+    setStatusOptions([]);
+    setHasLoaded(false);
+    worklistLoading.current = false;
+    setLoading(false);
+    setLoadErrorKey(errorKey);
+    renderDrafts((value) => value + 1);
+  };
+  const beginRead = (expected: string, current: () => boolean = () => true) => {
+    const generation = readGeneration.current;
+    const controller = new AbortController();
+    activeReads.current.add(controller);
+    return {
+      controller,
+      guard: {
+        sessionKey: expected,
+        signal: controller.signal,
+        current: () =>
+          mounted.current &&
+          !controller.signal.aborted &&
+          generation === readGeneration.current &&
+          readReady(expected) &&
+          current(),
+      },
+    };
+  };
+
   const clearPrivateState = () => {
+    invalidateReads();
+    setReadContentConfirmed(false);
     loadEpoch.current += 1;
     for (const value of signatureApis.current.values()) value.api.dispose();
     signatureApis.current.clear();
     drafts.current.clear();
+    draftReadScopes.current.clear();
     reviewConfirmations.current.clear();
     blockedRowKeys.current.clear();
     pendingSaves.current.clear();
@@ -402,21 +488,47 @@ const UnifiedResults: React.FC = () => {
   const sessionPhase = session.sessionPhase;
   const lastSessionKey = useRef(renderedSessionKey);
   useLayoutEffect(() => {
+    const scopeChanged = Boolean(
+      renderedReadKey &&
+      lastReadKey.current &&
+      lastReadKey.current !== renderedReadKey,
+    );
     if (stamp?.identity !== worklistStamp.current?.identity || !stamp) {
       clearPrivateState();
       worklistStamp.current = stamp;
       revokedSession.current = null;
+      readSuspended.current = false;
       setLoadErrorKey("security.sessionWriteBlocked");
+    } else if (scopeChanged) {
+      holdPrivateReadState("results.workbench.sessionReadPaused");
+    } else if (!renderedReadKey) {
+      holdPrivateReadState("results.workbench.sessionReadUnconfirmed");
     } else if (lastSessionKey.current !== renderedSessionKey || !ready()) {
       loadEpoch.current += 1;
       for (const draft of drafts.current.values()) draft.held = true;
-      worklistLoading.current = false;
-      setLoading(false);
-      setLoadErrorKey("security.sessionWriteBlocked");
+      // Keep the original write invalidation. A changed CSRF mask alone
+      // must not cancel an independently verified read of the same identity.
+      if (!readReady())
+        holdPrivateReadState("results.workbench.sessionReadUnconfirmed");
       renderDrafts((value) => value + 1);
     }
     lastSessionKey.current = renderedSessionKey;
-  }, [renderedSessionKey, sessionPhase, session.errorLoadingSessionDetails]);
+    if (renderedReadKey) lastReadKey.current = renderedReadKey;
+  }, [
+    renderedSessionKey,
+    renderedReadKey,
+    sessionPhase,
+    session.errorLoadingSessionDetails,
+  ]);
+
+  useEffect(() => {
+    const changed = (event: StorageEvent) => {
+      if (event.key === "CSRF" || event.key === null)
+        holdPrivateReadState("results.workbench.sessionReadPaused");
+    };
+    window.addEventListener("storage", changed);
+    return () => window.removeEventListener("storage", changed);
+  }, []);
 
   useEffect(() => {
     const protect = (event: BeforeUnloadEvent) => {
@@ -433,6 +545,7 @@ const UnifiedResults: React.FC = () => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      invalidateReads();
       for (const value of signatureApis.current.values()) value.api.dispose();
       signatureApis.current.clear();
       // Late save responses belong to the discarded page, not a new worklist.
@@ -445,41 +558,52 @@ const UnifiedResults: React.FC = () => {
     return normalizeDomain(unit?.domain);
   }, [labUnits, selectedLabUnit]);
 
+  const loadReadMetadata = () => {
+    const expected = resultReadSessionKey(sessionRef.current);
+    if (!expected || !readReady(expected)) return;
+    const expectedWriteStamp = entrySession(sessionRef.current);
+    const readMetadata = <T,>(path: string, accept: (items: T[]) => void) => {
+      const request = beginRead(expected);
+      getFromOpenElisServer<T[]>(
+        path,
+        (list, error) => {
+          activeReads.current.delete(request.controller);
+          if (revokeFor(error, expectedWriteStamp)) return;
+          if (!request.guard.current()) return;
+          if (error?.sessionUnconfirmed) {
+            holdPrivateReadState(error.errorKey);
+            return;
+          }
+          if (!error && Array.isArray(list)) accept(list);
+        },
+        request.guard,
+      );
+    };
+    readMetadata<LabUnit>("/rest/results-entry/lab-units", (list) =>
+      setLabUnits(
+        list.filter(
+          (item) =>
+            item &&
+            typeof item.id === "string" &&
+            typeof item.value === "string",
+        ),
+      ),
+    );
+    readMetadata<StatusOption>("/rest/analysis-status-types", (list) =>
+      setStatusOptions(
+        list.filter(
+          (item) =>
+            item &&
+            typeof item.id === "string" &&
+            typeof item.value === "string" &&
+            item.id !== "0",
+        ),
+      ),
+    );
+  };
   useEffect(() => {
-    const expected = entrySession(sessionRef.current);
-    if (!ready(expected)) return;
-    getFromOpenElisServer(
-      "/rest/results-entry/lab-units",
-      (list: LabUnit[] | undefined, error?: EntryRequestError) => {
-        if (revokeFor(error, expected)) return;
-        if (mounted.current && ready(expected) && Array.isArray(list))
-          setLabUnits(
-            list.filter(
-              (item) =>
-                item &&
-                typeof item.id === "string" &&
-                typeof item.value === "string",
-            ),
-          );
-      },
-    );
-    getFromOpenElisServer(
-      "/rest/analysis-status-types",
-      (list: StatusOption[] | undefined, error?: EntryRequestError) => {
-        if (revokeFor(error, expected)) return;
-        if (mounted.current && ready(expected) && Array.isArray(list))
-          setStatusOptions(
-            list.filter(
-              (s) =>
-                s &&
-                typeof s.id === "string" &&
-                typeof s.value === "string" &&
-                s.id !== "0",
-            ),
-          );
-      },
-    );
-  }, [renderedSessionKey, sessionPhase]);
+    loadReadMetadata();
+  }, [renderedReadKey]);
 
   const applyLoadedRows = useCallback(
     (results: { testResult?: WorklistRow[] }) => {
@@ -518,12 +642,21 @@ const UnifiedResults: React.FC = () => {
   const loadWorklist = useCallback(
     (labNumberOverride?: string) => {
       const requestedSession = entrySession(sessionRef.current);
-      if (!ready(requestedSession)) {
-        setLoadErrorKey("security.sessionWriteBlocked");
+      const expectedReadKey = resultReadSessionKey(sessionRef.current);
+      if (!expectedReadKey || !readReady(expectedReadKey)) {
+        holdPrivateReadState("results.workbench.sessionReadUnconfirmed");
         return;
       }
+      if (readSuspended.current) loadReadMetadata();
       worklistStamp.current = requestedSession;
-      const epoch = ++loadEpoch.current;
+      ++loadEpoch.current;
+      const epoch = ++worklistReadEpoch.current;
+      worklistReadRequest.current?.abort();
+      const request = beginRead(
+        expectedReadKey,
+        () => epoch === worklistReadEpoch.current,
+      );
+      worklistReadRequest.current = request.controller;
       worklistLoading.current = true;
       setLoading(true);
       setLoadErrorKey(null);
@@ -555,13 +688,15 @@ const UnifiedResults: React.FC = () => {
           response: { testResult?: WorklistRow[] } | undefined,
           error?: EntryRequestError,
         ) => {
+          activeReads.current.delete(request.controller);
+          // A definite 401/403 still revokes these exact write credentials,
+          // even if the query was superseded. It cannot revoke another login.
           if (revokeFor(error, requestedSession)) return;
-          if (
-            epoch !== loadEpoch.current ||
-            !mounted.current ||
-            !ready(requestedSession)
-          )
+          if (!request.guard.current()) return;
+          if (error?.sessionUnconfirmed) {
+            holdPrivateReadState(error.errorKey);
             return;
+          }
           if (error?.status === 401 || error?.status === 403) {
             revokedSession.current = requestedSession!.identity;
             clearPrivateState();
@@ -590,8 +725,11 @@ const UnifiedResults: React.FC = () => {
             setLoading(false);
             return;
           }
+          readSuspended.current = false;
+          setReadContentConfirmed(true);
           applyLoadedRows(response);
         },
+        request.guard,
       );
       // FRS: the selected Lab Unit (and filters) are the page's primary
       // state — keep them in the URL so refresh and share links reproduce
@@ -622,6 +760,8 @@ const UnifiedResults: React.FC = () => {
       initialLabUnitEffect.current = false;
       return;
     }
+    // A suspended draft requires the explicit query button/Enter action.
+    if (readSuspended.current) return;
     loadWorklist();
   }, [selectedLabUnit]);
 
@@ -694,6 +834,8 @@ const UnifiedResults: React.FC = () => {
   }, [activeSpecimenKey, statusFilter]);
 
   const selectSpecimen = (key: string | null) => {
+    if (!readReady() || !readContentConfirmed) return;
+    pendingBlockFocus.current = null;
     setSelectedSpecimenKey(key);
     setPage(1);
     setEditingAnalysisId(null);
@@ -713,6 +855,43 @@ const UnifiedResults: React.FC = () => {
     () => scopedRows.slice((page - 1) * pageSize, page * pageSize),
     [scopedRows, page, pageSize],
   );
+  const specimenBlocks = useMemo(
+    () =>
+      resultSpecimenBlocks(
+        scopedRows,
+        selectedSpecimen ? scopedRows : pagedRows,
+      ),
+    [scopedRows, selectedSpecimen, pagedRows],
+  );
+  const sharedBlockDescriptions = new Map<string, SpecimenBlock<WorklistRow>>();
+  for (const summary of specimenBlocks) {
+    for (const key of summary.rowKeys)
+      sharedBlockDescriptions.set(key, summary);
+  }
+  const showBlockExplanation = (summary: SpecimenBlock<WorklistRow>) => {
+    if (activeSpecimenKey === summary.group.key) {
+      document.getElementById(summary.id)?.focus();
+      return;
+    }
+    selectSpecimen(summary.group.key);
+    pendingBlockFocus.current = {
+      groupKey: summary.group.key,
+      reason: summary.reason,
+    };
+  };
+  useLayoutEffect(() => {
+    const requested = pendingBlockFocus.current;
+    pendingBlockFocus.current = null;
+    if (!requested || requested.groupKey !== activeSpecimenKey) return;
+    const summary = specimenBlocks.find(
+      (candidate) =>
+        candidate.group.key === requested.groupKey &&
+        candidate.reason === requested.reason,
+    );
+    // Resolve after selection by the actual record and reason, not a former
+    // page-local DOM index. A removed target must never focus another record.
+    if (summary) document.getElementById(summary.id)?.focus();
+  }, [activeSpecimenKey, specimenBlocks]);
 
   const visibleAnalysisIds = useMemo(
     () => pagedRows.map((row) => row.analysisId),
@@ -735,6 +914,7 @@ const UnifiedResults: React.FC = () => {
     const key = worklistRowKey(row),
       expected = worklistStamp.current;
     const username = sessionRef.current.userSessionDetails?.loginName || "";
+    const intentReadScope = resultReadSessionKey(sessionRef.current);
     const binding = JSON.stringify([epoch, revision, expected, username]);
     const existing = signatureApis.current.get(key);
     if (existing?.binding === binding && !existing.api.isInvalid())
@@ -769,7 +949,7 @@ const UnifiedResults: React.FC = () => {
         draft.disposition = "unknown";
         draft.held = true;
         draft.uncertainOperation = "signature";
-        drafts.current.set(key, draft);
+        rememberDraft(key, draft, intentReadScope);
         renderDrafts((value) => value + 1);
       },
     });
@@ -805,7 +985,7 @@ const UnifiedResults: React.FC = () => {
       if (!actual) return;
       const draft = drafts.current.get(key) || newEntryDraft(actual);
       draft.row = { ...draft.row, [field]: value };
-      drafts.current.set(key, draft);
+      rememberDraft(key, draft);
       renderDrafts((value) => value + 1);
       updateRows((current) =>
         current.map((row) =>
@@ -952,8 +1132,10 @@ const UnifiedResults: React.FC = () => {
         renderDrafts((value) => value + 1);
         return;
       }
-      if (unchanged) drafts.current.delete(key);
-      else if (draft) draft.disposition = "editing";
+      if (unchanged) {
+        drafts.current.delete(key);
+        draftReadScopes.current.delete(key);
+      } else if (draft) draft.disposition = "editing";
       // Other component drafts remain separately visible for explicit comparison.
       for (const sibling of drafts.current.values()) {
         if (sibling.row.analysisId === target.analysisId) sibling.held = true;
@@ -1047,7 +1229,7 @@ const UnifiedResults: React.FC = () => {
       const draft = drafts.current.get(key) || newEntryDraft(row);
       draft.row = { ...row };
       draft.disposition = "pending";
-      drafts.current.set(key, draft);
+      rememberDraft(key, draft);
       renderDrafts((value) => value + 1);
       pendingSaves.current.set(key, submission);
       setSavingRows((current) => new Set(current).add(key));
@@ -1140,6 +1322,7 @@ const UnifiedResults: React.FC = () => {
       current = rowsRef.current.find((row) => worklistRowKey(row) === key);
     if (
       !ready() ||
+      !draftInCurrentScope(key) ||
       loading ||
       !draft ||
       analysisUnconfirmed(draft.row.analysisId) ||
@@ -1168,12 +1351,14 @@ const UnifiedResults: React.FC = () => {
     const draft = drafts.current.get(key);
     if (
       !ready() ||
+      !draftInCurrentScope(key) ||
       worklistLoading.current ||
       !draft?.held ||
       !["editing", "rejected"].includes(draft.disposition)
     )
       return;
     drafts.current.delete(key);
+    draftReadScopes.current.delete(key);
     rowEditRevisions.current[key] = (rowEditRevisions.current[key] || 0) + 1;
     // Discard only the separate local draft. Never delete or POST a clinical record.
     const current = rowsRef.current.find((row) => worklistRowKey(row) === key);
@@ -1278,6 +1463,22 @@ const UnifiedResults: React.FC = () => {
       reviewConfirmations.current.get(key),
     );
     if (path && path === displayedPath) history.push(path);
+  };
+
+  const openOrderLookup = () => {
+    // This opens the existing list for manual lookup, not an object handoff.
+    // Recheck refs at click time so an old rendered button cannot leave a draft
+    // or navigate after the actor, permissions or worklist changed.
+    if (
+      !mounted.current ||
+      !ready() ||
+      !hasRole(sessionRef.current.userSessionDetails, Roles.RECEPTION) ||
+      worklistLoading.current ||
+      pendingSaves.current.size > 0 ||
+      drafts.current.size > 0
+    )
+      return;
+    history.push("/order");
   };
 
   return (
@@ -1393,7 +1594,10 @@ const UnifiedResults: React.FC = () => {
               updateStateValue
               onChange={setCollectionDate}
             />
-            <Button onClick={() => loadWorklist()} disabled={loading}>
+            <Button
+              onClick={() => loadWorklist()}
+              disabled={loading || !readReady()}
+            >
               <FormattedMessage id="results.workbench.applyFilters" />
             </Button>
           </div>
@@ -1436,15 +1640,42 @@ const UnifiedResults: React.FC = () => {
             })}
           />
         )}
-        <ResultDraftReview
-          drafts={[...drafts.current.entries()]}
-          currentRows={rows}
-          enabled={ready() && !loading}
-          onResume={resumeDraft}
-          onDiscard={discardDraft}
-          displayValue={blockedResultDisplay}
-          rowKey={worklistRowKey}
-        />
+        {readContentConfirmed && (
+          <ResultDraftReview
+            drafts={[...drafts.current.entries()].filter(([key]) =>
+              draftInCurrentScope(key),
+            )}
+            currentRows={rows}
+            enabled={ready() && !loading}
+            onResume={resumeDraft}
+            onDiscard={discardDraft}
+            displayValue={blockedResultDisplay}
+            rowKey={worklistRowKey}
+          />
+        )}
+        {readContentConfirmed &&
+          [...drafts.current.keys()].some(
+            (key) => !draftInCurrentScope(key),
+          ) && (
+            <InlineNotification
+              kind="info"
+              lowContrast
+              hideCloseButton
+              title={intl.formatMessage({
+                id: "results.workbench.drafts.scopeHeld",
+              })}
+            />
+          )}
+        {readContentConfirmed && rows.length > 0 && !ready() && (
+          <InlineNotification
+            kind="info"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({
+              id: "results.workbench.sessionWritePaused",
+            })}
+          />
+        )}
         {presenceUnavailable && rows.length > 0 && (
           <InlineNotification
             kind="info"
@@ -1472,7 +1703,8 @@ const UnifiedResults: React.FC = () => {
           <ResultSpecimenQueue
             groups={specimenGroups}
             selectedKey={activeSpecimenKey}
-            disabled={loading || !ready()}
+            disabled={loading || !readReady() || !readContentConfirmed}
+            countsAvailable={queueCountsAvailable}
             draftStates={queueDraftStates}
             onSelect={selectSpecimen}
             renderSubject={subjectCell}
@@ -1502,23 +1734,25 @@ const UnifiedResults: React.FC = () => {
             {selectedSpecimen ? (
               <div className="result-specimen-detail__identity">
                 {subjectCell(specimenSubject(selectedSpecimen))}
-                <Tag type="blue">
-                  <FormattedMessage
-                    id="results.workbench.queue.tests"
-                    defaultMessage="{count} tests"
-                    values={{ count: selectedSpecimen.analysisCount }}
-                  />
-                </Tag>
+                {queueCountsAvailable && (
+                  <Tag type="blue">
+                    <FormattedMessage
+                      id="results.workbench.queue.tests"
+                      defaultMessage="{count} tests"
+                      values={{ count: selectedSpecimen.analysisCount }}
+                    />
+                  </Tag>
+                )}
               </div>
-            ) : (
+            ) : queueCountsAvailable ? (
               <Tag type="gray">
                 <FormattedMessage
                   id="results.workbench.queue.count"
-                  defaultMessage="{count} items in this queue"
+                  defaultMessage="{count} entries in this queue"
                   values={{ count: specimenGroups.length }}
                 />
               </Tag>
-            )}
+            ) : null}
 
             {loadErrorKey && (
               <InlineNotification
@@ -1531,6 +1765,21 @@ const UnifiedResults: React.FC = () => {
                 subtitle={intl.formatMessage({ id: loadErrorKey })}
               />
             )}
+            <ResultSpecimenBlockSummary
+              summaries={specimenBlocks}
+              renderSubject={subjectCell}
+              selected={Boolean(selectedSpecimen)}
+              canLookupOrders={hasRole(
+                session.userSessionDetails,
+                Roles.RECEPTION,
+              )}
+              hasDrafts={drafts.current.size > 0}
+              lookupReady={
+                ready() && !loading && !loadErrorKey && savingRows.size === 0
+              }
+              countsAvailable={queueCountsAvailable}
+              onLookupOrders={openOrderLookup}
+            />
             {!loading &&
             !loadErrorKey &&
             hasLoaded &&
@@ -1618,9 +1867,11 @@ const UnifiedResults: React.FC = () => {
                               reviewConfirmations.current.get(key),
                             )
                           : null;
+                        const sharedBlock = sharedBlockDescriptions.get(key);
+                        const sharedBlockDescription = sharedBlock?.id;
                         return (
                           <React.Fragment key={key}>
-                            <TableRow>
+                            <TableRow aria-describedby={sharedBlockDescription}>
                               {!selectedSpecimen && (
                                 <TableCell className="results-workbench__cell--subject">
                                   {subjectCell(row)}
@@ -1683,6 +1934,19 @@ const UnifiedResults: React.FC = () => {
                                 {statusName(row.analysisStatusId)}
                               </TableCell>
                               <TableCell className="results-workbench__cell--actions">
+                                {sharedBlock && (
+                                  <Button
+                                    kind="ghost"
+                                    size="sm"
+                                    className="result-specimen-block-reference"
+                                    aria-describedby={sharedBlockDescription}
+                                    onClick={() =>
+                                      showBlockExplanation(sharedBlock)
+                                    }
+                                  >
+                                    <FormattedMessage id="results.workbench.blocked.rowReference" />
+                                  </Button>
+                                )}
                                 {reviewPath && (
                                   <Button
                                     kind="ghost"
@@ -1747,20 +2011,21 @@ const UnifiedResults: React.FC = () => {
                                   )}
                               </TableCell>
                             </TableRow>
-                            {isResultEntryBlocked(row) && (
-                              <TableRow>
-                                <TableCell colSpan={selectedSpecimen ? 5 : 6}>
-                                  <InlineNotification
-                                    kind="warning"
-                                    hideCloseButton
-                                    lowContrast
-                                    title={intl.formatMessage({
-                                      id: entryReason(row),
-                                    })}
-                                  />
-                                </TableCell>
-                              </TableRow>
-                            )}
+                            {isResultEntryBlocked(row) &&
+                              !sharedBlockDescription && (
+                                <TableRow>
+                                  <TableCell colSpan={selectedSpecimen ? 5 : 6}>
+                                    <InlineNotification
+                                      kind="warning"
+                                      hideCloseButton
+                                      lowContrast
+                                      title={intl.formatMessage({
+                                        id: entryReason(row),
+                                      })}
+                                    />
+                                  </TableCell>
+                                </TableRow>
+                              )}
                             {stale && (
                               <TableRow>
                                 <TableCell colSpan={selectedSpecimen ? 5 : 6}>

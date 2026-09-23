@@ -4,8 +4,8 @@ import static org.junit.Assert.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-import java.sql.Timestamp;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -15,23 +15,23 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
-import org.junit.Before;
 import org.junit.After;
-import org.openelisglobal.common.formfields.FormFields;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.junit.Before;
 import org.junit.Test;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.action.IActionConstants;
+import org.openelisglobal.common.formfields.FormFields;
 import org.openelisglobal.common.paging.PagingProperties;
+import org.openelisglobal.qc.dto.QCReleaseBlocker;
+import org.openelisglobal.qc.service.QCReleaseGateService;
 import org.openelisglobal.resultvalidation.bean.AnalysisItem;
 import org.openelisglobal.resultvalidation.form.ResultValidationForm;
 import org.openelisglobal.resultvalidation.util.ResultsValidationUtility;
-import org.openelisglobal.qc.dto.QCReleaseBlocker;
-import org.openelisglobal.qc.service.QCReleaseGateService;
 import org.openelisglobal.systemuser.service.UserService;
 import org.openelisglobal.test.valueholder.TestSection;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 public class ReviewQueryContextServiceTest {
@@ -44,8 +44,10 @@ public class ReviewQueryContextServiceTest {
     private boolean authorized;
     private boolean masked;
     private QCReleaseGateService qcReleaseGate;
+    private ReviewScopeService scopes;
 
-    @Before public void setup() {
+    @Before
+    public void setup() {
         oldForms = ReflectionTestUtils.getField(FormFields.class, "instance");
         ReflectionTestUtils.setField(FormFields.class, "instance", mock(FormFields.class));
         analyses = mock(AnalysisService.class);
@@ -54,22 +56,28 @@ public class ReviewQueryContextServiceTest {
         when(paging.getValidationPageSize()).thenReturn(1);
         clock = new MutableClock();
         qcReleaseGate = mock(QCReleaseGateService.class);
+        scopes = mock(ReviewScopeService.class);
+        when(scopes.capture(anyString())).thenAnswer(call -> new ReviewScopeSnapshot(call.getArgument(0),
+                java.util.Set.of("10"), List.of("15"), false, "NORMAL", "en", masked));
         service = new ReviewQueryContextService(analyses, users, paging, mock(ResultsValidationUtility.class),
-                qcReleaseGate, clock, () -> masked);
+                qcReleaseGate, scopes, clock, () -> masked);
         session = new MockHttpSession();
         authorized = true;
         when(users.filterAnalysesByLabUnitRoles(anyString(), anyList(), anyString())).thenAnswer(call -> {
             List<Analysis> requested = call.getArgument(1);
-            return requested.stream().filter(a -> authorized && a.getTestSection() != null
-                    && "10".equals(a.getTestSection().getId())).collect(Collectors.toList());
+            return requested.stream()
+                    .filter(a -> authorized && a.getTestSection() != null && "10".equals(a.getTestSection().getId()))
+                    .collect(Collectors.toList());
         });
     }
 
-    @After public void restore() {
+    @After
+    public void restore() {
         ReflectionTestUtils.setField(FormFields.class, "instance", oldForms);
     }
 
-    @Test public void queriesAndLegacyCacheRemainIndependent() {
+    @Test
+    public void queriesAndLegacyCacheRemainIndependent() {
         Object legacy = List.of("SIM legacy");
         session.setAttribute(IActionConstants.RESULTS_SESSION_CACHE, legacy);
         ResultValidationForm a = create("SIM-A", row("1", "SIM-A"), row("2", "SIM-A2"));
@@ -82,7 +90,8 @@ public class ReviewQueryContextServiceTest {
         assertSame(legacy, session.getAttribute(IActionConstants.RESULTS_SESSION_CACHE));
     }
 
-    @Test public void publicDtosCannotMutateStoredSnapshot() {
+    @Test
+    public void publicDtosCannotMutateStoredSnapshot() {
         ResultValidationForm form = create("SIM-A", row("1", "SIM-A"));
         form.getResultList().get(0).setResult("FAKE");
         form.getResultList().get(0).setIsAccepted(true);
@@ -91,7 +100,8 @@ public class ReviewQueryContextServiceTest {
         assertFalse(form.getResultList().get(0).getIsAccepted());
     }
 
-    @Test public void queryProjectsServerOwnedQcReleaseBlockers() {
+    @Test
+    public void queryProjectsServerOwnedQcReleaseBlockers() {
         AnalysisItem source = row("1", "SIM-A");
         analyses.get("1").setAnalyzerId("31");
         when(qcReleaseGate.blockersFor(analyses.get("1"))).thenReturn(List.of(new QCReleaseBlocker("v-1", "1_3S",
@@ -109,7 +119,8 @@ public class ReviewQueryContextServiceTest {
         assertEquals("v-1", saved.getQcBlockingViolations().get(0).violationId());
     }
 
-    @Test public void missingForeignActorCriteriaAndInvalidPagesFailClosed() {
+    @Test
+    public void missingForeignActorCriteriaAndInvalidPagesFailClosed() {
         ResultValidationForm form = create("SIM-A", row("1", "SIM-A"));
         reject(409, () -> service.page(session, "7", form, null, "1"));
         reject(409, () -> service.page(session, "8", form, form.getQueryId(), "1"));
@@ -125,21 +136,24 @@ public class ReviewQueryContextServiceTest {
         reject(409, () -> service.page(session, "7", form, form.getQueryId(), "1"));
     }
 
-    @Test public void disclosureConfigurationChangeInvalidatesOldSnapshots() {
+    @Test
+    public void disclosureConfigurationChangeInvalidatesOldSnapshots() {
         ResultValidationForm form = create("SIM-A", row("1", "SIM-A"));
         masked = true;
         reject(409, () -> service.page(session, "7", form, form.getQueryId(), "1"));
         reject(409, () -> service.consumeForSave(session, "7", form));
     }
 
-    @Test public void expiredContextCannotPageOrSave() {
+    @Test
+    public void expiredContextCannotPageOrSave() {
         ResultValidationForm form = create("SIM-A", row("1", "SIM-A"));
         clock.time += ReviewQueryContextService.LIFETIME_MILLIS;
         reject(409, () -> service.page(session, "7", form, form.getQueryId(), "1"));
         reject(409, () -> service.consumeForSave(session, "7", form));
     }
 
-    @Test public void oldestContextIsEvictedAtBound() {
+    @Test
+    public void oldestContextIsEvictedAtBound() {
         ResultValidationForm first = create("SIM-A", row("1", "SIM-A"));
         ResultValidationForm latest = null;
         for (int i = 0; i < ReviewQueryContextService.MAX_CONTEXTS; i++) {
@@ -149,7 +163,8 @@ public class ReviewQueryContextServiceTest {
         service.page(session, "7", latest, latest.getQueryId(), "1");
     }
 
-    @Test public void freshActualSectionAndPermissionAreRequiredForPageAndSave() {
+    @Test
+    public void freshActualSectionAndPermissionAreRequiredForPageAndSave() {
         ResultValidationForm form = create("SIM-A", row("1", "SIM-A"));
         analyses.get("1").getTestSection().setId("20");
         reject(403, () -> service.page(session, "7", form, form.getQueryId(), "1"));
@@ -160,7 +175,8 @@ public class ReviewQueryContextServiceTest {
         reject(403, () -> service.consumeForSave(session, "7", form));
     }
 
-    @Test public void initialVisibilityUsesActualSection() {
+    @Test
+    public void initialVisibilityUsesActualSection() {
         AnalysisItem allowed = row("1", "SIM-A");
         AnalysisItem denied = row("2", "SIM-B");
         analyses.get("2").getTestSection().setId("20");
@@ -170,7 +186,8 @@ public class ReviewQueryContextServiceTest {
         assertEquals("1", form.getPaging().getTotalPages());
     }
 
-    @Test public void statusOrVersionChangeRequiresNewQuery() {
+    @Test
+    public void statusOrVersionChangeRequiresNewQuery() {
         ResultValidationForm form = create("SIM-A", row("1", "SIM-A"));
         analyses.get("1").setLastupdated(new Timestamp(2000));
         reject(409, () -> service.page(session, "7", form, form.getQueryId(), "1"));
@@ -180,7 +197,8 @@ public class ReviewQueryContextServiceTest {
         reject(409, () -> service.consumeForSave(session, "7", form));
     }
 
-    @Test public void entirePageMustMatchBeforeEditsAreMerged() {
+    @Test
+    public void entirePageMustMatchBeforeEditsAreMerged() {
         ResultValidationForm form = create("SIM-A", row("1", "SIM-A"), row("2", "SIM-A"));
         List<AnalysisItem> correct = new ArrayList<>(form.getResultList());
         form.setResultList(List.of(correct.get(0)));
@@ -195,7 +213,8 @@ public class ReviewQueryContextServiceTest {
         assertFalse(form.getResultList().get(0).getIsAccepted());
     }
 
-    @Test public void saveOnlyMergesDecisionsAndNotesAndUsesRawStoredValue() {
+    @Test
+    public void saveOnlyMergesDecisionsAndNotesAndUsesRawStoredValue() {
         AnalysisItem stored = row("1", "SIM-A");
         stored.setResultMembers(List.of(new AnalysisItem.ResultMember("101", "3.33333", "N", "11", null, null)));
         ResultValidationForm form = create("SIM-A", stored);
@@ -219,7 +238,8 @@ public class ReviewQueryContextServiceTest {
         reject(409, () -> service.consumeForSave(session, "7", form));
     }
 
-    @Test public void jsonRoundTripKeepsIdentityAndRestoresServerOnlyEvidence() throws Exception {
+    @Test
+    public void jsonRoundTripKeepsIdentityAndRestoresServerOnlyEvidence() throws Exception {
         ResultValidationForm form = create("SIM-A", row("1", "SIM-A"));
         ObjectMapper mapper = new ObjectMapper();
         ResultValidationForm posted = mapper.readValue(mapper.writeValueAsString(form), ResultValidationForm.class);
@@ -231,7 +251,8 @@ public class ReviewQueryContextServiceTest {
         assertEquals("3.33333", saved.getResult());
     }
 
-    @Test public void oneQuerySaveNeverConsumesOtherQuery() {
+    @Test
+    public void oneQuerySaveNeverConsumesOtherQuery() {
         ResultValidationForm a = create("SIM-A", row("1", "SIM-A"));
         ResultValidationForm b = create("SIM-B", row("2", "SIM-B"));
         a.getResultList().get(0).setIsAccepted(true);
@@ -240,20 +261,29 @@ public class ReviewQueryContextServiceTest {
         assertFalse(b.getResultList().get(0).getIsAccepted());
     }
 
-    @Test public void concurrentSubmissionsConsumeExactlyOnce() throws Exception {
+    @Test
+    public void concurrentSubmissionsConsumeExactlyOnce() throws Exception {
         ResultValidationForm form = create("SIM-A", row("1", "SIM-A"));
         var pool = Executors.newFixedThreadPool(2);
         try {
             Callable<Integer> submit = () -> {
-                try { service.consumeForSave(session, "7", form); return 1; }
-                catch (ResponseStatusException e) { assertEquals(409, e.getStatusCode().value()); return 0; }
+                try {
+                    service.consumeForSave(session, "7", form);
+                    return 1;
+                } catch (ResponseStatusException e) {
+                    assertEquals(409, e.getStatusCode().value());
+                    return 0;
+                }
             };
             var attempts = pool.invokeAll(List.of(submit, submit));
             assertEquals(1, (int) attempts.get(0).get() + attempts.get(1).get());
-        } finally { pool.shutdownNow(); }
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
-    @Test public void contradictoryAndReadOnlyDecisionsAreRejected() {
+    @Test
+    public void contradictoryAndReadOnlyDecisionsAreRejected() {
         ResultValidationForm form = create("SIM-A", row("1", "SIM-A"));
         form.getResultList().get(0).setIsAccepted(true);
         form.getResultList().get(0).setIsRejected(true);
@@ -266,7 +296,8 @@ public class ReviewQueryContextServiceTest {
         reject(409, () -> service.consumeForSave(session, "7", restricted));
     }
 
-    @Test public void emptyQueryHasOwnContextAndCannotReuseEarlierRows() {
+    @Test
+    public void emptyQueryHasOwnContextAndCannotReuseEarlierRows() {
         ResultValidationForm a = create("SIM-A", row("1", "SIM-A"));
         ResultValidationForm empty = create("SIM-missing");
         assertNotNull(empty.getQueryId());
@@ -274,6 +305,54 @@ public class ReviewQueryContextServiceTest {
         reject(409, () -> service.consumeForSave(session, "7", empty));
         service.page(session, "7", a, a.getQueryId(), "1");
         assertEquals("1", a.getResultList().get(0).getAnalysisId());
+    }
+
+    @Test
+    public void summaryCoversWholeQueryAndKeepsGenerationTimeAcrossPages() {
+        ResultValidationForm form = create("SIM-A", row("1", "SIM-A"), row("2", "SIM-B"));
+        var summary = form.getSummary();
+        assertEquals("ready", summary.state());
+        assertEquals(Long.valueOf(2), summary.analysisCount());
+        assertEquals(Long.valueOf(2), summary.accessionCount());
+        assertEquals(Long.valueOf(2), summary.displayRowCount());
+        service.page(session, "7", form, form.getQueryId(), "2");
+        assertEquals(1, form.getResultList().size());
+        assertEquals(summary, form.getSummary());
+    }
+
+    @Test
+    public void releasedAndPrintedRemainVisibleButServerReadonlyCannotBeCleared() {
+        AnalysisItem first = row("1", "SIM-A"), second = row("2", "SIM-A"), both = row("3", "SIM-A");
+        ReflectionTestUtils.setField(analyses.get("1"), "releasedDate", new Timestamp(1000));
+        ReflectionTestUtils.setField(analyses.get("2"), "printedDate", new java.sql.Date(1000));
+        ReflectionTestUtils.setField(analyses.get("3"), "releasedDate", new Timestamp(1000));
+        ReflectionTestUtils.setField(analyses.get("3"), "printedDate", new java.sql.Date(1000));
+        ResultValidationForm form = create("SIM-A", first, second, both);
+        assertEquals(Long.valueOf(3), form.getSummary().analysisCount());
+        assertEquals(List.of("released", "printed", "released_and_printed"),
+                form.getResultList().stream().map(AnalysisItem::getReviewReadOnlyReason).toList());
+        assertTrue(form.getResultList().stream().allMatch(AnalysisItem::isReadOnly));
+        form.getResultList().get(0).setReadOnly(false);
+        form.getResultList().get(0).setReviewReadOnlyReason(null);
+        var saved = service.consumeSubmission(session, "7", form);
+        assertTrue(saved.rows().get(0).isReadOnly());
+        assertEquals("released", saved.rows().get(0).getReviewReadOnlyReason());
+        assertEquals("7", saved.policy().actor());
+    }
+
+    @Test
+    public void scopeAndConfigurationAreBoundToPageAndSubmission() {
+        ResultValidationForm form = new ResultValidationForm();
+        form.setReviewScope("pending");
+        form.setDoRange(true);
+        service.create(session, "7", form, List.of(row("1", "SIM-A")), false);
+        form.setReviewScope("filtered");
+        reject(409, () -> service.page(session, "7", form, form.getQueryId(), "1"));
+        reject(409, () -> service.consumeSubmission(session, "7", form));
+        form.setReviewScope("pending");
+        doThrow(ReviewScopeService.stale()).when(scopes).requireUnchanged(any());
+        reject(409, () -> service.page(session, "7", form, form.getQueryId(), "1"));
+        reject(409, () -> service.consumeSubmission(session, "7", form));
     }
 
     private ResultValidationForm create(String accession, AnalysisItem... rows) {
@@ -310,14 +389,27 @@ public class ReviewQueryContextServiceTest {
     }
 
     private void reject(int status, Runnable operation) {
-        try { operation.run(); fail("Expected HTTP " + status); }
-        catch (ResponseStatusException e) { assertEquals(status, e.getStatusCode().value()); }
+        try {
+            operation.run();
+            fail("Expected HTTP " + status);
+        } catch (ResponseStatusException e) {
+            assertEquals(status, e.getStatusCode().value());
+        }
     }
 
     private static class MutableClock extends Clock {
         long time = 10000;
-        public ZoneId getZone() { return ZoneOffset.UTC; }
-        public Clock withZone(ZoneId zone) { return this; }
-        public Instant instant() { return Instant.ofEpochMilli(time); }
+
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        public Instant instant() {
+            return Instant.ofEpochMilli(time);
+        }
     }
 }

@@ -1,3 +1,4 @@
+import config from "../../config.json";
 import {
   parsePendingResultSummary,
   PendingSummaryError,
@@ -92,7 +93,7 @@ test("reads one small, uncached summary without fetching clinical rows", async (
   expect(await readPendingResultSummary(controller.signal)).toEqual(empty);
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(fetch).toHaveBeenCalledWith(
-    expect.stringMatching(/\/rest\/results-entry\/pending\/summary$/),
+    config.serverBaseUrl + "/rest/results-entry/pending/summary",
     expect.objectContaining({
       method: "GET",
       credentials: "include",

@@ -58,6 +58,7 @@ interface Props<T extends QueueRow> {
   groups: ResultSpecimenGroup<T>[];
   selectedKey: string | null;
   disabled: boolean;
+  countsAvailable?: boolean;
   draftStates: Map<string, "unsaved" | "unconfirmed">;
   onSelect: (key: string | null) => void;
   renderSubject: (row: T) => React.ReactNode;
@@ -67,6 +68,7 @@ export default function ResultSpecimenQueue<T extends QueueRow>({
   groups,
   selectedKey,
   disabled,
+  countsAvailable = true,
   draftStates,
   onSelect,
   renderSubject,
@@ -101,9 +103,9 @@ export default function ResultSpecimenQueue<T extends QueueRow>({
       >
         <FormattedMessage
           id="results.workbench.queue.all"
-          defaultMessage="All specimens"
+          defaultMessage="All specimen records"
         />
-        <span>{groups.length}</span>
+        {countsAvailable && <span>{groups.length}</span>}
       </Button>
       <ul className="result-specimen-queue__items">
         {groups.map((group) => {
@@ -127,15 +129,17 @@ export default function ResultSpecimenQueue<T extends QueueRow>({
                   )}
                 </span>
                 <span className="result-specimen-queue__meta">
-                  <span>
-                    {intl.formatMessage(
-                      {
-                        id: "results.workbench.queue.tests",
-                        defaultMessage: "{count} tests",
-                      },
-                      { count: group.analysisCount },
-                    )}
-                  </span>
+                  {countsAvailable && (
+                    <span>
+                      {intl.formatMessage(
+                        {
+                          id: "results.workbench.queue.tests",
+                          defaultMessage: "{count} tests",
+                        },
+                        { count: group.analysisCount },
+                      )}
+                    </span>
+                  )}
                   {draftState && (
                     <Tag
                       type={draftState === "unconfirmed" ? "magenta" : "blue"}

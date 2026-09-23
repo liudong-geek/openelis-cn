@@ -9,8 +9,6 @@ import org.apache.commons.lang3.StringUtils;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.constants.Constants;
-import org.openelisglobal.common.formfields.FormFields;
-import org.openelisglobal.common.formfields.FormFields.Field;
 import org.openelisglobal.common.services.DisplayListService;
 import org.openelisglobal.common.services.DisplayListService.ListType;
 import org.openelisglobal.common.services.IResultSaveService;
@@ -38,9 +36,10 @@ import org.openelisglobal.result.valueholder.Result;
 import org.openelisglobal.resultvalidation.bean.AnalysisItem;
 import org.openelisglobal.resultvalidation.controller.BaseResultValidationController;
 import org.openelisglobal.resultvalidation.form.ResultValidationForm;
+import org.openelisglobal.resultvalidation.form.ReviewPendingSummary;
 import org.openelisglobal.resultvalidation.service.ResultValidationService;
+import org.openelisglobal.resultvalidation.service.ReviewPendingService;
 import org.openelisglobal.resultvalidation.service.ReviewQueryContextService;
-import org.openelisglobal.resultvalidation.util.ResultsValidationUtility;
 import org.openelisglobal.role.service.RoleService;
 import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.valueholder.Sample;
@@ -57,6 +56,7 @@ import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.Errors;
@@ -80,9 +80,11 @@ public class AccessionValidationRestController extends BaseResultValidationContr
     @Autowired
     private ReviewQueryContextService reviewQueryContextService;
     @Autowired
+    private ReviewPendingService reviewPendingService;
+    @Autowired
     private org.openelisglobal.resultvalidation.service.ReviewSubmissionService reviewSubmissionService;
 
-    private static final String[] ALLOWED_FIELDS = new String[] { "queryId", "doRange", "testSectionId",
+    private static final String[] ALLOWED_FIELDS = new String[] { "queryId", "doRange", "reviewScope", "testSectionId",
             "paging.currentPage", "testSection", "testName", "resultList*.accessionNumber", "resultList*.analysisId",
             "resultList*.testId", "resultList*.sampleId", "resultList*.resultType", "resultList*.sampleGroupingNumber",
             "resultList*.noteId", "resultList*.resultId", "resultList*.hasQualifiedResult",
@@ -131,6 +133,7 @@ public class AccessionValidationRestController extends BaseResultValidationContr
         binder.setAllowedFields(ALLOWED_FIELDS);
     }
 
+    @PreAuthorize("hasRole('VALIDATION')")
     @GetMapping(value = "AccessionValidation", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public ResultValidationForm showAccessionValidationRange(HttpServletRequest request,
@@ -155,44 +158,24 @@ public class AccessionValidationRestController extends BaseResultValidationContr
 
         String actor = getSysUserId(request);
         form.setDoRange(doRange);
-        String newPage = request.getParameter("page");
-        if (newPage != null) {
-            reviewQueryContextService.page(request.getSession(), actor, form, request.getParameter("queryId"), newPage);
-            return form;
-        }
-        if (StringUtils.isNotBlank(request.getParameter("queryId"))) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Review query requires a page");
-        }
-
-        if (StringUtils.isBlank(actor)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Review session is unavailable");
-        }
-        var reviewRole = roleService.getRoleByName(Constants.ROLE_VALIDATION);
-        if (reviewRole == null || StringUtils.isBlank(reviewRole.getId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Review role is unavailable");
-        }
-        String resultsRoleId = reviewRole.getId();
-        form.setTestSections(userService.getUserTestSections(actor, resultsRoleId));
-        form.setTestSectionsByName(DisplayListService.getInstance().getList(ListType.TEST_SECTION_BY_NAME));
-        List<AnalysisItem> resultList = new ArrayList<>();
-        ResultsValidationUtility utility = SpringContext.getBean(ResultsValidationUtility.class);
-        if (!(GenericValidator.isBlankOrNull(form.getTestSectionId())
-                && GenericValidator.isBlankOrNull(form.getAccessionNumber())
-                && GenericValidator.isBlankOrNull(form.getTestDate()))) {
-            if (Boolean.TRUE.equals(doRange)) {
-                resultList = utility.getResultValidationList(getValidationStatus(), form.getTestSectionId(),
-                        form.getAccessionNumber(), form.getTestDate());
-            } else if (StringUtils.isNotBlank(form.getAccessionNumber())) {
-                Sample sample = getSample(form.getAccessionNumber());
-                if (sample != null) {
-                    resultList = utility.getValidationAnalysisBySample(sample, getValidationStatus());
-                }
+        form.setReviewScope(request.getParameter("scope") == null ? "filtered" : request.getParameter("scope"));
+        if (request.getParameter("page") == null) {
+            var role = roleService.getRoleByName(Constants.ROLE_VALIDATION);
+            if (role == null || StringUtils.isBlank(role.getId())) {
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Review role is unavailable");
             }
+            form.setTestSections(userService.getUserTestSections(actor, role.getId()));
+            form.setTestSectionsByName(DisplayListService.getInstance().getList(ListType.TEST_SECTION_BY_NAME));
         }
-        // Utility owns patient disclosure rules. Never enrich the cached DTO here.
-        boolean depersonalized = FormFields.getInstance().useField(Field.DepersonalizedResults);
-        reviewQueryContextService.create(request.getSession(), actor, form, resultList, depersonalized);
-        return form;
+        return reviewPendingService.query(request.getSession(), actor, form, request.getParameter("page"),
+                request.getParameter("queryId"));
+    }
+
+    @PreAuthorize("hasRole('VALIDATION')")
+    @GetMapping(value = "review/pending/summary", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public ReviewPendingSummary pendingSummary(HttpServletRequest request) {
+        return reviewPendingService.summary(getSysUserId(request));
     }
 
     public List<String> getValidationStatus() {
@@ -208,6 +191,7 @@ public class AccessionValidationRestController extends BaseResultValidationContr
         return validationStatus;
     }
 
+    @PreAuthorize("hasRole('VALIDATION')")
     @PostMapping(value = "AccessionValidation", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
     public ResultValidationForm showAccessionValidationRangeSave(HttpServletRequest request,
@@ -223,8 +207,9 @@ public class AccessionValidationRestController extends BaseResultValidationContr
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid review submission");
         }
         String actor = getSysUserId(request);
-        List<AnalysisItem> resultItemList = reviewQueryContextService.consumeForSave(request.getSession(), actor, form);
-        reviewSubmissionService.save(request, actor, resultItemList, form.getReviewSignature());
+        ReviewQueryContextService.Submission submission = reviewQueryContextService
+                .consumeSubmission(request.getSession(), actor, form);
+        reviewSubmissionService.save(request, actor, submission.rows(), form.getReviewSignature(), submission.policy());
         form.setReviewSignature(null);
         form.setResultList(java.util.List.of());
         return form;

@@ -51,7 +51,10 @@ import org.springframework.context.support.StaticMessageSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/** Actual review projection and legacy JSON/cache contracts, with SIM resources only. */
+/**
+ * Actual review projection and legacy JSON/cache contracts, with SIM resources
+ * only.
+ */
 public class AccessionValidationProjectionTest {
     private Object oldFactory, oldForms, oldIdentity, oldMessages;
     private final Map<Class<?>, Object> beans = new HashMap<>();
@@ -65,7 +68,8 @@ public class AccessionValidationProjectionTest {
     private org.openelisglobal.test.valueholder.Test test;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    @Before public void setup() {
+    @Before
+    public void setup() {
         oldFactory = ReflectionTestUtils.getField(SpringContext.class, "factory");
         oldForms = ReflectionTestUtils.getField(FormFields.class, "instance");
         oldIdentity = ReflectionTestUtils.getField(TestIdentityService.class, "instance");
@@ -91,7 +95,8 @@ public class AccessionValidationProjectionTest {
         ReflectionTestUtils.setField(SpringContext.class, "factory", factory);
         ReferenceTables reference = new ReferenceTables();
         reference.setId("901");
-        when(factory.getBean(ReferenceTablesService.class).getReferenceTableByName(any(ReferenceTables.class))).thenReturn(reference);
+        when(factory.getBean(ReferenceTablesService.class).getReferenceTableByName(any(ReferenceTables.class)))
+                .thenReturn(reference);
         when(factory.getBean(PagingProperties.class).getValidationPageSize()).thenReturn(20);
         IStatusService statuses = factory.getBean(IStatusService.class);
         when(statuses.getStatusID(AnalysisStatus.TechnicalAcceptance)).thenReturn("4");
@@ -115,7 +120,8 @@ public class AccessionValidationProjectionTest {
         test.setSortOrder("1");
         when(factory.getBean(TestService.class).getTestById(any(org.openelisglobal.test.valueholder.Test.class)))
                 .thenReturn(test);
-        when(results.getResultValue(any(Result.class), eq(false))).thenAnswer(call -> "DISPLAY:" + ((Result) call.getArgument(0)).getValue());
+        when(results.getResultValue(any(Result.class), eq(false)))
+                .thenAnswer(call -> "DISPLAY:" + ((Result) call.getArgument(0)).getValue());
         DictionaryService dictionaries = factory.getBean(DictionaryService.class);
         when(dictionaries.getDataForId(anyString())).thenAnswer(call -> {
             Dictionary dictionary = mock(Dictionary.class);
@@ -124,7 +130,8 @@ public class AccessionValidationProjectionTest {
         });
     }
 
-    @After public void restore() {
+    @After
+    public void restore() {
         ReflectionTestUtils.setField(SpringContext.class, "factory", oldFactory);
         ReflectionTestUtils.setField(FormFields.class, "instance", oldForms);
         ReflectionTestUtils.setField(TestIdentityService.class, "instance", oldIdentity);
@@ -133,30 +140,48 @@ public class AccessionValidationProjectionTest {
 
     private TestResultComponent component(String id, boolean primary) {
         TestResultComponent component = new TestResultComponent();
-        component.setId(id); component.setTestId(test.getId()); component.setIsPrimary(primary); component.setLabel("SIM-" + id);
+        component.setId(id);
+        component.setTestId(test.getId());
+        component.setIsPrimary(primary);
+        component.setLabel("SIM-" + id);
         return component;
     }
 
     private Analysis analysis(String id, String tube, String status) {
         SampleItem item = new SampleItem();
-        item.setId(tube); item.setSample(sample); item.setSortOrder("1");
+        item.setId(tube);
+        item.setSample(sample);
+        item.setSortOrder("1");
         Analysis analysis = new Analysis();
-        analysis.setId(id); analysis.setTest(test); analysis.setSampleItem(item); analysis.setStatusId(status);
+        analysis.setId(id);
+        analysis.setTest(test);
+        analysis.setSampleItem(item);
+        analysis.setStatusId(status);
         analysis.setLastupdated(Timestamp.valueOf("2026-09-16 09:10:11.123456"));
         return analysis;
     }
 
     private TestResult definition(String id, String component, String type, String value, boolean qualified) {
         TestResult definition = new TestResult();
-        definition.setId(id); definition.setTest(test); definition.setComponentId(component); definition.setTestResultType(type);
-        definition.setValue(value); definition.setIsQuantifiable(qualified); definition.setSignificantDigits("2");
+        definition.setId(id);
+        definition.setTest(test);
+        definition.setComponentId(component);
+        definition.setTestResultType(type);
+        definition.setValue(value);
+        definition.setIsQuantifiable(qualified);
+        definition.setSignificantDigits("2");
         return definition;
     }
 
     private Result result(String id, Analysis analysis, TestResult definition, String value) {
         Result result = new Result();
-        result.setId(id); result.setAnalysis(analysis); result.setTestResult(definition); result.setResultType(definition.getTestResultType());
-        result.setValue(value); result.setGrouping(1); result.setLastupdated(Timestamp.valueOf("2026-09-15 01:00:00"));
+        result.setId(id);
+        result.setAnalysis(analysis);
+        result.setTestResult(definition);
+        result.setResultType(definition.getTestResultType());
+        result.setValue(value);
+        result.setGrouping(1);
+        result.setLastupdated(Timestamp.valueOf("2026-09-15 01:00:00"));
         return result;
     }
 
@@ -164,46 +189,142 @@ public class AccessionValidationProjectionTest {
         return utility.testResultListToAnalysisItemList(utility.getGroupedTestsForAnalysisList(List.of(inputs), true));
     }
 
-    @Test public void reviewPatientProjectionUsesActualSampleAndDoesNotReuseAnotherSample() {
-        org.openelisglobal.sample.service.SampleService samples = (org.openelisglobal.sample.service.SampleService) beans.get(org.openelisglobal.sample.service.SampleService.class);
-        org.openelisglobal.samplehuman.service.SampleHumanService humans = (org.openelisglobal.samplehuman.service.SampleHumanService) beans.get(org.openelisglobal.samplehuman.service.SampleHumanService.class);
-        org.openelisglobal.patient.valueholder.Patient patient = mock(org.openelisglobal.patient.valueholder.Patient.class);
+    @Test
+    public void emptyResultKeepsOnePlaceholderWithoutMutatingTheServiceCollection() {
+        Analysis input = analysis("101", "201", "4");
+        when(results.getResultsByAnalysis(input)).thenReturn(List.of());
+        List<AnalysisItem> rows = utility.projectReviewAnalyses(List.of(input), false);
+        assertEquals(1, rows.size());
+        assertEquals("101", rows.get(0).getAnalysisId());
+        assertEquals("", rows.get(0).getResultId());
+        when(results.getResultsByAnalysis(input)).thenReturn(null);
+        assertThrows(org.openelisglobal.common.exception.LIMSRuntimeException.class,
+                () -> utility.projectReviewAnalyses(List.of(input), false));
+    }
+
+    @Test
+    public void modernRetrociRegistrationIsStrictAndCachedOnlyWithinOneProjection() {
+        var history = (org.openelisglobal.observationhistory.service.ObservationHistoryService) beans
+                .get(org.openelisglobal.observationhistory.service.ObservationHistoryService.class);
+        var statuses = (IStatusService) beans.get(IStatusService.class);
+        var observation = new org.openelisglobal.observationhistory.valueholder.ObservationHistory();
+        Analysis first = analysis("101", "201", "4"), second = analysis("102", "201", "4");
+        assertEquals(503, assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> utility.projectReviewAnalyses(List.of(first), true)).getStatusCode().value());
+        ReflectionTestUtils.setField(utility, "SAMPLE_STATUS_OBSERVATION_HISTORY_TYPE_ID", "71");
+        when(history.getAll(isNull(), same(sample), any())).thenReturn(List.of());
+        assertEquals(503, assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> utility.projectReviewAnalyses(List.of(first), true)).getStatusCode().value());
+        // Existing legacy group API retains its historic missing-history behavior.
+        assertEquals(1, utility.getGroupedTestsForAnalysisList(List.of(first), false).size());
+        observation.setValue("unknown");
+        when(history.getAll(isNull(), same(sample), any())).thenReturn(List.of(observation));
+        assertEquals(503, assertThrows(org.springframework.web.server.ResponseStatusException.class,
+                () -> utility.projectReviewAnalyses(List.of(first), true)).getStatusCode().value());
+        observation.setValue("not-registered");
+        when(statuses.getRecordStatusForID("not-registered"))
+                .thenReturn(org.openelisglobal.common.services.StatusService.RecordStatus.NotRegistered);
+        clearInvocations(history);
+        assertTrue(utility.projectReviewAnalyses(List.of(first, second), true).isEmpty());
+        verify(history, times(1)).getAll(isNull(), same(sample), any());
+        observation.setValue("registered");
+        when(statuses.getRecordStatusForID("registered"))
+                .thenReturn(org.openelisglobal.common.services.StatusService.RecordStatus.ValidationRegistration);
+        assertEquals(2, utility.projectReviewAnalyses(List.of(first, second), true).size());
+        verify(history, times(2)).getAll(isNull(), same(sample), any());
+    }
+
+    @Test public void actualProjectionCountsMultiComponentAndMultiselectRowsIndependently() {
+        when(components.getActiveComponentsByTestId("401")).thenReturn(List.of(component("P", true), component("C", false)));
+        TestResult numeric = definition("501", "P", "N", "", false);
+        TestResult numericComponent = definition("502", "C", "N", "", false);
+        TestResult choice1 = definition("503", "P", "M", "11", false);
+        TestResult choice2 = definition("504", "P", "M", "12", false);
+        TestResult choice3 = definition("505", "P", "M", "13", false);
+        when(definitions.getAllActiveTestResultsPerTest(test)).thenReturn(List.of(numeric, numericComponent, choice1, choice2, choice3));
+        List<Analysis> inputs = new ArrayList<>();
+        for (int id : List.of(1,2,7,8,9,10,11,13)) {
+            Analysis input = analysis(String.valueOf(id), "201", "4"); inputs.add(input);
+            if (id == 11) when(results.getResultsByAnalysis(input)).thenReturn(List.of());
+            else if (id == 2) when(results.getResultsByAnalysis(input)).thenReturn(List.of(result("201", input, numeric, "1"),result("202", input, numericComponent,"2")));
+            else if (id == 9) when(results.getResultsByAnalysis(input)).thenReturn(List.of(result("901",input,choice1,"11"),result("902",input,choice2,"12"),result("903",input,choice3,"13")));
+            else when(results.getResultsByAnalysis(input)).thenReturn(List.of(result("100"+id,input,numeric,id==13?null:"1")));
+        }
+        List<AnalysisItem> rows = utility.projectReviewAnalyses(inputs, false);
+        assertEquals(9, rows.size()); assertEquals(8, rows.stream().map(AnalysisItem::getAnalysisId).distinct().count());
+        assertEquals(1, rows.stream().filter(r -> "9".equals(r.getAnalysisId())).count());
+        assertEquals(3, rows.stream().filter(r -> "9".equals(r.getAnalysisId())).findFirst().orElseThrow().getResultMembers().size());
+        Analysis rejected = analysis("4", "201", "5"); inputs.add(rejected);
+        when(results.getResultsByAnalysis(rejected)).thenReturn(List.of(result("401", rejected,numeric,"1")));
+        assertEquals(10, utility.projectReviewAnalyses(inputs, false).size());
+    }
+
+    @Test
+    public void reviewPatientProjectionUsesActualSampleAndDoesNotReuseAnotherSample() {
+        org.openelisglobal.sample.service.SampleService samples = (org.openelisglobal.sample.service.SampleService) beans
+                .get(org.openelisglobal.sample.service.SampleService.class);
+        org.openelisglobal.samplehuman.service.SampleHumanService humans = (org.openelisglobal.samplehuman.service.SampleHumanService) beans
+                .get(org.openelisglobal.samplehuman.service.SampleHumanService.class);
+        org.openelisglobal.patient.valueholder.Patient patient = mock(
+                org.openelisglobal.patient.valueholder.Patient.class);
         org.openelisglobal.person.valueholder.Person person = new org.openelisglobal.person.valueholder.Person();
-        person.setLastName("SIM"); person.setFirstName("Patient");
+        person.setLastName("SIM");
+        person.setFirstName("Patient");
         when(patient.getPerson()).thenReturn(person);
-        when(patient.getNationalId()).thenReturn("SIM-ID"); when(patient.getGender()).thenReturn("F");
+        when(patient.getNationalId()).thenReturn("SIM-ID");
+        when(patient.getGender()).thenReturn("F");
         when(patient.getBirthDateForDisplay()).thenReturn("2000-01-01");
-        when(samples.get("301")).thenReturn(sample); when(humans.getPatientForSample(sample)).thenReturn(patient);
+        when(samples.get("301")).thenReturn(sample);
+        when(humans.getPatientForSample(sample)).thenReturn(patient);
         AnalysisItem first = new AnalysisItem(), repeated = new AnalysisItem(), missing = new AnalysisItem();
-        first.setSampleId("301"); repeated.setSampleId("301"); missing.setSampleId("302");
-        missing.setPatientName("STALE"); missing.setPatientInfo("STALE");
+        first.setSampleId("301");
+        repeated.setSampleId("301");
+        missing.setSampleId("302");
+        missing.setPatientName("STALE");
+        missing.setPatientInfo("STALE");
         utility.populateReviewPatientInfo(List.of(first, repeated, missing), false);
-        assertEquals("SIM Patient", first.getPatientName()); assertEquals("SIM-ID, F, 2000-01-01", first.getPatientInfo());
+        assertEquals("SIM Patient", first.getPatientName());
+        assertEquals("SIM-ID, F, 2000-01-01", first.getPatientInfo());
         assertEquals(first.getPatientInfo(), repeated.getPatientInfo());
-        assertEquals("", missing.getPatientName()); assertEquals("", missing.getPatientInfo());
-        verify(samples, times(1)).get("301"); verify(humans, times(1)).getPatientForSample(sample);
+        assertEquals("", missing.getPatientName());
+        assertEquals("", missing.getPatientInfo());
+        verify(samples, times(1)).get("301");
+        verify(humans, times(1)).getPatientForSample(sample);
         verify(samples, never()).getSampleByAccessionNumber(anyString());
     }
 
-    @Test public void maskedReviewClearsAllPatientFieldsWithoutLoadingPatientRecords() {
-        AnalysisItem item = new AnalysisItem(); item.setSampleId("301");
-        item.setPatientName("PRIVATE NAME"); item.setPatientInfo("PRIVATE IDENTIFIER");
+    @Test
+    public void maskedReviewClearsAllPatientFieldsWithoutLoadingPatientRecords() {
+        AnalysisItem item = new AnalysisItem();
+        item.setSampleId("301");
+        item.setPatientName("PRIVATE NAME");
+        item.setPatientInfo("PRIVATE IDENTIFIER");
         utility.populateReviewPatientInfo(List.of(item), true);
-        assertEquals("---", item.getPatientName()); assertEquals("---", item.getPatientInfo());
+        assertEquals("---", item.getPatientName());
+        assertEquals("---", item.getPatientInfo());
         verifyZeroInteractions(beans.get(org.openelisglobal.samplehuman.service.SampleHumanService.class));
         verifyZeroInteractions(beans.get(org.openelisglobal.sample.service.SampleService.class));
     }
 
-    @Test public void reviewPatientWithoutPersonDoesNotCrashOrRetainOldName() {
-        org.openelisglobal.patient.valueholder.Patient patient = mock(org.openelisglobal.patient.valueholder.Patient.class);
-        when(((org.openelisglobal.sample.service.SampleService) beans.get(org.openelisglobal.sample.service.SampleService.class)).get("301")).thenReturn(sample);
-        when(((org.openelisglobal.samplehuman.service.SampleHumanService) beans.get(org.openelisglobal.samplehuman.service.SampleHumanService.class)).getPatientForSample(sample)).thenReturn(patient);
-        AnalysisItem item = new AnalysisItem(); item.setSampleId("301"); item.setPatientName("STALE");
+    @Test
+    public void reviewPatientWithoutPersonDoesNotCrashOrRetainOldName() {
+        org.openelisglobal.patient.valueholder.Patient patient = mock(
+                org.openelisglobal.patient.valueholder.Patient.class);
+        when(((org.openelisglobal.sample.service.SampleService) beans
+                .get(org.openelisglobal.sample.service.SampleService.class)).get("301")).thenReturn(sample);
+        when(((org.openelisglobal.samplehuman.service.SampleHumanService) beans
+                .get(org.openelisglobal.samplehuman.service.SampleHumanService.class)).getPatientForSample(sample))
+                .thenReturn(patient);
+        AnalysisItem item = new AnalysisItem();
+        item.setSampleId("301");
+        item.setPatientName("STALE");
         utility.populateReviewPatientInfo(List.of(item), false);
-        assertEquals("", item.getPatientName()); assertEquals(", , ", item.getPatientInfo());
+        assertEquals("", item.getPatientName());
+        assertEquals(", , ", item.getPatientInfo());
     }
 
-    @Test public void actualTubeAndAnalysisVersionRemainDistinctFromDisplayValue() {
+    @Test
+    public void actualTubeAndAnalysisVersionRemainDistinctFromDisplayValue() {
         TestResult definition = definition("501", "P", "N", "", false);
         when(definitions.getAllActiveTestResultsPerTest(test)).thenReturn(List.of(definition));
         when(components.getActiveComponentsByTestId("401")).thenReturn(List.of(component("P", true)));
@@ -227,19 +348,26 @@ public class AccessionValidationProjectionTest {
         assertEquals("5.2700", rows.get(1).getResultMembers().get(0).rawResultValue());
     }
 
-    @Test public void selectionSetsOptionsAndQualifiedMembersStayWithinAnalysisAndComponent() throws Exception {
+    @Test
+    public void selectionSetsOptionsAndQualifiedMembersStayWithinAnalysisAndComponent() throws Exception {
         TestResult p1 = definition("501", "P", "M", "11", false), p2 = definition("502", "P", "M", "12", true);
         TestResult c1 = definition("503", "C", "C", "21", true), n = definition("504", "N", "N", "", false);
         when(definitions.getAllActiveTestResultsPerTest(test)).thenReturn(List.of(p1, p2, c1, n));
-        when(components.getActiveComponentsByTestId("401")).thenReturn(List.of(component("P", true), component("C", false), component("N", false)));
+        when(components.getActiveComponentsByTestId("401"))
+                .thenReturn(List.of(component("P", true), component("C", false), component("N", false)));
         Analysis analysis = analysis("101", "201", "4");
-        Result a = result("601", analysis, p1, "11"), b = result("602", analysis, p2, "12"), c = result("603", analysis, c1, "21");
+        Result a = result("601", analysis, p1, "11"), b = result("602", analysis, p2, "12"),
+                c = result("603", analysis, c1, "21");
         Result bChild = result("612", analysis, n, "4.2"), cChild = result("613", analysis, n, "9.8");
-        bChild.setParentResult(b); cChild.setParentResult(c);
-        when(results.getResultsByAnalysis(analysis)).thenReturn(List.of(a, b, bChild, c, cChild, result("604", analysis, n, "0")));
+        bChild.setParentResult(b);
+        cChild.setParentResult(c);
+        when(results.getResultsByAnalysis(analysis))
+                .thenReturn(List.of(a, b, bChild, c, cChild, result("604", analysis, n, "0")));
         List<ResultValidationItem> items = utility.getGroupedTestsForAnalysisList(List.of(analysis), true);
-        ResultValidationItem qualified = items.stream().filter(item -> "602".equals(item.getResultId())).findFirst().orElseThrow();
-        qualified.setNormalRange("SIM-RANGE"); qualified.setPatientName("SIM-PATIENT");
+        ResultValidationItem qualified = items.stream().filter(item -> "602".equals(item.getResultId())).findFirst()
+                .orElseThrow();
+        qualified.setNormalRange("SIM-RANGE");
+        qualified.setPatientName("SIM-PATIENT");
         List<AnalysisItem> rows = utility.testResultListToAnalysisItemList(items);
         assertEquals(3, rows.size());
         AnalysisItem primary = rows.get(0), secondary = rows.get(1);
@@ -248,48 +376,67 @@ public class AccessionValidationProjectionTest {
         assertEquals("21", mapper.readTree(secondary.getMultiSelectResultValues()).get("1").asText());
         assertEquals(List.of("0", "11", "12"), primary.getDictionaryResults().stream().map(v -> v.getId()).toList());
         assertEquals(List.of("0", "21"), secondary.getDictionaryResults().stream().map(v -> v.getId()).toList());
-        assertEquals(List.of("601", "602", "612"), primary.getResultMembers().stream().map(AnalysisItem.ResultMember::resultId).toList());
+        assertEquals(List.of("601", "602", "612"),
+                primary.getResultMembers().stream().map(AnalysisItem.ResultMember::resultId).toList());
         assertEquals("602", primary.getResultMembers().get(2).parentResultId());
         assertEquals("P", primary.getResultMembers().get(2).testResultComponentId());
-        assertEquals("612", primary.getQualifiedResultId()); assertEquals("4.2", primary.getQualifiedResultValue());
-        assertEquals("[12]", primary.getQualifiedDictionaryId()); assertTrue(primary.isHasQualifiedResult());
-        assertEquals("SIM-RANGE", primary.getNormalRange()); assertEquals("SIM-PATIENT", primary.getPatientName());
-        assertEquals("613", secondary.getQualifiedResultId()); assertEquals("9.8", secondary.getQualifiedResultValue());
+        assertEquals("612", primary.getQualifiedResultId());
+        assertEquals("4.2", primary.getQualifiedResultValue());
+        assertEquals("[12]", primary.getQualifiedDictionaryId());
+        assertTrue(primary.isHasQualifiedResult());
+        assertEquals("SIM-RANGE", primary.getNormalRange());
+        assertEquals("SIM-PATIENT", primary.getPatientName());
+        assertEquals("613", secondary.getQualifiedResultId());
+        assertEquals("9.8", secondary.getQualifiedResultValue());
         assertEquals("[21]", secondary.getQualifiedDictionaryId());
         assertEquals("0", rows.get(2).getRawResultValue());
         verify(analyses, never()).getJSONMultiSelectResults(any());
     }
 
-    @Test public void historicalNullAndExplicitPrimaryAreOneSelectionSetEvenWithOnlyOneActiveComponent() throws Exception {
-        TestResult legacy = definition("501", null, "M", "11", false), explicit = definition("502", "P", "M", "12", false);
+    @Test
+    public void historicalNullAndExplicitPrimaryAreOneSelectionSetEvenWithOnlyOneActiveComponent() throws Exception {
+        TestResult legacy = definition("501", null, "M", "11", false),
+                explicit = definition("502", "P", "M", "12", false);
         when(definitions.getAllActiveTestResultsPerTest(test)).thenReturn(List.of(legacy, explicit));
         when(components.getActiveComponentsByTestId("401")).thenReturn(List.of(component("P", true)));
         Analysis analysis = analysis("101", "201", "4");
-        when(results.getResultsByAnalysis(analysis)).thenReturn(List.of(result("601", analysis, legacy, "11"), result("602", analysis, explicit, "12")));
+        when(results.getResultsByAnalysis(analysis))
+                .thenReturn(List.of(result("601", analysis, legacy, "11"), result("602", analysis, explicit, "12")));
         List<AnalysisItem> rows = project(analysis);
-        assertEquals(1, rows.size()); assertEquals("P", rows.get(0).getTestResultComponentId());
+        assertEquals(1, rows.size());
+        assertEquals("P", rows.get(0).getTestResultComponentId());
         assertEquals("11,12", mapper.readTree(rows.get(0).getMultiSelectResultValues()).get("1").asText());
-        assertEquals(List.of("601", "602"), rows.get(0).getResultMembers().stream().map(AnalysisItem.ResultMember::resultId).toList());
-        assertEquals(List.of("0", "11", "12"), rows.get(0).getDictionaryResults().stream().map(v -> v.getId()).toList());
+        assertEquals(List.of("601", "602"),
+                rows.get(0).getResultMembers().stream().map(AnalysisItem.ResultMember::resultId).toList());
+        assertEquals(List.of("0", "11", "12"),
+                rows.get(0).getDictionaryResults().stream().map(v -> v.getId()).toList());
     }
 
-    @Test public void repeatedSelectionGroupsAndOtherAnalysesRetainTheirOwnValues() throws Exception {
+    @Test
+    public void repeatedSelectionGroupsAndOtherAnalysesRetainTheirOwnValues() throws Exception {
         TestResult definition = definition("501", "P", "C", "11", false);
         when(definitions.getAllActiveTestResultsPerTest(test)).thenReturn(List.of(definition));
         when(components.getActiveComponentsByTestId("401")).thenReturn(List.of(component("P", true)));
         Analysis first = analysis("101", "201", "4"), second = analysis("102", "202", "4");
-        Result a = result("601", first, definition, "11"), b = result("602", first, definition, "12"), c = result("603", first, definition, "13");
-        b.setGrouping(2); c.setGrouping(2);
+        Result a = result("601", first, definition, "11"), b = result("602", first, definition, "12"),
+                c = result("603", first, definition, "13");
+        b.setGrouping(2);
+        c.setGrouping(2);
         when(results.getResultsByAnalysis(first)).thenReturn(List.of(a, b, c));
         when(results.getResultsByAnalysis(second)).thenReturn(List.of(result("604", second, definition, "21")));
         List<AnalysisItem> rows = project(first, second);
         assertEquals(2, rows.size());
         JsonNode groups = mapper.readTree(rows.get(0).getMultiSelectResultValues());
-        assertEquals(2, groups.size()); assertEquals("11", groups.get("1").asText()); assertEquals("12,13", groups.get("2").asText());
+        assertEquals(2, groups.size());
+        assertEquals("11", groups.get("1").asText());
+        assertEquals("12,13", groups.get("2").asText());
         assertEquals("21", mapper.readTree(rows.get(1).getMultiSelectResultValues()).get("1").asText());
-        assertEquals(List.of("601", "602", "603"), rows.get(0).getResultMembers().stream().map(AnalysisItem.ResultMember::resultId).toList());
-        assertEquals(List.of("604"), rows.get(1).getResultMembers().stream().map(AnalysisItem.ResultMember::resultId).toList());
-        assertEquals(List.of(1, 2, 2), rows.get(0).getResultMembers().stream().map(AnalysisItem.ResultMember::grouping).toList());
+        assertEquals(List.of("601", "602", "603"),
+                rows.get(0).getResultMembers().stream().map(AnalysisItem.ResultMember::resultId).toList());
+        assertEquals(List.of("604"),
+                rows.get(1).getResultMembers().stream().map(AnalysisItem.ResultMember::resultId).toList());
+        assertEquals(List.of(1, 2, 2),
+                rows.get(0).getResultMembers().stream().map(AnalysisItem.ResultMember::grouping).toList());
     }
 
     @Test public void exactAndRangeUseTheSameReadyStatusWhitelistAndRejectedSetting() {
@@ -316,58 +463,89 @@ public class AccessionValidationProjectionTest {
 
     private AnalysisItem evidenceRow() {
         AnalysisItem row = new AnalysisItem();
-        row.setAccessionNumber("SIM-REVIEW-301"); row.setAnalysisId("101"); row.setTestId("401"); row.setResultId("601"); row.setTestResultComponentId("P");
-        row.setSampleId("301"); row.setSampleItemId("201"); row.setStatusId("4");
-        row.setLastUpdated(Timestamp.valueOf("2026-09-16 09:10:11.123")); row.setAnalysisLastupdated("1789521011123");
-        row.setResultType("M"); row.setRawResultValue("11"); row.setResult("DISPLAY"); row.setMultiSelectResultValues("{\"1\":\"11,12\"}");
-        row.setResultMembers(List.of(new AnalysisItem.ResultMember("601", "11", "M", "P", null, 1), new AnalysisItem.ResultMember("602", "12", "M", "P", null, 1)));
+        row.setAccessionNumber("SIM-REVIEW-301");
+        row.setAnalysisId("101");
+        row.setTestId("401");
+        row.setResultId("601");
+        row.setTestResultComponentId("P");
+        row.setSampleId("301");
+        row.setSampleItemId("201");
+        row.setStatusId("4");
+        row.setLastUpdated(Timestamp.valueOf("2026-09-16 09:10:11.123"));
+        row.setAnalysisLastupdated("1789521011123");
+        row.setResultType("M");
+        row.setRawResultValue("11");
+        row.setResult("DISPLAY");
+        row.setMultiSelectResultValues("{\"1\":\"11,12\"}");
+        row.setResultMembers(List.of(new AnalysisItem.ResultMember("601", "11", "M", "P", null, 1),
+                new AnalysisItem.ResultMember("602", "12", "M", "P", null, 1)));
         return row;
     }
 
-    @Test public void newEvidenceIsSerializedButCannotBeForgedByTheExistingPostContract() throws Exception {
+    @Test
+    public void newEvidenceIsSerializedButCannotBeForgedByTheExistingPostContract() throws Exception {
         AnalysisItem row = evidenceRow();
         JsonNode json = mapper.readTree(mapper.writeValueAsString(row));
         assertEquals("201", json.get("sampleItemId").asText());
         assertEquals(row.getAnalysisLastupdated(), json.get("analysisLastupdated").asText());
-        assertEquals("11", json.get("rawResultValue").asText()); assertEquals(2, json.get("resultMembers").size());
-        AnalysisItem posted = mapper.readValue("{\"analysisId\":\"101\",\"testId\":\"401\",\"resultId\":\"601\",\"testResultComponentId\":\"P\",\"resultType\":\"M\",\"result\":\"0\",\"isAccepted\":true,\"multiSelectResultValues\":\"{\\\"1\\\":\\\"12\\\"}\",\"sampleItemId\":\"999\",\"analysisLastupdated\":\"FAKE\",\"rawResultValue\":\"FAKE\",\"resultMembers\":[{\"resultId\":\"999\"}]}", AnalysisItem.class);
-        assertNull(posted.getSampleItemId()); assertNull(posted.getAnalysisLastupdated()); assertNull(posted.getRawResultValue()); assertTrue(posted.getResultMembers().isEmpty());
+        assertEquals("11", json.get("rawResultValue").asText());
+        assertEquals(2, json.get("resultMembers").size());
+        AnalysisItem posted = mapper.readValue(
+                "{\"analysisId\":\"101\",\"testId\":\"401\",\"resultId\":\"601\",\"testResultComponentId\":\"P\",\"resultType\":\"M\",\"result\":\"0\",\"isAccepted\":true,\"multiSelectResultValues\":\"{\\\"1\\\":\\\"12\\\"}\",\"sampleItemId\":\"999\",\"analysisLastupdated\":\"FAKE\",\"rawResultValue\":\"FAKE\",\"resultMembers\":[{\"resultId\":\"999\"}]}",
+                AnalysisItem.class);
+        assertNull(posted.getSampleItemId());
+        assertNull(posted.getAnalysisLastupdated());
+        assertNull(posted.getRawResultValue());
+        assertTrue(posted.getResultMembers().isEmpty());
         assertTrue(posted.getIsAccepted());
         var save = ResultSaveBeanAdapter.fromAnalysisItem(posted);
-        assertEquals("0", save.getResultValue()); assertEquals("601", save.getResultId()); assertEquals("P", save.getTestResultComponentId());
+        assertEquals("0", save.getResultValue());
+        assertEquals("601", save.getResultId());
+        assertEquals("P", save.getTestResultComponentId());
         assertEquals("{\"1\":\"12\"}", save.getMultiSelectResultValues());
     }
 
-    @Test public void mismatchedPostedIdentityCannotInheritAnotherRowsEvidence() throws Exception {
+    @Test
+    public void mismatchedPostedIdentityCannotInheritAnotherRowsEvidence() throws Exception {
         for (String field : List.of("analysisId", "testId", "resultId", "testResultComponentId")) {
             AnalysisItem server = evidenceRow();
             MockHttpServletRequest request = new MockHttpServletRequest();
             ResultValidationPaging paging = new ResultValidationPaging();
             ResultValidationForm form = new ResultValidationForm();
             paging.setDatabaseResults(request, form, List.of(server));
-            var json = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(mapper.writeValueAsString(server));
+            var json = (com.fasterxml.jackson.databind.node.ObjectNode) mapper
+                    .readTree(mapper.writeValueAsString(server));
             json.put(field, "999");
             AnalysisItem posted = mapper.treeToValue(json, AnalysisItem.class);
-            form.setResultList(List.of(posted)); paging.updatePagedResults(request, form);
+            form.setResultList(List.of(posted));
+            paging.updatePagedResults(request, form);
             AnalysisItem cached = paging.getResults(request).get(0);
-            assertNull(field, cached.getSampleItemId()); assertNull(field, cached.getAnalysisLastupdated());
-            assertNull(field, cached.getRawResultValue()); assertTrue(field, cached.getResultMembers().isEmpty());
+            assertNull(field, cached.getSampleItemId());
+            assertNull(field, cached.getAnalysisLastupdated());
+            assertNull(field, cached.getRawResultValue());
+            assertTrue(field, cached.getResultMembers().isEmpty());
         }
     }
 
-    @Test public void legacyPostCacheReplacementRetainsServerEvidenceAndAppliesEditableFields() throws Exception {
+    @Test
+    public void legacyPostCacheReplacementRetainsServerEvidenceAndAppliesEditableFields() throws Exception {
         AnalysisItem server = evidenceRow();
         MockHttpServletRequest request = new MockHttpServletRequest();
         ResultValidationPaging paging = new ResultValidationPaging();
         ResultValidationForm form = new ResultValidationForm();
         paging.setDatabaseResults(request, form, List.of(server));
         AnalysisItem posted = mapper.readValue(mapper.writeValueAsString(server), AnalysisItem.class);
-        posted.setIsAccepted(true); posted.setMultiSelectResultValues("{\"1\":\"12\"}");
+        posted.setIsAccepted(true);
+        posted.setMultiSelectResultValues("{\"1\":\"12\"}");
         assertNull(posted.getSampleItemId());
-        form.setResultList(List.of(posted)); paging.updatePagedResults(request, form);
+        form.setResultList(List.of(posted));
+        paging.updatePagedResults(request, form);
         AnalysisItem cached = paging.getResults(request).get(0);
-        assertTrue(cached.getIsAccepted()); assertEquals("{\"1\":\"12\"}", cached.getMultiSelectResultValues());
-        assertEquals("201", cached.getSampleItemId()); assertEquals(server.getAnalysisLastupdated(), cached.getAnalysisLastupdated());
-        assertEquals(server.getResultMembers(), cached.getResultMembers()); assertEquals("11", cached.getRawResultValue());
+        assertTrue(cached.getIsAccepted());
+        assertEquals("{\"1\":\"12\"}", cached.getMultiSelectResultValues());
+        assertEquals("201", cached.getSampleItemId());
+        assertEquals(server.getAnalysisLastupdated(), cached.getAnalysisLastupdated());
+        assertEquals(server.getResultMembers(), cached.getResultMembers());
+        assertEquals("11", cached.getRawResultValue());
     }
 }

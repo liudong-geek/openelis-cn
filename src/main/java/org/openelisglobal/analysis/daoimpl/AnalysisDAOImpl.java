@@ -31,6 +31,8 @@ import org.hibernate.Session;
 import org.hibernate.query.Query;
 import org.openelisglobal.analysis.dao.AnalysisDAO;
 import org.openelisglobal.analysis.form.PendingResultSpecimenCount;
+import org.openelisglobal.analysis.form.ReviewPendingAccessionCount;
+import org.openelisglobal.analysis.form.ReviewPendingQuery;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.daoimpl.BaseDAOImpl;
 import org.openelisglobal.common.exception.LIMSRuntimeException;
@@ -1963,5 +1965,62 @@ public class AnalysisDAOImpl extends BaseDAOImpl<Analysis, String> implements An
         }
 
         return null;
+    }
+
+    private static final String REVIEW_PENDING_FROM = " from Analysis a left join a.sampleItem si left join si.sample s"
+            + " where a.statusId in (:statusIds) and a.testSection.id in (:sectionIds)";
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Analysis> getReviewPendingAnalyses(List<String> statusIds, Set<String> sectionIds,
+            ReviewPendingQuery criteria, int offset, int limit) {
+        if (offset < 0 || limit < 0)
+            throw new IllegalArgumentException("Invalid review page");
+        if (statusIds.isEmpty() || sectionIds.isEmpty())
+            return List.of();
+        String hql = "select a" + REVIEW_PENDING_FROM;
+        if (criteria.sectionId() != null)
+            hql += " and a.testSection.id = :filterSection";
+        if (criteria.accessionLowerBound() != null)
+            hql += " and s.accessionNumber >= :accession" + " and length(s.accessionNumber) = length(:accession)";
+        if (criteria.exactSampleId() != null)
+            hql += " and s.id = :sampleId";
+        if (criteria.startedOn() != null)
+            hql += " and date(a.startedDate) = :startedOn";
+        hql += " order by s.accessionNumber, s.id, si.id, a.id";
+        Query<Analysis> query = entityManager.unwrap(Session.class).createQuery(hql, Analysis.class);
+        query.setParameterList("statusIds", statusIds);
+        query.setParameterList("sectionIds", sectionIds);
+        if (criteria.sectionId() != null)
+            query.setParameter("filterSection", criteria.sectionId());
+        if (criteria.accessionLowerBound() != null)
+            query.setParameter("accession", criteria.accessionLowerBound());
+        if (criteria.exactSampleId() != null)
+            query.setParameter("sampleId", criteria.exactSampleId());
+        if (criteria.startedOn() != null)
+            query.setParameter("startedOn", criteria.startedOn());
+        query.setReadOnly(true).setFirstResult(offset);
+        if (limit > 0)
+            query.setMaxResults(limit);
+        return query.list();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void visitReviewPendingAccessionCounts(List<String> statusIds, Set<String> sectionIds,
+            Consumer<ReviewPendingAccessionCount> consumer) {
+        if (statusIds.isEmpty() || sectionIds.isEmpty())
+            return;
+        String hql = "select s.id, coalesce(s.accessionNumber, ''), count(a.id),"
+                + " min(cast(a.id as long)), max(cast(a.id as long))" + REVIEW_PENDING_FROM
+                + " group by s.id, coalesce(s.accessionNumber, '')";
+        Query<Object[]> query = entityManager.unwrap(Session.class).createQuery(hql, Object[].class);
+        query.setParameterList("statusIds", statusIds);
+        query.setParameterList("sectionIds", sectionIds);
+        query.setReadOnly(true).setFetchSize(128);
+        try (Stream<Object[]> groups = query.stream()) {
+            groups.forEach(row -> consumer.accept(new ReviewPendingAccessionCount((String) row[0], (String) row[1],
+                    ((Number) row[2]).longValue(), ((Number) row[3]).longValue(), ((Number) row[4]).longValue())));
+        }
     }
 }

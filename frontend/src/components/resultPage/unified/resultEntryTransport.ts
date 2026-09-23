@@ -1,10 +1,18 @@
 import config from "../../../config.json";
 import { getRequestLocale } from "../../utils/LocaleUtils";
 import { readOpenElisResponse } from "../../utils/readOpenElisResponse";
+import { readPendingSummarySession } from "../../home/pendingSummarySession";
+import { PendingSummaryError } from "../../home/pendingResultSummary";
 
 export interface EntryRequestError {
   status: number;
   errorKey: string;
+  sessionUnconfirmed?: boolean;
+}
+export interface ResultReadGuard {
+  sessionKey: string;
+  signal: AbortSignal;
+  current: () => boolean;
 }
 const failure = (status: number): EntryRequestError => ({
   status,
@@ -56,20 +64,86 @@ async function readJson(response: Response, signal: AbortSignal) {
 export function readResultWorkbench<T>(
   path: string,
   callback: (data?: T, error?: EntryRequestError) => void,
+  guard?: ResultReadGuard,
 ): void {
   const abort = new AbortController();
+  const invalidate = () => abort.abort();
+  guard?.signal.addEventListener("abort", invalidate, { once: true });
+  if (guard?.signal.aborted) abort.abort();
+  const checkCurrent = () => {
+    if (abort.signal.aborted || (guard && !guard.current()))
+      throw { ...failure(0), sessionUnconfirmed: true };
+  };
+  const verifySession = async () => {
+    if (!guard) return;
+    try {
+      checkCurrent();
+      const key = await readPendingSummarySession(abort.signal);
+      checkCurrent();
+      if (key !== guard.sessionKey)
+        throw new PendingSummaryError("unavailable");
+    } catch (error) {
+      const status =
+        error instanceof PendingSummaryError
+          ? error.kind === "unauthenticated"
+            ? 401
+            : error.kind === "forbidden"
+              ? 403
+              : 0
+          : 0;
+      throw {
+        ...failure(status),
+        errorKey: status
+          ? failure(status).errorKey
+          : "results.workbench.sessionReadUnconfirmed",
+        sessionUnconfirmed: true,
+      };
+    }
+  };
   let timer: ReturnType<typeof setTimeout>;
   const deadline = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
       abort.abort();
-      reject(failure(0));
+      reject(
+        guard
+          ? {
+              ...failure(0),
+              errorKey: "results.workbench.sessionReadUnconfirmed",
+              sessionUnconfirmed: true,
+            }
+          : failure(0),
+      );
     }, 30000);
   });
   const operation = async (): Promise<T> => {
     if (!readPath(path)) throw failure(0);
-    const response = await readOpenElisResponse(path, abort.signal);
-    if (response.status !== 200) throw failure(response.status);
-    return await readJson(response, abort.signal);
+    checkCurrent();
+    await verifySession();
+    let data: T | undefined, readError: unknown;
+    try {
+      const response = await readOpenElisResponse(path, abort.signal);
+      // A definite authentication/authorization refusal remains actionable
+      // for the caller's captured credentials even after supersession. Do
+      // not replace that status with a generic cancellation/mismatch error.
+      if ([401, 403].includes(response.status)) throw failure(response.status);
+      checkCurrent();
+      if (response.status !== 200) throw failure(response.status);
+      data = await readJson(response, abort.signal);
+    } catch (error) {
+      readError = error;
+    }
+    if (
+      readError &&
+      typeof readError === "object" &&
+      "status" in readError &&
+      [401, 403].includes(Number(readError.status))
+    )
+      throw readError;
+    checkCurrent();
+    await verifySession();
+    checkCurrent();
+    if (readError) throw readError;
+    return data as T;
   };
   void Promise.race([operation(), deadline])
     .then(
@@ -81,13 +155,18 @@ export function readResultWorkbench<T>(
             : 0;
         callback(
           undefined,
-          status
-            ? failure(status)
-            : { status: 0, errorKey: "common.api.networkError" },
+          error?.sessionUnconfirmed
+            ? error
+            : status
+              ? failure(status)
+              : { status: 0, errorKey: "common.api.networkError" },
         );
       },
     )
-    .finally(() => clearTimeout(timer));
+    .finally(() => {
+      clearTimeout(timer);
+      guard?.signal.removeEventListener("abort", invalidate);
+    });
 }
 
 export function saveResultWorkbench<T>(

@@ -36,7 +36,9 @@ describe("Validation", () => {
   test("does not show an empty table, pagination, or approval action before results are loaded", () => {
     renderValidation();
 
-    expect(screen.getByText("No results loaded")).toBeInTheDocument();
+    expect(
+      screen.getByText(messages["validation.queryState.unqueried.title"]),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /validate/i }),
     ).not.toBeInTheDocument();

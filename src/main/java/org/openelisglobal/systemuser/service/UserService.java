@@ -39,6 +39,8 @@ public interface UserService {
 
     Set<String> getTestIdsForLabUnitRole(String systemUserId, String roleName);
 
+    Set<String> getAnalysisSectionIdsForLabUnitRole(String systemUserId, String roleName);
+
     List<IdValuePair> getUserPrograms(String systemUserId, String userRole);
 
     List<IdValuePair> getUserSampleTypes(String systemUserId, String roleName, String testSectionName);

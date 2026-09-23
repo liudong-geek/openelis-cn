@@ -126,7 +126,6 @@ public class ResultsValidationUtility {
 
     protected List<String> notValidStatus = new ArrayList<>();
     protected Map<String, String> testIdToUnits = new HashMap<>();
-    protected Map<String, Boolean> accessionToValidMap;
     protected String totalTestName = "";
     private static boolean depersonalize = FormFields.getInstance().useField(Field.DepersonalizedResults);
 
@@ -280,13 +279,23 @@ public class ResultsValidationUtility {
      */
     public final List<ResultValidationItem> getGroupedTestsForAnalysisList(Collection<Analysis> filteredAnalysisList,
             boolean ignoreRecordStatus) throws LIMSRuntimeException {
+        return groupForReview(filteredAnalysisList, ignoreRecordStatus, false);
+    }
+
+    private List<ResultValidationItem> groupForReview(Collection<Analysis> filteredAnalysisList,
+            boolean ignoreRecordStatus, boolean strictRegistration) {
 
         List<ResultValidationItem> selectedTestList = new ArrayList<>();
         Dictionary dictionary;
+        Map<String, Boolean> registrationForRequest = new HashMap<>();
 
         for (Analysis analysis : filteredAnalysisList) {
 
-            if (ignoreRecordStatus || sampleReadyForValidation(analysis.getSampleItem().getSample())) {
+            if (ignoreRecordStatus
+                    || registrationForRequest.computeIfAbsent(analysis.getSampleItem().getSample().getId(),
+                            ignored -> strictRegistration
+                                    ? sampleReadyForModernReview(analysis.getSampleItem().getSample())
+                                    : sampleReadyForValidation(analysis.getSampleItem().getSample()))) {
                 List<ResultValidationItem> testResultItemList = getResultItemFromAnalysis(analysis);
                 // NB. The resultValue is filled in during getResultItemFromAnalysis as a side
                 // effect of setResult
@@ -325,10 +334,13 @@ public class ResultsValidationUtility {
 
         List<ResultValidationItem> selectedTestList = new ArrayList<>();
         Dictionary dictionary;
+        Map<String, Boolean> registrationForRequest = new HashMap<>();
 
         for (Analysis analysis : filteredAnalysisList) {
 
-            if (ignoreRecordStatus || sampleReadyForValidation(analysis.getSampleItem().getSample())) {
+            if (ignoreRecordStatus
+                    || registrationForRequest.computeIfAbsent(analysis.getSampleItem().getSample().getId(),
+                            ignored -> sampleReadyForValidation(analysis.getSampleItem().getSample()))) {
                 List<ResultValidationItem> testResultItemList = getResultItemFromAnalysis(analysis);
                 // NB. The resultValue is filled in during getResultItemFromAnalysis as a side
                 // effect of setResult
@@ -362,16 +374,25 @@ public class ResultsValidationUtility {
         return selectedTestList.size();
     }
 
+    private boolean sampleReadyForModernReview(Sample sample) {
+        if (SAMPLE_STATUS_OBSERVATION_HISTORY_TYPE_ID == null
+                || !SAMPLE_STATUS_OBSERVATION_HISTORY_TYPE_ID.matches("[1-9][0-9]{0,9}")) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                    "Review registration policy is unavailable");
+        }
+        RecordStatus status = getSampleRecordStatus(sample);
+        if (status == null) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,
+                    "Review registration status is unavailable");
+        }
+        return status != RecordStatus.NotRegistered;
+    }
+
     protected final boolean sampleReadyForValidation(Sample sample) {
 
-        Boolean valid = accessionToValidMap.get(sample.getAccessionNumber());
-
-        if (valid == null) {
-            valid = getSampleRecordStatus(sample) != RecordStatus.NotRegistered;
-            accessionToValidMap.put(sample.getAccessionNumber(), valid);
-        }
-
-        return valid;
+        return getSampleRecordStatus(sample) != RecordStatus.NotRegistered;
     }
 
     /**
@@ -407,8 +428,9 @@ public class ResultsValidationUtility {
         String notes = noteService.getNotesAsString(analysis, true, true, "<br/>", noteTypes, false);
 
         if (resultList == null) {
-            return testResultList;
+            throw new LIMSRuntimeException("Review results are unavailable");
         }
+        resultList = new ArrayList<>(resultList);
 
         // For historical reasons we add a null member to the collection if it
         // is empty
@@ -865,6 +887,17 @@ public class ResultsValidationUtility {
      * Exact accession lookup uses the same review-ready whitelist as range/date
      * lookup.
      */
+    /**
+     * Projects a preauthorized, policy-bound candidate set without rereading global
+     * query policy.
+     */
+    public List<AnalysisItem> projectReviewAnalyses(List<Analysis> analyses, boolean useRecordStatus) {
+        List<AnalysisItem> rows = testResultListToAnalysisItemList(groupForReview(analyses, !useRecordStatus, true));
+        sortByAccessionNumberAndOrder(rows);
+        setGroupingNumbers(rows);
+        return rows;
+    }
+
     public List<AnalysisItem> getValidationAnalysisBySample(Sample sample, List<String> statusList) {
         if (sample == null || statusList == null || statusList.isEmpty()) {
             return new ArrayList<>();

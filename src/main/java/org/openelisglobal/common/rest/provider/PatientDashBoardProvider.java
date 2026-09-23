@@ -63,6 +63,9 @@ public class PatientDashBoardProvider {
     private ResultEntryWorklistService resultEntryWorklistService;
 
     @Autowired
+    private org.openelisglobal.resultvalidation.service.ReviewPendingService reviewPendingService;
+
+    @Autowired
     private PagingProperties pagingProperties;
 
     @Autowired
@@ -333,9 +336,11 @@ public class PatientDashBoardProvider {
                         pendingCount != null && pendingCount <= Integer.MAX_VALUE ? pendingCount.intValue() : null);
                 break;
             case ORDERS_READY_FOR_VALIDATION:
-                statusIdList = new ArrayList<>();
-                statusIdList.add(iStatusService.getStatusID(AnalysisStatus.TechnicalAcceptance));
-                metrics.setOrdersReadyForValidation(analysisService.getCountOfAnalysesForStatusIds(statusIdList));
+                Long reviewCount = hasValidationRole()
+                        ? reviewPendingService.summary(ControllerUtills.getSysUserId(request)).analysisCount()
+                        : null;
+                metrics.setOrdersReadyForValidation(
+                        reviewCount != null && reviewCount <= Integer.MAX_VALUE ? reviewCount.intValue() : null);
                 break;
             case ORDERS_COMPLETED_TODAY:
                 statusIdList = new ArrayList<>();
@@ -394,7 +399,8 @@ public class PatientDashBoardProvider {
      */
     @GetMapping(value = "home-dashboard/{listType}", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
-    @PreAuthorize("#listType.name() != 'ORDERS_IN_PROGRESS' or hasRole('RESULTS')")
+    @PreAuthorize("(#listType.name() != 'ORDERS_IN_PROGRESS' or hasRole('RESULTS')) and "
+            + "(#listType.name() != 'ORDERS_READY_FOR_VALIDATION' or hasRole('VALIDATION'))")
     public PatientDashBoardForm getDashBoardDisplayList(HttpServletRequest request,
             @PathVariable DashBoardTile.TileType listType, @RequestParam(required = false) String systemUserId)
             throws InvocationTargetException, IllegalAccessException, NoSuchMethodException {
@@ -404,6 +410,10 @@ public class PatientDashBoardProvider {
             // cache for this role-scoped result queue, including subsequent pages.
             return resultEntryWorklistService.getPendingDashboardPageForUser(ControllerUtills.getSysUserId(request),
                     page, pagingProperties.getResultsPageSize());
+        }
+        if (listType == DashBoardTile.TileType.ORDERS_READY_FOR_VALIDATION) {
+            return reviewPendingService.dashboardPage(ControllerUtills.getSysUserId(request), page,
+                    pagingProperties.getResultsPageSize());
         }
         PatientDashBoardForm response = new PatientDashBoardForm();
         // Rebuild the requested tile on every page; a shared cache may contain a
@@ -428,6 +438,12 @@ public class PatientDashBoardProvider {
         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid dashboard page");
     }
 
+    private boolean hasValidationRole() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.isAuthenticated()
+                && authentication.getAuthorities().stream().anyMatch(a -> "ROLE_VALIDATION".equals(a.getAuthority()));
+    }
+
     private boolean hasResultsRole() {
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         return authentication != null && authentication.isAuthenticated()
@@ -449,9 +465,7 @@ public class PatientDashBoardProvider {
         case ORDERS_IN_PROGRESS:
             throw new IllegalStateException("Pending results must use the actor-scoped worklist service");
         case ORDERS_READY_FOR_VALIDATION:
-            analyses = analysisService
-                    .getAnalysesForStatusId(iStatusService.getStatusID(AnalysisStatus.TechnicalAcceptance));
-            return convertAnalysesToOrderBean(analyses);
+            throw new IllegalStateException("Review pending must use the actor-scoped service");
         case ORDERS_COMPLETED_TODAY:
             analyses = analysisService.getAnalysesCompletedOnByStatusId(DateUtil.getNowAsSqlDate(),
                     iStatusService.getStatusID(AnalysisStatus.Finalized));

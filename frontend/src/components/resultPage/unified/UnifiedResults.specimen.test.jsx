@@ -110,6 +110,7 @@ beforeEach(() => {
       sessionId: "SIM-SESSION",
       csrf: "SIM-CSRF",
       loginName: "SIM-USER",
+      roles: ["Results"],
     },
   };
   window.history.replaceState({}, "", "/Results");

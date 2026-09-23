@@ -496,19 +496,28 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public List<Analysis> filterAnalysesByLabUnitRoles(String SystemUserId, List<Analysis> results, String roleName) {
-        Role role = roleService.getRoleByName(roleName);
-        if (role == null || StringUtils.isBlank(role.getId()) || results == null) {
+        if (results == null)
             return List.of();
-        }
-        List<IdValuePair> testSections = getUserTestSections(SystemUserId, role.getId());
-        if (testSections == null) {
-            return List.of();
-        }
-        Set<String> testSectionIds = testSections.stream().filter(Objects::nonNull).map(IdValuePair::getId)
-                .filter(StringUtils::isNotBlank).collect(Collectors.toSet());
+        Set<String> testSectionIds = getAnalysisSectionIdsForLabUnitRole(SystemUserId, roleName);
         return results.stream().filter(Objects::nonNull).filter(analysis -> analysis.getTestSection() != null)
                 .filter(analysis -> testSectionIds.contains(analysis.getTestSection().getId()))
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public Set<String> getAnalysisSectionIdsForLabUnitRole(String actor, String roleName) {
+        Role role = roleService.getRoleByName(roleName);
+        if (role == null || role.getId() == null || !role.getId().matches("[1-9][0-9]{0,9}")) {
+            throw new LIMSRuntimeException("Unable to resolve laboratory role");
+        }
+        List<IdValuePair> sections = getUserTestSections(actor, role.getId());
+        if (sections == null)
+            throw new LIMSRuntimeException("Unable to resolve laboratory permissions");
+        if (sections.stream().anyMatch(
+                section -> section == null || section.getId() == null || !section.getId().matches("[1-9][0-9]{0,9}"))) {
+            throw new LIMSRuntimeException("Unable to resolve laboratory section identity");
+        }
+        return sections.stream().map(IdValuePair::getId).collect(Collectors.toSet());
     }
 
     @Override

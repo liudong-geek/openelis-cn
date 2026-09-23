@@ -25,6 +25,8 @@ import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { useHistory } from "react-router-dom";
 import ReviewResultDetails, { reviewRowIdentity } from "./ReviewResultDetails";
 import { hasReviewQuery, reviewContextErrorKey } from "./reviewTransport";
+import ReviewScopeSummary from "./ReviewScopeSummary";
+import { reviewReadOnlyMessage } from "./reviewQuerySummary";
 
 const Validation = (props) => {
   const componentMounted = useRef(false);
@@ -36,6 +38,10 @@ const Validation = (props) => {
   const { userSessionDetails } = useContext(UserSessionDetailsContext);
 
   const intl = useIntl();
+  const queryState = props.queryState || {
+    phase: hasReviewQuery(props.results?.queryId) ? "ready" : "unqueried",
+    scope: props.results?.reviewScope || "filtered",
+  };
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
@@ -370,6 +376,11 @@ const Validation = (props) => {
             )}
             <br></br>
             {sampleType}
+            {reviewReadOnlyMessage(row) && (
+              <p className="validation-read-only-reason" role="note">
+                <FormattedMessage id={reviewReadOnlyMessage(row)} />
+              </p>
+            )}
             <Button
               type="button"
               kind="ghost"
@@ -504,25 +515,31 @@ const Validation = (props) => {
 
   return (
     <>
+      <ReviewScopeSummary results={props.results} queryState={queryState} />
       {props.results?.resultList?.some((row) => row.qcReleaseBlocked) && (
-        <InlineNotification
-          lowContrast
-          hideCloseButton
-          kind="error"
-          title={intl.formatMessage({
-            id: "validation.qc.releaseBlocked.title",
-          })}
-          subtitle={intl.formatMessage(
-            { id: "validation.qc.releaseBlocked.description" },
-            {
-              count: new Set(
-                props.results.resultList
-                  .filter((row) => row.qcReleaseBlocked)
-                  .map((row) => row.analysisId),
-              ).size,
-            },
-          )}
-        />
+        <>
+          <p className="validation-query-caption">
+            <FormattedMessage id="validation.summary.currentBatchQc" />
+          </p>
+          <InlineNotification
+            lowContrast
+            hideCloseButton
+            kind="error"
+            title={intl.formatMessage({
+              id: "validation.qc.releaseBlocked.title",
+            })}
+            subtitle={intl.formatMessage(
+              { id: "validation.qc.releaseBlocked.description" },
+              {
+                count: new Set(
+                  props.results.resultList
+                    .filter((row) => row.qcReleaseBlocked)
+                    .map((row) => row.analysisId),
+                ).size,
+              },
+            )}
+          />
+        </>
       )}
       {props.results?.resultList?.length > 0 && (
         <Grid style={{ marginTop: "20px" }} className="gridBoundary">
@@ -606,6 +623,9 @@ const Validation = (props) => {
                   isSortable
                 />
               </div>
+              <p className="validation-query-caption">
+                <FormattedMessage id="validation.summary.localPagination" />
+              </p>
               <Pagination
                 onChange={handlePageChange}
                 page={page}
@@ -670,10 +690,14 @@ const Validation = (props) => {
       ) : (
         <div className="validation-empty-state" role="status">
           <h3>
-            <FormattedMessage id="validation.empty.title" />
+            <FormattedMessage
+              id={`validation.queryState.${queryState.phase}.title`}
+            />
           </h3>
           <p>
-            <FormattedMessage id="validation.empty.message" />
+            <FormattedMessage
+              id={`validation.queryState.${queryState.phase}.message`}
+            />
           </p>
         </div>
       )}
