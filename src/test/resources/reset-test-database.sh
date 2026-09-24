@@ -34,8 +34,42 @@ fi
 USE_DOCKER=false
 DB_CONTAINER=""
 if command -v docker &> /dev/null; then
-    DB_CONTAINER=$(docker ps --format '{{.Names}}' | grep -E '^openelisglobal-database$|analyzer-harness.*-db-' | head -1)
+    if [ -n "${OPENELIS_TEST_DB_CONTAINER:-}" ]; then
+        if [[ ! "$OPENELIS_TEST_DB_CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "ERROR: OPENELIS_TEST_DB_CONTAINER is not a valid Docker container name."
+            exit 2
+        fi
+        DB_CONTAINER=$(docker ps --filter "name=^/${OPENELIS_TEST_DB_CONTAINER}$" --format '{{.Names}}' | head -1)
+        if [ "$DB_CONTAINER" != "$OPENELIS_TEST_DB_CONTAINER" ]; then
+            echo "ERROR: Explicit test database container is not running: $OPENELIS_TEST_DB_CONTAINER"
+            exit 2
+        fi
+    else
+        DB_CONTAINER=$(docker ps --format '{{.Names}}' | grep -E '^openelisglobal-database$|analyzer-harness.*-db-' | head -1)
+    fi
     if [ -n "$DB_CONTAINER" ]; then
+        if [ "${OPENELIS_REQUIRE_DISPOSABLE_DB:-false}" = "true" ]; then
+            E2E_PROJECT="${OPENELIS_E2E_COMPOSE_PROJECT:-}"
+            if [[ "$E2E_PROJECT" != "openelis-cn-e2e" && ! "$E2E_PROJECT" =~ ^openelis-e2e-[a-z0-9_-]+$ ]]; then
+                echo "ERROR: Disposable reset requires a dedicated E2E Compose project."
+                exit 2
+            fi
+            DISPOSABLE_LABEL=$(docker inspect --format '{{ index .Config.Labels "org.openelisglobal.e2e.disposable" }}' "$DB_CONTAINER")
+            CONTAINER_PROJECT=$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$DB_CONTAINER")
+            CONTAINER_SERVICE=$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.service" }}' "$DB_CONTAINER")
+            DATA_VOLUME=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$DB_CONTAINER")
+            VOLUME_PROJECT=$(docker volume inspect --format '{{ index .Labels "com.docker.compose.project" }}' "$DATA_VOLUME")
+            VOLUME_KEY=$(docker volume inspect --format '{{ index .Labels "com.docker.compose.volume" }}' "$DATA_VOLUME")
+            if [ "$DISPOSABLE_LABEL" != "true" ] || [ "$CONTAINER_PROJECT" != "$E2E_PROJECT" ] \
+                || [ "$CONTAINER_SERVICE" != "db.openelis.org" ] || [ "$VOLUME_PROJECT" != "$E2E_PROJECT" ] \
+                || [ "$VOLUME_KEY" != "e2e-db-data" ]; then
+                echo "ERROR: Explicit reset target is not the verified disposable E2E database."
+                exit 2
+            fi
+        elif [ "$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$DB_CONTAINER")" = "openelis-cn" ]; then
+            echo "ERROR: Refusing to reset test ranges in the production openelis-cn project."
+            exit 2
+        fi
         USE_DOCKER=true
         echo "Using Docker container: $DB_CONTAINER"
     fi
@@ -139,6 +173,14 @@ if [ "$USE_DOCKER" = true ]; then
     fi
 else
     # Use direct psql connection
+    if [ "${OPENELIS_REQUIRE_DISPOSABLE_DB:-false}" = "true" ]; then
+        echo "ERROR: A verified disposable Docker database is required for this reset."
+        exit 2
+    fi
+    if [ "${OPENELIS_ALLOW_DIRECT_TEST_DATABASE:-}" != "I_UNDERSTAND_THIS_LOADS_TEST_FIXTURES" ]; then
+        echo "ERROR: Direct database reset requires OPENELIS_ALLOW_DIRECT_TEST_DATABASE=I_UNDERSTAND_THIS_LOADS_TEST_FIXTURES."
+        exit 2
+    fi
     if ! command -v psql &> /dev/null; then
         echo "ERROR: psql not found. Please install PostgreSQL client."
         echo "Alternatively, ensure Docker is running with openelisglobal-database container."

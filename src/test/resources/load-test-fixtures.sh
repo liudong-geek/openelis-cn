@@ -125,17 +125,6 @@ fi
 
 echo ""
 
-# Reset database if requested
-if [ "$RESET" = true ]; then
-    if [ ! -f "$RESET_SCRIPT" ]; then
-        echo "ERROR: Reset script not found: $RESET_SCRIPT"
-        exit 1
-    fi
-    echo "Resetting test database..."
-    bash "$RESET_SCRIPT" --force
-    echo ""
-fi
-
 # Dependency check function with retry logic
 check_dependencies() {
     local USE_DOCKER=$1
@@ -475,12 +464,48 @@ verify_fixtures() {
     fi
 }
 
-# Determine execution method: Docker or direct psql
+# Determine execution method: Docker or direct psql. Safety-sensitive wrappers
+# can name a verified disposable target explicitly; ordinary CI harness lanes
+# retain their existing auto-detection behavior.
 USE_DOCKER=false
 DB_CONTAINER=""
 if command -v docker &> /dev/null; then
-    DB_CONTAINER=$(docker ps --format '{{.Names}}' | grep -E '^openelisglobal-database$|analyzer-harness.*-db-' | head -1)
+    if [ -n "${OPENELIS_TEST_DB_CONTAINER:-}" ]; then
+        if [[ ! "$OPENELIS_TEST_DB_CONTAINER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "ERROR: OPENELIS_TEST_DB_CONTAINER is not a valid Docker container name."
+            exit 2
+        fi
+        DB_CONTAINER=$(docker ps --filter "name=^/${OPENELIS_TEST_DB_CONTAINER}$" --format '{{.Names}}' | head -1)
+        if [ "$DB_CONTAINER" != "$OPENELIS_TEST_DB_CONTAINER" ]; then
+            echo "ERROR: Explicit test database container is not running: $OPENELIS_TEST_DB_CONTAINER"
+            exit 2
+        fi
+    else
+        DB_CONTAINER=$(docker ps --format '{{.Names}}' | grep -E '^openelisglobal-database$|analyzer-harness.*-db-' | head -1)
+    fi
     if [ -n "$DB_CONTAINER" ]; then
+        if [ "${OPENELIS_REQUIRE_DISPOSABLE_DB:-false}" = "true" ]; then
+            E2E_PROJECT="${OPENELIS_E2E_COMPOSE_PROJECT:-}"
+            if [[ "$E2E_PROJECT" != "openelis-cn-e2e" && ! "$E2E_PROJECT" =~ ^openelis-e2e-[a-z0-9_-]+$ ]]; then
+                echo "ERROR: Disposable fixture loading requires a dedicated E2E Compose project."
+                exit 2
+            fi
+            DISPOSABLE_LABEL=$(docker inspect --format '{{ index .Config.Labels "org.openelisglobal.e2e.disposable" }}' "$DB_CONTAINER")
+            CONTAINER_PROJECT=$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$DB_CONTAINER")
+            CONTAINER_SERVICE=$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.service" }}' "$DB_CONTAINER")
+            DATA_VOLUME=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$DB_CONTAINER")
+            VOLUME_PROJECT=$(docker volume inspect --format '{{ index .Labels "com.docker.compose.project" }}' "$DATA_VOLUME")
+            VOLUME_KEY=$(docker volume inspect --format '{{ index .Labels "com.docker.compose.volume" }}' "$DATA_VOLUME")
+            if [ "$DISPOSABLE_LABEL" != "true" ] || [ "$CONTAINER_PROJECT" != "$E2E_PROJECT" ] \
+                || [ "$CONTAINER_SERVICE" != "db.openelis.org" ] || [ "$VOLUME_PROJECT" != "$E2E_PROJECT" ] \
+                || [ "$VOLUME_KEY" != "e2e-db-data" ]; then
+                echo "ERROR: Explicit fixture target is not the verified disposable E2E database."
+                exit 2
+            fi
+        elif [ "$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' "$DB_CONTAINER")" = "openelis-cn" ]; then
+            echo "ERROR: Refusing to auto-load test fixtures into the production openelis-cn project."
+            exit 2
+        fi
         USE_DOCKER=true
         echo "Using Docker container: $DB_CONTAINER"
     fi
@@ -488,6 +513,14 @@ fi
 
 # Set up psql connection parameters (used when USE_DOCKER=false)
 if [ "$USE_DOCKER" = false ]; then
+    if [ "${OPENELIS_REQUIRE_DISPOSABLE_DB:-false}" = "true" ]; then
+        echo "ERROR: A verified disposable Docker database is required for this fixture run."
+        exit 2
+    fi
+    if [ "${OPENELIS_ALLOW_DIRECT_TEST_DATABASE:-}" != "I_UNDERSTAND_THIS_LOADS_TEST_FIXTURES" ]; then
+        echo "ERROR: Direct database fixture loading requires OPENELIS_ALLOW_DIRECT_TEST_DATABASE=I_UNDERSTAND_THIS_LOADS_TEST_FIXTURES."
+        exit 2
+    fi
     if ! command -v psql &> /dev/null; then
         echo "ERROR: psql not found. Please install PostgreSQL client."
         echo "Alternatively, ensure Docker is running (openelisglobal-database or analyzer-harness DB container)."
@@ -505,6 +538,26 @@ if [ "$USE_DOCKER" = false ]; then
     echo "User: $DB_USER"
 fi
 echo ""
+
+# Reset only after the target above has been selected and, in disposable mode,
+# its container/project/service/volume identity has been verified.
+if [ "$RESET" = true ]; then
+    if [ ! -f "$RESET_SCRIPT" ]; then
+        echo "ERROR: Reset script not found: $RESET_SCRIPT"
+        exit 1
+    fi
+    echo "Resetting test database..."
+    if [ "$USE_DOCKER" = true ]; then
+        OPENELIS_TEST_DB_CONTAINER="$DB_CONTAINER" \
+        OPENELIS_REQUIRE_DISPOSABLE_DB="${OPENELIS_REQUIRE_DISPOSABLE_DB:-false}" \
+        OPENELIS_E2E_COMPOSE_PROJECT="${OPENELIS_E2E_COMPOSE_PROJECT:-}" \
+            bash "$RESET_SCRIPT" --force
+    else
+        OPENELIS_ALLOW_DIRECT_TEST_DATABASE="$OPENELIS_ALLOW_DIRECT_TEST_DATABASE" \
+            bash "$RESET_SCRIPT" --force
+    fi
+    echo ""
+fi
 
 # Check dependencies before loading
 if [ "$USE_DOCKER" = true ]; then

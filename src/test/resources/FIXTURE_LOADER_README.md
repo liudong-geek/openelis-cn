@@ -43,6 +43,7 @@ export DB_USER=clinlims
 export DB_NAME=clinlims
 export DB_HOST=localhost
 export DB_PORT=5432
+export OPENELIS_ALLOW_DIRECT_TEST_DATABASE=I_UNDERSTAND_THIS_LOADS_TEST_FIXTURES
 
 ./src/test/resources/load-test-fixtures.sh --profile=core
 ```

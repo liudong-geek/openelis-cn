@@ -42,6 +42,9 @@ jobs:
   e2e-cypress:
     name: ${{ matrix.shard_name }}
     runs-on: ubuntu-latest
+    env:
+      OPENELIS_E2E_DB_CONTAINER: openelis-cn-e2e-database
+      OPENELIS_E2E_COMPOSE_PROJECT: openelis-e2e-${{ github.run_id }}-${{ matrix.shard }}
     strategy:
       fail-fast: false
       matrix:
@@ -159,11 +162,20 @@ jobs:
           ' _ {} < /tmp/e2e-image-map/e2e-image-map-base.txt
 
       - name: Start containers
-        run: docker compose -f build.docker-compose.yml up -d --no-build --wait --wait-timeout 600
+        run: >-
+          docker compose -p "$OPENELIS_E2E_COMPOSE_PROJECT"
+          -f build.docker-compose.yml -f docker-compose.e2e.yml
+          up -d --no-build --wait --wait-timeout 600
 
-      - name: Load test fixtures into database
-        run: |
-          docker compose -f build.docker-compose.yml exec -T db.openelis.org psql -U clinlims -d clinlims --set=ON_ERROR_STOP=on < src/test/resources/e2e-foundational-data.sql
+      - name: Verify disposable E2E database target
+        run: >-
+          ./scripts/load-ci-fixtures.sh
+          -f build.docker-compose.yml -f docker-compose.e2e.yml -n
+
+      - name: Load isolated E2E fixtures
+        run: >-
+          ./scripts/load-ci-fixtures.sh
+          -f build.docker-compose.yml -f docker-compose.e2e.yml
 
       - name: Compute catch-all specs for independent shard
         if: matrix.shard == 'independent'
@@ -197,7 +209,7 @@ jobs:
         env:
           E2E_FAIL_FAST: "false"
           CYPRESS_FAIL_FAST_ENABLED: "false"
-          CYPRESS_BASE_URL: https://localhost
+          CYPRESS_BASE_URL: https://localhost:18081
           LC_ALL: en_US.UTF-8
           LANG: en_US.UTF-8
           TEST_USER: ${{ inputs.test_user || vars.TEST_USER || 'admin' }}
@@ -215,13 +227,25 @@ jobs:
         if: always()
         run: |
           echo "=== OpenELIS Backend Logs (last 500 lines) ==="
-          docker compose -f build.docker-compose.yml logs --tail=500 oe.openelis.org 2>&1 || true
+          docker compose -p "$OPENELIS_E2E_COMPOSE_PROJECT" -f build.docker-compose.yml -f docker-compose.e2e.yml logs --tail=500 oe.openelis.org 2>&1 || true
           echo ""
           echo "=== Database Logs (last 200 lines) ==="
-          docker compose -f build.docker-compose.yml logs --tail=200 db.openelis.org 2>&1 || true
+          docker compose -p "$OPENELIS_E2E_COMPOSE_PROJECT" -f build.docker-compose.yml -f docker-compose.e2e.yml logs --tail=200 db.openelis.org 2>&1 || true
 
       - name: Dump docker logs on failure
         if: failure()
         uses: jwalton/gh-docker-logs@v2
         with:
           tail: "100"
+
+      - name: Remove disposable E2E stack
+        if: always()
+        run: |
+          if [[ "$OPENELIS_E2E_COMPOSE_PROJECT" != "openelis-cn-e2e" \
+            && ! "$OPENELIS_E2E_COMPOSE_PROJECT" =~ ^openelis-e2e-[a-z0-9_-]+$ ]]; then
+            echo "Refusing to remove non-E2E Compose project: $OPENELIS_E2E_COMPOSE_PROJECT" >&2
+            exit 2
+          fi
+          docker compose -p "$OPENELIS_E2E_COMPOSE_PROJECT" \
+            -f build.docker-compose.yml -f docker-compose.e2e.yml \
+            down -v --remove-orphans

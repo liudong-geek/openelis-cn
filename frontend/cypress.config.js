@@ -1,11 +1,91 @@
 import { defineConfig } from "cypress";
 import fs from "fs";
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import https from "https";
 import http from "http";
+import {
+  assertDisposableE2eDatabaseLabels,
+  assertDisposableE2eDatabaseVolumeLabels,
+  buildPsqlQueryArguments,
+  resolveE2eComposeProject,
+  resolveE2eDatabaseContainer,
+} from "./cypress/support/e2ePsqlArguments.js";
 
 // Get project root - cypress.config.js is in frontend/, so go up one level
 const PROJECT_ROOT = new URL("..", import.meta.url).pathname;
+
+function assertDisposableE2eDatabaseContainer(containerName) {
+  let labels;
+  let volumeLabels;
+  const expectedProject = resolveE2eComposeProject();
+  try {
+    const output = execFileSync(
+      "docker",
+      ["inspect", "--format", "{{json .Config.Labels}}", containerName],
+      { cwd: PROJECT_ROOT, encoding: "utf8" },
+    );
+    labels = JSON.parse(output);
+    const volumeName = execFileSync(
+      "docker",
+      [
+        "inspect",
+        "--format",
+        '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}',
+        containerName,
+      ],
+      { cwd: PROJECT_ROOT, encoding: "utf8" },
+    ).trim();
+    if (!volumeName) {
+      throw new Error("Database data mount is not a named Docker volume.");
+    }
+    const volumeOutput = execFileSync(
+      "docker",
+      ["volume", "inspect", "--format", "{{json .Labels}}", volumeName],
+      { cwd: PROJECT_ROOT, encoding: "utf8" },
+    );
+    volumeLabels = JSON.parse(volumeOutput);
+  } catch (error) {
+    throw new Error(
+      `Unable to verify disposable Cypress database container ${containerName}.`,
+      { cause: error },
+    );
+  }
+  assertDisposableE2eDatabaseLabels(labels, expectedProject);
+  assertDisposableE2eDatabaseVolumeLabels(volumeLabels, expectedProject);
+}
+
+function executeE2ePsql(psqlArgs, options = {}) {
+  const containerName = resolveE2eDatabaseContainer();
+  assertDisposableE2eDatabaseContainer(containerName);
+  return execFileSync(
+    "docker",
+    [
+      "exec",
+      "-i",
+      containerName,
+      "psql",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "clinlims",
+      "-d",
+      "clinlims",
+      ...psqlArgs,
+    ],
+    {
+      cwd: PROJECT_ROOT,
+      encoding: "utf8",
+      ...options,
+    },
+  );
+}
+
+function executeE2ePsqlQuery(query, queryOptions = {}, processOptions = {}) {
+  return executeE2ePsql(
+    buildPsqlQueryArguments(query, queryOptions),
+    processOptions,
+  );
+}
 
 /**
  * Auto-detect base URL for cross-environment testing (localhost vs subdomains).
@@ -207,61 +287,51 @@ export default defineConfig({
           if (!fs.existsSync(sqlFile)) {
             throw new Error(`Patient merge SQL fixture not found: ${sqlFile}`);
           }
-          try {
-            execSync(
-              `docker exec -i openelisglobal-database psql -U clinlims -d clinlims < "${sqlFile}"`,
-              {
-                stdio: "inherit",
-                cwd: PROJECT_ROOT,
-                shell: "/bin/bash",
-              },
-            );
-            return null;
-          } catch (error) {
-            console.error("Error loading patient merge test data:", error);
-            return null;
-          }
+          executeE2ePsql([], {
+            input: fs.readFileSync(sqlFile),
+            stdio: ["pipe", "inherit", "inherit"],
+          });
+          return null;
         },
         checkPatientMergeFixturesExist() {
-          const checkSql = `SELECT COUNT(*) as count FROM clinlims.patient WHERE national_id LIKE 'UG-MERGE-%';`;
-          try {
-            const result = execSync(
-              `docker exec -i openelisglobal-database psql -U clinlims -d clinlims -t -c "${checkSql}"`,
-              {
-                cwd: PROJECT_ROOT,
-                shell: "/bin/bash",
-                encoding: "utf8",
-              },
-            );
-            const count = parseInt(result.trim(), 10);
-            return count >= 2; // Both Alice and Bob exist
-          } catch (error) {
-            console.error("Error checking patient merge fixtures:", error);
-            return false;
-          }
+          const checkSql = `
+            SELECT COUNT(DISTINCT national_id) as count
+            FROM clinlims.patient
+            WHERE national_id IN ('UG-MERGE-ALICE-001', 'UG-MERGE-BOB-002');
+          `;
+          const result = executeE2ePsql(["-t", "-c", checkSql]);
+          const count = parseInt(result.trim(), 10);
+          return count === 2; // Both named fixtures exist
         },
         cleanPatientMergeTestData() {
           const sql = `
-            DELETE FROM clinlims.sample_human WHERE patient_id IN (SELECT id FROM clinlims.patient WHERE national_id LIKE 'UG-MERGE-%');
-            DELETE FROM clinlims.patient_identity WHERE patient_id IN (SELECT id FROM clinlims.patient WHERE national_id LIKE 'UG-MERGE-%');
-            DELETE FROM clinlims.patient WHERE national_id LIKE 'UG-MERGE-%';
-            DELETE FROM clinlims.person WHERE email LIKE '%@testmerge.com';
-            DELETE FROM clinlims.sample WHERE accession_number LIKE 'MERGE-%';
-          `;
-          try {
-            execSync(
-              `docker exec -i openelisglobal-database psql -U clinlims -d clinlims -c "${sql}"`,
-              {
-                stdio: "inherit",
-                cwd: PROJECT_ROOT,
-                shell: "/bin/bash",
-              },
+            DELETE FROM clinlims.patient_merge_audit
+            WHERE primary_patient_id IN (
+              SELECT id FROM clinlims.patient
+              WHERE national_id IN ('UG-MERGE-ALICE-001', 'UG-MERGE-BOB-002')
+            ) OR merged_patient_id IN (
+              SELECT id FROM clinlims.patient
+              WHERE national_id IN ('UG-MERGE-ALICE-001', 'UG-MERGE-BOB-002')
             );
-            return null;
-          } catch (error) {
-            console.error("Error cleaning patient merge test data:", error);
-            return null;
-          }
+            DELETE FROM clinlims.sample_human WHERE patient_id IN (
+              SELECT id FROM clinlims.patient
+              WHERE national_id IN ('UG-MERGE-ALICE-001', 'UG-MERGE-BOB-002')
+            );
+            DELETE FROM clinlims.patient_identity WHERE patient_id IN (
+              SELECT id FROM clinlims.patient
+              WHERE national_id IN ('UG-MERGE-ALICE-001', 'UG-MERGE-BOB-002')
+            );
+            DELETE FROM clinlims.patient
+            WHERE national_id IN ('UG-MERGE-ALICE-001', 'UG-MERGE-BOB-002');
+            DELETE FROM clinlims.person
+            WHERE email IN ('alice@testmerge.com', 'bob@testmerge.com');
+            DELETE FROM clinlims.sample
+            WHERE accession_number IN ('MERGE-ALICE-001', 'MERGE-ALICE-002', 'MERGE-BOB-001');
+          `;
+          executeE2ePsql(["-c", sql], {
+            stdio: ["pipe", "inherit", "inherit"],
+          });
+          return null;
         },
         // Verification task: Get sample count for a patient by national ID
         getPatientSampleCount(nationalId) {
@@ -269,22 +339,13 @@ export default defineConfig({
             SELECT COUNT(*) as sample_count
             FROM clinlims.sample_human sh
             JOIN clinlims.patient p ON sh.patient_id = p.id
-            WHERE p.national_id = '${nationalId}';
+            WHERE p.national_id = :'national_id';
           `;
-          try {
-            const result = execSync(
-              `docker exec -i openelisglobal-database psql -U clinlims -d clinlims -t -c "${sql}"`,
-              {
-                cwd: PROJECT_ROOT,
-                shell: "/bin/bash",
-                encoding: "utf8",
-              },
-            );
-            return parseInt(result.trim(), 10);
-          } catch (error) {
-            console.error("Error getting patient sample count:", error);
-            return -1;
-          }
+          const result = executeE2ePsqlQuery(sql, {
+            outputArguments: ["-t"],
+            variables: { national_id: nationalId },
+          });
+          return parseInt(result.trim(), 10);
         },
         // Verification task: Get patient demographics by national ID
         getPatientDemographics(nationalId) {
@@ -302,37 +363,28 @@ export default defineConfig({
               per.fax
             FROM clinlims.patient p
             JOIN clinlims.person per ON p.person_id = per.id
-            WHERE p.national_id = '${nationalId}';
+            WHERE p.national_id = :'national_id';
           `;
-          try {
-            const result = execSync(
-              `docker exec -i openelisglobal-database psql -U clinlims -d clinlims -t -A -F '|' -c "${sql}"`,
-              {
-                cwd: PROJECT_ROOT,
-                shell: "/bin/bash",
-                encoding: "utf8",
-              },
-            );
-            const parts = result.trim().split("|");
-            if (parts.length >= 7) {
-              return {
-                firstName: parts[0],
-                lastName: parts[1],
-                phone: parts[2],
-                email: parts[3],
-                address: parts[4],
-                city: parts[5],
-                nationalId: parts[6],
-                isMerged: parts[7] === "t" || parts[7] === "true",
-                workPhone: parts[8] || null,
-                fax: parts[9] || null,
-              };
-            }
-            return null;
-          } catch (error) {
-            console.error("Error getting patient demographics:", error);
-            return null;
+          const result = executeE2ePsqlQuery(sql, {
+            outputArguments: ["-t", "-A", "-F", "|"],
+            variables: { national_id: nationalId },
+          });
+          const parts = result.trim().split("|");
+          if (parts.length >= 7) {
+            return {
+              firstName: parts[0],
+              lastName: parts[1],
+              phone: parts[2],
+              email: parts[3],
+              address: parts[4],
+              city: parts[5],
+              nationalId: parts[6],
+              isMerged: parts[7] === "t" || parts[7] === "true",
+              workPhone: parts[8] || null,
+              fax: parts[9] || null,
+            };
           }
+          return null;
         },
         // Verification task: Check if merge audit record exists
         getMergeAuditRecord(mergedPatientNationalId) {
@@ -348,34 +400,27 @@ export default defineConfig({
               pma.merge_date
             FROM clinlims.patient_merge_audit pma
             JOIN clinlims.patient p ON pma.merged_patient_id = p.id
-            WHERE p.national_id = '${mergedPatientNationalId}'
+            WHERE p.national_id = :'merged_patient_national_id'
             ORDER BY pma.merge_date DESC
             LIMIT 1;
           `;
-          try {
-            const result = execSync(
-              `docker exec -i openelisglobal-database psql -U clinlims -d clinlims -t -A -F '|' -c "${sql}"`,
-              {
-                cwd: PROJECT_ROOT,
-                shell: "/bin/bash",
-                encoding: "utf8",
-              },
-            );
-            const parts = result.trim().split("|");
-            if (parts.length >= 4) {
-              return {
-                auditId: parts[0],
-                primaryPatientId: parts[1],
-                mergedPatientId: parts[2],
-                mergeReason: parts[3],
-                mergedAt: parts[4],
-              };
-            }
-            return null;
-          } catch (error) {
-            console.error("Error getting merge audit record:", error);
-            return null;
+          const result = executeE2ePsqlQuery(sql, {
+            outputArguments: ["-t", "-A", "-F", "|"],
+            variables: {
+              merged_patient_national_id: mergedPatientNationalId,
+            },
+          });
+          const parts = result.trim().split("|");
+          if (parts.length >= 4) {
+            return {
+              auditId: parts[0],
+              primaryPatientId: parts[1],
+              mergedPatientId: parts[2],
+              mergeReason: parts[3],
+              mergedAt: parts[4],
+            };
           }
+          return null;
         },
       });
 

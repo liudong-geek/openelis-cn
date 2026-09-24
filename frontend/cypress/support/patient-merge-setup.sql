@@ -6,29 +6,36 @@
 -- Clean up any existing test data first (order matters for FK constraints!)
 -- 1. First delete merge audit records that reference test patients
 DELETE FROM clinlims.patient_merge_audit WHERE primary_patient_id IN (
-    SELECT id FROM clinlims.patient WHERE national_id LIKE 'UG-MERGE-%'
+    SELECT id FROM clinlims.patient
+    WHERE national_id IN ('UG-MERGE-ALICE-001', 'UG-MERGE-BOB-002')
 ) OR merged_patient_id IN (
-    SELECT id FROM clinlims.patient WHERE national_id LIKE 'UG-MERGE-%'
+    SELECT id FROM clinlims.patient
+    WHERE national_id IN ('UG-MERGE-ALICE-001', 'UG-MERGE-BOB-002')
 );
 
 -- 2. Delete sample_human links
 DELETE FROM clinlims.sample_human WHERE patient_id IN (
-    SELECT id FROM clinlims.patient WHERE national_id LIKE 'UG-MERGE-%'
+    SELECT id FROM clinlims.patient
+    WHERE national_id IN ('UG-MERGE-ALICE-001', 'UG-MERGE-BOB-002')
 );
 
 -- 3. Delete samples created for test patients (by accession number pattern)
-DELETE FROM clinlims.sample WHERE accession_number LIKE 'MERGE-%';
+DELETE FROM clinlims.sample
+WHERE accession_number IN ('MERGE-ALICE-001', 'MERGE-ALICE-002', 'MERGE-BOB-001');
 
 -- 4. Delete patient identities
 DELETE FROM clinlims.patient_identity WHERE patient_id IN (
-    SELECT id FROM clinlims.patient WHERE national_id LIKE 'UG-MERGE-%'
+    SELECT id FROM clinlims.patient
+    WHERE national_id IN ('UG-MERGE-ALICE-001', 'UG-MERGE-BOB-002')
 );
 
 -- 5. Delete patients
-DELETE FROM clinlims.patient WHERE national_id LIKE 'UG-MERGE-%';
+DELETE FROM clinlims.patient
+WHERE national_id IN ('UG-MERGE-ALICE-001', 'UG-MERGE-BOB-002');
 
 -- 6. Delete persons (by email pattern)
-DELETE FROM clinlims.person WHERE email LIKE '%@testmerge.com';
+DELETE FROM clinlims.person
+WHERE email IN ('alice@testmerge.com', 'bob@testmerge.com');
 
 -- =====================================================
 -- PATIENT 1: Alice MergeTest (will be merged INTO - primary)
@@ -201,5 +208,5 @@ SELECT
     (SELECT COUNT(*) FROM clinlims.sample_human sh WHERE sh.patient_id = p.id) AS sample_count
 FROM clinlims.patient p
 JOIN clinlims.person per ON p.person_id = per.id
-WHERE p.national_id LIKE 'UG-MERGE-%'
+WHERE p.national_id IN ('UG-MERGE-ALICE-001', 'UG-MERGE-BOB-002')
 ORDER BY p.id;

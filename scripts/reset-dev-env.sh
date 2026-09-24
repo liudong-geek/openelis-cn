@@ -52,10 +52,18 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-COMPOSE_FILES="-f dev.docker-compose.yml -f docker-compose.letsencrypt.yml"
-
 cd "$(dirname "$0")/.."
 PROJECT_ROOT=$(pwd)
+DEV_COMPOSE_PROJECT="${OPENELIS_DEV_COMPOSE_PROJECT:-openelis-dev}"
+if [[ ! "$DEV_COMPOSE_PROJECT" =~ ^openelis-dev(-[a-z0-9_-]+)?$ ]]; then
+    echo -e "${RED}ERROR: Refusing non-development Compose project: $DEV_COMPOSE_PROJECT${NC}" >&2
+    exit 2
+fi
+COMPOSE=(
+    docker compose -p "$DEV_COMPOSE_PROJECT"
+    -f dev.docker-compose.yml
+    -f docker-compose.letsencrypt.yml
+)
 
 echo -e "${BLUE}======================================${NC}"
 echo -e "${BLUE}  OpenELIS Dev Environment Reset${NC}"
@@ -66,9 +74,9 @@ echo ""
 echo -e "${YELLOW}[1/4] Stopping containers...${NC}"
 if [ "$FULL_RESET" = true ]; then
     echo -e "  ${YELLOW}→ Full reset: removing volumes${NC}"
-    docker compose $COMPOSE_FILES down -v 2>/dev/null || true
+    "${COMPOSE[@]}" down -v 2>/dev/null || true
 else
-    docker compose $COMPOSE_FILES down 2>/dev/null || true
+    "${COMPOSE[@]}" down 2>/dev/null || true
 fi
 echo -e "  ${GREEN}✓ Containers stopped${NC}"
 
@@ -83,7 +91,7 @@ fi
 
 # Step 3: Start containers
 echo -e "${YELLOW}[3/4] Starting containers...${NC}"
-docker compose $COMPOSE_FILES up -d
+"${COMPOSE[@]}" up -d
 echo -e "  ${GREEN}✓ Containers started${NC}"
 
 # Step 4: Wait for webapp
@@ -126,4 +134,4 @@ echo -e "  ${BLUE}React UI:${NC}  https://localhost/"
 echo -e "  ${BLUE}Legacy UI:${NC} https://localhost/api/OpenELIS-Global/"
 echo -e "  ${BLUE}Credentials:${NC} admin / adminADMIN!"
 echo ""
-docker compose $COMPOSE_FILES ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || docker compose $COMPOSE_FILES ps
+"${COMPOSE[@]}" ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || "${COMPOSE[@]}" ps

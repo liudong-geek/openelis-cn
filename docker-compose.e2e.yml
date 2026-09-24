@@ -1,0 +1,80 @@
+name: openelis-cn-e2e
+
+# Disposable browser-test isolation. This file is the only Compose source that
+# may mark a database disposable. Always combine it with a normal/build Compose
+# file and use the explicit project recorded in OPENELIS_E2E_COMPOSE_PROJECT.
+services:
+  certs:
+    container_name: openelis-cn-e2e-certs
+    restart: "no"
+    # The image populates the mounted certificate volumes when the container is
+    # created. Keep it running so `docker compose up --wait` can treat the
+    # dependency as ready instead of failing on a completed one-shot container.
+    command: ["tail", "-f", "/dev/null"]
+
+  db.openelis.org:
+    container_name: openelis-cn-e2e-database
+    restart: "no"
+    labels:
+      org.openelisglobal.e2e.disposable: "true"
+    ports: !override []
+    volumes: !override
+      - e2e-db-data:/var/lib/postgresql/data
+
+  oe.openelis.org:
+    container_name: openelis-cn-e2e-webapp
+    restart: "no"
+    ports: !override []
+    volumes: !override
+      - key_trust-store-volume:/etc/openelis-global
+      - e2e-lucene:/var/lib/lucene_index
+      - e2e-plugins:/var/lib/openelis-global/plugins
+      - e2e-programs:/var/lib/openelis-global/programs
+      - e2e-oe-logs:/var/lib/openelis-global/logs
+      - e2e-tomcat-logs:/usr/local/tomcat/logs
+      - ./volume/tomcat/oe_server.xml:/usr/local/tomcat/conf/server.xml:ro
+      - ./volume/properties/SystemConfiguration.properties:/var/lib/openelis-global/properties/SystemConfiguration.properties:ro
+      - ./volume/odoo/odoo-test-product-mapping.csv:/var/lib/openelis-global/odoo/odoo-test-product-mapping.csv:ro
+      - ./volume/analyzer/analyzer-test-map.csv:/var/lib/openelis-global/analyzer/analyzer-test-map.csv:ro
+      - e2e-branding:/var/lib/openelis-global/branding
+      - ./volume/menu/menu_config.json:/var/lib/openelis-global/menu/menu_config.json:ro
+      - e2e-analyzer-imports:/data/analyzer-imports
+    networks:
+      default:
+        ipv4_address: 172.27.1.121
+
+  fhir.openelis.org:
+    container_name: openelis-cn-e2e-fhir
+    profiles: ["integration"]
+    restart: "no"
+    ports: !override []
+
+  frontend.openelis.org:
+    container_name: openelis-cn-e2e-frontend
+    restart: "no"
+    networks:
+      default:
+        ipv4_address: 172.27.1.122
+
+  proxy:
+    container_name: openelis-cn-e2e-proxy
+    restart: "no"
+    ports: !override
+      - "18081:443"
+
+networks:
+  default:
+    name: ${OPENELIS_E2E_COMPOSE_PROJECT:-openelis-cn-e2e}-network
+    ipam:
+      config: !override
+        - subnet: 172.27.1.0/24
+
+volumes:
+  e2e-db-data:
+  e2e-lucene:
+  e2e-plugins:
+  e2e-programs:
+  e2e-oe-logs:
+  e2e-tomcat-logs:
+  e2e-branding:
+  e2e-analyzer-imports:
