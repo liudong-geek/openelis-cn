@@ -5,21 +5,38 @@ const TEST_ORG_PREFIX = "E2E-ORG";
 class OrganizationManagementPage {
   constructor() {
     this.selectors = {
-      addButton: "[data-cy='add-button']",
+      addButton: ".organization-management-page",
       saveButton: "#saveButton",
       orgName: "#org-name",
       orgPrefix: "#org-prefix",
-      isActive: "#is-active",
+      isActive: "#org-active",
       parentOrgName: "#parentOrgName",
       orgSearchBar: "#org-name-search-bar",
-      referringClinic: '[id="5:select"]',
-      referralLab: '[id="6:select"]',
-      orgTableRow: ".cds--data-table > tbody:nth-child(2)",
+      referringClinic: "#organization-type-5",
+      referralLab: "#organization-type-6",
+      orgTableRow: ".organization-management-page table tbody",
     };
   }
 
   clickAddOrganization() {
-    cy.get(this.selectors.addButton).should("be.visible").click();
+    cy.intercept("GET", "**/rest/Organization?ID=0&startingRecNo=1").as(
+      "newOrganizationForm",
+    );
+    cy.intercept("GET", "**/rest/displayList/ACTIVE_ORG_LIST").as(
+      "organizationParents",
+    );
+    cy.get(this.selectors.addButton)
+      .contains("button", "新建机构或科室")
+      .first()
+      .should("be.visible")
+      .click();
+    cy.wait("@newOrganizationForm")
+      .its("response.statusCode")
+      .should("eq", 200);
+    cy.wait("@organizationParents")
+      .its("response.statusCode")
+      .should("eq", 200);
+    cy.contains("h1", "新增机构或科室").should("be.visible");
   }
 
   addOrgName(orgName = TEST_ORG_NAME) {
@@ -39,7 +56,7 @@ class OrganizationManagementPage {
   }
 
   activateOrganization() {
-    cy.get(this.selectors.isActive).clear().type("Y").should("have.value", "Y");
+    cy.get(this.selectors.isActive).select("Y").should("have.value", "Y");
   }
 
   addPrefix(prefix = TEST_ORG_PREFIX) {
@@ -72,49 +89,53 @@ class OrganizationManagementPage {
       .clear()
       .type(parentOrgName)
       .should("have.value", parentOrgName);
+    cy.intercept("GET", "**/rest/organization/*").as(
+      "selectedOrganizationParent",
+    );
+    cy.contains('[data-cy="auto-suggestion"]', parentOrgName)
+      .should("be.visible")
+      .click();
+    cy.wait("@selectedOrganizationParent").then(({ response }) => {
+      expect(response.statusCode).to.eq(200);
+      expect(response.body.organizationName).to.eq(parentOrgName);
+      expect(String(response.body.id)).to.match(/^[1-9][0-9]*$/);
+    });
   }
 
   saveOrganization() {
-    cy.get(this.selectors.saveButton).should("be.visible").click();
-    cy.url().should("include", "/MasterListsPage");
+    cy.get(this.selectors.saveButton)
+      .should("be.visible")
+      .and("not.be.disabled")
+      .click();
   }
 
   searchOrganzation(orgName = TEST_ORG_NAME) {
-    cy.get(`input${this.selectors.orgSearchBar}`)
+    cy.intercept({
+      method: "GET",
+      pathname: "/api/OpenELIS-Global/rest/SearchOrganizationMenu",
+      query: { searchString: orgName },
+    }).as("searchOrganization");
+    cy.get(this.selectors.orgSearchBar)
       .should("be.visible")
-      .scrollIntoView();
-
-    cy.get(`input${this.selectors.orgSearchBar}`)
-      .focus()
-      .clear({ force: true });
-
-    cy.get(`input${this.selectors.orgSearchBar}`).type(orgName, {
-      force: true,
-    });
+      .clear()
+      .type(orgName);
+    cy.wait("@searchOrganization").its("response.statusCode").should("eq", 200);
   }
 
   searchInstitute(instituteName = TEST_LAB_NAME) {
-    cy.get(`input${this.selectors.orgSearchBar}`)
-      .should("be.visible")
-      .scrollIntoView();
-
-    cy.get(`input${this.selectors.orgSearchBar}`)
-      .focus()
-      .clear({ force: true });
-
-    cy.get(`input${this.selectors.orgSearchBar}`).type(instituteName, {
-      force: true,
-    });
+    this.searchOrganzation(instituteName);
   }
 
   confirmOrganization(orgName = TEST_ORG_NAME) {
     cy.get(this.selectors.orgTableRow).contains(orgName).should("be.visible");
   }
 
-  confirmInstitute(instituteName = TEST_LAB_NAME) {
+  confirmInstitute(instituteName = TEST_LAB_NAME, parentOrgName) {
     cy.get(this.selectors.orgTableRow)
       .contains(instituteName)
-      .should("be.visible");
+      .should("be.visible")
+      .closest("tr")
+      .should("contain.text", parentOrgName);
   }
 }
 

@@ -1,168 +1,194 @@
 import LoginPage from "../pages/LoginPage";
 
-let homePage = null;
-let loginPage = null;
-let patientPage = null;
+const runNumber = `${Date.now()}${Cypress._.random(1000, 9999)}`;
+const alphaSuffix = runNumber
+  .slice(-8)
+  .split("")
+  .map((digit) => "abcdefghij"[Number(digit)])
+  .join("");
+const patient = {
+  firstName: `Eli${alphaSuffix}`,
+  lastName: `Cyp${alphaSuffix}`,
+  subjectNumber: runNumber.slice(-12),
+  nationalId: `CN-E2E-${runNumber}`,
+  dateOfBirth: "",
+  gender: "M",
+  unmatchedLabNumber: `E2E${runNumber}`,
+};
 
-before("login", () => {
+let homePage;
+let loginPage;
+let patientPage;
+let savedPatientId;
+
+const enterCurrentPatient = () => {
+  patientPage.enterPatientInfo(
+    patient.firstName,
+    patient.lastName,
+    patient.subjectNumber,
+    patient.nationalId,
+    patient.dateOfBirth,
+  );
+  patientPage.assertEnteredPatientInfo(patient);
+};
+
+const reopenAdvancedPatientSearch = () => {
+  patientPage = homePage.goToPatientEntry();
+  patientPage.openAdvancedSearch();
+};
+
+before("open the authenticated application", () => {
   loginPage = new LoginPage();
   loginPage.visit();
 });
-describe("Add New Patient", function () {
-  it("User Visits Home Page and goes to Add Add|Modify Patient Page", () => {
+
+describe("Patient records through the China LIS workflow", function () {
+  it("enters patient records from Orders and specimens through the intake workbench", () => {
     homePage = loginPage.goToHomePage();
     patientPage = homePage.goToPatientEntry();
   });
 
-  it("Add|Modify Patient page should appear with search field", function () {
-    patientPage
-      .getPatientEntryPageTitle()
-      .should("contain.text", "Add Or Modify Patient");
+  it("shows the default list and reads real quick-search matches beyond 100", () => {
+    patientPage.assertPatientManagementBoundary();
+    patientPage.verifyDefaultListAndQuickPagingBoundary();
   });
 
-  it("External search button should be deactivated", function () {
-    patientPage.getExternalSearchButton();
+  it("opens local advanced search without exposing external patient search", () => {
+    patientPage.openAdvancedSearch();
+    cy.get("#local_search").should("be.visible");
+    cy.get("#external_search").should("not.exist");
   });
 
-  it("Navigate to create Patient tab", function () {
+  it("opens the current new-patient route from the patient header", () => {
     patientPage.clickNewPatientTab();
     patientPage.getSubmitButton().should("be.visible");
   });
 
-  it("Enter patient Information and clear", function () {
-    cy.fixture("Patient").then((patient) => {
-      patientPage.enterPatientInfo(
-        patient.firstName,
-        patient.lastName,
-        patient.subjectNumber,
-        patient.nationalId,
-        patient.DOB,
-      );
+  it("fills every required patient identity field with a run-unique patient", () => {
+    patientPage.getDateOfBirthForCurrentLocale().then((dateOfBirth) => {
+      patient.dateOfBirth = dateOfBirth;
+      enterCurrentPatient();
     });
   });
 
-  it("Clear new patient information", function () {
+  it("clears the populated new-patient form without saving", () => {
+    let clearTriggeredSave = false;
+    cy.intercept("POST", "**/rest/PatientManagement", () => {
+      clearTriggeredSave = true;
+    });
+
     patientPage.clearPatientInfo();
-  });
-
-  it("Enter patient Information and save", function () {
-    cy.fixture("Patient").then((patient) => {
-      patientPage.enterPatientInfo(
-        patient.firstName,
-        patient.lastName,
-        patient.subjectNumber,
-        patient.nationalId,
-        patient.DOB,
+    patientPage.assertPatientInfoCleared();
+    cy.then(() => {
+      expect(clearTriggeredSave, "clear does not submit a patient").to.eq(
+        false,
       );
     });
   });
-  it("Save new patient information button", function () {
-    patientPage.clickSavePatientButton();
-    cy.wait(1000);
-    cy.get("div[role='status']").should("be.visible");
-    cy.wait(200).reload();
-  });
-});
 
-describe("Search Patient", function () {
-  it("Search patients By gender", function () {
-    cy.wait(1000);
-    patientPage.getMaleGenderRadioButton();
-    cy.wait(200);
-    patientPage.clickSearchPatientButton();
-    cy.fixture("Patient").then((patient) => {
-      patientPage.validatePatientByGender("M");
-    });
-    cy.wait(200).reload();
-  });
-  it("Search Patient By FirstName only", function () {
-    cy.wait(1000);
-    cy.fixture("Patient").then((patient) => {
-      patientPage.searchPatientByFirstNameOnly(patient.firstName);
-      patientPage.getFirstName().should("have.value", patient.firstName);
-      patientPage.clickSearchPatientButton();
-      patientPage.validatePatientSearchTablebyRespectiveField(
-        patient.firstName,
-        "firstName",
-      );
-    });
-    cy.wait(200).reload();
+  it("refills the same run-unique patient after clearing", () => {
+    enterCurrentPatient();
   });
 
-  it("Search Patient By LastName only", function () {
-    cy.wait(1000);
-    cy.fixture("Patient").then((patient) => {
-      patientPage.searchPatientByLastNameOnly(patient.lastName);
-      patientPage.getLastName().should("have.value", patient.lastName);
-      patientPage.clickSearchPatientButton();
-      patientPage.validatePatientSearchTablebyRespectiveField(
-        patient.lastName,
-        "lastName",
-      );
+  it("saves the real patient, captures its returned id, and reads its detail back", () => {
+    patientPage.savePatientAndVerifyDetails(patient).then((patientId) => {
+      savedPatientId = patientId;
+      expect(savedPatientId, "captured patient id").to.match(/^[1-9][0-9]*$/);
     });
-    cy.wait(200).reload();
   });
 
-  it("Search Patient By both Names", function () {
-    cy.wait(1000);
-    cy.fixture("Patient").then((patient) => {
-      patientPage.searchPatientByFirstAndLastName(
-        patient.firstName,
-        patient.lastName,
-      );
-      patientPage.getFirstName().should("have.value", patient.firstName);
-      patientPage.getLastName().should("have.value", patient.lastName);
-
-      patientPage.getLastName().should("not.have.value", patient.inValidName);
-
-      patientPage.clickSearchPatientButton();
-      patientPage.validatePatientSearchTable(
-        patient.firstName,
-        patient.inValidName,
-      );
-    });
-    cy.wait(200).reload();
-  });
-  it("Search patient By Date Of Birth", function () {
-    cy.wait(1000);
-    cy.fixture("Patient").then((patient) => {
-      patientPage.searchPatientByDateOfBirth(patient.DOB);
-      patientPage.clickSearchPatientButton();
-      patientPage.validatePatientSearchTablebyRespectiveField(
-        patient.DOB,
-        "DOB",
-      );
-    });
-    cy.wait(200).reload();
+  it("finds the saved patient by gender with an exact local advanced request", () => {
+    reopenAdvancedPatientSearch();
+    patientPage.runAdvancedSearch(
+      { gender: patient.gender },
+      {
+        targetPatientId: savedPatientId,
+        expectedResult: { gender: patient.gender },
+        rowValues: [patient.firstName, patient.lastName],
+        rowMessageKeys: ["patient.male"],
+      },
+    );
   });
 
-  it("Search patient By Lab Number", function () {
-    cy.fixture("Patient").then((patient) => {
-      patientPage.searchPatientBylabNo(patient.labNo);
-      cy.intercept(
-        "GET",
-        `**/rest/patient-search-results?*labNumber=${patient.labNo}*`,
-      ).as("getPatientSearch");
-      patientPage.clickSearchPatientButton();
-      cy.wait("@getPatientSearch").then((interception) => {
-        const responseBody = interception.response.body;
-        console.log(responseBody);
-        expect(responseBody.patientSearchResults).to.be.an("array").that.is
-          .empty;
-      });
-    });
-    cy.wait(200).reload();
+  it("finds the saved patient by last name only", () => {
+    reopenAdvancedPatientSearch();
+    patientPage.runAdvancedSearch(
+      { lastName: patient.lastName },
+      {
+        targetPatientId: savedPatientId,
+        expectedResult: {
+          lastName: patient.lastName,
+          firstName: patient.firstName,
+        },
+        rowValues: [patient.lastName, patient.firstName],
+      },
+    );
   });
 
-  it("Search patient By PatientId", function () {
-    cy.wait(1000);
-    cy.fixture("Patient").then((patient) => {
-      patientPage.searchPatientByPatientId(patient.nationalId);
-      patientPage.clickSearchPatientButton();
-      patientPage.validatePatientSearchTable(
-        patient.firstName,
-        patient.inValidName,
-      );
-    });
+  it("finds the saved patient by first name only", () => {
+    reopenAdvancedPatientSearch();
+    patientPage.runAdvancedSearch(
+      { firstName: patient.firstName },
+      {
+        targetPatientId: savedPatientId,
+        expectedResult: {
+          firstName: patient.firstName,
+          lastName: patient.lastName,
+        },
+        rowValues: [patient.firstName, patient.lastName],
+      },
+    );
+  });
+
+  it("finds the saved patient by the combined last-name and first-name fields", () => {
+    reopenAdvancedPatientSearch();
+    patientPage.runAdvancedSearch(
+      { lastName: patient.lastName, firstName: patient.firstName },
+      {
+        targetPatientId: savedPatientId,
+        expectedResult: {
+          lastName: patient.lastName,
+          firstName: patient.firstName,
+        },
+        rowValues: [patient.lastName, patient.firstName],
+      },
+    );
+  });
+
+  it("finds the saved patient by configured-locale date of birth", () => {
+    reopenAdvancedPatientSearch();
+    patientPage.runAdvancedSearch(
+      { dateOfBirth: patient.dateOfBirth },
+      {
+        targetPatientId: savedPatientId,
+        expectedResult: { dob: patient.dateOfBirth },
+        rowValues: [patient.dateOfBirth, patient.firstName, patient.lastName],
+      },
+    );
+  });
+
+  it("returns a real empty result for a run-unique unmatched lab number", () => {
+    reopenAdvancedPatientSearch();
+    patientPage.runAdvancedSearch(
+      { labNumber: patient.unmatchedLabNumber },
+      {
+        expectEmpty: true,
+      },
+    );
+  });
+
+  it("finds the saved patient through all patient-identifier parameters", () => {
+    reopenAdvancedPatientSearch();
+    patientPage.runAdvancedSearch(
+      { patientId: patient.nationalId },
+      {
+        targetPatientId: savedPatientId,
+        expectedResult: {
+          patientID: savedPatientId,
+          nationalId: patient.nationalId,
+        },
+        rowValues: [patient.nationalId, patient.firstName, patient.lastName],
+      },
+    );
   });
 });

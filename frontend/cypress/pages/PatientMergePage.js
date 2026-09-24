@@ -1,3 +1,5 @@
+let mergeRequestSequence = 0;
+
 class PatientMergePage {
   // Selectors
   selectors = {
@@ -84,7 +86,10 @@ class PatientMergePage {
 
   visit() {
     cy.visit("/PatientMerge");
-    cy.wait(2000); // Wait for page to load
+    cy.get(this.selectors.progressIndicator).should("be.visible");
+    cy.get(this.selectors.patient1PatientId).should("be.visible");
+    cy.get(this.selectors.patient2PatientId).should("be.visible");
+    return this;
   }
 
   // ==================== Page Elements ====================
@@ -130,23 +135,52 @@ class PatientMergePage {
     return this;
   }
 
-  searchPatient1() {
-    cy.get(".patientSelectionSection")
-      .first()
+  searchPatient1(expectedPatientId = "") {
+    const alias = `mergePatientSearch${++mergeRequestSequence}`;
+    cy.intercept("GET", "**/rest/patient-search-results?*", (request) => {
+      const requestUrl = new URL(request.url);
+      if (
+        !expectedPatientId ||
+        requestUrl.searchParams.get("nationalID") === expectedPatientId
+      ) {
+        request.alias = alias;
+      }
+    });
+    cy.get(this.selectors.patient1PatientId)
+      .closest(".patientSelectionSection")
       .find(this.selectors.searchButton)
+      .should("be.enabled")
       .click();
-    cy.wait(3000); // Wait for search results
+    cy.wait(`@${alias}`).then(({ response }) => {
+      expect(response?.statusCode, "first-patient search status").to.eq(200);
+      expect(response?.body?.patientSearchResults).to.be.an("array");
+    });
     return this;
   }
 
-  selectPatient1FromResults(index = 0) {
-    cy.get(".patientSelectionSection")
-      .first()
-      .find(this.selectors.searchResultsRow)
-      .eq(index)
-      .find(this.selectors.patientRadioSelect)
-      .click({ force: true });
-    cy.wait(2000); // Wait for selection to process
+  selectPatient1FromResults(identifier) {
+    const alias = `mergePatientDetails${++mergeRequestSequence}`;
+    cy.intercept("GET", "**/rest/patient/merge/details/*").as(alias);
+    cy.get(this.selectors.patient1PatientId)
+      .closest(".patientSelectionSection")
+      .contains(this.selectors.searchResultsRow, identifier)
+      .should("have.length", 1)
+      .within(() => {
+        cy.get(this.selectors.patientRadioSelect)
+          .invoke("attr", "id")
+          .then((radioId) => {
+            expect(radioId, "first-patient result radio id").to.be.a("string");
+            cy.get(`label[for='${radioId}']`).should("be.visible").click();
+          });
+      });
+    cy.wait(`@${alias}`).then(({ response }) => {
+      expect(response?.statusCode, "first-patient details status").to.eq(200);
+    });
+    cy.get(this.selectors.patientSelectionContainer)
+      .contains(this.selectors.patientCard, identifier)
+      .should("have.length", 1)
+      .should("be.visible")
+      .and("contain.text", identifier);
     return this;
   }
 
@@ -194,23 +228,52 @@ class PatientMergePage {
     return this;
   }
 
-  searchPatient2() {
-    cy.get(".patientSelectionSection")
-      .last()
+  searchPatient2(expectedPatientId = "") {
+    const alias = `mergePatientSearch${++mergeRequestSequence}`;
+    cy.intercept("GET", "**/rest/patient-search-results?*", (request) => {
+      const requestUrl = new URL(request.url);
+      if (
+        !expectedPatientId ||
+        requestUrl.searchParams.get("nationalID") === expectedPatientId
+      ) {
+        request.alias = alias;
+      }
+    });
+    cy.get(this.selectors.patient2PatientId)
+      .closest(".patientSelectionSection")
       .find(this.selectors.searchButton)
+      .should("be.enabled")
       .click();
-    cy.wait(3000); // Wait for search results
+    cy.wait(`@${alias}`).then(({ response }) => {
+      expect(response?.statusCode, "second-patient search status").to.eq(200);
+      expect(response?.body?.patientSearchResults).to.be.an("array");
+    });
     return this;
   }
 
-  selectPatient2FromResults(index = 0) {
-    cy.get(".patientSelectionSection")
-      .last()
-      .find(this.selectors.searchResultsRow)
-      .eq(index)
-      .find(this.selectors.patientRadioSelect)
-      .click({ force: true });
-    cy.wait(2000); // Wait for selection to process
+  selectPatient2FromResults(identifier) {
+    const alias = `mergePatientDetails${++mergeRequestSequence}`;
+    cy.intercept("GET", "**/rest/patient/merge/details/*").as(alias);
+    cy.get(this.selectors.patient2PatientId)
+      .closest(".patientSelectionSection")
+      .contains(this.selectors.searchResultsRow, identifier)
+      .should("have.length", 1)
+      .within(() => {
+        cy.get(this.selectors.patientRadioSelect)
+          .invoke("attr", "id")
+          .then((radioId) => {
+            expect(radioId, "second-patient result radio id").to.be.a("string");
+            cy.get(`label[for='${radioId}']`).should("be.visible").click();
+          });
+      });
+    cy.wait(`@${alias}`).then(({ response }) => {
+      expect(response?.statusCode, "second-patient details status").to.eq(200);
+    });
+    cy.get(this.selectors.patientSelectionContainer)
+      .contains(this.selectors.patientCard, identifier)
+      .should("have.length", 1)
+      .should("be.visible")
+      .and("contain.text", identifier);
     return this;
   }
 
@@ -241,8 +304,12 @@ class PatientMergePage {
     if (searchCriteria.lastName) {
       this.enterPatient1LastName(searchCriteria.lastName);
     }
-    this.searchPatient1();
-    this.selectPatient1FromResults(searchCriteria.resultIndex || 0);
+    const identifier =
+      searchCriteria.nationalId ||
+      searchCriteria.firstName ||
+      searchCriteria.lastName;
+    this.searchPatient1(searchCriteria.nationalId || "");
+    this.selectPatient1FromResults(identifier);
     return this;
   }
 
@@ -256,22 +323,26 @@ class PatientMergePage {
     if (searchCriteria.lastName) {
       this.enterPatient2LastName(searchCriteria.lastName);
     }
-    this.searchPatient2();
-    this.selectPatient2FromResults(searchCriteria.resultIndex || 0);
+    const identifier =
+      searchCriteria.nationalId ||
+      searchCriteria.firstName ||
+      searchCriteria.lastName;
+    this.searchPatient2(searchCriteria.nationalId || "");
+    this.selectPatient2FromResults(identifier);
     return this;
   }
 
   // ==================== Step 2: Primary Selection ====================
 
   selectPatient1AsPrimary() {
-    cy.get(this.selectors.primaryPatientRadio1).click({ force: true });
-    cy.wait(500);
+    cy.get("label[for='patient-1']").should("be.visible").click();
+    cy.get(this.selectors.primaryPatientRadio1).should("be.checked");
     return this;
   }
 
   selectPatient2AsPrimary() {
-    cy.get(this.selectors.primaryPatientRadio2).click({ force: true });
-    cy.wait(500);
+    cy.get("label[for='patient-2']").should("be.visible").click();
+    cy.get(this.selectors.primaryPatientRadio2).should("be.checked");
     return this;
   }
 
@@ -351,7 +422,8 @@ class PatientMergePage {
   }
 
   checkConfirmationCheckbox() {
-    cy.get(this.selectors.confirmCheckbox).check({ force: true });
+    cy.get("label[for='confirmMerge']").should("be.visible").click();
+    cy.get(this.selectors.confirmCheckbox).should("be.checked");
     return this;
   }
 
@@ -363,18 +435,49 @@ class PatientMergePage {
   // ==================== Navigation ====================
 
   clickNextStep() {
-    cy.get(this.selectors.nextStepButton)
-      .filter(":visible")
-      .first()
-      .should("not.be.disabled")
-      .click();
-    cy.wait(2000); // Wait for next step to load
+    cy.get(this.selectors.progressSteps).then(($steps) => {
+      const currentStep = [...$steps].findIndex((step) =>
+        step.classList.contains("cds--progress-step--current"),
+      );
+      expect(currentStep, "current merge step").to.be.at.least(0);
+      if (currentStep === 0) {
+        const alias = `mergeCompareDetails${++mergeRequestSequence}`;
+        cy.intercept("GET", "**/rest/patient/merge/details/*").as(alias);
+        cy.get(this.selectors.nextStepButton)
+          .filter(":visible")
+          .should("have.length", 1)
+          .and("not.be.disabled")
+          .click();
+        cy.wait([`@${alias}`, `@${alias}`]).each(({ response }) => {
+          expect(response?.statusCode, "compare details status").to.eq(200);
+        });
+      } else {
+        cy.get(this.selectors.nextStepButton)
+          .filter(":visible")
+          .should("have.length", 1)
+          .and("not.be.disabled")
+          .click();
+      }
+      cy.get(this.selectors.progressSteps)
+        .eq(currentStep + 1)
+        .should("have.class", "cds--progress-step--current");
+    });
     return this;
   }
 
   clickBack() {
-    cy.get(this.selectors.backButton).filter(":visible").first().click();
-    cy.wait(500);
+    cy.get(this.selectors.progressSteps).then(($steps) => {
+      const currentStep = [...$steps].findIndex((step) =>
+        step.classList.contains("cds--progress-step--current"),
+      );
+      cy.get(this.selectors.backButton)
+        .filter(":visible")
+        .should("have.length", 1)
+        .click();
+      cy.get(this.selectors.progressSteps)
+        .eq(currentStep - 1)
+        .should("have.class", "cds--progress-step--current");
+    });
     return this;
   }
 
@@ -384,12 +487,19 @@ class PatientMergePage {
   }
 
   clickConfirmMerge() {
+    const alias = `executePatientMerge${++mergeRequestSequence}`;
+    cy.intercept("POST", "**/rest/patient/merge/execute").as(alias);
     cy.get(this.selectors.confirmMergeButton)
       .filter(":visible")
-      .first()
+      .should("have.length", 1)
       .should("not.be.disabled")
       .click();
-    cy.wait(3000); // Wait for merge to complete
+    cy.wait(`@${alias}`).then(({ response }) => {
+      expect(response?.statusCode, "patient merge status").to.eq(200);
+      expect(response?.body?.primaryPatientId, "surviving patient id").to.exist;
+      expect(response?.body?.mergedPatientId, "merged patient id").to.exist;
+      expect(response?.body?.auditId, "patient merge audit id").to.exist;
+    });
     return this;
   }
 
@@ -452,14 +562,21 @@ class PatientMergePage {
   }
 
   verifyMergeSuccess() {
-    // After successful merge, the wizard resets to step 1 (Patient Selection)
-    // The success notification auto-dismisses after 2s, so we verify the reset state instead
-    // which is a more reliable indicator of successful merge completion
-    cy.get(this.selectors.progressSteps)
-      .first()
-      .should("have.class", "cds--progress-step--current");
-    // Also verify the patient selection forms are shown (wizard reset)
-    cy.get(".patientSelectionSection").should("be.visible");
+    cy.location("pathname").should(
+      "match",
+      /^\/PatientManagement\/[1-9][0-9]*$/,
+    );
+    cy.get("#patient-management-title").should("be.visible");
+    return this;
+  }
+
+  assertPatient1SearchResult(identifier, firstName, lastName) {
+    cy.get(this.selectors.patient1PatientId)
+      .closest(".patientSelectionSection")
+      .contains(this.selectors.searchResultsRow, identifier)
+      .should("have.length", 1)
+      .and("contain.text", firstName)
+      .and("contain.text", lastName);
     return this;
   }
 

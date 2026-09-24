@@ -44,29 +44,38 @@ class AdminPage {
     });
   }
 
+  openOrganizationArea(route, title) {
+    // The China workspace groups people and organizations behind one real card.
+    cy.location("pathname").then((pathname) => {
+      if (pathname !== "/MasterListsPage") {
+        cy.visit("/MasterListsPage");
+      }
+    });
+    cy.get(
+      '[data-testid="admin-dashboard"] a[href="/MasterListsPage/organizationPeopleWorkspace"]',
+    )
+      .should("be.visible")
+      .click();
+    cy.location("pathname").should(
+      "eq",
+      "/MasterListsPage/organizationPeopleWorkspace",
+    );
+    cy.get(
+      `.organization-people-workspace h2 a[href="/MasterListsPage/${route}"]`,
+    )
+      .should("be.visible")
+      .click();
+    cy.location("pathname").should("eq", `/MasterListsPage/${route}`);
+    cy.contains("h1", title).should("be.visible");
+  }
+
   goToProviderManagementPage() {
-    cy.get(this.selectors.providerManagement)
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.url().should("include", "/providerMenu");
-    cy.contains("Provider Management").should("be.visible");
+    this.openOrganizationArea("providerMenu", "申请医生管理");
     return new ProviderManagementPage();
   }
 
   goToOrganizationManagement() {
-    // Ensure we're on Admin tile view (not a nested route); app uses /MasterListsPage or /admin
-    cy.location("pathname").then((pathname) => {
-      if (!/^\/(MasterListsPage|admin)(\/|$|#)/.test(pathname)) {
-        cy.visit("/MasterListsPage");
-      }
-    });
-    cy.get(this.selectors.organizationManagement)
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.url().should("include", "/organizationManagement");
-    cy.contains("Organization Management").should("be.visible");
+    this.openOrganizationArea("organizationManagement", "机构与科室");
     return new OrganizationManagementPage();
   }
 

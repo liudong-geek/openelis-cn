@@ -1,5 +1,87 @@
 import LoginPage from "../pages/LoginPage";
 import PatientMergePage from "../pages/PatientMergePage";
+import enMessages from "../../src/languages/en.json";
+import zhMessages from "../../src/languages/zh.json";
+import zhCNMessages from "../../src/languages/zh_CN.json";
+
+let patientManagementSearchSequence = 0;
+
+const messagePattern = (key) => {
+  const labels = [
+    ...new Set([enMessages[key], zhMessages[key], zhCNMessages[key]]),
+  ].filter((label) => typeof label === "string");
+
+  if (labels.length === 0) {
+    throw new Error(`Missing patient merge E2E label: ${key}`);
+  }
+
+  return new RegExp(
+    labels.map((label) => Cypress._.escapeRegExp(label)).join("|"),
+  );
+};
+
+const searchPatientManagementByName = (patient, { merged = false } = {}) => {
+  cy.visit("/PatientManagement");
+  cy.get("#patient-management-title").should("be.visible");
+  cy.get("[role='group'][aria-label]")
+    .filter((_, group) =>
+      messagePattern("patient.management.mode.label").test(
+        group.getAttribute("aria-label") || "",
+      ),
+    )
+    .should("have.length", 1)
+    .contains("button", messagePattern("advanced.search"))
+    .should("be.visible")
+    .click();
+  cy.get("#local_search").should("be.visible");
+
+  const alias = `patientManagementSearch${++patientManagementSearchSequence}`;
+  cy.intercept("GET", "**/rest/patient-search-results?*", (request) => {
+    const requestUrl = new URL(request.url);
+    if (
+      requestUrl.searchParams.get("firstName") === patient.firstName &&
+      requestUrl.searchParams.get("lastName") === patient.lastName &&
+      !requestUrl.searchParams.has("page")
+    ) {
+      request.alias = alias;
+    }
+  });
+  cy.get("input#firstName")
+    .clear()
+    .type(patient.firstName)
+    .should("have.value", patient.firstName);
+  cy.get("input#lastName")
+    .clear()
+    .type(patient.lastName)
+    .should("have.value", patient.lastName);
+  cy.get("#local_search").click();
+
+  cy.wait(`@${alias}`).then(({ response }) => {
+    expect(response?.statusCode, "patient management search status").to.eq(200);
+    const results = response?.body?.patientSearchResults;
+    expect(results, "patient management search results").to.be.an("array");
+    const exactPatient = results.find(
+      (result) => result.nationalId === patient.nationalId,
+    );
+    expect(exactPatient, `result for ${patient.nationalId}`).to.exist;
+    expect(exactPatient.isMerged === true, "merged status").to.eq(merged);
+
+    cy.get(`[data-cy='patient-result-row-${exactPatient.patientID}']`)
+      .should("have.length", 1)
+      .and("be.visible")
+      .and("contain.text", patient.firstName)
+      .and("contain.text", patient.lastName)
+      .and("contain.text", patient.nationalId)
+      .then(($row) => {
+        if (merged) {
+          expect($row.text()).to.match(
+            messagePattern("patient.search.merged.tag"),
+          );
+          cy.wrap($row).find("button").should("be.disabled");
+        }
+      });
+  });
+};
 
 /**
  * Patient Merge E2E Tests
@@ -188,24 +270,7 @@ describe("Patient Merge", function () {
   });
 
   it("should verify primary patient searchable in PatientManagement", function () {
-    // Navigate to patient management to verify merged data is accessible
-    cy.visit("/PatientManagement");
-    cy.wait(2000);
-
-    // Search for the primary patient (Alice) by name
-    cy.get("input#lastName").clear().type(testData.patient1.lastName);
-    cy.get("input#firstName").clear().type(testData.patient1.firstName);
-    cy.get("#local_search").click();
-    cy.wait(3000);
-
-    // Assert: Patient MUST be found in results
-    cy.get(".cds--data-table tbody tr").should("have.length.at.least", 1);
-    cy.get(".cds--data-table tbody tr")
-      .first()
-      .should("contain.text", testData.patient1.firstName);
-    cy.get(".cds--data-table tbody tr")
-      .first()
-      .should("contain.text", testData.patient1.lastName);
+    searchPatientManagementByName(testData.patient1);
   });
 
   it("should still allow searching for merged patient by name (FR-015)", function () {
@@ -213,25 +278,7 @@ describe("Patient Merge", function () {
     // Name-based searches should return the merged patient AS-IS (no redirect)
     // This is confirmed in SearchResultsServiceTest.getSearchResults_shouldNotRedirect_whenSearchingByName
 
-    // Navigate to patient management
-    cy.visit("/PatientManagement");
-    cy.wait(2000);
-
-    // Search for the merged patient (Bob) by name
-    cy.get("input#firstName").clear().type(testData.patient2.firstName);
-    cy.get("input#lastName").clear().type(testData.patient2.lastName);
-    cy.get("#local_search").click();
-    cy.wait(3000);
-
-    // Assert: Name search MUST return results containing the merged patient
-    // This is expected per FR-015 - merged patients are still searchable by name
-    cy.get(".cds--data-table tbody tr").should("have.length.at.least", 1);
-    cy.get(".cds--data-table tbody tr")
-      .first()
-      .should("contain.text", testData.patient2.firstName);
-    cy.get(".cds--data-table tbody tr")
-      .first()
-      .should("contain.text", testData.patient2.lastName);
+    searchPatientManagementByName(testData.patient2, { merged: true });
   });
 
   it("should find merged patient in merge UI search results", function () {
@@ -246,17 +293,13 @@ describe("Patient Merge", function () {
     patientMergePage.enterPatient1LastName(testData.patient2.lastName);
     patientMergePage.enterPatient1FirstName(testData.patient2.firstName);
     patientMergePage.searchPatient1();
-    cy.wait(3000);
 
     // Assert: The merged patient MUST appear in search results
     // This verifies FR-015 - name search doesn't filter/redirect merged patients
-    cy.get(".patientSearchResults .cds--data-table tbody tr")
-      .should("have.length.at.least", 1)
-      .first()
-      .should("contain.text", testData.patient2.firstName);
-
-    cy.get(".patientSearchResults .cds--data-table tbody tr")
-      .first()
-      .should("contain.text", testData.patient2.lastName);
+    patientMergePage.assertPatient1SearchResult(
+      testData.patient2.nationalId,
+      testData.patient2.firstName,
+      testData.patient2.lastName,
+    );
   });
 });

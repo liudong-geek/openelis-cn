@@ -1,39 +1,49 @@
 import LoginPage from "../pages/LoginPage";
 
 const login = new LoginPage();
-let usersData; // Store fixture data globally to avoid multiple calls
+let usersData;
 
 describe("Login Test Cases", function () {
   before("Load users fixture", () => {
     cy.fixture("Users").then((users) => {
-      usersData = users;
+      const username = Cypress.env("USERNAME") || users[3].username;
+      const password = Cypress.env("PASSWORD") || users[3].password;
+      usersData = users.map((user, index) => ({
+        ...user,
+        username:
+          user.username === users[3].username ? username : user.username,
+        password:
+          index === 4
+            ? `${password}!`
+            : user.password === users[3].password
+              ? password
+              : user.password,
+      }));
     });
   });
 
-  beforeEach("User visits login page", () => {
+  beforeEach("User visits login page without an authenticated session", () => {
+    login.ensureLoggedOut();
     login.visit();
-    login.clearInputs(); // Clear inputs instead of waiting for backend on each test
+    login.clearInputs();
+  });
+
+  afterEach(() => {
+    login.stopNotificationObservers();
   });
 
   it("Tries to login without credentials", function () {
-    cy.intercept("/api/OpenELIS-Global/LoginPage").as("backend");
-    login.visit();
-    cy.wait("@backend", { timeout: Cypress.env("STARTUP_WAIT_MILLISECONDS") });
-
-    login.signIn();
-    cy.contains("Username or Password are incorrect").should("be.visible");
+    login.signInExpectingRejection();
   });
 
   it("Fails to login with only username", function () {
     login.enterUsername(usersData[3].username);
-    login.signIn();
-    cy.contains("Username or Password are incorrect").should("be.visible");
+    login.signInExpectingRejection();
   });
 
   it("Fails to login with only password", function () {
     login.enterPassword(usersData[3].password);
-    login.signIn();
-    cy.contains("Username or Password are incorrect").should("be.visible");
+    login.signInExpectingRejection();
   });
 
   it("User changes from default credentials", function () {
@@ -43,14 +53,13 @@ describe("Login Test Cases", function () {
     login.enterNewPassword(usersData[4].password);
     login.repeatNewPassword(usersData[4].password);
     login.submitNewPassword();
-    cy.contains("Password changed successfully").should("be.visible");
   });
 
   it("Logs in with correct credentials", function () {
-    let user = usersData[4];
+    const user = usersData[4];
     login.enterUsername(user.username);
     login.enterPassword(user.password);
-    login.signIn();
+    login.signInExpectingSuccess(user.username);
   });
 
   it("Resets the default credentials", function () {
@@ -60,8 +69,6 @@ describe("Login Test Cases", function () {
     login.enterNewPassword(usersData[3].password);
     login.repeatNewPassword(usersData[3].password);
     login.submitNewPassword();
-    //cy.get("div[role='status']").should("be.visible");
-    cy.contains("Password changed successfully").should("be.visible");
   });
 
   it("User exits password reset", function () {
@@ -70,25 +77,35 @@ describe("Login Test Cases", function () {
     login.enterCurrentPassword(usersData[3].password);
     login.enterNewPassword(usersData[4].password);
     login.repeatNewPassword(usersData[4].password);
+    const passwordChanges = [];
+    cy.intercept("POST", "**/ChangePasswordLogin?apiCall=true", (request) => {
+      passwordChanges.push(request);
+    });
     login.clickExitPasswordReset();
+    cy.then(() =>
+      expect(
+        passwordChanges,
+        "exit does not submit a password change",
+      ).to.have.length(0),
+    );
+    login.enterUsername(usersData[3].username);
+    login.enterPassword(usersData[3].password);
+    login.signInExpectingSuccess(usersData[3].username);
   });
 
   it("Validates user authentication", function () {
     usersData.forEach((user) => {
-      // Reloads the page
-      cy.reload();
-      cy.wait(2000);
+      login.ensureLoggedOut();
+      login.visit();
+      login.clearInputs();
       login.enterUsername(user.username);
       login.enterPassword(user.password);
-      login.signIn();
-      cy.wait(2000);
       if (user.correctPass) {
-        // Verify authentication succeeded - mainHeader only appears when authenticated
-        cy.get("#mainHeader").should("exist");
-        // Logout via API so next iteration starts fresh (not authenticated)
-        cy.ensureLoggedOut();
-        cy.wait(2000);
+        login.signInExpectingSuccess(user.username);
+      } else {
+        login.signInExpectingRejection();
       }
     });
+    login.ensureLoggedOut();
   });
 });

@@ -8,6 +8,7 @@ before(() => {
   loginPage.visit();
 
   home = loginPage.goToHomePage();
+  home.expectOverview();
 });
 
 describe("User interacts with the navigation bar", function () {
@@ -29,7 +30,12 @@ describe("User interacts with the navigation bar", function () {
 });
 
 describe("User navigates to different tiles", function () {
-  // This action runs after each test
+  // E-01 / A-02: preserve all ten navigation scenarios. Pending work opens its
+  // work area; operational statistics still open an in-place detail view.
+  beforeEach(() => {
+    home.expectOverview();
+  });
+
   afterEach(() => {
     home.afterAll();
   });

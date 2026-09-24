@@ -8,6 +8,7 @@ const runSuffix = `${Date.now().toString().slice(-6)}${Cypress._.random(10, 99)}
 const testOrgName = `TO-${runSuffix}`;
 const testInstituteName = `TL-${runSuffix}`;
 const testOrgPrefix = `P-${runSuffix}`;
+const testInstitutePrefix = `I-${runSuffix}`;
 
 before("login", () => {
   loginPage = new LoginPage();
@@ -36,7 +37,7 @@ describe("Add Organization and Institute", function () {
     organizationManagement.addOrgName(testOrgName);
     organizationManagement.activateOrganization();
     organizationManagement.addPrefix(testOrgPrefix);
-    organizationManagement.addParentOrg(testOrgName);
+    // Create the parent first; do not type an unsaved organization as its own parent.
     organizationManagement.checkReferringClinic();
     cy.screenshot("03-org-form-filled");
 
@@ -46,7 +47,6 @@ describe("Add Organization and Institute", function () {
     cy.wait("@saveOrg").then((interception) => {
       const { statusCode, body } = interception.response;
       cy.log(`**Save Org API Response:** status=${statusCode}`);
-      cy.log(`**Response body:** ${JSON.stringify(body).substring(0, 500)}`);
 
       // Screenshot after save completes
       cy.screenshot("04-after-org-save", {
@@ -55,6 +55,14 @@ describe("Add Organization and Institute", function () {
 
       // Fail loudly if server returned an error
       expect(statusCode).to.be.lessThan(400);
+      expect(body?.error).to.not.be.ok;
+      expect(body.success).to.eq(true);
+      expect(body.organizationName).to.eq(testOrgName);
+      expect(String(body.id)).to.match(/^[1-9][0-9]*$/);
+      cy.location("pathname").should(
+        "eq",
+        "/MasterListsPage/organizationManagement",
+      );
     });
   });
 
@@ -70,7 +78,7 @@ describe("Add Organization and Institute", function () {
     organizationManagement.clickAddOrganization();
     organizationManagement.addInstituteName(testInstituteName);
     organizationManagement.activateOrganization();
-    //organizationManagement.addInstitutePrefix();
+    organizationManagement.addPrefix(testInstitutePrefix);
     organizationManagement.addParentOrg(testOrgName);
     organizationManagement.checkReferalLab();
     cy.screenshot("07-institute-form-filled");
@@ -81,13 +89,20 @@ describe("Add Organization and Institute", function () {
     cy.wait("@saveOrg").then((interception) => {
       const { statusCode, body } = interception.response;
       cy.log(`**Save Institute API Response:** status=${statusCode}`);
-      cy.log(`**Response body:** ${JSON.stringify(body).substring(0, 500)}`);
 
       cy.screenshot("08-after-institute-save", {
         capture: "fullPage",
       });
 
       expect(statusCode).to.be.lessThan(400);
+      expect(body?.error).to.not.be.ok;
+      expect(body.success).to.eq(true);
+      expect(body.organizationName).to.eq(testInstituteName);
+      expect(String(body.id)).to.match(/^[1-9][0-9]*$/);
+      cy.location("pathname").should(
+        "eq",
+        "/MasterListsPage/organizationManagement",
+      );
     });
   });
 
@@ -95,7 +110,7 @@ describe("Add Organization and Institute", function () {
     organizationManagement = adminPage.goToOrganizationManagement();
     organizationManagement.searchInstitute(testInstituteName);
     cy.screenshot("09-institute-search-results");
-    organizationManagement.confirmInstitute(testInstituteName);
+    organizationManagement.confirmInstitute(testInstituteName, testOrgName);
     cy.screenshot("10-institute-confirmed");
   });
 });
