@@ -33,6 +33,8 @@ public interface ObservationHistoryService extends BaseObjectService<Observation
 
     List<ObservationHistory> getObservationsByTypeAndValue(ObservationType type, String value);
 
+    List<ObservationHistory> getObservationsByTypeAndValue(ObservationType type, String value, int maxResults);
+
     String getValueForSample(ObservationType type, String sampleId);
 
     String getMostRecentValueForPatient(ObservationType type, String patientId);

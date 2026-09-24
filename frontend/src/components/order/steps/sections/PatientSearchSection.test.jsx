@@ -101,7 +101,24 @@ const mount = (props = {}) =>
       </IntlProvider>
     </MemoryRouter>,
   );
-const respond = (request, payload) => act(() => request.callback(payload));
+const respond = (request, payload) =>
+  act(() => {
+    const isPatientSearch = request.url.startsWith(
+      "/rest/patient-search-results?",
+    );
+    const normalizedPayload = isPatientSearch
+      ? {
+          ...payload,
+          ...(!payload?.paging
+            ? { paging: { currentPage: "1", totalPages: "1" } }
+            : {}),
+          ...(!Object.prototype.hasOwnProperty.call(payload || {}, "totalItems")
+            ? { totalItems: payload?.patientSearchResults?.length || 0 }
+            : {}),
+        }
+      : payload;
+    request.callback(normalizedPayload);
+  });
 const startSearch = async (user, query = "SIM") => {
   const input = screen.getByRole("textbox", {
     name: messages["patient.quickSearch.label"],
@@ -342,6 +359,211 @@ describe("申请页患者选择：真实表单身份与读取状态", () => {
     expect(screen.queryByText("SIM患者101")).not.toBeInTheDocument();
   });
 
+  it("多页回执缺少queryId时显示错误且不开放翻页", async () => {
+    const user = userEvent.setup();
+    mount();
+    respond(await startSearch(user, "SIM NO TOKEN"), {
+      patientSearchResults: [patient("1", "SIM缺少标识")],
+      paging: { currentPage: "1", totalPages: "2" },
+      totalItems: 2,
+    });
+
+    expect(
+      screen.getByText(messages["patient.management.list.error"]),
+    ).toBeVisible();
+    expect(screen.queryByText("SIM缺少标识")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: messages["pagination.next"] }),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["缺失", undefined],
+    ["负数", -1],
+    ["小数", 1.5],
+    ["小于本页行数", 1],
+  ])("totalItems为%s时拒绝患者结果", async (_caseName, invalidTotal) => {
+    const user = userEvent.setup();
+    mount();
+    respond(await startSearch(user, "SIM INVALID TOTAL"), {
+      patientSearchResults: [
+        patient("1", "SIM无效总数一"),
+        patient("2", "SIM无效总数二"),
+      ],
+      paging: { currentPage: "1", totalPages: "1" },
+      queryId: "invalid-total-query",
+      totalItems: invalidTotal,
+    });
+
+    expect(
+      screen.getByText(messages["patient.management.list.error"]),
+    ).toBeVisible();
+    expect(screen.queryByText("SIM无效总数一")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: messages["label.button.select"] }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("翻页totalItems无效时清空上一页可操作结果", async () => {
+    const user = userEvent.setup();
+    mount();
+    respond(await startSearch(user, "SIM INVALID PAGE TOTAL"), {
+      patientSearchResults: [patient("1", "SIM旧可操作患者")],
+      paging: { currentPage: "1", totalPages: "2" },
+      queryId: "invalid-page-total-query",
+      totalItems: 2,
+    });
+    await user.click(
+      screen.getByRole("button", { name: messages["pagination.next"] }),
+    );
+    respond(requests[requests.length - 1], {
+      patientSearchResults: [patient("2", "SIM无效新页患者")],
+      paging: { currentPage: "2", totalPages: "2" },
+      queryId: "invalid-page-total-query",
+      totalItems: -1,
+    });
+
+    expect(
+      screen.getByText(messages["patient.management.list.error"]),
+    ).toBeVisible();
+    expect(screen.queryByText("SIM旧可操作患者")).not.toBeInTheDocument();
+    expect(screen.queryByText("SIM无效新页患者")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: messages["label.button.select"] }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("总数与总页数推导矛盾时拒绝患者结果", async () => {
+    const user = userEvent.setup();
+    mount();
+    respond(await startSearch(user, "SIM INVALID PAGES"), {
+      patientSearchResults: [
+        patient("1", "SIM错误分页一"),
+        patient("2", "SIM错误分页二"),
+      ],
+      paging: { currentPage: "1", totalPages: "2" },
+      queryId: "invalid-pages-query",
+      totalItems: 5,
+    });
+
+    expect(
+      screen.getByText(messages["patient.management.list.error"]),
+    ).toBeVisible();
+    expect(screen.queryByText("SIM错误分页一")).not.toBeInTheDocument();
+  });
+
+  it("翻页回执queryId不匹配时不显示其他查询的患者", async () => {
+    const user = userEvent.setup();
+    mount();
+    respond(await startSearch(user, "SIM TOKEN"), {
+      patientSearchResults: [patient("1", "SIM正确首页")],
+      paging: { currentPage: "1", totalPages: "2" },
+      queryId: "expected-query",
+      totalItems: 2,
+    });
+    await user.click(
+      screen.getByRole("button", { name: messages["pagination.next"] }),
+    );
+    respond(requests[requests.length - 1], {
+      patientSearchResults: [patient("100", "SIM错误患者")],
+      paging: { currentPage: "2", totalPages: "2" },
+      queryId: "foreign-query",
+      totalItems: 2,
+    });
+
+    expect(
+      screen.getByText(messages["patient.management.list.error"]),
+    ).toBeVisible();
+    expect(screen.queryByText("SIM正确首页")).not.toBeInTheDocument();
+    expect(screen.queryByText("SIM错误患者")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: messages["label.button.select"] }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("翻页回执缺少queryId时不使用请求上下文代填", async () => {
+    const user = userEvent.setup();
+    mount();
+    respond(await startSearch(user, "SIM MISSING PAGE TOKEN"), {
+      patientSearchResults: [patient("1", "SIM正确首页")],
+      paging: { currentPage: "1", totalPages: "2" },
+      queryId: "expected-query",
+      totalItems: 2,
+    });
+    await user.click(
+      screen.getByRole("button", { name: messages["pagination.next"] }),
+    );
+    respond(requests[requests.length - 1], {
+      patientSearchResults: [patient("100", "SIM缺标识页患者")],
+      paging: { currentPage: "2", totalPages: "2" },
+      totalItems: 2,
+    });
+
+    expect(
+      screen.getByText(messages["patient.management.list.error"]),
+    ).toBeVisible();
+    expect(screen.queryByText("SIM缺标识页患者")).not.toBeInTheDocument();
+  });
+
+  it("翻页回执queryId匹配但页码错误时不显示患者", async () => {
+    const user = userEvent.setup();
+    mount();
+    respond(await startSearch(user, "SIM WRONG PAGE"), {
+      patientSearchResults: [patient("1", "SIM正确首页")],
+      paging: { currentPage: "1", totalPages: "2" },
+      queryId: "same-query",
+      totalItems: 2,
+    });
+    await user.click(
+      screen.getByRole("button", { name: messages["pagination.next"] }),
+    );
+    respond(requests[requests.length - 1], {
+      patientSearchResults: [patient("100", "SIM错误页患者")],
+      paging: { currentPage: "1", totalPages: "2" },
+      queryId: "same-query",
+      totalItems: 2,
+    });
+
+    expect(
+      screen.getByText(messages["patient.management.list.error"]),
+    ).toBeVisible();
+    expect(screen.queryByText("SIM错误页患者")).not.toBeInTheDocument();
+  });
+
+  it("迟到的旧页不覆盖之后的新查询", async () => {
+    const user = userEvent.setup();
+    mount();
+    const firstPage = await startSearch(user, "SIM OLD");
+    respond(firstPage, {
+      patientSearchResults: [patient("1", "SIM旧查询")],
+      paging: { currentPage: "1", totalPages: "2" },
+      queryId: "query-old-page",
+      totalItems: 2,
+    });
+    await user.click(
+      screen.getByRole("button", { name: messages["pagination.next"] }),
+    );
+    const lateOldPage = requests[requests.length - 1];
+
+    const newSearch = await startSearch(user, "SIM NEW");
+    expect(lateOldPage.signal.aborted).toBe(true);
+    respond(newSearch, {
+      patientSearchResults: [patient("200", "SIM新查询")],
+      paging: { currentPage: "1", totalPages: "1" },
+      queryId: "query-new-page",
+      totalItems: 1,
+    });
+    respond(lateOldPage, {
+      patientSearchResults: [patient("100", "SIM旧页")],
+      paging: { currentPage: "2", totalPages: "2" },
+      queryId: "query-old-page",
+      totalItems: 2,
+    });
+
+    expect(screen.getByText("SIM新查询")).toBeVisible();
+    expect(screen.queryByText("SIM旧页")).not.toBeInTheDocument();
+  });
+
   it.each([undefined, patient("999")])(
     "详情失败或返回别人的ID，不回填申请：%j",
     async (payload) => {
@@ -522,6 +744,40 @@ describe("申请页患者选择：真实表单身份与读取状态", () => {
       screen.queryByText(messages["patient.management.list.error"]),
     ).not.toBeInTheDocument();
     respond(await choose(user, "SIM患者101"), patient("101"));
+    expect(currentOrder.patientProperties.patientPK).toBe("101");
+  });
+
+  it("查询到101位患者时使用同一queryId翻页并可选择第101位", async () => {
+    const user = userEvent.setup();
+    mount();
+    const firstPage = await startSearch(user, "SIM-100");
+    respond(firstPage, {
+      queryId: "SIM-ORDER-PATIENT-QUERY",
+      totalItems: 101,
+      patientSearchResults: Array.from({ length: 99 }, (_, index) =>
+        patient(String(index + 1)),
+      ),
+      paging: { currentPage: "1", totalPages: "2" },
+    });
+
+    await user.click(
+      screen.getByRole("button", { name: messages["pagination.next"] }),
+    );
+    const pageTwo = requests.at(-1);
+    const params = new URLSearchParams(pageTwo.url.split("?")[1]);
+    expect(params.get("quickQuery")).toBe("SIM-100");
+    expect(params.get("suppressExternalSearch")).toBe("true");
+    expect(params.get("queryId")).toBe("SIM-ORDER-PATIENT-QUERY");
+    expect(params.get("page")).toBe("2");
+    respond(pageTwo, {
+      queryId: "SIM-ORDER-PATIENT-QUERY",
+      totalItems: 101,
+      patientSearchResults: [patient("100"), patient("101")],
+      paging: { currentPage: "2", totalPages: "2" },
+    });
+
+    const details = await choose(user, "SIM患者101");
+    respond(details, patient("101"));
     expect(currentOrder.patientProperties.patientPK).toBe("101");
   });
 });

@@ -108,12 +108,19 @@ export interface PatientSearchCriteria {
   crSearch?: boolean;
 }
 
+export interface PatientSearchPaging {
+  totalPages?: string | number;
+  currentPage?: string | number;
+  searchTermToPage?: Array<{ id?: string; value?: string }>;
+}
+
 export interface PatientSearchResponse {
   patientSearchResults?: PatientRecord[];
-  paging?: {
-    totalPages?: string | number;
-    currentPage?: string | number;
-  };
+  /** Server-issued identity for this exact search result set. */
+  queryId?: string;
+  /** Total rows across every server page, not only the current response. */
+  totalItems?: number;
+  paging?: PatientSearchPaging;
   nextPage?: string | null;
   previousPage?: string | null;
   currentPage?: number | null;

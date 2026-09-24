@@ -1,5 +1,5 @@
-import React, { useRef } from "react";
-import { FormattedMessage, injectIntl } from "react-intl";
+import React, { useEffect, useRef, useState } from "react";
+import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import { useHistory, useLocation, useParams } from "react-router-dom";
 import "../Style.css";
 import {
@@ -13,6 +13,8 @@ import { Add, ArrowLeft } from "@carbon/react/icons";
 import CreatePatientForm from "./CreatePatientForm";
 import PatientMasterList from "./PatientMasterList";
 import type { PatientListViewState } from "./PatientMasterList";
+import SearchPatientForm from "./SearchPatientForm";
+import type { PatientSearchFormState } from "./SearchPatientForm";
 import PageBreadCrumb from "../common/PageBreadCrumb";
 import usePatientDetails from "./usePatientDetails";
 import type { PatientRecord } from "./types";
@@ -24,21 +26,58 @@ const breadcrumbs = [
   { label: "patient.label.modify", link: "/PatientManagement" },
 ];
 
+interface PatientManagementViewState extends PatientListViewState {
+  managementMode?: "list" | "advanced";
+  advanced?: PatientSearchFormState;
+}
+
 function PatientManagement() {
+  const intl = useIntl();
   const history = useHistory();
   const location = useLocation<{
-    listState?: PatientListViewState;
+    listState?: PatientManagementViewState;
     listOrigin?: {
       pathname: string;
-      state?: { listState?: PatientListViewState };
+      state?: { listState?: PatientManagementViewState };
     };
   }>();
-  const listState = useRef(location.state?.listState);
+  const hasSearchDeepLink = [
+    "patientId",
+    "labNumber",
+    "quickQuery",
+    "lastName",
+    "firstName",
+    "STNumber",
+    "subjectNumber",
+    "nationalID",
+    "guid",
+    "dateOfBirth",
+    "gender",
+  ].some((key) => new URLSearchParams(location.search).has(key));
+  const listState = useRef<PatientManagementViewState>({
+    ...location.state?.listState,
+    managementMode: hasSearchDeepLink
+      ? "advanced"
+      : (location.state?.listState?.managementMode ?? "list"),
+  });
+  const [managementMode, setManagementMode] = useState<"list" | "advanced">(
+    listState.current.managementMode || "list",
+  );
   const { patientId } = useParams<{ patientId?: string }>();
 
   const isNewMode = patientId === "new";
   const isEditMode = !!patientId && !isNewMode;
   const isSearchMode = !patientId;
+
+  useEffect(() => {
+    if (isSearchMode && hasSearchDeepLink) {
+      listState.current = {
+        ...listState.current,
+        managementMode: "advanced",
+      };
+      setManagementMode("advanced");
+    }
+  }, [hasSearchDeepLink, isSearchMode, location.search]);
 
   // Only fetch when an actual id is in the URL. New-mode and search-mode
   // render without a fetch.
@@ -64,6 +103,16 @@ function PatientManagement() {
     openFromList(`/PatientManagement/${selected.patientPK}`);
   const goToPatientResults = (selected: PatientRecord) =>
     openFromList(`/PatientResults/${selected.patientPK}`);
+  const changeManagementMode = (mode: "list" | "advanced") => {
+    listState.current = { ...listState.current, managementMode: mode };
+    setManagementMode(mode);
+    if (mode === "list" && location.search) {
+      history.replace({
+        pathname: location.pathname,
+        state: { ...location.state, listState: listState.current },
+      });
+    }
+  };
 
   const titleId = isSearchMode
     ? "patient.management.title"
@@ -109,15 +158,63 @@ function PatientManagement() {
         <Grid>
           {isSearchMode && (
             <Column lg={16} md={8} sm={4}>
-              <PatientMasterList
-                initialState={listState.current}
-                onStateChange={(state) => {
-                  listState.current = state;
-                }}
-                onOpenPatient={goToEditPatient}
-                onOpenResults={goToPatientResults}
-                onNewPatient={goToNewPatient}
-              />
+              <div
+                className="patient-management-mode-switcher"
+                role="group"
+                aria-label={intl.formatMessage({
+                  id: "patient.management.mode.label",
+                })}
+              >
+                <Button
+                  type="button"
+                  kind={managementMode === "list" ? "primary" : "ghost"}
+                  onClick={() => changeManagementMode("list")}
+                >
+                  <FormattedMessage id="patient.management.list.title" />
+                </Button>
+                <Button
+                  type="button"
+                  kind={managementMode === "advanced" ? "primary" : "ghost"}
+                  onClick={() => changeManagementMode("advanced")}
+                >
+                  <FormattedMessage id="advanced.search" />
+                </Button>
+              </div>
+
+              {managementMode === "list" ? (
+                <PatientMasterList
+                  initialState={listState.current}
+                  onStateChange={(state) => {
+                    listState.current = {
+                      ...listState.current,
+                      ...state,
+                      managementMode: "list",
+                    };
+                  }}
+                  onOpenPatient={goToEditPatient}
+                  onOpenResults={goToPatientResults}
+                  onNewPatient={goToNewPatient}
+                />
+              ) : (
+                <SearchPatientForm
+                  key={location.search || "advanced-search"}
+                  initialSearch={location.search}
+                  initialState={listState.current.advanced}
+                  onStateChange={(advanced) => {
+                    listState.current = {
+                      ...listState.current,
+                      managementMode: "advanced",
+                      advanced,
+                    };
+                  }}
+                  getSelectedPatient={goToEditPatient}
+                  selectionMode="button"
+                  selectionButtonMessageId="patient.management.open"
+                  allowExternalSearch={false}
+                  allowExternalImport={false}
+                  disableMergedSelection
+                />
+              )}
             </Column>
           )}
 

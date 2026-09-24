@@ -78,6 +78,19 @@ public class FhirUtil implements FhirClientFetcher {
         return fhirClient;
     }
 
+    public IGenericClient getBoundedFhirClient(String fhirStorePath, String username, String password,
+            int maxResponseBytes) {
+        return getBoundedFhirClient(fhirStorePath, username, password, maxResponseBytes,
+                FhirResponseSizeLimitInterceptor.DEFAULT_TIMEOUT_MILLIS);
+    }
+
+    public IGenericClient getBoundedFhirClient(String fhirStorePath, String username, String password,
+            int maxResponseBytes, int timeoutMillis) {
+        IGenericClient fhirClient = getFhirClient(fhirStorePath, username, password);
+        fhirClient.registerInterceptor(new FhirResponseSizeLimitInterceptor(maxResponseBytes, timeoutMillis));
+        return fhirClient;
+    }
+
     public String getAccessToken(String authUrl, String authUserName, String authPassowrd) throws IOException {
         HttpPost httpPost = new HttpPost(authUrl);
 

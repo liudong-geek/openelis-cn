@@ -26,6 +26,15 @@ public class LuceneSearchResultsServiceImpl implements SearchResultsService {
 
     @Override
     @Transactional
+    public List<PatientSearchResults> getSearchResults(String lastName, String firstName, String STNumber,
+            String subjectNumber, String nationalID, String externalID, String patientID, String guid,
+            String dateOfBirth, String gender, int maxResults) {
+        return searchResultsDAO.getSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID, externalID,
+                patientID, guid, dateOfBirth, gender, maxResults);
+    }
+
+    @Override
+    @Transactional
     public List<PatientSearchResults> getSearchResultsExact(String lastName, String firstName, String STNumber,
             String subjectNumber, String nationalID, String externalID, String patientID, String guid,
             String dateOfBirth, String gender) {
@@ -36,5 +45,10 @@ public class LuceneSearchResultsServiceImpl implements SearchResultsService {
     @Override
     public List<PatientSearchResults> getQuickSearchResults(String query) {
         return searchResultsDAO.getQuickSearchResults(query);
+    }
+
+    @Override
+    public List<PatientSearchResults> getQuickSearchResults(String query, int maxResults) {
+        return searchResultsDAO.getQuickSearchResults(query, maxResults);
     }
 }

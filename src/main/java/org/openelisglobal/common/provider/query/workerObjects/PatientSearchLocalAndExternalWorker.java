@@ -22,36 +22,23 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.commons.validator.GenericValidator;
-import org.openelisglobal.address.service.AddressPartService;
-import org.openelisglobal.address.service.PersonAddressService;
-import org.openelisglobal.address.valueholder.AddressPart;
+import org.apache.http.HttpStatus;
 import org.openelisglobal.common.action.IActionConstants;
-import org.openelisglobal.common.exception.LIMSRuntimeException;
+import org.openelisglobal.common.externalLinks.ExternalPatientSearchException;
 import org.openelisglobal.common.externalLinks.IExternalPatientSearch;
-import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.provider.query.ExtendedPatientSearchResults;
 import org.openelisglobal.common.provider.query.PatientSearchResults;
 import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.ConfigurationProperties.Property;
 import org.openelisglobal.internationalization.MessageUtil;
-import org.openelisglobal.patient.service.PatientService;
-import org.openelisglobal.patient.valueholder.Patient;
-import org.openelisglobal.patientidentity.service.PatientIdentityService;
-import org.openelisglobal.patientidentity.valueholder.PatientIdentity;
-import org.openelisglobal.patientidentitytype.util.PatientIdentityTypeMap;
-import org.openelisglobal.person.service.PersonService;
-import org.openelisglobal.person.valueholder.Person;
 import org.openelisglobal.search.service.SearchResultsService;
 import org.openelisglobal.spring.util.SpringContext;
 
 public class PatientSearchLocalAndExternalWorker extends PatientSearchWorker {
 
-    protected PatientService patientService = SpringContext.getBean(PatientService.class);
-    protected PatientIdentityService patientIdentityService = SpringContext.getBean(PatientIdentityService.class);
-    protected PersonService personService = SpringContext.getBean(PersonService.class);
     protected SearchResultsService searchResultsService = SpringContext.getBean(SearchResultsService.class);
-    private AddressPartService addressPartService = SpringContext.getBean(AddressPartService.class);
-    private PersonAddressService personAddressService = SpringContext.getBean(PersonAddressService.class);
+    private ExternalPatientImportService externalPatientImportService = SpringContext
+            .getBean(ExternalPatientImportService.class);
 
     private final String sysUserId;
 
@@ -68,11 +55,6 @@ public class PatientSearchLocalAndExternalWorker extends PatientSearchWorker {
     public String createSearchResultXML(String lastName, String firstName, String STNumber, String subjectNumber,
             String nationalID, String patientID, String guid, String dateOfBirth, String gender, StringBuilder xml) {
 
-        // just to make the name shorter
-        ConfigurationProperties config = ConfigurationProperties.getInstance();
-
-        String success = IActionConstants.VALID;
-
         if (GenericValidator.isBlankOrNull(lastName) && GenericValidator.isBlankOrNull(firstName)
                 && GenericValidator.isBlankOrNull(STNumber) && GenericValidator.isBlankOrNull(subjectNumber)
                 && GenericValidator.isBlankOrNull(nationalID) && GenericValidator.isBlankOrNull(patientID)
@@ -82,75 +64,8 @@ public class PatientSearchLocalAndExternalWorker extends PatientSearchWorker {
             return IActionConstants.INVALID;
         }
 
-        List<PatientSearchResults> allResults = new ArrayList<>();
-
-        List<IExternalPatientSearch> externalSearches = new ArrayList<>();
-
-        List<PatientSearchResults> localResults = new ArrayList<>();
-        localResults = searchResultsService.getSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID,
-                guid, patientID, guid, "", "");
-        localResults.forEach(e -> e.setDataSourceName(MessageUtil.getMessage("patient.local.source")));
-        allResults.addAll(localResults);
-
-        if (config.getPropertyValue(Property.INFO_HIGHWAY_ENABLED).equals("true")) {
-            IExternalPatientSearch externalSearch = (IExternalPatientSearch) SpringContext.getBean("InfoHighwaySearch");
-            externalSearch.setSearchCriteria(lastName, firstName, STNumber, subjectNumber, nationalID, guid);
-            externalSearch.setConnectionCredentials(config.getPropertyValue(Property.INFO_HIGHWAY_ADDRESS),
-                    config.getPropertyValue(Property.INFO_HIGHWAY_USERNAME),
-                    config.getPropertyValue(Property.INFO_HIGHWAY_PASSWORD));
-
-            externalSearches.add(externalSearch);
-        }
-
-        if (config.getPropertyValue(Property.PatientSearchEnabled).equals("true")) {
-            IExternalPatientSearch externalSearch = SpringContext.getBean(IExternalPatientSearch.class);
-            externalSearch.setSearchCriteria(lastName, firstName, STNumber, subjectNumber, nationalID, guid);
-            externalSearch.setConnectionCredentials(config.getPropertyValue(Property.PatientSearchURL),
-                    config.getPropertyValue(Property.PatientSearchUserName),
-                    config.getPropertyValue(Property.PatientSearchPassword));
-
-            externalSearches.add(externalSearch);
-        }
-
-        List<ExtendedPatientSearchResults> externalResults = null;
-        List<ExtendedPatientSearchResults> newPatientsFromExternalSearch = new ArrayList<>();
-
-        for (IExternalPatientSearch externalSearch : externalSearches) {
-            try {
-                Future<Integer> futureExternalSearchResult = externalSearch.runExternalSearch();
-                Integer externalSearchResult = futureExternalSearchResult.get(externalSearch.getTimeout(),
-                        TimeUnit.MILLISECONDS);
-
-                if (externalSearchResult == 200) {
-                    externalResults = externalSearch.getSearchResults();
-                } else {
-                    LogEvent.logError(this.getClass().getSimpleName(), "createSearchResultXML",
-                            "could not get external search results from " + externalSearch.getConnectionString()
-                                    + " - failed response");
-                }
-            } catch (InterruptedException | ExecutionException | TimeoutException | IllegalStateException e) {
-                LogEvent.logError(e);
-            }
-
-            findNewPatients(localResults, externalResults, newPatientsFromExternalSearch);
-            insertNewPatients(newPatientsFromExternalSearch);
-            newPatientsFromExternalSearch
-                    .forEach(e -> e.setDataSourceName(MessageUtil.getMessage("patient.imported.source")));
-            allResults.addAll(newPatientsFromExternalSearch);
-        }
-        sortPatients(allResults);
-
-        if (allResults != null && allResults.size() > 0) {
-            for (PatientSearchResults singleResult : allResults) {
-                appendSearchResultRow(singleResult, xml);
-            }
-        } else {
-            success = IActionConstants.INVALID;
-
-            xml.append("No results were found for search.  Check spelling or remove some of the fields");
-        }
-
-        return success;
+        return appendBoundedSearchResults(getPatientSearchResults(lastName, firstName, STNumber, subjectNumber,
+                nationalID, patientID, guid, dateOfBirth, gender, AJAX_QUERY_RESULT_PROBE_LIMIT), xml);
     }
 
     /**
@@ -161,27 +76,48 @@ public class PatientSearchLocalAndExternalWorker extends PatientSearchWorker {
     @Override
     public List<PatientSearchResults> getPatientSearchResults(String lastName, String firstName, String STNumber,
             String subjectNumber, String nationalID, String patientID, String guid, String dateOfBirth, String gender) {
+        return getPatientSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID, patientID, guid,
+                dateOfBirth, gender, null).results();
+    }
+
+    @Override
+    public BoundedPatientSearchResults getPatientSearchResults(String lastName, String firstName, String STNumber,
+            String subjectNumber, String nationalID, String patientID, String guid, String dateOfBirth, String gender,
+            int maxLocalResults) {
+        if (maxLocalResults < 1) {
+            throw new IllegalArgumentException("Patient search result limit must be positive");
+        }
+        return getPatientSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID, patientID, guid,
+                dateOfBirth, gender, Integer.valueOf(maxLocalResults));
+    }
+
+    private BoundedPatientSearchResults getPatientSearchResults(String lastName, String firstName, String STNumber,
+            String subjectNumber, String nationalID, String patientID, String guid, String dateOfBirth, String gender,
+            Integer maxLocalResults) {
 
         // just to make the name shorter
         ConfigurationProperties config = ConfigurationProperties.getInstance();
-
-        String success = IActionConstants.VALID;
 
         if (GenericValidator.isBlankOrNull(lastName) && GenericValidator.isBlankOrNull(firstName)
                 && GenericValidator.isBlankOrNull(STNumber) && GenericValidator.isBlankOrNull(subjectNumber)
                 && GenericValidator.isBlankOrNull(nationalID) && GenericValidator.isBlankOrNull(patientID)
                 && GenericValidator.isBlankOrNull(guid)) {
 
-            return new ArrayList<>();
+            return new BoundedPatientSearchResults(List.of(), false);
         }
 
         List<PatientSearchResults> allResults = new ArrayList<>();
 
         List<IExternalPatientSearch> externalSearches = new ArrayList<>();
 
-        List<PatientSearchResults> localResults = new ArrayList<>();
-        localResults = searchResultsService.getSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID,
-                guid, patientID, guid, "", "");
+        List<PatientSearchResults> localResults = maxLocalResults == null
+                ? searchResultsService.getSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID, guid,
+                        patientID, guid, "", "")
+                : searchResultsService.getSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID, guid,
+                        patientID, guid, "", "", maxLocalResults);
+        if (maxLocalResults != null && localResults.size() >= maxLocalResults) {
+            return new BoundedPatientSearchResults(List.of(), true);
+        }
         localResults.forEach(e -> e.setDataSourceName(MessageUtil.getMessage("patient.local.source")));
         allResults.addAll(localResults);
 
@@ -205,106 +141,98 @@ public class PatientSearchLocalAndExternalWorker extends PatientSearchWorker {
             externalSearches.add(externalSearch);
         }
 
-        List<ExtendedPatientSearchResults> externalResults = null;
-        List<ExtendedPatientSearchResults> newPatientsFromExternalSearch = new ArrayList<>();
+        List<ExtendedPatientSearchResults> boundedPatientsToInsert = new ArrayList<>();
 
         for (IExternalPatientSearch externalSearch : externalSearches) {
-            try {
-                Future<Integer> futureExternalSearchResult = externalSearch.runExternalSearch();
-                Integer externalSearchResult = futureExternalSearchResult.get(externalSearch.getTimeout(),
-                        TimeUnit.MILLISECONDS);
-
-                if (externalSearchResult == 200) {
-                    externalResults = externalSearch.getSearchResults();
-                } else {
-                    LogEvent.logError(this.getClass().getSimpleName(), "createSearchResultXML",
-                            "could not get external search results from " + externalSearch.getConnectionString()
-                                    + " - failed response");
+            int remainingResults = maxLocalResults == null ? Integer.MAX_VALUE : maxLocalResults - allResults.size();
+            if (maxLocalResults != null) {
+                if (remainingResults < 1) {
+                    return new BoundedPatientSearchResults(List.of(), true);
                 }
-            } catch (InterruptedException | ExecutionException | TimeoutException | IllegalStateException e) {
-                LogEvent.logError(e);
+                externalSearch.setResultLimit(remainingResults);
+            }
+            List<ExtendedPatientSearchResults> externalResults = requireSuccessfulExternalSearch(externalSearch);
+
+            if (maxLocalResults != null && externalResults != null && externalResults.size() >= remainingResults) {
+                return new BoundedPatientSearchResults(List.of(), true);
             }
 
-            findNewPatients(localResults, externalResults, newPatientsFromExternalSearch);
-            insertNewPatients(newPatientsFromExternalSearch);
+            List<ExtendedPatientSearchResults> newPatientsFromExternalSearch = new ArrayList<>();
+            findNewPatients(allResults, externalResults, newPatientsFromExternalSearch);
+            if (maxLocalResults != null
+                    && allResults.size() + newPatientsFromExternalSearch.size() >= maxLocalResults) {
+                return new BoundedPatientSearchResults(List.of(), true);
+            }
+            if (maxLocalResults == null) {
+                insertNewPatients(newPatientsFromExternalSearch);
+            } else {
+                boundedPatientsToInsert.addAll(newPatientsFromExternalSearch);
+            }
             newPatientsFromExternalSearch
                     .forEach(e -> e.setDataSourceName(MessageUtil.getMessage("patient.imported.source")));
             allResults.addAll(newPatientsFromExternalSearch);
         }
+        if (maxLocalResults != null) {
+            // Delay every write until all bounded sources are known to fit. A later
+            // source overflow must not leave patients inserted by an earlier source.
+            insertNewPatients(boundedPatientsToInsert);
+        }
         sortPatients(allResults);
 
-        return allResults;
+        return new BoundedPatientSearchResults(allResults, false);
+    }
+
+    static ExternalSearchOutcome awaitExternalSearch(IExternalPatientSearch externalSearch)
+            throws InterruptedException, ExecutionException, TimeoutException {
+        Future<Integer> future = externalSearch.runExternalSearch();
+        try {
+            Integer status = future.get(externalSearch.getTimeout(), TimeUnit.MILLISECONDS);
+            return Integer.valueOf(HttpStatus.SC_OK).equals(status)
+                    ? new ExternalSearchOutcome(status, externalSearch.getSearchResults())
+                    : new ExternalSearchOutcome(status, List.of());
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            throw e;
+        } catch (InterruptedException e) {
+            future.cancel(true);
+            Thread.currentThread().interrupt();
+            throw e;
+        }
+    }
+
+    static List<ExtendedPatientSearchResults> requireSuccessfulExternalSearch(IExternalPatientSearch externalSearch) {
+        try {
+            ExternalSearchOutcome outcome = awaitExternalSearch(externalSearch);
+            if (!outcome.successful()) {
+                throw new ExternalPatientSearchException(
+                        "External patient search returned unsuccessful status " + outcome.status());
+            }
+            if (outcome.results() == null) {
+                throw new ExternalPatientSearchException("External patient search returned no result collection");
+            }
+            return outcome.results();
+        } catch (ExternalPatientSearchException e) {
+            throw e;
+        } catch (InterruptedException e) {
+            throw new ExternalPatientSearchException("External patient search was interrupted", e);
+        } catch (TimeoutException e) {
+            throw new ExternalPatientSearchException("External patient search timed out", e);
+        } catch (ExecutionException e) {
+            Throwable upstreamCause = e.getCause() == null ? e : e.getCause();
+            throw new ExternalPatientSearchException("External patient search could not be completed", upstreamCause);
+        } catch (RuntimeException e) {
+            throw new ExternalPatientSearchException("External patient search could not be completed", e);
+        }
+    }
+
+    record ExternalSearchOutcome(Integer status, List<ExtendedPatientSearchResults> results) {
+        boolean successful() {
+            return Integer.valueOf(HttpStatus.SC_OK).equals(status);
+        }
     }
 
     private void insertNewPatients(List<ExtendedPatientSearchResults> newPatientsFromClinic) {
-        try {
-            for (ExtendedPatientSearchResults results : newPatientsFromClinic) {
-                insertNewPatients(results);
-            }
-        } catch (LIMSRuntimeException e) {
-            LogEvent.logDebug(e);
-        }
-    }
-
-    private void insertNewPatients(ExtendedPatientSearchResults results) {
-        Patient patient = new Patient();
-        Person person = new Person();
-
-        patient.setBirthDateForDisplay(results.getBirthdate());
-        patient.setGender(results.getGender());
-        patient.setNationalId(results.getNationalId());
-        patient.setSysUserId(sysUserId);
-
-        person.setLastName(results.getLastName());
-        person.setFirstName(results.getFirstName());
-        person.setStreetAddress(results.getStreetAddress());
-        person.setZipCode(results.getPostalCode());
-        person.setSysUserId(sysUserId);
-
-        personService.insert(person);
-        patient.setPerson(person);
-        patientService.insert(patient);
-
-        persistIdentityType(patientIdentityService, results.getStNumber(), "ST", patient.getId());
-        persistIdentityType(patientIdentityService, results.getSubjectNumber(), "SUBJECT", patient.getId());
-        persistIdentityType(patientIdentityService, results.getMothersName(), "MOTHER", patient.getId());
-        persistIdentityType(patientIdentityService, results.getGUID(), "GUID", patient.getId());
-        persistIdentityType(patientIdentityService, results.getDataSourceId(), "ORG_SITE", patient.getId());
-
-        String ADDRESS_PART_COMMUNE_ID = "";
-        String ADDRESS_PART_VILLAGE_ID = "";
-
-        List<AddressPart> partList = addressPartService.getAll();
-        for (AddressPart addressPart : partList) {
-            if ("commune".equals(addressPart.getPartName())) {
-                ADDRESS_PART_COMMUNE_ID = addressPart.getId();
-            } else if ("village".equals(addressPart.getPartName())) {
-                ADDRESS_PART_VILLAGE_ID = addressPart.getId();
-            }
-        }
-
-        patientService.insertNewPatientAddressInfo(ADDRESS_PART_COMMUNE_ID, results.getCampCommune(), "T", patient,
-                sysUserId);
-        patientService.insertNewPatientAddressInfo(ADDRESS_PART_VILLAGE_ID, results.getTown(), "T", patient, sysUserId);
-
-        results.setPatientID(patient.getId());
-    }
-
-    public void persistIdentityType(PatientIdentityService patientIdentityService, String paramValue, String type,
-            String patientId) throws LIMSRuntimeException {
-
-        if (!GenericValidator.isBlankOrNull(paramValue)) {
-
-            String typeID = PatientIdentityTypeMap.getInstance().getIDForType(type);
-
-            PatientIdentity patientIdentity = new PatientIdentity();
-            patientIdentity.setPatientId(patientId);
-            patientIdentity.setIdentityTypeId(typeID);
-            patientIdentity.setSysUserId(sysUserId);
-            patientIdentity.setIdentityData(paramValue);
-            patientIdentity.setLastupdatedFields();
-            patientIdentityService.insert(patientIdentity);
-        }
+        externalPatientImportService.importPatients(newPatientsFromClinic, sysUserId);
     }
 
     /*

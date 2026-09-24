@@ -40,8 +40,6 @@ public class PatientSearchLocalWorker extends PatientSearchWorker {
     public String createSearchResultXML(String lastName, String firstName, String STNumber, String subjectNumber,
             String nationalID, String patientID, String guid, String dateOfBirth, String gender, StringBuilder xml) {
 
-        String success = IActionConstants.VALID;
-
         if (GenericValidator.isBlankOrNull(lastName) && GenericValidator.isBlankOrNull(firstName)
                 && GenericValidator.isBlankOrNull(STNumber) && GenericValidator.isBlankOrNull(subjectNumber)
                 && GenericValidator.isBlankOrNull(nationalID) && GenericValidator.isBlankOrNull(patientID)
@@ -52,33 +50,31 @@ public class PatientSearchLocalWorker extends PatientSearchWorker {
             return IActionConstants.INVALID;
         }
 
-        // N.B. results do not have the referrinngPatientId information but it is not
-        // displayed so for now it will be left as null
-        List<PatientSearchResults> results = searchResultsService.getSearchResults(lastName, firstName, STNumber,
-                subjectNumber, nationalID, nationalID, patientID, guid, dateOfBirth, gender);
-        if (!GenericValidator.isBlankOrNull(nationalID)) {
-            List<PatientSearchResults> observationResults = getObservationsByReferringPatientId(nationalID);
-            results.addAll(observationResults);
-        }
-        sortPatients(results);
-
-        if (!results.isEmpty()) {
-            for (PatientSearchResults singleResult : results) {
-                singleResult.setDataSourceName(MessageUtil.getMessage("patient.local.source"));
-                appendSearchResultRow(singleResult, xml);
-            }
-        } else {
-            success = IActionConstants.INVALID;
-
-            xml.append("No results were found for search.  Check spelling or remove some of the fields");
-        }
-
-        return success;
+        return appendBoundedSearchResults(getPatientSearchResults(lastName, firstName, STNumber, subjectNumber,
+                nationalID, patientID, guid, dateOfBirth, gender, AJAX_QUERY_RESULT_PROBE_LIMIT), xml);
     }
 
     @Override
     public List<PatientSearchResults> getPatientSearchResults(String lastName, String firstName, String STNumber,
             String subjectNumber, String nationalID, String patientID, String guid, String dateOfBirth, String gender) {
+        return getPatientSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID, patientID, guid,
+                dateOfBirth, gender, null).results();
+    }
+
+    @Override
+    public BoundedPatientSearchResults getPatientSearchResults(String lastName, String firstName, String STNumber,
+            String subjectNumber, String nationalID, String patientID, String guid, String dateOfBirth, String gender,
+            int maxLocalResults) {
+        if (maxLocalResults < 1) {
+            throw new IllegalArgumentException("Patient search result limit must be positive");
+        }
+        return getPatientSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID, patientID, guid,
+                dateOfBirth, gender, Integer.valueOf(maxLocalResults));
+    }
+
+    private BoundedPatientSearchResults getPatientSearchResults(String lastName, String firstName, String STNumber,
+            String subjectNumber, String nationalID, String patientID, String guid, String dateOfBirth, String gender,
+            Integer maxLocalResults) {
 
         if (GenericValidator.isBlankOrNull(lastName) && GenericValidator.isBlankOrNull(firstName)
                 && GenericValidator.isBlankOrNull(STNumber) && GenericValidator.isBlankOrNull(subjectNumber)
@@ -86,16 +82,26 @@ public class PatientSearchLocalWorker extends PatientSearchWorker {
                 && GenericValidator.isBlankOrNull(guid) && GenericValidator.isBlankOrNull(dateOfBirth)
                 && GenericValidator.isBlankOrNull(gender)) {
 
-            return new ArrayList<>();
+            return new BoundedPatientSearchResults(List.of(), false);
         }
 
         // N.B. results do not have the referrinngPatientId information but it is not
         // displayed so for now it will be left as null
-        List<PatientSearchResults> results = searchResultsService.getSearchResults(lastName, firstName, STNumber,
-                subjectNumber, nationalID, nationalID, patientID, guid, dateOfBirth, gender);
+        List<PatientSearchResults> results = new ArrayList<>(maxLocalResults == null
+                ? searchResultsService.getSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID,
+                        nationalID, patientID, guid, dateOfBirth, gender)
+                : searchResultsService.getSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID,
+                        nationalID, patientID, guid, dateOfBirth, gender, maxLocalResults));
+        if (maxLocalResults != null && results.size() >= maxLocalResults) {
+            return new BoundedPatientSearchResults(List.of(), true);
+        }
         if (!GenericValidator.isBlankOrNull(nationalID)) {
-            List<PatientSearchResults> observationResults = getObservationsByReferringPatientId(nationalID);
-            results.addAll(observationResults);
+            BoundedPatientSearchResults observationResults = getObservationsByReferringPatientId(nationalID,
+                    maxLocalResults == null ? null : maxLocalResults - results.size());
+            if (observationResults.limitReached()) {
+                return observationResults;
+            }
+            results.addAll(observationResults.results());
         }
         sortPatients(results);
 
@@ -105,13 +111,25 @@ public class PatientSearchLocalWorker extends PatientSearchWorker {
             }
         }
 
-        return results;
+        return new BoundedPatientSearchResults(results, false);
     }
 
     private List<PatientSearchResults> getObservationsByReferringPatientId(String referringId) {
+        return getObservationsByReferringPatientId(referringId, null).results();
+    }
+
+    private BoundedPatientSearchResults getObservationsByReferringPatientId(String referringId, Integer maxResults) {
         List<PatientSearchResults> resultList = new ArrayList<>();
-        List<ObservationHistory> observationList = SpringContext.getBean(ObservationHistoryService.class)
-                .getObservationsByTypeAndValue(ObservationType.REFERRERS_PATIENT_ID, referringId);
+        ObservationHistoryService observationHistoryService = SpringContext.getBean(ObservationHistoryService.class);
+        List<ObservationHistory> observationList = maxResults == null
+                ? observationHistoryService.getObservationsByTypeAndValue(ObservationType.REFERRERS_PATIENT_ID,
+                        referringId)
+                : observationHistoryService.getObservationsByTypeAndValue(ObservationType.REFERRERS_PATIENT_ID,
+                        referringId, maxResults);
+
+        if (maxResults != null && observationList != null && observationList.size() >= maxResults) {
+            return new BoundedPatientSearchResults(List.of(), true);
+        }
 
         if (observationList != null) {
             for (ObservationHistory observation : observationList) {
@@ -122,7 +140,7 @@ public class PatientSearchLocalWorker extends PatientSearchWorker {
             }
         }
 
-        return resultList;
+        return new BoundedPatientSearchResults(resultList, false);
     }
 
     private PatientSearchResults getSearchResultsForPatient(Patient patient, String referringId) {

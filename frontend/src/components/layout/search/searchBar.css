@@ -21,6 +21,20 @@
   margin-left: 37%;
 }
 
+.patient-search-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2.5rem;
+  padding-left: 0.75rem;
+}
+
+.patient-search-error {
+  padding: 0.75rem 1rem;
+  color: var(--cds-text-error, #da1e28);
+  background: var(--cds-notification-background-error, #fff1f1);
+}
+
 .patientHead {
   position: relative;
   border-bottom: 2px solid #eee3e3;

@@ -174,6 +174,21 @@ public class ObservationHistoryDAOImpl extends BaseDAOImpl<ObservationHistory, S
     @Transactional(readOnly = true)
     public List<ObservationHistory> getObservationHistoriesByValueAndType(String value, String typeId, String valueType)
             throws LIMSRuntimeException {
+        return getObservationHistoriesByValueAndType(value, typeId, valueType, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ObservationHistory> getObservationHistoriesByValueAndType(String value, String typeId, String valueType,
+            int maxResults) throws LIMSRuntimeException {
+        if (maxResults < 1) {
+            throw new IllegalArgumentException("Observation history result limit must be positive");
+        }
+        return getObservationHistoriesByValueAndType(value, typeId, valueType, Integer.valueOf(maxResults));
+    }
+
+    private List<ObservationHistory> getObservationHistoriesByValueAndType(String value, String typeId,
+            String valueType, Integer maxResults) throws LIMSRuntimeException {
         String sql = "from ObservationHistory oh where oh.value = :value and oh.observationHistoryTypeId ="
                 + " :typeId and oh.valueType = :valueType";
 
@@ -183,6 +198,9 @@ public class ObservationHistoryDAOImpl extends BaseDAOImpl<ObservationHistory, S
             query.setParameter("typeId", typeId);
             query.setParameter("value", value);
             query.setParameter("valueType", valueType);
+            if (maxResults != null) {
+                query.setMaxResults(maxResults);
+            }
 
             List<ObservationHistory> ohList = query.list();
             return ohList;

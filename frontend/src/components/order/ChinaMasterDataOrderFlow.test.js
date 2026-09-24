@@ -187,7 +187,8 @@ describe("China order entry uses governed master data", () => {
     );
 
     expect(source).toContain('id="patientQuickQuery"');
-    expect(source).toContain("quickQuery: query");
+    expect(source).toContain("quickQuery: normalizedQuery");
+    expect(source).toContain('params.set("queryId", queryId)');
     expect(source).toContain('history.push("/PatientManagement")');
     expect(source).not.toContain('id="previousLabNumber"');
     expect(source).not.toContain('id="patientLastName"');

@@ -74,4 +74,7 @@ public interface ObservationHistoryDAO extends BaseDAO<ObservationHistory, Strin
 
     List<ObservationHistory> getObservationHistoriesByValueAndType(String value, String typeId, String valueType)
             throws LIMSRuntimeException;
+
+    List<ObservationHistory> getObservationHistoriesByValueAndType(String value, String typeId, String valueType,
+            int maxResults) throws LIMSRuntimeException;
 }

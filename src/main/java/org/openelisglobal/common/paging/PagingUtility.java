@@ -105,10 +105,28 @@ public class PagingUtility<E> {
 
     private void updateSessionResultCache(List<E> pagedResults, E clientTests, PagingBean paging,
             IPageUpdater<E> updater) {
+        if (paging == null || paging.getCurrentPage() == null) {
+            org.openelisglobal.common.log.LogEvent.logWarn(this.getClass().getSimpleName(), "updateSessionResultCache",
+                    "Missing current page; session cache was not updated");
+            return;
+        }
 
-        int currentPage = Integer.parseInt(paging.getCurrentPage()) - 1;
+        int requestedPage;
+        try {
+            requestedPage = Integer.parseInt(paging.getCurrentPage());
+        } catch (NumberFormatException e) {
+            org.openelisglobal.common.log.LogEvent.logWarn(this.getClass().getSimpleName(), "updateSessionResultCache",
+                    "Invalid current page; session cache was not updated");
+            return;
+        }
 
-        E sessionTests = pagedResults.get(currentPage);
+        if (requestedPage < 1 || requestedPage > pagedResults.size()) {
+            org.openelisglobal.common.log.LogEvent.logWarn(this.getClass().getSimpleName(), "updateSessionResultCache",
+                    "Current page is outside the session cache; cache was not updated");
+            return;
+        }
+
+        E sessionTests = pagedResults.get(requestedPage - 1);
 
         updater.updateCache(sessionTests, clientTests);
     }

@@ -244,6 +244,7 @@ function OEHeader({
         tag === "menu"
           ? buildTaskFocusedMenu(res, {
               roles: userSessionDetails.roles,
+              userLabRolesMap: userSessionDetails.userLabRolesMap,
               profile: menuProfile,
               optionalModules: config.optionalModules,
             })
@@ -330,6 +331,8 @@ function OEHeader({
     };
   }, [
     userSessionDetails.authenticated,
+    userSessionDetails.roles,
+    userSessionDetails.userLabRolesMap,
     navContext,
     menuReloadToken,
     intl.locale,

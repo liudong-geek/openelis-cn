@@ -5,7 +5,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
-import { getFromOpenElisServer } from "../../utils/Utils";
+import { readOpenElisResponse } from "../../utils/readOpenElisResponse";
 
 export interface PatientSearchResult {
   id?: string | number;
@@ -20,12 +20,20 @@ export interface PatientSearchResult {
   subjectNumber?: string;
 }
 
-interface SearchQueryParams {
-  firstName: string;
-  lastName: string;
-  dateOfBirth: string;
-  nationalID: string;
-  subjectNumber: string;
+interface PatientSearchResponse {
+  patientSearchResults?: PatientSearchResult[];
+  totalItems?: number;
+  paging?: {
+    currentPage?: string | number;
+  };
+}
+
+export type PatientSearchError = "too-many" | "request";
+
+export interface PatientSearchData {
+  results: PatientSearchResult[];
+  totalItems: number;
+  error: PatientSearchError | null;
 }
 
 export interface AutocompleteSuggestion {
@@ -42,60 +50,80 @@ interface AutocompleteProps {
   onSelect?: (id: string | number) => void;
 }
 
-export const fetchPatientData = async (
+export const fetchPatientData = (
   query: string,
-  callback: (results: PatientSearchResult[]) => void,
-) => {
-  const [firstName, lastName] = query.split(" ");
-  const queryParams: SearchQueryParams = {
-    firstName: firstName || query,
-    lastName: lastName || query,
-    dateOfBirth: query,
-    nationalID: query,
-    subjectNumber: query,
-  };
+  callback: (data: PatientSearchData) => void,
+  signal: AbortSignal | null = null,
+): void => {
+  const queryParams = new URLSearchParams({
+    quickQuery: query,
+    suppressExternalSearch: "true",
+  });
+  const requestSignal = signal ?? new AbortController().signal;
 
-  const createEndpoint = (param: string, value: string) =>
-    `/rest/patient-search?${param}=${value}`;
+  readOpenElisResponse(
+    `/rest/patient-search-results?${queryParams.toString()}`,
+    requestSignal,
+  )
+    .then(async (response) => {
+      if (requestSignal.aborted) return;
+      if (!response.ok) {
+        callback({
+          results: [],
+          totalItems: 0,
+          error: response.status === 400 ? "too-many" : "request",
+        });
+        return;
+      }
 
-  const endpoints = Object.entries(queryParams)
-    .map(([param, value]) => value && createEndpoint(param, value))
-    .filter(Boolean);
+      let body: PatientSearchResponse;
+      try {
+        body = (await response.json()) as PatientSearchResponse;
+      } catch {
+        callback({ results: [], totalItems: 0, error: "request" });
+        return;
+      }
+      if (requestSignal.aborted) return;
 
-  if (firstName && lastName) {
-    endpoints.push(
-      createEndpoint("firstName", firstName) + `&lastName=${lastName}`,
-    );
-  }
+      const results = body.patientSearchResults;
+      const totalItems = Number(body.totalItems);
+      const currentPage = Number(body.paging?.currentPage);
+      if (
+        !Array.isArray(results) ||
+        !Number.isInteger(totalItems) ||
+        totalItems < results.length ||
+        !Number.isInteger(currentPage) ||
+        currentPage !== 1
+      ) {
+        callback({ results: [], totalItems: 0, error: "request" });
+        return;
+      }
 
-  const fetchEndpointData = async (endpoint: string) => {
-    return new Promise<PatientSearchResult[] | null>((resolve) => {
-      getFromOpenElisServer(endpoint, (response) => {
-        if (response && response.length > 0) {
-          resolve(response);
-        } else {
-          resolve(null);
-        }
-      });
+      callback({ results, totalItems, error: null });
+    })
+    .catch((error: unknown) => {
+      if (requestSignal.aborted) return;
+      if ((error as { name?: string } | null)?.name === "AbortError") return;
+      callback({ results: [], totalItems: 0, error: "request" });
     });
-  };
-
-  try {
-    const results = await Promise.all(endpoints.map(fetchEndpointData));
-    const filteredResults = results.filter((result) => result !== null);
-    const combinedResults = ([] as PatientSearchResult[]).concat(
-      ...filteredResults,
-    );
-    const uniqueResults = combinedResults.filter(
-      (value, index, self) =>
-        index === self.findIndex((t) => t.patientID === value.patientID),
-    );
-
-    callback(uniqueResults);
-  } catch {
-    callback([]);
-  }
 };
+
+export const getPatientManagementSearchRoute = (query: string) => {
+  const normalizedQuery = query.trim();
+  if (!normalizedQuery) return null;
+  return `/PatientManagement?${new URLSearchParams({
+    quickQuery: normalizedQuery,
+  }).toString()}`;
+};
+
+export const getPatientDisplayName = (
+  patient: PatientSearchResult,
+  fallback: string,
+) =>
+  [patient.lastName, patient.firstName]
+    .map((namePart) => String(namePart ?? "").trim())
+    .filter(Boolean)
+    .join(" ") || fallback;
 
 export const getPatientResultsRoute = (patientId?: string | number) =>
   patientId === undefined || patientId === null || patientId === ""

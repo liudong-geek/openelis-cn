@@ -1,4 +1,4 @@
-import React, { useState, useContext, useRef } from "react";
+import React, { useState, useContext, useEffect, useRef } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import {
   Grid,
@@ -17,6 +17,7 @@ import {
   TableCell,
   Pagination,
   Loading,
+  InlineNotification,
   Tag,
   Tile,
 } from "@carbon/react";
@@ -24,9 +25,14 @@ import { Search } from "@carbon/react/icons";
 import { Formik, Field } from "formik";
 import CustomDatePicker from "../../common/CustomDatePicker";
 import { ConfigurationContext } from "../../layout/Layout";
-import { searchPatients, getPatientMergeDetails } from "./patientMergeService";
+import {
+  searchPatients,
+  getPatientMergeDetails,
+  getErrorMessage,
+} from "./patientMergeService";
 import type {
   Nullable,
+  PatientMergeApiError,
   PatientRecord,
   PatientSearchCriteria,
   PatientSelectHandler,
@@ -83,11 +89,45 @@ function PatientSearchPanel({
 
   const [searchResults, setSearchResults] = useState<PatientRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [selectingPatientId, setSelectingPatientId] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [dob, setDob] = useState("");
   const formikRef = useRef<Nullable<PatientSearchFormBag>>(null);
+  const searchGeneration = useRef(0);
+  const selectionGeneration = useRef(0);
+  const searchController = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      searchGeneration.current += 1;
+      selectionGeneration.current += 1;
+      searchController.current?.abort();
+      searchController.current = null;
+    };
+  }, []);
+
+  const invalidateSelection = () => {
+    selectionGeneration.current += 1;
+    setSelectingPatientId("");
+  };
+
+  const invalidateSearch = () => {
+    searchGeneration.current += 1;
+    searchController.current?.abort();
+    searchController.current = null;
+    invalidateSelection();
+    setLoading(false);
+    setSearchError("");
+    setSearchResults([]);
+    setHasSearched(false);
+    setPage(1);
+  };
 
   const initialValues = {
     patientId: "",
@@ -102,14 +142,27 @@ function PatientSearchPanel({
     values: PatientSearchCriteria,
     suppressExternal = true,
   ) => {
+    searchController.current?.abort();
+    const controller = new AbortController();
+    searchController.current = controller;
+    const generation = ++searchGeneration.current;
+    invalidateSelection();
     setLoading(true);
+    setSearchError("");
     setHasSearched(true);
+    setPage(1);
     try {
-      const result = await searchPatients({
-        ...values,
-        dateOfBirth: dob,
-        suppressExternalSearch: suppressExternal,
-      });
+      const result = await searchPatients(
+        {
+          ...values,
+          dateOfBirth: dob,
+          suppressExternalSearch: suppressExternal,
+        },
+        controller.signal,
+      );
+
+      if (!mounted.current || generation !== searchGeneration.current) return;
+      setSearchError("");
 
       if (
         result.patientSearchResults &&
@@ -138,16 +191,30 @@ function PatientSearchPanel({
         setSearchResults([]);
       }
     } catch (error) {
+      if (!mounted.current || generation !== searchGeneration.current) return;
+      if ((error as { name?: string } | null)?.name === "AbortError") return;
       console.error("Search error:", error);
       setSearchResults([]);
+      const apiError =
+        error && typeof error === "object"
+          ? (error as PatientMergeApiError)
+          : ({} as PatientMergeApiError);
+      setSearchError(getErrorMessage(apiError, intl));
     } finally {
-      setLoading(false);
+      if (searchController.current === controller) {
+        searchController.current = null;
+      }
+      if (mounted.current && generation === searchGeneration.current) {
+        setLoading(false);
+      }
     }
   };
 
   const handlePatientSelect = async (patientId: string) => {
     const patient = searchResults.find((p) => p.patientID === patientId);
     if (patient) {
+      const generation = ++selectionGeneration.current;
+      setSelectingPatientId(patientId);
       // Transform to match expected format with patientPK
       let selectedPatientData = {
         ...patient,
@@ -157,6 +224,9 @@ function PatientSearchPanel({
       // Fetch detailed data including clinical summary
       try {
         const details = await getPatientMergeDetails(patientId);
+        if (!mounted.current || generation !== selectionGeneration.current) {
+          return;
+        }
         if (details) {
           // Enrich with dataSummary from merge details API
           selectedPatientData = {
@@ -165,11 +235,20 @@ function PatientSearchPanel({
           };
         }
       } catch (error) {
+        if (!mounted.current || generation !== selectionGeneration.current) {
+          return;
+        }
         console.error("Failed to fetch patient details:", error);
         // Continue with basic data if details fetch fails
+      } finally {
+        if (mounted.current && generation === selectionGeneration.current) {
+          setSelectingPatientId("");
+        }
       }
 
-      onPatientSelect(selectedPatientData);
+      if (mounted.current && generation === selectionGeneration.current) {
+        onPatientSelect(selectedPatientData);
+      }
     }
   };
 
@@ -199,7 +278,13 @@ function PatientSearchPanel({
     <div className="patientSelectionSection">
       <h4>{title}</h4>
 
-      {loading && <Loading />}
+      {loading && (
+        <Loading
+          small
+          withOverlay={false}
+          description={intl.formatMessage({ id: "loading.label" })}
+        />
+      )}
 
       <Formik
         innerRef={formikRef}
@@ -214,6 +299,10 @@ function PatientSearchPanel({
                   {({ field }) => (
                     <TextInput
                       {...field}
+                      onChange={(event) => {
+                        invalidateSearch();
+                        field.onChange(event);
+                      }}
                       id={`${panelId}-patientId`}
                       labelText={intl.formatMessage({ id: "patient.id" })}
                       placeholder={intl.formatMessage({
@@ -228,6 +317,10 @@ function PatientSearchPanel({
                   {({ field }) => (
                     <TextInput
                       {...field}
+                      onChange={(event) => {
+                        invalidateSearch();
+                        field.onChange(event);
+                      }}
                       id={`${panelId}-firstName`}
                       labelText={intl.formatMessage({
                         id: "patient.first.name",
@@ -244,6 +337,10 @@ function PatientSearchPanel({
                   {({ field }) => (
                     <TextInput
                       {...field}
+                      onChange={(event) => {
+                        invalidateSearch();
+                        field.onChange(event);
+                      }}
                       id={`${panelId}-lastName`}
                       labelText={intl.formatMessage({
                         id: "patient.last.name",
@@ -262,7 +359,10 @@ function PatientSearchPanel({
                       legendText={intl.formatMessage({ id: "patient.gender" })}
                       name={`${panelId}-${field.name}`}
                       id={`${panelId}-gender`}
-                      onChange={(value) => setFieldValue("gender", value)}
+                      onChange={(value) => {
+                        invalidateSearch();
+                        setFieldValue("gender", value);
+                      }}
                       valueSelected={values.gender}
                     >
                       <RadioButton
@@ -284,7 +384,11 @@ function PatientSearchPanel({
                   id={`${panelId}-dob`}
                   labelText={intl.formatMessage({ id: "patient.dob" })}
                   value={dob}
-                  onChange={(date) => setDob(date)}
+                  onChange={(date) => {
+                    invalidateSearch();
+                    setDob(date);
+                    setFieldValue("dateOfBirth", date);
+                  }}
                   disallowFutureDate={true}
                 />
               </Column>
@@ -294,7 +398,7 @@ function PatientSearchPanel({
               <Button
                 kind="primary"
                 type="submit"
-                disabled={isFormEmpty(values)}
+                disabled={loading || isFormEmpty(values)}
               >
                 <FormattedMessage id="label.button.search" />
               </Button>
@@ -303,6 +407,7 @@ function PatientSearchPanel({
                 type="button"
                 onClick={() => handleSearch(values, false)}
                 disabled={
+                  loading ||
                   isFormEmpty(values) ||
                   configurationProperties?.UseExternalPatientInfo === "false"
                 }
@@ -313,6 +418,23 @@ function PatientSearchPanel({
           </form>
         )}
       </Formik>
+
+      {searchError && !selectedPatient && (
+        <InlineNotification
+          kind="error"
+          hideCloseButton
+          title={intl.formatMessage({ id: "patient.management.list.error" })}
+          subtitle={searchError}
+        />
+      )}
+
+      {selectingPatientId && (
+        <Loading
+          small
+          withOverlay={false}
+          description={intl.formatMessage({ id: "loading.label" })}
+        />
+      )}
 
       {/* Search Results Table - hidden when patient is selected */}
       {searchResults.length > 0 && !selectedPatient && (
@@ -353,6 +475,7 @@ function PatientSearchPanel({
                               id={`${panelId}-select-${row.id}`}
                               labelText=""
                               checked={selectedPatient?.patientID === row.id}
+                              disabled={selectingPatientId === row.id}
                               onClick={() =>
                                 handlePatientSelect(String(row.id))
                               }
@@ -402,19 +525,13 @@ function PatientSearchPanel({
               id: "pagination.items-per-page",
             })}
             itemText={(min, max) =>
-              intl.formatMessage(
-                { id: "pagination.item" },
-                { min, max },
-              )
+              intl.formatMessage({ id: "pagination.item" }, { min, max })
             }
             pageNumberText={intl.formatMessage({
               id: "pagination.page-number",
             })}
             pageRangeText={(_current, total) =>
-              intl.formatMessage(
-                { id: "pagination.page-range" },
-                { total },
-              )
+              intl.formatMessage({ id: "pagination.page-range" }, { total })
             }
             pageText={(selectedPage, pagesUnknown) =>
               intl.formatMessage(
@@ -435,6 +552,8 @@ function PatientSearchPanel({
             onClick={() => {
               onPatientSelect(null);
               setSearchResults([]);
+              setSearchError("");
+              invalidateSelection();
               setHasSearched(false);
               setDob("");
               if (formikRef.current) {
@@ -451,6 +570,7 @@ function PatientSearchPanel({
       {hasSearched &&
         searchResults.length === 0 &&
         !loading &&
+        !searchError &&
         !selectedPatient && (
           <Tile className="emptySearchResults">
             <div className="emptyStateContent">

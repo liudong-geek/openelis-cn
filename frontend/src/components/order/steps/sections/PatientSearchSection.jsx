@@ -65,6 +65,8 @@ const PatientSearchSection = ({
   const location = useLocation();
   const componentMounted = useRef(true);
   const requestRef = useRef(null);
+  const requestGeneration = useRef(0);
+  const searchContextRef = useRef(null);
   const draftRef = useRef(null);
   const savedDraftRef = useRef(null);
   const latest = useRef(null);
@@ -84,7 +86,7 @@ const PatientSearchSection = ({
   const [errorKey, setErrorKey] = useState(null);
   const [totalItems, setTotalItems] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(100);
+  const [pageSize, setPageSize] = useState(99);
 
   // The application is the single source of truth for the selected identity.
   const selectedPatient = orderData?.patientProperties?.patientPK
@@ -119,6 +121,7 @@ const PatientSearchSection = ({
   }
 
   const cancelRequest = useCallback(() => {
+    requestGeneration.current += 1;
     requestRef.current?.controller.abort();
     requestRef.current = null;
     setIsSearching(false);
@@ -129,6 +132,7 @@ const PatientSearchSection = ({
   const isCurrentRequest = (request, data = latest.current.orderData) =>
     componentMounted.current &&
     requestRef.current === request &&
+    request.generation === requestGeneration.current &&
     !latest.current.isReadOnly &&
     request.orderKey === latest.current.orderKey &&
     request.patientProperties === data?.patientProperties;
@@ -137,6 +141,7 @@ const PatientSearchSection = ({
     cancelRequest();
     const request = {
       controller: new AbortController(),
+      generation: ++requestGeneration.current,
       orderKey,
       patientProperties: orderData?.patientProperties,
     };
@@ -187,68 +192,151 @@ const PatientSearchSection = ({
     setSearchResults([]);
     setTotalItems(0);
     setCurrentPage(1);
+    setPageSize(99);
+    searchContextRef.current = null;
     setSearchAttempted(false);
   }, [orderKey, isReadOnly, selectedPatient?.patientPK, cancelRequest]);
 
-  // Execute search
-  const handleSearch = () => {
-    const query = quickQuery.trim();
-    if (!query || isReadOnly || isSearching || selectedPatient) return;
-
+  const requestSearchPage = (context, requestedPage = 1) => {
+    if (!context?.baseUrl) return;
     const request = beginRequest();
     setIsSearching(true);
-    setSearchResults([]);
-    setTotalItems(0);
-    setCurrentPage(1);
-    setSearchAttempted(true);
-
-    const params = new URLSearchParams({
-      quickQuery: query,
-      suppressExternalSearch: "true",
-    });
-    const searchEndpoint = `/rest/patient-search-results?${params.toString()}`;
+    setErrorKey(null);
+    const params = new URLSearchParams(context.baseUrl.split("?")[1] || "");
+    const queryId = context.queryId;
+    if (queryId) {
+      params.set("queryId", queryId);
+      params.set("page", String(requestedPage));
+    }
+    const searchEndpoint = `${context.baseUrl.split("?")[0]}?${params.toString()}`;
 
     getFromOpenElisServer(
       searchEndpoint,
       (response) => {
-        if (isCurrentRequest(request)) {
-          setIsSearching(false);
-          const results = response?.patientSearchResults;
-          if (
-            !Array.isArray(results) ||
-            results.some((p) => !p || !patientId(p.patientID || p.id))
-          ) {
-            setErrorKey("patient.management.list.error");
-          } else {
-            // Map results to ensure each has an 'id' field for DataTable
-            const mappedResults = results.map((p) => ({
-              ...p,
-              id: patientId(p.patientID || p.id),
-              displayName:
-                `${p.lastName || ""}${p.firstName || ""}`.trim() || "—",
-              patientNumber:
-                p.nationalId ||
-                p.subjectNumber ||
-                p.STNumber ||
-                p.patientID ||
-                "—",
-              genderDisplay:
-                p.gender === "M"
-                  ? intl.formatMessage({ id: "patient.male" })
-                  : p.gender === "F"
-                    ? intl.formatMessage({ id: "patient.female" })
-                    : p.gender || "—",
-              birthDateForDisplay:
-                p.birthDateForDisplay || p.birthdate || p.dob || "—",
-              dataSource: "Local",
-            }));
-            setSearchResults(mappedResults);
-            setTotalItems(mappedResults.length);
-          }
+        if (!isCurrentRequest(request)) return;
+        setIsSearching(false);
+        const results = response?.patientSearchResults;
+        const responseQueryId = String(response?.queryId || "").trim();
+        const responsePage = Number(response?.paging?.currentPage);
+        const responsePages = Number(response?.paging?.totalPages);
+        const rawResponseTotal = response?.totalItems;
+        const responseTotal = Number(response?.totalItems);
+        const hasResponseTotal =
+          rawResponseTotal !== null &&
+          rawResponseTotal !== undefined &&
+          !(typeof rawResponseTotal === "string" && !rawResponseTotal.trim());
+        const rejectResponse = () => {
+          searchContextRef.current = null;
+          setSearchResults([]);
+          setTotalItems(0);
+          setCurrentPage(1);
+          setPageSize(99);
+          setErrorKey("patient.management.list.error");
+        };
+        if (
+          !Array.isArray(results) ||
+          results.some((p) => !p || !patientId(p.patientID || p.id)) ||
+          (context.queryId && responseQueryId !== context.queryId) ||
+          (responsePages > 1 && !responseQueryId) ||
+          !Number.isInteger(responsePage) ||
+          responsePage !== requestedPage ||
+          responsePage < 1 ||
+          !Number.isInteger(responsePages) ||
+          responsePages < responsePage ||
+          !hasResponseTotal ||
+          !Number.isInteger(responseTotal) ||
+          responseTotal < 0 ||
+          responseTotal < (results?.length || 0)
+        ) {
+          rejectResponse();
+          return;
         }
+
+        const establishedPageSize = context.pageSize;
+        const expectedRows = context.queryId
+          ? requestedPage < responsePages
+            ? establishedPageSize
+            : responseTotal - establishedPageSize * (responsePages - 1)
+          : null;
+        const paginationIsConsistent = context.queryId
+          ? Number.isInteger(establishedPageSize) &&
+            establishedPageSize > 0 &&
+            responseTotal === context.totalItems &&
+            responsePages === context.totalPages &&
+            Number.isInteger(expectedRows) &&
+            expectedRows >= 0 &&
+            results.length === expectedRows
+          : responsePages === 1
+            ? responseTotal === results.length
+            : results.length > 0 &&
+              Math.ceil(responseTotal / results.length) === responsePages;
+        if (!paginationIsConsistent) {
+          rejectResponse();
+          return;
+        }
+
+        const mappedResults = results.map((p) => ({
+          ...p,
+          id: patientId(p.patientID || p.id),
+          displayName: `${p.lastName || ""}${p.firstName || ""}`.trim() || "—",
+          patientNumber:
+            p.nationalId || p.subjectNumber || p.STNumber || p.patientID || "—",
+          genderDisplay:
+            p.gender === "M"
+              ? intl.formatMessage({ id: "patient.male" })
+              : p.gender === "F"
+                ? intl.formatMessage({ id: "patient.female" })
+                : p.gender || "—",
+          birthDateForDisplay:
+            p.birthDateForDisplay || p.birthdate || p.dob || "—",
+          dataSource: "Local",
+        }));
+        if (responsePage === 1 && responsePages > 1 && mappedResults.length) {
+          setPageSize(mappedResults.length);
+        } else if (responsePages <= 1) {
+          setPageSize(Math.max(1, responseTotal || mappedResults.length));
+        }
+        searchContextRef.current = {
+          ...context,
+          queryId: responseQueryId,
+          totalItems: responseTotal,
+          totalPages: responsePages,
+          pageSize:
+            context.pageSize ||
+            (responsePages > 1
+              ? mappedResults.length
+              : Math.max(1, responseTotal || mappedResults.length)),
+        };
+        setSearchResults(mappedResults);
+        setTotalItems(responseTotal);
+        setCurrentPage(responsePage);
       },
       request.controller.signal,
     );
+  };
+
+  // Execute search
+  const handleSearch = () => {
+    const normalizedQuery = quickQuery.trim();
+    if (!normalizedQuery || isReadOnly || isSearching || selectedPatient)
+      return;
+
+    setSearchResults([]);
+    setTotalItems(0);
+    setCurrentPage(1);
+    setPageSize(99);
+    setSearchAttempted(true);
+
+    const params = new URLSearchParams({
+      quickQuery: normalizedQuery,
+      suppressExternalSearch: "true",
+    });
+    const context = {
+      baseUrl: `/rest/patient-search-results?${params.toString()}`,
+      queryId: "",
+    };
+    searchContextRef.current = context;
+    requestSearchPage(context);
   };
 
   // Clear search
@@ -258,6 +346,7 @@ const PatientSearchSection = ({
     setQuickQuery("");
     setSearchResults([]);
     setTotalItems(0);
+    searchContextRef.current = null;
     setSearchAttempted(false);
     setCurrentPage(1);
   };
@@ -608,14 +697,7 @@ const PatientSearchSection = ({
                   defaultMessage="Patient Results"
                 />
               </h5>
-              <DataTable
-                rows={searchResults.slice(
-                  (currentPage - 1) * pageSize,
-                  currentPage * pageSize,
-                )}
-                headers={headers}
-                isSortable
-              >
+              <DataTable rows={searchResults} headers={headers} isSortable>
                 {({
                   rows,
                   headers,
@@ -727,14 +809,18 @@ const PatientSearchSection = ({
                 })}
                 pageSize={pageSize}
                 page={currentPage}
-                pageSizes={[25, 50, 100]}
+                pageSizes={[pageSize]}
                 itemsPerPageText={intl.formatMessage({
                   id: "pagination.itemsPerPage",
                   defaultMessage: "Items per page:",
                 })}
-                onChange={({ page, pageSize: newPageSize }) => {
-                  setCurrentPage(page);
-                  setPageSize(newPageSize);
+                onChange={({ page: requestedPage }) => {
+                  if (
+                    requestedPage !== currentPage &&
+                    searchContextRef.current?.queryId
+                  ) {
+                    requestSearchPage(searchContextRef.current, requestedPage);
+                  }
                 }}
               />
             </div>

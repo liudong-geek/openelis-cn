@@ -15,40 +15,32 @@
  */
 package org.openelisglobal.common.externalLinks;
 
+import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.security.KeyManagementException;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
-import java.security.UnrecoverableKeyException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Future;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.validator.GenericValidator;
 import org.apache.http.HttpStatus;
-import org.apache.http.client.HttpClient;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.utils.URIBuilder;
-import org.apache.http.conn.ClientConnectionManager;
-import org.apache.http.conn.scheme.Scheme;
-import org.apache.http.conn.ssl.SSLSocketFactory;
-import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.params.CoreConnectionPNames;
 import org.dom4j.DocumentException;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.provider.query.ExtendedPatientSearchResults;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Scope;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.scheduling.annotation.AsyncResult;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -58,6 +50,13 @@ public class ExternalPatientSearch implements IExternalPatientSearch {
 
     @Value("${org.openelisglobal.externalSearch.timeout:5000}")
     private Integer timeout;
+
+    @Value("${org.openelisglobal.externalSearch.maxResponseBytes:2097152}")
+    private Integer maxResponseBytes = ExternalPatientResponseSizeLimiter.DEFAULT_MAX_RESPONSE_BYTES;
+
+    @Autowired
+    @Qualifier("externalPatientSearchExecutor")
+    private AsyncTaskExecutor externalPatientSearchExecutor;
 
     private static final String GET_PARAM_PWD = "pwd";
     private static final String GET_PARAM_NAME = "name";
@@ -70,7 +69,9 @@ public class ExternalPatientSearch implements IExternalPatientSearch {
 
     public static final String MALFORMED_REPLY = "Malformed reply";
     public static final String URI_BUILD_FAILURE = "Failed to build URI";
+    public static final String RESPONSE_TOO_LARGE = "External patient search response exceeded the configured limit";
 
+    private boolean started = false;
     private boolean finished = false;
 
     private String firstName;
@@ -82,6 +83,7 @@ public class ExternalPatientSearch implements IExternalPatientSearch {
     private String connectionString;
     private String connectionName;
     private String connectionPassword;
+    private Integer resultLimit;
 
     protected String resultXML;
     protected List<ExtendedPatientSearchResults> searchResults;
@@ -90,7 +92,7 @@ public class ExternalPatientSearch implements IExternalPatientSearch {
 
     @Override
     public synchronized void setConnectionCredentials(String connectionString, String name, String password) {
-        if (finished) {
+        if (started) {
             throw new IllegalStateException("ServiceCredentials set after ExternalPatientSearch thread was started");
         }
 
@@ -103,7 +105,7 @@ public class ExternalPatientSearch implements IExternalPatientSearch {
     public synchronized void setSearchCriteria(String lastName, String firstName, String STNumber, String subjectNumber,
             String nationalID, String guid) throws IllegalStateException {
 
-        if (finished) {
+        if (started) {
             throw new IllegalStateException("Search criteria set after ExternalPatientSearch thread was started");
         }
 
@@ -116,22 +118,27 @@ public class ExternalPatientSearch implements IExternalPatientSearch {
     }
 
     @Override
+    public synchronized void setResultLimit(int maxResults) {
+        if (started) {
+            throw new IllegalStateException("Result limit set after ExternalPatientSearch thread was started");
+        }
+        if (maxResults < 1) {
+            throw new IllegalArgumentException("External patient search result limit must be positive");
+        }
+        resultLimit = maxResults;
+    }
+
+    @Override
     public synchronized List<ExtendedPatientSearchResults> getSearchResults() {
 
         if (!finished) {
             throw new IllegalStateException("Results requested before ExternalPatientSearch thread was finished");
         }
 
-        if (searchResults == null) {
-            searchResults = new ArrayList<>();
-
-            convertXMLToResults();
-        }
-
-        return searchResults;
+        return searchResults == null ? List.of() : searchResults;
     }
 
-    public int getSearchResultStatus() {
+    public synchronized int getSearchResultStatus() {
         if (!finished) {
             throw new IllegalStateException("Result status requested ExternalPatientSearch before search was finished");
         }
@@ -140,10 +147,14 @@ public class ExternalPatientSearch implements IExternalPatientSearch {
     }
 
     @Override
-    @Async
     public Future<Integer> runExternalSearch() {
-        try {
-            synchronized (this) {
+        synchronized (this) {
+            if (started) {
+                throw new IllegalStateException("External patient search can only be started once");
+            }
+            started = true;
+            try {
+                validateConfiguration();
                 if (noSearchTerms()) {
                     throw new IllegalStateException("Search requested before without any search terms.");
                 }
@@ -152,13 +163,35 @@ public class ExternalPatientSearch implements IExternalPatientSearch {
                     throw new IllegalStateException("Search requested before connection credentials set.");
                 }
                 errors = new ArrayList<>();
-
-                doSearch();
+                if (externalPatientSearchExecutor == null) {
+                    throw new IllegalStateException("External patient search executor is not configured");
+                }
+                return externalPatientSearchExecutor.submit(this::executeSearch);
+            } catch (RuntimeException e) {
+                finished = true;
+                throw e;
             }
-        } finally {
-            finished = true;
         }
-        return new AsyncResult<>(getSearchResultStatus());
+    }
+
+    private Integer executeSearch() {
+        try {
+            doSearch();
+            parseResponseBeforeCompletion();
+            return returnStatus;
+        } finally {
+            synchronized (this) {
+                finished = true;
+            }
+        }
+    }
+
+    @PostConstruct
+    void validateConfiguration() {
+        maxResponseBytes = ExternalPatientResponseSizeLimiter.validateConfiguredLimit(maxResponseBytes);
+        if (timeout == null || timeout < 1) {
+            throw new IllegalArgumentException("External patient search timeout must be positive");
+        }
     }
 
     private boolean connectionCredentialsIncomplete() {
@@ -174,8 +207,7 @@ public class ExternalPatientSearch implements IExternalPatientSearch {
     // protected for unit testing called from synchronized block
     protected void doSearch() {
 
-        CloseableHttpClient httpclient = HttpClientBuilder.create().build();
-        setTimeout(httpclient);
+        CloseableHttpClient httpclient = createHttpClient();
 
         HttpGet httpget = new HttpGet(connectionString);
         URI getUri = buildConnectionString(httpget.getURI());
@@ -183,53 +215,51 @@ public class ExternalPatientSearch implements IExternalPatientSearch {
 
         CloseableHttpResponse getResponse = null;
         try {
-            // Ignore hostname mismatches and allow trust of self-signed certs
-            // TODO shouldn't let a self signed cert through
-            SSLSocketFactory sslsf = new SSLSocketFactory(new TrustSelfSignedStrategy(),
-                    SSLSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
-            Scheme https = new Scheme("https", 443, sslsf);
-            ClientConnectionManager ccm = httpclient.getConnectionManager();
-            ccm.getSchemeRegistry().register(https);
-
             getResponse = httpclient.execute(httpget);
             returnStatus = getResponse.getStatusLine().getStatusCode();
-            setPossibleErrors();
-            setResults(IOUtils.toString(getResponse.getEntity().getContent(), "UTF-8"));
+            if (getResponse.getEntity() == null) {
+                throw new DocumentException("External patient response has no body");
+            }
+            long declaredLength = getResponse.getEntity().getContentLength();
+            if (declaredLength > maxResponseBytes) {
+                throw new ExternalPatientResponseTooLargeException(maxResponseBytes);
+            }
+            setResults(ExternalPatientResponseSizeLimiter.readUtf8(getResponse.getEntity().getContent(),
+                    maxResponseBytes));
         } catch (SocketTimeoutException e) {
+            returnStatus = HttpStatus.SC_BAD_GATEWAY;
             errors.add("Response from patient information server took too long.");
             LogEvent.logError(e);
             // LogEvent.logInfo(this.getClass().getSimpleName(), "method unkown", "Tinny
             // time out"
             // + e);
         } catch (ConnectException e) {
+            returnStatus = HttpStatus.SC_BAD_GATEWAY;
             errors.add("Unable to connect to patient information form service. Service may not be running");
             LogEvent.logError(e);
             // LogEvent.logInfo(this.getClass().getSimpleName(), "method unkown", "you no
             // talks? "
             // + e);
+        } catch (ExternalPatientResponseTooLargeException e) {
+            returnStatus = HttpStatus.SC_BAD_GATEWAY;
+            errors.add(RESPONSE_TOO_LARGE);
+            LogEvent.logError(e);
+        } catch (DocumentException e) {
+            returnStatus = HttpStatus.SC_BAD_GATEWAY;
+            errors.add(MALFORMED_REPLY);
+            LogEvent.logError(e);
         } catch (IOException e) {
+            returnStatus = HttpStatus.SC_BAD_GATEWAY;
             errors.add("IO error trying to read input stream.");
             LogEvent.logError(e);
             // LogEvent.logInfo(this.getClass().getSimpleName(), "method unkown", "all else
             // failed
             // " + e);
-        } catch (KeyManagementException e) {
-            errors.add("Key management error trying to connect to external search service.");
-            LogEvent.logError(e);
-        } catch (UnrecoverableKeyException e) {
-            errors.add("Unrecoverable key error trying to connect to external search service.");
-            LogEvent.logError(e);
-        } catch (NoSuchAlgorithmException e) {
-            errors.add("No such encyrption algorithm error trying to connect to external search service.");
-            LogEvent.logError(e);
-        } catch (KeyStoreException e) {
-            errors.add("Keystore error trying to connect to external search service.");
-            LogEvent.logError(e);
         } catch (RuntimeException e) {
+            returnStatus = HttpStatus.SC_BAD_GATEWAY;
             errors.add("Runtime error trying to retrieve patient information.");
             LogEvent.logError(e);
             httpget.abort();
-            throw e;
         } finally {
             if (getResponse != null) {
                 try {
@@ -238,27 +268,41 @@ public class ExternalPatientSearch implements IExternalPatientSearch {
                     LogEvent.logError(e);
                 }
             }
-
-            httpclient.getConnectionManager().shutdown();
             try {
                 httpclient.close();
             } catch (IOException e) {
                 LogEvent.logError(e.getMessage(), e);
             }
         }
+        setPossibleErrors();
     }
 
-    private void convertXMLToResults() {
-        if (!GenericValidator.isBlankOrNull(resultXML)) {
-
-            ExternalPatientSearchResultsXMLConverter converter = new ExternalPatientSearchResultsXMLConverter();
-
-            try {
-                searchResults = converter.convertXMLToSearchResults(resultXML);
-            } catch (DocumentException e) {
-                errors.add(MALFORMED_REPLY);
-            }
+    private void parseResponseBeforeCompletion() {
+        if (returnStatus != HttpStatus.SC_OK) {
+            return;
         }
+        try {
+            convertXMLToResults();
+        } catch (ExternalPatientResponseTooLargeException e) {
+            returnStatus = HttpStatus.SC_BAD_GATEWAY;
+            errors.add(RESPONSE_TOO_LARGE);
+            LogEvent.logError(e);
+        } catch (DocumentException | RuntimeException e) {
+            returnStatus = HttpStatus.SC_BAD_GATEWAY;
+            errors.add(MALFORMED_REPLY);
+            LogEvent.logError(e);
+        }
+    }
+
+    private void convertXMLToResults() throws DocumentException {
+        if (GenericValidator.isBlankOrNull(resultXML)) {
+            throw new DocumentException("External patient response is empty");
+        }
+
+        ExternalPatientSearchResultsXMLConverter converter = new ExternalPatientSearchResultsXMLConverter(
+                maxResponseBytes);
+        searchResults = resultLimit == null ? converter.convertXMLToSearchResults(resultXML)
+                : converter.convertXMLToSearchResults(resultXML, resultLimit);
     }
 
     protected void setResults(String resultsAsXml) {
@@ -278,6 +322,12 @@ public class ExternalPatientSearch implements IExternalPatientSearch {
         case HttpStatus.SC_OK: {
             break; // NO-OP
         }
+        case HttpStatus.SC_BAD_GATEWAY: {
+            if (errors.isEmpty()) {
+                errors.add("External patient information service returned an invalid response.");
+            }
+            break;
+        }
         default: {
             errors.add("Unknown error trying to connect to patient information service. Resturn status was "
                     + returnStatus);
@@ -285,13 +335,14 @@ public class ExternalPatientSearch implements IExternalPatientSearch {
         }
     }
 
-    private void setTimeout(HttpClient httpclient) {
-        // this one causes a timeout if a connection is established but there is
-        // no response within <timeout> seconds
-        httpclient.getParams().setParameter(CoreConnectionPNames.SO_TIMEOUT, timeout);
+    protected CloseableHttpClient createHttpClient() {
+        return HttpClientBuilder.create().setDefaultRequestConfig(createRequestConfig()).disableRedirectHandling()
+                .disableAutomaticRetries().build();
+    }
 
-        // this one causes a timeout if no connection is established within 10 seconds
-        httpclient.getParams().setParameter(CoreConnectionPNames.CONNECTION_TIMEOUT, timeout);
+    RequestConfig createRequestConfig() {
+        return RequestConfig.custom().setConnectTimeout(timeout).setConnectionRequestTimeout(timeout)
+                .setSocketTimeout(timeout).setRedirectsEnabled(false).build();
     }
 
     private URI buildConnectionString(URI uriStart) {

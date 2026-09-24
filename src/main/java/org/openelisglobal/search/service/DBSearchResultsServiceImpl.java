@@ -31,6 +31,30 @@ public class DBSearchResultsServiceImpl implements SearchResultsService {
             String dateOfBirth, String gender) {
         List<PatientSearchResults> results = searchResultsDAO.getSearchResults(lastName, firstName, STNumber,
                 subjectNumber, nationalID, externalID, patientID, guid, dateOfBirth, gender);
+        return prepareSearchResults(results, STNumber, subjectNumber, nationalID, externalID, null);
+    }
+
+    @Override
+    @Transactional
+    public List<PatientSearchResults> getSearchResults(String lastName, String firstName, String STNumber,
+            String subjectNumber, String nationalID, String externalID, String patientID, String guid,
+            String dateOfBirth, String gender, int maxResults) {
+        if (maxResults < 1) {
+            throw new IllegalArgumentException("Patient search result limit must be positive");
+        }
+        List<PatientSearchResults> results = searchResultsDAO.getSearchResults(lastName, firstName, STNumber,
+                subjectNumber, nationalID, externalID, patientID, guid, dateOfBirth, gender, maxResults);
+        return prepareSearchResults(results, STNumber, subjectNumber, nationalID, externalID, maxResults);
+    }
+
+    private List<PatientSearchResults> prepareSearchResults(List<PatientSearchResults> results, String STNumber,
+            String subjectNumber, String nationalID, String externalID, Integer probeLimit) {
+        // Preserve the overflow probe row count. The REST paging boundary will reject
+        // this result before it is displayed; redirect/deduplication must not hide that
+        // the database reached the technical query limit.
+        if (probeLimit != null && results != null && results.size() >= probeLimit) {
+            return results;
+        }
 
         // FR-015: Redirect merged patients to primary when searching by identifier
         // Only apply redirect for identifier-based searches, not for name/primary ID
@@ -73,6 +97,21 @@ public class DBSearchResultsServiceImpl implements SearchResultsService {
     public List<PatientSearchResults> getQuickSearchResults(String query) {
         List<PatientSearchResults> results = searchResultsDAO.getQuickSearchResults(query);
         annotateMergeStatus(results);
+        return results;
+    }
+
+    @Override
+    @Transactional
+    public List<PatientSearchResults> getQuickSearchResults(String query, int maxResults) {
+        if (maxResults < 1) {
+            throw new IllegalArgumentException("Patient quick-search result limit must be positive");
+        }
+        List<PatientSearchResults> results = searchResultsDAO.getQuickSearchResults(query, maxResults);
+        // Keep the overflow probe intact. Per-row merge lookups are unnecessary when
+        // the controller will reject the whole result set.
+        if (results != null && results.size() < maxResults) {
+            annotateMergeStatus(results);
+        }
         return results;
     }
 

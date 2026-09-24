@@ -7,6 +7,10 @@ import type {
   PatientSearchCriteria,
   PatientSearchResponse,
 } from "../types";
+import {
+  validatePatientSearchPage,
+  type PatientSearchPagingContext,
+} from "../patientSearchPagingContract";
 
 /**
  * Patient Merge API Service
@@ -20,15 +24,30 @@ import type {
  */
 type FormatMessage = (descriptor: { id: string }) => string;
 
+/** Technical guard for the merge screen's client-side result aggregation. */
+export const MAX_PATIENT_MERGE_SEARCH_PAGES = 200;
+
+const throwIfSearchAborted = (signal?: AbortSignal) => {
+  if (signal?.aborted) {
+    throw new DOMException("Patient search aborted", "AbortError");
+  }
+};
+
 const readErrorData = async (
   response: Response,
   fallbackMessage: string,
 ): Promise<PatientMergeApiError> => {
-  const errorData = await response.json().catch(() => ({}));
+  const rawErrorData: unknown = await response.json().catch(() => ({}));
+  const errorData =
+    rawErrorData &&
+    typeof rawErrorData === "object" &&
+    !Array.isArray(rawErrorData)
+      ? (rawErrorData as PatientMergeApiError)
+      : {};
   return {
+    ...errorData,
     status: response.status,
     message: errorData.message || fallbackMessage,
-    ...errorData,
   };
 };
 
@@ -132,6 +151,7 @@ export const executePatientMerge = async (
  */
 export const searchPatients = async (
   searchParams: PatientSearchCriteria,
+  signal?: AbortSignal,
 ): Promise<PatientSearchResponse> => {
   const queryParams = new URLSearchParams({
     lastName: searchParams.lastName || "",
@@ -143,24 +163,66 @@ export const searchPatients = async (
     guid: searchParams.guid || "",
     dateOfBirth: searchParams.dateOfBirth || "",
     gender: searchParams.gender || "",
-    suppressExternalSearch: String(
-      searchParams.suppressExternalSearch || "true",
-    ),
+    suppressExternalSearch: String(searchParams.suppressExternalSearch ?? true),
   });
 
-  const response = await fetch(
-    `${config.serverBaseUrl}/rest/patient-search-results?${queryParams}`,
-    {
+  const endpoint = `${config.serverBaseUrl}/rest/patient-search-results`;
+  const loadPage = async (params: URLSearchParams) => {
+    throwIfSearchAborted(signal);
+    const response = await fetch(`${endpoint}?${params}`, {
       credentials: "include",
       method: "GET",
-    },
-  );
+      signal,
+    });
+    if (!response.ok) throw await readErrorData(response, "");
+    const page = (await response.json()) as PatientSearchResponse;
+    throwIfSearchAborted(signal);
+    return page;
+  };
 
-  if (!response.ok) {
+  const firstPage = await loadPage(queryParams);
+  const first = validatePatientSearchPage(firstPage, 1);
+  if (!first || first.totalPages > MAX_PATIENT_MERGE_SEARCH_PAGES) {
+    throw new Error("Failed to search patients");
+  }
+  if (first.totalPages === 1) {
+    return {
+      ...firstPage,
+      queryId: first.queryId,
+      totalItems: first.totalItems,
+      patientSearchResults: first.results,
+    };
+  }
+
+  const context: PatientSearchPagingContext = {
+    queryId: first.queryId,
+    totalItems: first.totalItems,
+    totalPages: first.totalPages,
+    pageSize: first.pageSize,
+  };
+
+  const allResults = [...first.results];
+  for (let pageNumber = 2; pageNumber <= first.totalPages; pageNumber += 1) {
+    const pageParams = new URLSearchParams(queryParams);
+    pageParams.set("queryId", first.queryId);
+    pageParams.set("page", String(pageNumber));
+    const page = await loadPage(pageParams);
+    const validated = validatePatientSearchPage(page, pageNumber, context);
+    if (!validated) {
+      throw new Error("Failed to search patients");
+    }
+    allResults.push(...validated.results);
+  }
+  if (allResults.length !== first.totalItems) {
     throw new Error("Failed to search patients");
   }
 
-  return response.json();
+  return {
+    ...firstPage,
+    queryId: first.queryId,
+    totalItems: first.totalItems,
+    patientSearchResults: allResults,
+  };
 };
 
 /**

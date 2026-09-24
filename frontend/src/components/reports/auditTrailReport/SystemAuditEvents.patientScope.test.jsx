@@ -135,7 +135,11 @@ describe("患者档案操作日志的联合实体范围", () => {
       } else if (url === "/rest/users") {
         callback([]);
       } else if (url.startsWith("/rest/patient-search-results?")) {
-        callback({ patientSearchResults: [patient("301"), patient("302")] });
+        callback({
+          patientSearchResults: [patient("301"), patient("302")],
+          paging: { currentPage: "1", totalPages: "1" },
+          totalItems: 2,
+        });
       } else if (url.startsWith("/rest/patient-details?")) {
         const result = patient(paramsFor(url).get("patientID"));
         if (deferPatient) pendingPatient.push(() => callback(result));

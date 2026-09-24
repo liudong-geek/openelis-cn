@@ -12,6 +12,14 @@ public class PatientSearchResultsForm implements IPagingForm {
 
     @Getter
     @Setter
+    private String queryId;
+
+    @Getter
+    @Setter
+    private int totalItems;
+
+    @Getter
+    @Setter
     private List<PatientSearchResults> patientSearchResults;
 
     @Override

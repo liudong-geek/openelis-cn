@@ -103,13 +103,30 @@ public class ObservationHistoryServiceImpl extends AuditableBaseObjectServiceImp
     @Override
     @Transactional(readOnly = true)
     public List<ObservationHistory> getObservationsByTypeAndValue(ObservationType type, String value) {
+        return getObservationsByTypeAndValue(type, value, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ObservationHistory> getObservationsByTypeAndValue(ObservationType type, String value, int maxResults) {
+        if (maxResults < 1) {
+            throw new IllegalArgumentException("Observation history result limit must be positive");
+        }
+        return getObservationsByTypeAndValue(type, value, Integer.valueOf(maxResults));
+    }
+
+    private List<ObservationHistory> getObservationsByTypeAndValue(ObservationType type, String value,
+            Integer maxResults) {
         if (observationTypeToIdMap.isEmpty()) {
             initialize();
         }
         String typeId = getObservationTypeIdForType(type);
 
         if (!GenericValidator.isBlankOrNull(typeId)) {
-            return baseObjectDAO.getObservationHistoriesByValueAndType(value, typeId, ValueType.LITERAL.getCode());
+            return maxResults == null
+                    ? baseObjectDAO.getObservationHistoriesByValueAndType(value, typeId, ValueType.LITERAL.getCode())
+                    : baseObjectDAO.getObservationHistoriesByValueAndType(value, typeId, ValueType.LITERAL.getCode(),
+                            maxResults);
         } else {
             return null;
         }

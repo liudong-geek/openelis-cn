@@ -3,6 +3,7 @@ import { Grid, Column, Section, Tag } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
 import Avatar from "react-avatar";
 import {
+  getPatientDisplayName,
   getPatientResultsRoute,
   type PatientSearchResult,
 } from "./searchService";
@@ -30,6 +31,11 @@ const SearchOutput: React.FC<SearchOutputProps> = ({
   return (
     <div>
       {patientData.map((patient) => {
+        const displayName = getPatientDisplayName(
+          patient,
+          intl.formatMessage({ id: "patient.globalSearch.nameUnavailable" }),
+        );
+
         return (
           <Column lg={16} md={8} sm={4} key={patient.id ?? patient.patientID}>
             <Section>
@@ -51,9 +57,7 @@ const SearchOutput: React.FC<SearchOutputProps> = ({
                       <Avatar
                         alt={intl.formatMessage({ id: "patient.photo.label" })}
                         color="rgba(0,0,0,0)"
-                        name={`${patient.lastName ?? ""} ${
-                          patient.firstName ?? ""
-                        }`}
+                        name={displayName}
                         src={""}
                         size={patient.referringFacility ? "50" : "40"}
                         textSizeRatio={2}
@@ -67,9 +71,7 @@ const SearchOutput: React.FC<SearchOutputProps> = ({
                   <Column lg={14} md={7} sm={3}>
                     <div className="tags">
                       <span className="patient-name-search">
-                        <b>{`${patient.lastName ?? ""} ${
-                          patient.firstName ?? ""
-                        }`}</b>
+                        <b>{displayName}</b>
                       </span>
                       <span>
                         {" "}

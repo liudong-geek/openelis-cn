@@ -38,6 +38,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class DBSearchResultsDAOImpl implements SearchResultsDAO {
 
     private static final String QUICK_QUERY_PARAM = "quickQuery";
+    private static final String QUICK_QUERY_COMPACT_PARAM = "quickQueryCompact";
+    // Interactive patient lookup must not monopolize a database connection when a
+    // broad one-character term cannot use an index. This preserves Chinese surname
+    // searches while giving PostgreSQL/JDBC a fixed execution-time boundary.
+    static final int PATIENT_SEARCH_TIMEOUT_SECONDS = 15;
 
     @PersistenceContext
     EntityManager entityManager;
@@ -63,8 +68,7 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
             boolean queryGuid = !GenericValidator.isBlankOrNull(guid);
             boolean queryDateOfBirth = !GenericValidator.isBlankOrNull(dateOfBirth);
             boolean queryGender = !GenericValidator.isBlankOrNull(gender);
-            if (queryDateOfBirth
-                    && (getFormatedDOB(dateOfBirth) == null || getIsoDOB(dateOfBirth) == null)) {
+            if (queryDateOfBirth && (getFormatedDOB(dateOfBirth) == null || getIsoDOB(dateOfBirth) == null)) {
                 return List.of();
             }
 
@@ -100,6 +104,26 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
     public List<PatientSearchResults> getSearchResults(String lastName, String firstName, String STNumber,
             String subjectNumber, String nationalID, String externalID, String patientID, String guid,
             String dateOfBirth, String gender) throws LIMSRuntimeException {
+        return getSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID, externalID, patientID, guid,
+                dateOfBirth, gender, null);
+    }
+
+    @Override
+    @Transactional
+    public List<PatientSearchResults> getSearchResults(String lastName, String firstName, String STNumber,
+            String subjectNumber, String nationalID, String externalID, String patientID, String guid,
+            String dateOfBirth, String gender, int maxResults) throws LIMSRuntimeException {
+        if (maxResults < 1) {
+            throw new IllegalArgumentException("Patient search result limit must be positive");
+        }
+        return getSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID, externalID, patientID, guid,
+                dateOfBirth, gender, Integer.valueOf(maxResults));
+    }
+
+    @SuppressWarnings("rawtypes")
+    private List<PatientSearchResults> getSearchResults(String lastName, String firstName, String STNumber,
+            String subjectNumber, String nationalID, String externalID, String patientID, String guid,
+            String dateOfBirth, String gender, Integer maxResults) throws LIMSRuntimeException {
 
         List queryResults;
 
@@ -131,12 +155,9 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
 
             org.hibernate.query.Query query = entityManager.unwrap(Session.class).createNativeQuery(sql);
 
-            query.setParameter(ID_TYPE_FOR_ST,
-                    Integer.valueOf(PatientIdentityTypeMap.getInstance().getIDForType("ST")));
-            query.setParameter(ID_TYPE_FOR_SUBJECT_NUMBER,
-                    Integer.valueOf(PatientIdentityTypeMap.getInstance().getIDForType("SUBJECT")));
-            query.setParameter(ID_TYPE_FOR_GUID,
-                    Integer.valueOf(PatientIdentityTypeMap.getInstance().getIDForType("GUID")));
+            query.setParameter(ID_TYPE_FOR_ST, patientIdentityTypeId("ST"));
+            query.setParameter(ID_TYPE_FOR_SUBJECT_NUMBER, patientIdentityTypeId("SUBJECT"));
+            query.setParameter(ID_TYPE_FOR_GUID, patientIdentityTypeId("GUID"));
 
             lastName = '%' + lastName + '%';
             firstName = '%' + firstName + '%';
@@ -163,7 +184,7 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
                 query.setParameter(NATIONAL_ID_PARAM, nationalID);
             }
             if (queryExternalId) {
-                query.setParameter(EXTERNAL_ID_PARAM, nationalID);
+                query.setParameter(EXTERNAL_ID_PARAM, externalID);
             }
             if (querySTNumber) {
                 query.setParameter(ST_NUMBER_PARAM, STNumber);
@@ -190,6 +211,10 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
             LogEvent.logTrace(this.getClass().getSimpleName(), "getSearchResults",
                     "SearchResultsDAOImp:getSearchResults:query: " + query.getQueryString());
 
+            query.setTimeout(PATIENT_SEARCH_TIMEOUT_SECONDS);
+            if (maxResults != null) {
+                query.setMaxResults(maxResults);
+            }
             queryResults = query.list();
         } catch (RuntimeException e) {
             LogEvent.logError(e);
@@ -208,6 +233,10 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
         }
 
         return results;
+    }
+
+    int patientIdentityTypeId(String type) {
+        return Integer.parseInt(PatientIdentityTypeMap.getInstance().getIDForType(type));
     }
 
     @Override
@@ -247,12 +276,9 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
 
             org.hibernate.query.Query query = entityManager.unwrap(Session.class).createNativeQuery(sql);
 
-            query.setParameter(ID_TYPE_FOR_ST,
-                    Integer.valueOf(PatientIdentityTypeMap.getInstance().getIDForType("ST")));
-            query.setParameter(ID_TYPE_FOR_SUBJECT_NUMBER,
-                    Integer.valueOf(PatientIdentityTypeMap.getInstance().getIDForType("SUBJECT")));
-            query.setParameter(ID_TYPE_FOR_GUID,
-                    Integer.valueOf(PatientIdentityTypeMap.getInstance().getIDForType("GUID")));
+            query.setParameter(ID_TYPE_FOR_ST, patientIdentityTypeId("ST"));
+            query.setParameter(ID_TYPE_FOR_SUBJECT_NUMBER, patientIdentityTypeId("SUBJECT"));
+            query.setParameter(ID_TYPE_FOR_GUID, patientIdentityTypeId("GUID"));
 
             if (queryFirstName) {
                 query.setParameter(FIRST_NAME_PARAM, firstName);
@@ -310,6 +336,20 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
     @SuppressWarnings("rawtypes")
     @Transactional
     public List<PatientSearchResults> getQuickSearchResults(String queryText) throws LIMSRuntimeException {
+        // Preserve the historical compact-selector cap for legacy callers. New
+        // paging callers use the explicit bounded overload and probe their own
+        // resource boundary.
+        return getQuickSearchResults(queryText, 100);
+    }
+
+    @Override
+    @SuppressWarnings("rawtypes")
+    @Transactional
+    public List<PatientSearchResults> getQuickSearchResults(String queryText, int maxResults)
+            throws LIMSRuntimeException {
+        if (maxResults < 1) {
+            throw new IllegalArgumentException("Patient quick-search result limit must be positive");
+        }
         if (GenericValidator.isBlankOrNull(queryText)) {
             return Collections.emptyList();
         }
@@ -322,14 +362,15 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
         try {
             org.hibernate.query.Query query = entityManager.unwrap(Session.class)
                     .createNativeQuery(buildQuickSearchQueryString());
-            query.setParameter(ID_TYPE_FOR_ST,
-                    Integer.valueOf(PatientIdentityTypeMap.getInstance().getIDForType("ST")));
-            query.setParameter(ID_TYPE_FOR_SUBJECT_NUMBER,
-                    Integer.valueOf(PatientIdentityTypeMap.getInstance().getIDForType("SUBJECT")));
-            query.setParameter(ID_TYPE_FOR_GUID,
-                    Integer.valueOf(PatientIdentityTypeMap.getInstance().getIDForType("GUID")));
+            query.setParameter(ID_TYPE_FOR_ST, patientIdentityTypeId("ST"));
+            query.setParameter(ID_TYPE_FOR_SUBJECT_NUMBER, patientIdentityTypeId("SUBJECT"));
+            query.setParameter(ID_TYPE_FOR_GUID, patientIdentityTypeId("GUID"));
             query.setParameter(QUICK_QUERY_PARAM, "%" + escapeLikeValue(normalizedQuery) + "%");
+            query.setParameter(QUICK_QUERY_COMPACT_PARAM,
+                    "%" + escapeLikeValue(normalizedQuery.replaceAll("[\\s\\p{Z}]+", "")) + "%");
 
+            query.setTimeout(PATIENT_SEARCH_TIMEOUT_SECONDS);
+            query.setMaxResults(maxResults);
             List queryResults = query.list();
             List<PatientSearchResults> results = new ArrayList<>();
             for (Object resultLine : queryResults) {
@@ -348,27 +389,21 @@ public class DBSearchResultsDAOImpl implements SearchResultsDAO {
     private String buildQuickSearchQueryString() {
         return "select distinct p.id, pr.first_name, pr.last_name, p.gender, p.entered_birth_date, p.national_id,"
                 + " p.external_id, pi.identity_data as st, piSN.identity_data as subject,"
-                + " piGUID.identity_data as guid"
-                + " from patient p join person pr on p.person_id = pr.id"
-                + " left join patient_identity pi on pi.patient_id = p.id and pi.identity_type_id = :"
-                + ID_TYPE_FOR_ST
+                + " piGUID.identity_data as guid" + " from patient p join person pr on p.person_id = pr.id"
+                + " left join patient_identity pi on pi.patient_id = p.id and pi.identity_type_id = :" + ID_TYPE_FOR_ST
                 + " left join patient_identity piSN on piSN.patient_id = p.id and piSN.identity_type_id = :"
                 + ID_TYPE_FOR_SUBJECT_NUMBER
                 + " left join patient_identity piGUID on piGUID.patient_id = p.id and piGUID.identity_type_id = :"
-                + ID_TYPE_FOR_GUID
-                + " where pr.last_name ilike :" + QUICK_QUERY_PARAM
-                + " or pr.first_name ilike :" + QUICK_QUERY_PARAM
-                + " or concat_ws('', pr.last_name, pr.first_name) ilike :" + QUICK_QUERY_PARAM
-                + " or concat_ws('', pr.first_name, pr.last_name) ilike :" + QUICK_QUERY_PARAM
-                + " or cast(p.id as text) ilike :" + QUICK_QUERY_PARAM
-                + " or p.national_id ilike :" + QUICK_QUERY_PARAM
-                + " or p.external_id ilike :" + QUICK_QUERY_PARAM
-                + " or pi.identity_data ilike :" + QUICK_QUERY_PARAM
-                + " or piSN.identity_data ilike :" + QUICK_QUERY_PARAM
-                + " or pr.primary_phone ilike :" + QUICK_QUERY_PARAM
+                + ID_TYPE_FOR_GUID + " where pr.last_name ilike :" + QUICK_QUERY_PARAM + " or pr.first_name ilike :"
+                + QUICK_QUERY_PARAM + " or concat_ws('', pr.last_name, pr.first_name) ilike :"
+                + QUICK_QUERY_COMPACT_PARAM + " or concat_ws('', pr.first_name, pr.last_name) ilike :"
+                + QUICK_QUERY_COMPACT_PARAM + " or cast(p.id as text) ilike :" + QUICK_QUERY_PARAM
+                + " or p.national_id ilike :" + QUICK_QUERY_PARAM + " or p.external_id ilike :" + QUICK_QUERY_PARAM
+                + " or pi.identity_data ilike :" + QUICK_QUERY_PARAM + " or piSN.identity_data ilike :"
+                + QUICK_QUERY_PARAM + " or pr.primary_phone ilike :" + QUICK_QUERY_PARAM
                 + " or exists (select 1 from sample_human sh join sample s on s.id = sh.samp_id"
                 + " where sh.patient_id = p.id and s.accession_number ilike :" + QUICK_QUERY_PARAM + ")"
-                + " order by pr.last_name, pr.first_name, p.id limit 100";
+                + " order by pr.last_name, pr.first_name, p.id";
     }
 
     private String escapeLikeValue(String value) {

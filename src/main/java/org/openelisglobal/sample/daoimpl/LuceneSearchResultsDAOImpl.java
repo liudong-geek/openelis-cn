@@ -17,6 +17,8 @@ import org.openelisglobal.common.provider.query.PatientSearchResults;
 import org.openelisglobal.patient.valueholder.Patient;
 import org.openelisglobal.patientidentitytype.util.PatientIdentityTypeMap;
 import org.openelisglobal.sample.dao.SearchResultsDAO;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -25,15 +27,53 @@ public class LuceneSearchResultsDAOImpl implements SearchResultsDAO {
     @PersistenceContext
     EntityManager entityManager;
 
+    @Autowired
+    @Qualifier("DBSearchResultsDAOImpl")
+    SearchResultsDAO databaseSearchResultsDAO;
+
     @Override
     @Transactional
     public List<PatientSearchResults> getSearchResults(String lastName, String firstName, String STNumber,
             String subjectNumber, String nationalID, String externalID, String patientID, String guid,
             String dateOfBirth, String gender) throws LIMSRuntimeException {
+        return getSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID, externalID, patientID, guid,
+                dateOfBirth, gender, null);
+    }
+
+    @Override
+    @Transactional
+    public List<PatientSearchResults> getSearchResults(String lastName, String firstName, String STNumber,
+            String subjectNumber, String nationalID, String externalID, String patientID, String guid,
+            String dateOfBirth, String gender, int maxResults) throws LIMSRuntimeException {
+        if (maxResults < 1) {
+            throw new IllegalArgumentException("Patient search result limit must be positive");
+        }
+        if (hasDatabaseOnlyCriteria(STNumber, subjectNumber, nationalID, externalID, guid)) {
+            // These identities are not indexed by the legacy Lucene mapping. Applying
+            // the probe before their SQL filters would discard valid matches based on
+            // Lucene hit order, so use the database implementation where every
+            // criterion is applied before setMaxResults.
+            return databaseSearchResultsDAO.getSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID,
+                    externalID, patientID, guid, dateOfBirth, gender, maxResults);
+        }
+        return getSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID, externalID, patientID, guid,
+                dateOfBirth, gender, Integer.valueOf(maxResults));
+    }
+
+    private boolean hasDatabaseOnlyCriteria(String STNumber, String subjectNumber, String nationalID, String externalID,
+            String guid) {
+        return !GenericValidator.isBlankOrNull(STNumber) || !GenericValidator.isBlankOrNull(subjectNumber)
+                || !GenericValidator.isBlankOrNull(nationalID) || !GenericValidator.isBlankOrNull(externalID)
+                || !GenericValidator.isBlankOrNull(guid);
+    }
+
+    private List<PatientSearchResults> getSearchResults(String lastName, String firstName, String STNumber,
+            String subjectNumber, String nationalID, String externalID, String patientID, String guid,
+            String dateOfBirth, String gender, Integer maxResults) throws LIMSRuntimeException {
 
         SearchSession searchSession = Search.session(entityManager);
 
-        List<String> hits = searchSession.search(Patient.class).select(f -> f.id(String.class)).where(f -> f.bool(b -> {
+        var search = searchSession.search(Patient.class).select(f -> f.id(String.class)).where(f -> f.bool(b -> {
             if (!GenericValidator.isBlankOrNull(patientID)) {
                 b.must(f.match().field("id").matching(patientID));
             }
@@ -55,7 +95,8 @@ public class LuceneSearchResultsDAOImpl implements SearchResultsDAO {
                     b.must(f.match().field("person.lastName").matching(lastName).fuzzy());
                 }
             }
-        })).fetchAllHits();
+        }));
+        List<String> hits = maxResults == null ? search.fetchAllHits() : search.fetchHits(maxResults);
 
         List<Long> longHits = hits.stream().map(Long::parseLong).collect(Collectors.toList());
         // 'IN' predicate requires the list to contain at least one value
@@ -86,6 +127,9 @@ public class LuceneSearchResultsDAOImpl implements SearchResultsDAO {
         }
         query.setParameter("idList", longHits);
 
+        if (maxResults != null) {
+            query.setMaxResults(maxResults);
+        }
         List<Object[]> queryResults = query.list();
 
         List<PatientSearchResults> patientSearchResultsList = new ArrayList<>();
@@ -190,9 +234,15 @@ public class LuceneSearchResultsDAOImpl implements SearchResultsDAO {
     @Override
     public List<PatientSearchResults> getQuickSearchResults(String query) throws LIMSRuntimeException {
         // Lucene search is no longer the primary patient search implementation.
-        // Keep a conservative compatibility fallback for deployments that still
-        // select it: identifiers are ORed by the existing query contract.
-        return getSearchResults(query, query, query, query, query, query, null, null, null, null);
+        // Delegate to the database quick-search contract because it also covers
+        // phone number and previous laboratory number and retains the historical
+        // compact-selector cap.
+        return databaseSearchResultsDAO.getQuickSearchResults(query);
+    }
+
+    @Override
+    public List<PatientSearchResults> getQuickSearchResults(String query, int maxResults) throws LIMSRuntimeException {
+        return databaseSearchResultsDAO.getQuickSearchResults(query, maxResults);
     }
 
     private String buildQueryString(String nationalID, String externalID, String STNumber, String subjectNumber,

@@ -21,9 +21,13 @@ import {
   Tag,
   TextInput,
 } from "@carbon/react";
-import { Search } from "@carbon/react/icons";
+import { ArrowLeft, ArrowRight, Search } from "@carbon/react/icons";
 import { getFromOpenElisServer } from "../utils/Utils";
 import type { PatientRecord, PatientSearchResponse } from "./types";
+import {
+  validatePatientSearchPage,
+  type PatientSearchPagingContext,
+} from "./patientSearchPagingContract";
 
 interface PatientListResponse {
   patients: PatientRecord[];
@@ -44,6 +48,7 @@ interface PatientMasterListProps {
   onOpenPatient: (patient: PatientRecord) => void;
   onOpenResults: (patient: PatientRecord) => void;
   onNewPatient: () => void;
+  onOpenAdvancedSearch?: () => void;
   initialState?: PatientListViewState;
   onStateChange?: (state: PatientListViewState) => void;
 }
@@ -71,6 +76,7 @@ const PatientMasterList = ({
   onOpenPatient,
   onOpenResults,
   onNewPatient,
+  onOpenAdvancedSearch,
   initialState = {},
   onStateChange,
 }: PatientMasterListProps) => {
@@ -83,39 +89,189 @@ const PatientMasterList = ({
   const [page, setPage] = useState(initialState.page || 1);
   const [pageSize, setPageSize] = useState(initialState.pageSize || 20);
   const requestId = useRef(0);
+  const requestController = useRef<AbortController | null>(null);
+  const activeSearchQuery = useRef(
+    initialState.searchMode ? String(initialState.query || "").trim() : "",
+  );
+  const activeSearchQueryId = useRef("");
+  const activeSearchPaging = useRef<PatientSearchPagingContext | null>(null);
+  const initialViewState = useRef(initialState);
   const [totalItems, setTotalItems] = useState(0);
+  const [searchTotalPages, setSearchTotalPages] = useState(1);
 
-  const loadPatientList = useCallback((nextPage = 1, nextPageSize = 20) => {
-    const currentRequest = ++requestId.current;
-    setLoading(true);
-    setError(false);
-    getFromOpenElisServer<PatientListResponse>(
-      `/rest/patient-management-list?page=${nextPage}&pageSize=${nextPageSize}`,
-      (response) => {
-        if (currentRequest !== requestId.current) return;
-        if (!response || !Array.isArray(response.patients)) {
-          setPatients([]);
-          setError(true);
-          setLoading(false);
-          return;
-        }
-        setPatients(response.patients.map(normalizeSearchPatient));
-        setPage(response.page);
-        setPageSize(response.pageSize);
-        setTotalItems(response.totalItems);
-        setSearchMode(false);
-        setLoading(false);
-      },
-    );
+  const beginRequest = useCallback(() => {
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
+    return { id: ++requestId.current, controller };
   }, []);
 
+  const isCurrentRequest = useCallback(
+    (request: { id: number; controller: AbortController }) =>
+      request.id === requestId.current && !request.controller.signal.aborted,
+    [],
+  );
+
+  const loadPatientList = useCallback(
+    (nextPage = 1, nextPageSize = 20) => {
+      const request = beginRequest();
+      activeSearchQuery.current = "";
+      activeSearchQueryId.current = "";
+      activeSearchPaging.current = null;
+      setLoading(true);
+      setError(false);
+      getFromOpenElisServer<PatientListResponse>(
+        `/rest/patient-management-list?page=${nextPage}&pageSize=${nextPageSize}`,
+        (response) => {
+          if (!isCurrentRequest(request)) return;
+          if (!response || !Array.isArray(response.patients)) {
+            setPatients([]);
+            setError(true);
+            setLoading(false);
+            return;
+          }
+          setPatients(response.patients.map(normalizeSearchPatient));
+          setPage(response.page);
+          setPageSize(response.pageSize);
+          setTotalItems(response.totalItems);
+          setSearchTotalPages(1);
+          setSearchMode(false);
+          setLoading(false);
+        },
+        request.controller.signal,
+      );
+    },
+    [beginRequest, isCurrentRequest],
+  );
+
+  const loadSearchPage = useCallback(
+    (
+      searchQuery: string,
+      targetPage = 1,
+      mode: "new" | "page" | "restore" = "page",
+    ) => {
+      const normalizedQuery = searchQuery.trim();
+      if (!normalizedQuery) return;
+
+      activeSearchQuery.current = normalizedQuery;
+      if (mode !== "page") {
+        activeSearchQueryId.current = "";
+        activeSearchPaging.current = null;
+      }
+      setLoading(true);
+      setError(false);
+      setSearchMode(true);
+
+      const failSearch = () => {
+        activeSearchQueryId.current = "";
+        activeSearchPaging.current = null;
+        setPatients([]);
+        setPage(1);
+        setTotalItems(0);
+        setSearchTotalPages(1);
+        setError(true);
+        setLoading(false);
+      };
+
+      const requestPage = (
+        requestedPage: number,
+        queryId: string,
+        restoredPage?: number,
+      ) => {
+        const request = beginRequest();
+        const parameters = new URLSearchParams({
+          quickQuery: normalizedQuery,
+          suppressExternalSearch: "true",
+        });
+        if (queryId) {
+          parameters.set("page", String(requestedPage));
+          parameters.set("queryId", queryId);
+        }
+
+        getFromOpenElisServer<PatientSearchResponse>(
+          `/rest/patient-search-results?${parameters.toString()}`,
+          (response) => {
+            if (!isCurrentRequest(request)) return;
+            if (!response || !Array.isArray(response.patientSearchResults)) {
+              failSearch();
+              return;
+            }
+
+            const established = queryId ? activeSearchPaging.current : null;
+            if (queryId && (!established || established.queryId !== queryId)) {
+              failSearch();
+              return;
+            }
+            const validated = validatePatientSearchPage(
+              response,
+              requestedPage,
+              established,
+            );
+            if (!validated) {
+              failSearch();
+              return;
+            }
+            activeSearchQueryId.current = validated.queryId;
+            activeSearchPaging.current = {
+              queryId: validated.queryId,
+              totalItems: validated.totalItems,
+              totalPages: validated.totalPages,
+              pageSize: validated.pageSize,
+            };
+
+            if (restoredPage && restoredPage > 1 && validated.totalPages > 1) {
+              requestPage(
+                Math.min(restoredPage, validated.totalPages),
+                validated.queryId,
+              );
+              return;
+            }
+
+            const results = validated.results
+              .filter(
+                (patient) =>
+                  !(
+                    patient.lastName === "NULL" && patient.firstName === "NULL"
+                  ),
+              )
+              .map(normalizeSearchPatient);
+            setPatients(results);
+            setTotalItems(validated.totalItems);
+            setPage(validated.currentPage);
+            setSearchTotalPages(validated.totalPages);
+            setSearchMode(true);
+            setLoading(false);
+          },
+          request.controller.signal,
+        );
+      };
+
+      const safeTargetPage = Math.max(1, targetPage);
+      if (mode === "page") {
+        if (!activeSearchQueryId.current) {
+          failSearch();
+          return;
+        }
+        requestPage(safeTargetPage, activeSearchQueryId.current);
+        return;
+      }
+      requestPage(1, "", mode === "restore" ? safeTargetPage : undefined);
+    },
+    [beginRequest, isCurrentRequest],
+  );
+
   useEffect(() => {
-    if (initialState.searchMode && initialState.query) handleSearch();
-    else loadPatientList(page, pageSize);
+    const restoredState = initialViewState.current;
+    if (restoredState.searchMode && restoredState.query) {
+      loadSearchPage(restoredState.query, restoredState.page || 1, "restore");
+    } else {
+      loadPatientList(restoredState.page || 1, restoredState.pageSize || 20);
+    }
     return () => {
+      requestController.current?.abort();
       requestId.current += 1;
     };
-  }, [loadPatientList]);
+  }, [loadPatientList, loadSearchPage]);
 
   useEffect(() => {
     onStateChange?.({ query, page, pageSize, searchMode });
@@ -127,36 +283,7 @@ const PatientMasterList = ({
       loadPatientList(1, pageSize);
       return;
     }
-    setLoading(true);
-    setError(false);
-    setSearchMode(true);
-    const currentRequest = ++requestId.current;
-    getFromOpenElisServer<PatientSearchResponse>(
-      `/rest/patient-search-results?${new URLSearchParams({
-        quickQuery: normalizedQuery,
-        suppressExternalSearch: "true",
-      }).toString()}`,
-      (response) => {
-        if (currentRequest !== requestId.current) return;
-        if (!response || !Array.isArray(response.patientSearchResults)) {
-          setPatients([]);
-          setError(true);
-          setLoading(false);
-          return;
-        }
-        const results = response.patientSearchResults
-          .filter(
-            (patient) =>
-              !(patient.lastName === "NULL" && patient.firstName === "NULL"),
-          )
-          .map(normalizeSearchPatient);
-        setPatients(results);
-        setTotalItems(results.length);
-        setPage(1);
-        setSearchMode(true);
-        setLoading(false);
-      },
-    );
+    loadSearchPage(normalizedQuery, 1, "new");
   };
 
   const handleReset = () => {
@@ -194,7 +321,24 @@ const PatientMasterList = ({
               id: "patient.management.list.search.placeholder",
             })}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              const nextQuery = event.target.value;
+              setQuery(nextQuery);
+              if (nextQuery.trim() !== activeSearchQuery.current) {
+                requestController.current?.abort();
+                requestId.current += 1;
+                activeSearchQuery.current = "";
+                activeSearchQueryId.current = "";
+                activeSearchPaging.current = null;
+                setPatients([]);
+                setSearchMode(false);
+                setSearchTotalPages(1);
+                setPage(1);
+                setTotalItems(0);
+                setLoading(false);
+                setError(false);
+              }
+            }}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
@@ -208,6 +352,15 @@ const PatientMasterList = ({
           <Button kind="ghost" type="button" onClick={handleReset}>
             <FormattedMessage id="patient.management.list.showAll" />
           </Button>
+          {onOpenAdvancedSearch && (
+            <Button
+              kind="tertiary"
+              type="button"
+              onClick={onOpenAdvancedSearch}
+            >
+              <FormattedMessage id="advanced.search" />
+            </Button>
+          )}
         </div>
         <p className="patient-master-list__helper">
           <FormattedMessage id="patient.management.list.search.helper" />
@@ -362,6 +515,39 @@ const PatientMasterList = ({
               </TableBody>
             </Table>
           </TableContainer>
+          {searchMode && searchTotalPages > 1 && (
+            <div className="patient-api-pagination__controls">
+              <span className="patient-api-pagination__count">
+                {page} / {searchTotalPages}
+              </span>
+              <Button
+                hasIconOnly
+                kind="ghost"
+                type="button"
+                disabled={page <= 1}
+                renderIcon={ArrowLeft}
+                iconDescription={intl.formatMessage({
+                  id: "pagination.backward",
+                })}
+                onClick={() =>
+                  loadSearchPage(activeSearchQuery.current, page - 1, "page")
+                }
+              />
+              <Button
+                hasIconOnly
+                kind="ghost"
+                type="button"
+                disabled={page >= searchTotalPages}
+                renderIcon={ArrowRight}
+                iconDescription={intl.formatMessage({
+                  id: "pagination.forward",
+                })}
+                onClick={() =>
+                  loadSearchPage(activeSearchQuery.current, page + 1, "page")
+                }
+              />
+            </div>
+          )}
           {!searchMode && (
             <Pagination
               page={page}

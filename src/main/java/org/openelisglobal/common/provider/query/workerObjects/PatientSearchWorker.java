@@ -19,7 +19,9 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import org.apache.commons.validator.GenericValidator;
+import org.openelisglobal.common.action.IActionConstants;
 import org.openelisglobal.common.provider.query.PatientSearchResults;
+import org.openelisglobal.common.rest.util.PatientSearchResultsPaging;
 import org.openelisglobal.common.util.XMLUtil;
 import org.openelisglobal.patient.util.PatientUtil;
 import org.openelisglobal.patientidentity.service.PatientIdentityService;
@@ -28,6 +30,10 @@ import org.openelisglobal.patientidentitytype.util.PatientIdentityTypeMap;
 import org.openelisglobal.spring.util.SpringContext;
 
 public abstract class PatientSearchWorker {
+
+    public static final int AJAX_QUERY_RESULT_PROBE_LIMIT = PatientSearchResultsPaging.MAX_CACHED_ROWS + 1;
+    static final String TOO_MANY_RESULTS = "Patient search returned too many results. Narrow the search criteria and try again.";
+    static final String NO_RESULTS = "No results were found for search.  Check spelling or remove some of the fields";
 
     protected PatientIdentityService patientIdentityService = SpringContext.getBean(PatientIdentityService.class);
 
@@ -38,6 +44,38 @@ public abstract class PatientSearchWorker {
     public abstract List<PatientSearchResults> getPatientSearchResults(String lastName, String firstName,
             String STNumber, String subjectNumber, String nationalID, String patientID, String guid, String dateOfBirth,
             String gender);
+
+    public BoundedPatientSearchResults getPatientSearchResults(String lastName, String firstName, String STNumber,
+            String subjectNumber, String nationalID, String patientID, String guid, String dateOfBirth, String gender,
+            int maxLocalResults) {
+        if (maxLocalResults < 1) {
+            throw new IllegalArgumentException("Patient search result limit must be positive");
+        }
+        List<PatientSearchResults> results = getPatientSearchResults(lastName, firstName, STNumber, subjectNumber,
+                nationalID, patientID, guid, dateOfBirth, gender);
+        return results != null && results.size() >= maxLocalResults ? new BoundedPatientSearchResults(List.of(), true)
+                : new BoundedPatientSearchResults(results == null ? List.of() : results, false);
+    }
+
+    public record BoundedPatientSearchResults(List<PatientSearchResults> results, boolean limitReached) {
+    }
+
+    protected String appendBoundedSearchResults(BoundedPatientSearchResults boundedResults, StringBuilder xml) {
+        if (boundedResults.limitReached()) {
+            xml.append(TOO_MANY_RESULTS);
+            return IActionConstants.INVALID;
+        }
+
+        List<PatientSearchResults> results = boundedResults.results();
+        if (results == null || results.isEmpty()) {
+            xml.append(NO_RESULTS);
+            return IActionConstants.INVALID;
+        }
+        for (PatientSearchResults result : results) {
+            appendSearchResultRow(result, xml);
+        }
+        return IActionConstants.VALID;
+    }
 
     public void appendSearchResultRow(PatientSearchResults searchResults, StringBuilder xml) {
 

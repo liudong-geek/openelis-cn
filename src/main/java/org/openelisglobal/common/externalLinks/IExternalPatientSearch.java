@@ -13,6 +13,15 @@ public interface IExternalPatientSearch {
 
     void setConnectionCredentials(String connectionString, String name, String password);
 
+    /**
+     * Optional bounded-search hint. The worker still validates the returned row
+     * count, while this default keeps older hospital connector implementations
+     * binary compatible until they add upstream limiting.
+     */
+    default void setResultLimit(int maxResults) {
+        // Compatibility no-op for legacy connectors.
+    }
+
     List<ExtendedPatientSearchResults> getSearchResults();
 
     String getConnectionString();

@@ -27,6 +27,16 @@ public interface SearchResultsDAO {
             String subjectNumber, String nationalID, String externalID, String patientID, String guid,
             String dateOfBirth, String gender) throws LIMSRuntimeException;
 
+    default List<PatientSearchResults> getSearchResults(String lastName, String firstName, String STNumber,
+            String subjectNumber, String nationalID, String externalID, String patientID, String guid,
+            String dateOfBirth, String gender, int maxResults) throws LIMSRuntimeException {
+        if (maxResults < 1) {
+            throw new IllegalArgumentException("Patient search result limit must be positive");
+        }
+        return getSearchResults(lastName, firstName, STNumber, subjectNumber, nationalID, externalID, patientID, guid,
+                dateOfBirth, gender);
+    }
+
     List<PatientSearchResults> getSearchResultsByGUID(String lastName, String firstName, String STNumber,
             String subjectNumber, String nationalID, String externalID, String patientID, String guid,
             String dateOfBirth, String gender) throws LIMSRuntimeException;
@@ -36,10 +46,22 @@ public interface SearchResultsDAO {
             String dateOfBirth, String gender) throws LIMSRuntimeException;
 
     /**
-     * Searches the local patient master with one user-facing term. The term may
-     * be a patient name, patient identifier, phone number or previous laboratory
+     * Searches the local patient master with one user-facing term. The term may be
+     * a patient name, patient identifier, phone number or previous laboratory
      * number. This is the compact selector used inside order entry; the full
      * multi-field search remains available in patient management.
      */
     List<PatientSearchResults> getQuickSearchResults(String query) throws LIMSRuntimeException;
+
+    /**
+     * Bounded variant used by interactive patient search. Implementations must
+     * apply the limit before materializing database or index hits so callers can
+     * request one probe row above their display/cache boundary.
+     */
+    default List<PatientSearchResults> getQuickSearchResults(String query, int maxResults) throws LIMSRuntimeException {
+        if (maxResults < 1) {
+            throw new IllegalArgumentException("Patient quick-search result limit must be positive");
+        }
+        return getQuickSearchResults(query);
+    }
 }

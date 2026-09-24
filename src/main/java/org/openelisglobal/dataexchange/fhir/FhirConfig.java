@@ -58,6 +58,14 @@ public class FhirConfig {
     @Value("${org.openelisglobal.crserver.password:}")
     private String clientRegistryPassword;
 
+    @Getter
+    @Value("${org.openelisglobal.externalSearch.maxResponseBytes:2097152}")
+    private Integer externalPatientSearchMaxResponseBytes;
+
+    @Getter
+    @Value("${org.openelisglobal.externalSearch.timeout:5000}")
+    private Integer externalPatientSearchTimeout;
+
     @Value("${org.openelisglobal.remote.source.identifier:}#{T(java.util.Collections).emptyList()}")
     private List<String> remoteStoreIdentifier;
 

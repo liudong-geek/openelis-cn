@@ -1,15 +1,19 @@
 package org.openelisglobal.common.externalLinks;
 
+import jakarta.annotation.PostConstruct;
 import jakarta.xml.soap.MessageFactory;
+import jakarta.xml.soap.MimeHeader;
 import jakarta.xml.soap.MimeHeaders;
 import jakarta.xml.soap.SOAPBody;
-import jakarta.xml.soap.SOAPConnection;
-import jakarta.xml.soap.SOAPConnectionFactory;
+import jakarta.xml.soap.SOAPConstants;
 import jakarta.xml.soap.SOAPElement;
 import jakarta.xml.soap.SOAPEnvelope;
 import jakarta.xml.soap.SOAPException;
 import jakarta.xml.soap.SOAPMessage;
 import jakarta.xml.soap.SOAPPart;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -19,15 +23,23 @@ import java.util.List;
 import java.util.concurrent.Future;
 import javax.xml.namespace.QName;
 import org.apache.commons.validator.GenericValidator;
+import org.apache.http.Header;
 import org.apache.http.HttpStatus;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.ByteArrayEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.provider.query.ExtendedPatientSearchResults;
 import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.internationalization.MessageUtil;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Scope;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.scheduling.annotation.AsyncResult;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.DOMException;
 import org.w3c.dom.Element;
@@ -41,9 +53,18 @@ public class PatientInfoHighwaySearch implements IExternalPatientSearch {
     @Value("${org.openelisglobal.externalSearch.infohighway.timeout:50000}")
     private Integer timeout;
 
+    @Value("${org.openelisglobal.externalSearch.maxResponseBytes:2097152}")
+    private Integer maxResponseBytes = ExternalPatientResponseSizeLimiter.DEFAULT_MAX_RESPONSE_BYTES;
+
+    @Autowired
+    @Qualifier("externalPatientSearchExecutor")
+    private AsyncTaskExecutor externalPatientSearchExecutor;
+
     public static final String MALFORMED_REPLY = "Malformed reply";
     public static final String URI_BUILD_FAILURE = "Failed to build URI";
+    public static final String RESPONSE_TOO_LARGE = "External patient search response exceeded the configured limit";
 
+    private boolean started = false;
     private boolean finished = false;
 
     private String firstName;
@@ -55,6 +76,7 @@ public class PatientInfoHighwaySearch implements IExternalPatientSearch {
     private String connectionString;
     private String connectionName;
     private String connectionPassword;
+    private Integer resultLimit;
 
     protected String resultXML;
     protected List<ExtendedPatientSearchResults> searchResults = new ArrayList<>();
@@ -78,7 +100,7 @@ public class PatientInfoHighwaySearch implements IExternalPatientSearch {
 
     @Override
     public synchronized void setConnectionCredentials(String connectionString, String name, String password) {
-        if (finished) {
+        if (started) {
             throw new IllegalStateException("ServiceCredentials set after ExternalPatientSearch thread was started");
         }
 
@@ -91,7 +113,7 @@ public class PatientInfoHighwaySearch implements IExternalPatientSearch {
     public synchronized void setSearchCriteria(String lastName, String firstName, String STNumber, String subjectNumber,
             String nationalID, String guid) throws IllegalStateException {
 
-        if (finished) {
+        if (started) {
             throw new IllegalStateException("Search criteria set after ExternalPatientSearch thread was started");
         }
 
@@ -101,6 +123,17 @@ public class PatientInfoHighwaySearch implements IExternalPatientSearch {
         this.subjectNumber = subjectNumber;
         this.nationalId = nationalID;
         this.guid = guid;
+    }
+
+    @Override
+    public synchronized void setResultLimit(int maxResults) {
+        if (started) {
+            throw new IllegalStateException("Result limit set after ExternalPatientSearch thread was started");
+        }
+        if (maxResults < 1) {
+            throw new IllegalArgumentException("External patient search result limit must be positive");
+        }
+        resultLimit = maxResults;
     }
 
     @Override
@@ -117,7 +150,7 @@ public class PatientInfoHighwaySearch implements IExternalPatientSearch {
         return searchResults;
     }
 
-    public int getSearchResultStatus() {
+    public synchronized int getSearchResultStatus() {
         if (!finished) {
             throw new IllegalStateException("Result status requested ExternalPatientSearch before search was finished");
         }
@@ -126,10 +159,14 @@ public class PatientInfoHighwaySearch implements IExternalPatientSearch {
     }
 
     @Override
-    @Async
     public Future<Integer> runExternalSearch() {
-        try {
-            synchronized (this) {
+        synchronized (this) {
+            if (started) {
+                throw new IllegalStateException("External patient search can only be started once");
+            }
+            started = true;
+            try {
+                validateConfiguration();
                 if (noSearchTerms()) {
                     throw new IllegalStateException("Search requested before without any search terms.");
                 }
@@ -138,13 +175,34 @@ public class PatientInfoHighwaySearch implements IExternalPatientSearch {
                     throw new IllegalStateException("Search requested before connection credentials set.");
                 }
                 errors = new ArrayList<>();
-
-                doSearch();
+                if (externalPatientSearchExecutor == null) {
+                    throw new IllegalStateException("External patient search executor is not configured");
+                }
+                return externalPatientSearchExecutor.submit(this::executeSearch);
+            } catch (RuntimeException e) {
+                finished = true;
+                throw e;
             }
-        } finally {
-            finished = true;
         }
-        return new AsyncResult<>(getSearchResultStatus());
+    }
+
+    private Integer executeSearch() {
+        try {
+            doSearch();
+            return returnStatus;
+        } finally {
+            synchronized (this) {
+                finished = true;
+            }
+        }
+    }
+
+    @PostConstruct
+    void validateConfiguration() {
+        maxResponseBytes = ExternalPatientResponseSizeLimiter.validateConfiguredLimit(maxResponseBytes);
+        if (timeout == null || timeout < 1) {
+            throw new IllegalArgumentException("InfoHighway timeout must be positive");
+        }
     }
 
     private boolean connectionCredentialsIncomplete() {
@@ -161,7 +219,17 @@ public class PatientInfoHighwaySearch implements IExternalPatientSearch {
         String soapAction = "query";
         try {
             callSoapWebService(connectionString, soapAction);
-        } catch (SOAPException e) {
+        } catch (ExternalPatientResponseTooLargeException e) {
+            returnStatus = HttpStatus.SC_BAD_GATEWAY;
+            errors.add(RESPONSE_TOO_LARGE);
+            LogEvent.logError(e);
+        } catch (SOAPException | IOException e) {
+            returnStatus = HttpStatus.SC_BAD_GATEWAY;
+            errors.add(MALFORMED_REPLY);
+            LogEvent.logError(e);
+        } catch (RuntimeException e) {
+            returnStatus = HttpStatus.SC_BAD_GATEWAY;
+            errors.add(MALFORMED_REPLY);
             LogEvent.logError(e);
         }
         setPossibleErrors();
@@ -183,6 +251,12 @@ public class PatientInfoHighwaySearch implements IExternalPatientSearch {
         }
         case HttpStatus.SC_OK: {
             break; // NO-OP
+        }
+        case HttpStatus.SC_BAD_GATEWAY: {
+            if (errors.isEmpty()) {
+                errors.add("Patient information service returned an invalid response.");
+            }
+            break;
         }
         default: {
             errors.add("Unknown error trying to connect to patient information service. Return status was "
@@ -245,55 +319,119 @@ public class PatientInfoHighwaySearch implements IExternalPatientSearch {
         envelope.getBody().setPrefix(soapPrefix);
     }
 
-    private void callSoapWebService(String soapEndpointUrl, String soapAction)
-            throws UnsupportedOperationException, SOAPException {
-        // Create SOAP Connection
-        SOAPConnectionFactory soapConnectionFactory = SOAPConnectionFactory.newInstance();
-        SOAPConnection soapConnection = null;
-        try {
-            soapConnection = soapConnectionFactory.createConnection();
-            SOAPMessage soapMessage = createSOAPRequest(soapAction);
+    void callSoapWebService(String soapEndpointUrl, String soapAction) throws SOAPException, IOException {
+        SOAPMessage soapRequest = createSOAPRequest(soapAction);
+        HttpPost httpPost = createHttpPost(soapEndpointUrl, soapRequest);
 
-            // Send SOAP Message to SOAP Server
-            SOAPMessage soapResponse = soapConnection.call(soapMessage, soapEndpointUrl);
-            // Print the SOAP Response
-            if (soapResponse.getSOAPPart().getEnvelope().getBody().getFault() != null) {
-                // TODO gather actual fault codes and specify a better returnStatus
-                String faultCode = soapResponse.getSOAPPart().getEnvelope().getBody().getFault().getFaultCode();
-                returnStatus = HttpStatus.SC_INTERNAL_SERVER_ERROR;
-            } else {
-                returnStatus = HttpStatus.SC_OK;
-                processResponse(soapResponse);
+        try (CloseableHttpClient httpClient = createHttpClient();
+                CloseableHttpResponse httpResponse = httpClient.execute(httpPost)) {
+            if (httpResponse.getEntity() == null) {
+                throw new SOAPException("InfoHighway response has no body");
             }
 
-        } catch (Exception e) {
-            LogEvent.logError("Error occurred while sending SOAP Request to Server!", e);
-        } finally {
-            if (soapConnection != null) {
-                soapConnection.close();
+            long declaredLength = httpResponse.getEntity().getContentLength();
+            if (declaredLength > maxResponseBytes) {
+                throw new ExternalPatientResponseTooLargeException(maxResponseBytes);
+            }
+            byte[] responseBytes = ExternalPatientResponseSizeLimiter.readBytes(httpResponse.getEntity().getContent(),
+                    maxResponseBytes);
+
+            int upstreamStatus = httpResponse.getStatusLine().getStatusCode();
+            if (upstreamStatus < HttpStatus.SC_OK || upstreamStatus >= HttpStatus.SC_MULTIPLE_CHOICES) {
+                returnStatus = upstreamStatus == HttpStatus.SC_UNAUTHORIZED ? HttpStatus.SC_UNAUTHORIZED
+                        : HttpStatus.SC_BAD_GATEWAY;
+                return;
+            }
+
+            SOAPMessage soapResponse = parseSoapResponse(httpResponse, responseBytes);
+            if (soapResponse.getSOAPBody().getFault() != null) {
+                returnStatus = HttpStatus.SC_BAD_GATEWAY;
+                return;
+            }
+
+            processResponse(soapResponse);
+            returnStatus = HttpStatus.SC_OK;
+        }
+    }
+
+    protected CloseableHttpClient createHttpClient() {
+        return HttpClientBuilder.create().setDefaultRequestConfig(createRequestConfig()).disableRedirectHandling()
+                .disableAutomaticRetries().disableContentCompression().build();
+    }
+
+    RequestConfig createRequestConfig() {
+        return RequestConfig.custom().setConnectTimeout(timeout).setSocketTimeout(timeout)
+                .setConnectionRequestTimeout(timeout).setRedirectsEnabled(false).build();
+    }
+
+    private HttpPost createHttpPost(String soapEndpointUrl, SOAPMessage soapRequest) throws SOAPException, IOException {
+        ByteArrayOutputStream requestBody = new ByteArrayOutputStream();
+        soapRequest.writeTo(requestBody);
+
+        HttpPost httpPost = new HttpPost(soapEndpointUrl);
+        @SuppressWarnings("unchecked")
+        Iterator<MimeHeader> requestHeaders = soapRequest.getMimeHeaders().getAllHeaders();
+        while (requestHeaders.hasNext()) {
+            MimeHeader header = requestHeaders.next();
+            if (!"Content-Length".equalsIgnoreCase(header.getName())) {
+                httpPost.addHeader(header.getName(), header.getValue());
             }
         }
+        if (!httpPost.containsHeader("Content-Type")) {
+            httpPost.setHeader("Content-Type", "text/xml; charset=utf-8");
+        }
+        httpPost.setHeader("Accept-Encoding", "identity");
+        httpPost.setEntity(new ByteArrayEntity(requestBody.toByteArray()));
+        return httpPost;
+    }
+
+    private SOAPMessage parseSoapResponse(CloseableHttpResponse httpResponse, byte[] responseBytes)
+            throws SOAPException, IOException {
+        ExternalPatientXmlSecurity.requireSoapWithoutDoctype(responseBytes);
+        MimeHeaders responseHeaders = new MimeHeaders();
+        for (Header header : httpResponse.getAllHeaders()) {
+            if (!"Content-Length".equalsIgnoreCase(header.getName())
+                    && !"Content-Encoding".equalsIgnoreCase(header.getName())) {
+                responseHeaders.addHeader(header.getName(), header.getValue());
+            }
+        }
+        if (responseHeaders.getHeader("Content-Type") == null) {
+            responseHeaders.addHeader("Content-Type", "text/xml; charset=utf-8");
+        }
+        MessageFactory messageFactory = MessageFactory.newInstance(SOAPConstants.SOAP_1_1_PROTOCOL);
+        return messageFactory.createMessage(responseHeaders, new ByteArrayInputStream(responseBytes));
     }
 
     private void processResponse(SOAPMessage soapResponse) throws SOAPException {
         SOAPBody soapResponseBody = soapResponse.getSOAPBody();
         QName bodyName = new QName("http://ws.server.mhaccess.crimsonlogic.com/", "queryResponse", "ns3");
         Iterator<jakarta.xml.soap.Node> iterator = soapResponseBody.getChildElements(bodyName);
+        boolean foundQueryResponse = false;
         while (iterator.hasNext()) {
+            foundQueryResponse = true;
             SOAPElement queryResponse = (SOAPElement) iterator.next();
 
             Node returnNode = queryResponse.getElementsByTagName("return").item(0);
+            if (returnNode == null) {
+                throw new SOAPException("InfoHighway response is missing return data");
+            }
             if (returnNode.getNodeType() == Node.ELEMENT_NODE) {
                 Element returnElement = (Element) returnNode;
                 NodeList fieldsList = returnElement.getElementsByTagName("fields");
                 NodeList valuesList = returnElement.getElementsByTagName("values");
                 for (int i = 0; i < valuesList.getLength(); ++i) {
+                    if (resultLimit != null && searchResults.size() >= resultLimit) {
+                        return;
+                    }
                     if (valuesList.item(i).getNodeType() == Node.ELEMENT_NODE) {
                         Element valuesElement = (Element) valuesList.item(i);
                         addPatient(fieldsList, valuesElement.getElementsByTagName("value"));
                     }
                 }
             }
+        }
+        if (!foundQueryResponse) {
+            throw new SOAPException("InfoHighway response is missing queryResponse");
         }
     }
 
@@ -370,8 +508,8 @@ public class PatientInfoHighwaySearch implements IExternalPatientSearch {
         }
     }
 
-    private SOAPMessage createSOAPRequest(String soapAction) throws Exception {
-        MessageFactory messageFactory = MessageFactory.newInstance();
+    private SOAPMessage createSOAPRequest(String soapAction) throws SOAPException {
+        MessageFactory messageFactory = MessageFactory.newInstance(SOAPConstants.SOAP_1_1_PROTOCOL);
         SOAPMessage soapMessage = messageFactory.createMessage();
         createSoapEnvelope(soapMessage);
 
