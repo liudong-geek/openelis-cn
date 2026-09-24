@@ -34,7 +34,7 @@
  */
 before("Login and setup session", () => {
   // Login runs ONCE, cached for all tests
-  cy.login("admin", "adminADMIN!");
+  cy.login(Cypress.env("USERNAME"), Cypress.env("PASSWORD"));
 });
 
 describe("Site Branding - User Story 1: Access Site Branding Configuration", function () {
@@ -43,8 +43,7 @@ describe("Site Branding - User Story 1: Access Site Branding Configuration", fun
     cy.viewport(1025, 900); // Desktop viewport
 
     // Set up API intercepts BEFORE actions that trigger them (Constitution V.5)
-    cy.intercept("GET", "**/rest/site-branding/**").as("getBranding");
-    cy.intercept("PUT", "**/rest/site-branding/**").as("updateBranding");
+    cy.intercept("GET", "**/rest/site-branding").as("getBranding");
   });
 
   /**
@@ -57,45 +56,40 @@ describe("Site Branding - User Story 1: Access Site Branding Configuration", fun
    * - Verify all branding options are visible
    */
   it("should access site branding configuration page", function () {
-    // Arrange: Set up intercept for branding API
-    cy.intercept("GET", "**/rest/site-branding/**", {
-      statusCode: 200,
-      body: {
-        id: "test-id",
-        primaryColor: "#1d4ed8",
-        secondaryColor: "#64748b",
-        accentColor: "#0891b2",
-        colorMode: "light",
-        useHeaderLogoForLogin: false,
-      },
-    }).as("getBranding");
-
     // Act: Navigate to site branding configuration
-    cy.visit("/");
-
-    // Navigate through menu: Admin → General Configuration → Site Information → Site Branding
-    // cy.get('[data-cy="adminMenu"]', { timeout: 10000 })
-    //   .should("be.visible")
-    //   .click();
-    // cy.get('[data-cy="siteInfoMenu"]', { timeout: 10000 })
-    //   .should("be.visible")
-    //   .click();
     cy.visit("/MasterListsPage/SiteBrandingMenu");
-    cy.wait(2000);
 
-    // If Site Branding is a submenu item, click it
-    // Otherwise, it may be accessible via a different path
-    // This will need adjustment based on actual menu structure
+    // Assert: The page is backed by the real branding endpoint and renders its controls.
+    cy.wait("@getBranding").then(({ response }) => {
+      expect(response, "branding API response").to.exist;
+      expect(response.statusCode).to.eq(200);
+      expect(response.body).to.include.keys(
+        "headerColor",
+        "primaryColor",
+        "secondaryColor",
+      );
 
-    // Assert: Configuration page should load
-    // cy.wait("@getBranding").its("response.statusCode").should("eq", 200);
+      cy.get('input[type="color"]')
+        .should("have.length", 3)
+        .each(($input, index) => {
+          const responseColors = [
+            response.body.headerColor,
+            response.body.primaryColor,
+            response.body.secondaryColor,
+          ];
+          expect($input.val().toLowerCase()).to.eq(
+            responseColors[index].toLowerCase(),
+          );
+        });
+    });
 
-    // Verify page title/heading is visible
-    //cy.contains(/site branding/i, { timeout: 10000 }).should("be.visible");
-
-    // Verify branding options are visible (logos, colors)
-    // These selectors will need adjustment based on actual component implementation
-    //cy.contains(/logo/i).should("be.visible");
-    // cy.contains(/color/i).should("be.visible");
+    cy.contains("h1", /界面标识与配色|Site Branding/i, {
+      timeout: 10000,
+    }).should("be.visible");
+    cy.contains("h2", /系统标识|Logos/i).should("be.visible");
+    cy.contains("h2", /界面配色|Colors/i).should("be.visible");
+    cy.get('[data-testid="branding-reset-button"]').should("be.visible");
+    cy.get('[data-testid="branding-cancel-button"]').should("be.disabled");
+    cy.contains("button", /保存配置|Save Changes/i).should("be.disabled");
   });
 });
