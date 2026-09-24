@@ -1,5 +1,6 @@
 package org.openelisglobal.config;
 
+import java.util.Locale;
 import org.openelisglobal.internationalization.MessageUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.MessageSource;
@@ -20,6 +21,11 @@ public class InternationalizationConfig {
         ReloadableResourceBundleMessageSource messageSource = new ReloadableResourceBundleMessageSource();
         messageSource.setBasename("classpath:/languages/message");
         messageSource.setDefaultEncoding("UTF-8");
+        // English is the complete source catalog. Locale-specific catalogs may be
+        // intentionally partial, so missing entries must fall back to English
+        // instead of exposing raw message keys to users.
+        messageSource.setDefaultLocale(Locale.ENGLISH);
+        messageSource.setFallbackToSystemLocale(false);
         messageSource.setUseCodeAsDefaultMessage(true);
         MessageUtil.setMessageSource(messageSource);
         return messageSource;
