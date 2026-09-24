@@ -60,7 +60,7 @@ services:
     container_name: openelis-cn-e2e-proxy
     restart: "no"
     ports: !override
-      - "18081:443"
+      - "127.0.0.1:18081:443"
 
 networks:
   default:
