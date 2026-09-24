@@ -2,8 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="${OPENELIS_CN_ENV_FILE:-$ROOT_DIR/.env}"
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "错误：未找到本地环境文件 $ENV_FILE；请先由 .env.example 创建 .env。" >&2
+  exit 2
+fi
 COMPOSE=(
-  docker compose
+  docker compose --env-file "$ENV_FILE" -p openelis-cn
   -f "$ROOT_DIR/docker-compose.yml"
   -f "$ROOT_DIR/docker-compose.cn.yml"
   -f "$ROOT_DIR/docker-compose.local.yml"
@@ -14,13 +19,22 @@ print_status() {
     --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 }
 
+require_production_volume() {
+  if ! docker volume inspect openelis-cn_db-data >/dev/null 2>&1; then
+    echo "错误：未找到正式数据卷 openelis-cn_db-data；为防止误启用空数据库，已停止启动。" >&2
+    exit 2
+  fi
+}
+
 case "${1:-}" in
   start)
+    require_production_volume
     "${COMPOSE[@]}" up -d \
       db.openelis.org oe.openelis.org frontend.openelis.org proxy
     print_status
     ;;
   start-integration)
+    require_production_volume
     "${COMPOSE[@]}" --profile integration up -d \
       db.openelis.org oe.openelis.org frontend.openelis.org proxy fhir.openelis.org
     print_status

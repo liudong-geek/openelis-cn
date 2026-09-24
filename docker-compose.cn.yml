@@ -102,3 +102,13 @@ networks:
     ipam:
       config: !override
         - subnet: 172.26.1.0/24
+
+volumes:
+  # This is the existing production data volume on the local delivery host.
+  # An explicit name prevents a checkout-directory rename from selecting a
+  # fresh database while the lis-local helper keeps project openelis-cn.
+  db-data:
+    name: openelis-cn_db-data
+    # Production data is lifecycle-managed outside Compose so even an
+    # accidental `docker compose down -v` cannot delete it.
+    external: true
