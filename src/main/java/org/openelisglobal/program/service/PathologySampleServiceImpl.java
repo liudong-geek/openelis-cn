@@ -1,11 +1,13 @@
 package org.openelisglobal.program.service;
 
-import jakarta.transaction.Transactional;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.GenericValidator;
@@ -17,6 +19,7 @@ import org.openelisglobal.barcode.form.PostSavePrintDialogForm;
 import org.openelisglobal.barcode.service.BarcodeInfoService;
 import org.openelisglobal.barcode.service.BarcodeWorkflowPrintService;
 import org.openelisglobal.common.action.IActionConstants;
+import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.service.AuditableBaseObjectServiceImpl;
 import org.openelisglobal.common.services.IStatusService;
@@ -36,6 +39,8 @@ import org.openelisglobal.note.valueholder.Note;
 import org.openelisglobal.patient.valueholder.Patient;
 import org.openelisglobal.program.controller.pathology.PathologySampleForm;
 import org.openelisglobal.program.dao.PathologySampleDAO;
+import org.openelisglobal.program.service.SpecialtyCaseWriteGuard.Assignment;
+import org.openelisglobal.program.service.SpecialtyCaseWriteGuard.Authorization;
 import org.openelisglobal.program.valueholder.immunohistochemistry.ImmunohistochemistrySample;
 import org.openelisglobal.program.valueholder.pathology.PathologyConclusion;
 import org.openelisglobal.program.valueholder.pathology.PathologyConclusion.ConclusionType;
@@ -50,6 +55,8 @@ import org.openelisglobal.result.action.util.ResultSet;
 import org.openelisglobal.result.action.util.ResultsLoadUtility;
 import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
 import org.openelisglobal.result.service.LogbookResultsPersistService;
+import org.openelisglobal.result.service.SpecialtyReleaseAuditSupport;
+import org.openelisglobal.result.service.SpecialtyResultRelease;
 import org.openelisglobal.result.valueholder.Result;
 import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.valueholder.Sample;
@@ -63,7 +70,10 @@ import org.openelisglobal.test.valueholder.Test;
 import org.openelisglobal.test.valueholder.TestSection;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl.ResultType;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<PathologySample, Integer>
@@ -102,6 +112,9 @@ public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<P
     @Autowired
     private BarcodeWorkflowPrintService barcodeWorkflowPrintService;
 
+    @Autowired
+    private SpecialtyCaseWriteGuard specialtyCaseWriteGuard;
+
     PathologySampleServiceImpl() {
         super(PathologySample.class);
         this.auditTrailLog = true;
@@ -117,21 +130,27 @@ public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<P
         return baseObjectDAO.getWithStatus(statuses);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     @Override
     public void assignTechnician(Integer pathologySampleId, SystemUser systemUser, String curUserId) {
-        PathologySample pathologySample = copyPathologySample(get(pathologySampleId));
+        PathologySample persisted = get(pathologySampleId);
+        Authorization authorization = specialtyCaseWriteGuard.require(curUserId, persisted, Constants.ROLE_RESULTS);
+        specialtyCaseWriteGuard.requireSelfAssignment(authorization, systemUser, persisted.getTechnician());
+        PathologySample pathologySample = copyPathologySample(persisted);
         pathologySample.setTechnician(systemUser);
-        pathologySample.setSysUserId(curUserId);
+        pathologySample.setSysUserId(authorization.actor());
         update(pathologySample);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     @Override
     public void assignPathologist(Integer pathologySampleId, SystemUser systemUser, String curUserId) {
-        PathologySample pathologySample = copyPathologySample(get(pathologySampleId));
+        PathologySample persisted = get(pathologySampleId);
+        Authorization authorization = specialtyCaseWriteGuard.require(curUserId, persisted, Constants.ROLE_PATHOLOGIST);
+        specialtyCaseWriteGuard.requireSelfAssignment(authorization, systemUser, persisted.getPathologist());
+        PathologySample pathologySample = copyPathologySample(persisted);
         pathologySample.setPathologist(systemUser);
-        pathologySample.setSysUserId(curUserId);
+        pathologySample.setSysUserId(authorization.actor());
         update(pathologySample);
     }
 
@@ -161,18 +180,42 @@ public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<P
         return pathologySample;
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     @Override
     public void updateWithFormValues(Integer pathologySampleId, PathologySampleForm form) {
+        boolean release = Boolean.TRUE.equals(form.getRelease());
         // copying is so we get an object that is detached from hibernate
-        PathologySample pathologySample = copyPathologySample(get(pathologySampleId));
-        pathologySample.setSysUserId(form.getSystemUserId());
-        if (!GenericValidator.isBlankOrNull(form.getAssignedPathologistId())) {
-            pathologySample.setPathologist(systemUserService.get(form.getAssignedPathologistId()));
+        PathologySample persisted = get(pathologySampleId);
+        Authorization authorization = specialtyCaseWriteGuard.require(form.getSystemUserId(), persisted,
+                release ? List.of(Constants.ROLE_PATHOLOGIST)
+                        : List.of(Constants.ROLE_RESULTS, Constants.ROLE_PATHOLOGIST));
+        specialtyCaseWriteGuard.requireDraftStatus(release, form.getStatus());
+        if (release) {
+            specialtyCaseWriteGuard.requireReleaseAssignments(authorization,
+                    new Assignment(Constants.ROLE_PATHOLOGIST, persisted.getPathologist()),
+                    persisted.getTechnician());
+        } else {
+            specialtyCaseWriteGuard.requireCurrentAssignment(authorization,
+                    List.of(new Assignment(Constants.ROLE_PATHOLOGIST, persisted.getPathologist()),
+                            new Assignment(Constants.ROLE_RESULTS, persisted.getTechnician())));
         }
-        if (!GenericValidator.isBlankOrNull(form.getAssignedTechnicianId())) {
-            pathologySample.setTechnician(systemUserService.get(form.getAssignedTechnicianId()));
+        specialtyCaseWriteGuard.requireUnchangedAssignment(persisted.getPathologist(), form.getAssignedPathologistId());
+        specialtyCaseWriteGuard.requireUnchangedAssignment(persisted.getTechnician(), form.getAssignedTechnicianId());
+        if (pathologistFieldsChanged(persisted, form)) {
+            specialtyCaseWriteGuard.requireCurrentAssignment(authorization,
+                    List.of(new Assignment(Constants.ROLE_PATHOLOGIST, persisted.getPathologist())));
         }
+        Authorization referralAuthorization = null;
+        if (Boolean.TRUE.equals(form.getReferToImmunoHistoChemistry())) {
+            // Referral is a specialist decision even when the rest of the case is only
+            // being saved as a draft. Authorize it before the first case/IHC write.
+            referralAuthorization = specialtyCaseWriteGuard.requireRead(persisted,
+                    List.of(Constants.ROLE_PATHOLOGIST));
+            specialtyCaseWriteGuard.requireCurrentAssignment(referralAuthorization,
+                    List.of(new Assignment(Constants.ROLE_PATHOLOGIST, persisted.getPathologist())));
+        }
+        PathologySample pathologySample = copyPathologySample(persisted);
+        pathologySample.setSysUserId(authorization.actor());
         pathologySample.setStatus(form.getStatus());
         pathologySample.getBlocks().removeAll(pathologySample.getBlocks());
         if (form.getBlocks() != null)
@@ -204,20 +247,94 @@ public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<P
         if (form.getReports() != null)
             form.getReports().stream().forEach(e -> e.setId(null));
         pathologySample.getReports().addAll(form.getReports());
-        if (form.getRelease()) {
-            validatePathologySample(pathologySample, form);
-        }
-        if (form.getReferToImmunoHistoChemistry()) {
-            referToImmunoHistoChemistry(pathologySample, form);
+        if (release) {
+            pathologySample.setStatus(PathologyStatus.COMPLETED);
         }
         try {
-            update(pathologySample);
+            pathologySample = update(pathologySample);
+            // Create the referred IHC case and its analyses before pathology release.
+            // This keeps those analyses outside the pathology write-set and prevents the
+            // enclosing Sample from being completed while IHC work is still pending.
+            if (Boolean.TRUE.equals(form.getReferToImmunoHistoChemistry())) {
+                referToImmunoHistoChemistry(pathologySample, form, referralAuthorization.caseAnalyses());
+                if (release) {
+                    authorization = specialtyCaseWriteGuard.requireRead(pathologySample,
+                            List.of(Constants.ROLE_PATHOLOGIST));
+                }
+            }
+            if (release) {
+                validatePathologySample(pathologySample, form, authorization);
+            }
             persistPathologyBarcodeCountsIfSupplied(pathologySample, form);
             populatePathologyWorkflowPrintModels(pathologySample, form);
         } catch (RuntimeException e) {
             LogEvent.logError(e);
             throw e;
         }
+    }
+
+    private boolean pathologistFieldsChanged(PathologySample persisted, PathologySampleForm form) {
+        return !Objects.equals(StringUtils.defaultString(persisted.getGrossExam()),
+                StringUtils.defaultString(form.getGrossExam()))
+                || !Objects.equals(StringUtils.defaultString(persisted.getMicroscopyExam()),
+                        StringUtils.defaultString(form.getMicroscopyExam()))
+                || !pathologyValues(persisted.getTechniques(), PathologyTechnique::getValue,
+                        technique -> technique.getType() == null ? "" : technique.getType().name())
+                                .equals(formValues(form.getTechniques(), "DICTIONARY"))
+                || !pathologyValues(persisted.getRequests(), PathologyRequest::getValue,
+                        request -> (request.getType() == null ? "" : request.getType().name()) + ":"
+                                + (request.getStatus() == null ? "" : request.getStatus().name()))
+                                .equals(requestFormValues(form.getRequests()))
+                || !conclusionValues(persisted).equals(conclusionFormValues(form));
+    }
+
+    private <T> List<String> pathologyValues(List<T> values, java.util.function.Function<T, String> value,
+            java.util.function.Function<T, String> type) {
+        if (values == null) {
+            return List.of();
+        }
+        return values.stream().map(item -> type.apply(item) + ":" + StringUtils.defaultString(value.apply(item)))
+                .sorted().collect(Collectors.toList());
+    }
+
+    private List<String> formValues(List<String> values, String type) {
+        if (values == null) {
+            return List.of();
+        }
+        return values.stream().map(value -> type + ":" + StringUtils.defaultString(value)).sorted()
+                .collect(Collectors.toList());
+    }
+
+    private List<String> requestFormValues(List<PathologySampleForm.PathologyRequestForm> requests) {
+        if (requests == null) {
+            return List.of();
+        }
+        return requests.stream()
+                .map(request -> "DICTIONARY:"
+                        + (request.getStatus() == null ? "" : request.getStatus().name()) + ":"
+                        + StringUtils.defaultString(request.getValue()))
+                .sorted().collect(Collectors.toList());
+    }
+
+    private List<String> conclusionFormValues(PathologySampleForm form) {
+        List<String> conclusions = new ArrayList<>(formValues(form.getConclusions(), "DICTIONARY"));
+        if (StringUtils.isNotBlank(form.getConclusionText())) {
+            conclusions.add("TEXT:" + form.getConclusionText());
+        }
+        conclusions.sort(String::compareTo);
+        return conclusions;
+    }
+
+    private List<String> conclusionValues(PathologySample persisted) {
+        if (persisted.getConclusions() == null) {
+            return List.of();
+        }
+        return persisted.getConclusions().stream()
+                .filter(conclusion -> conclusion.getType() != ConclusionType.TEXT
+                        || StringUtils.isNotBlank(conclusion.getValue()))
+                .map(conclusion -> (conclusion.getType() == null ? "" : conclusion.getType().name()) + ":"
+                        + StringUtils.defaultString(conclusion.getValue()))
+                .sorted().collect(Collectors.toList());
     }
 
     // OGC-285 flow migration — TODO (NEEDS-DESIGN-CALL, do NOT force):
@@ -289,7 +406,8 @@ public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<P
                 form.getNumSlideLabels(), form.getNumFreezerLabels());
     }
 
-    private void validatePathologySample(PathologySample pathologySample, PathologySampleForm form) {
+    private void validatePathologySample(PathologySample pathologySample, PathologySampleForm form,
+            Authorization authorization) {
         pathologySample.setStatus(PathologyStatus.COMPLETED);
         Sample sample = pathologySample.getSample();
         Patient patient = sampleService.getPatient(sample);
@@ -297,25 +415,42 @@ public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<P
 
         ResultsLoadUtility resultsUtility = SpringContext.getBean(ResultsLoadUtility.class);
         List<TestResultItem> testResultItems = resultsUtility.getGroupedTestsForSample(sample);
+        Set<String> releasedAnalysisIds = new LinkedHashSet<>();
         for (TestResultItem testResultItem : testResultItems) {
-            if (!testResultItem.getIsGroupSeparator()) {
+            if (!testResultItem.getIsGroupSeparator()
+                    && authorization.analysisIds().contains(testResultItem.getAnalysisId())) {
+                releasedAnalysisIds.add(testResultItem.getAnalysisId());
                 if (ResultType.isTextOnlyVariant(testResultItem.getResultType())) {
                     testResultItem.setResultValue(MessageUtil.getMessage("result.pathology.seereport"));
                 }
-                Analysis analysis = analysisService.get(sample.getId());
+                Analysis analysis = actionDataSet.findModifiedAnalysis(testResultItem.getAnalysisId());
+                boolean firstComponentForAnalysis = analysis == null;
+                if (firstComponentForAnalysis) {
+                    analysis = SpecialtyReleaseAuditSupport.detachedAnalysis(
+                            analysisService.get(testResultItem.getAnalysisId()), form.getSystemUserId());
+                }
                 ResultSaveBean bean = ResultSaveBeanAdapter.fromTestResultItem(testResultItem);
-                ResultSaveService resultSaveService = new ResultSaveService(analysis, form.getSystemUserId());
+                ResultSaveService resultSaveService = createResultSaveService(analysis, form.getSystemUserId());
                 List<Result> results = resultSaveService.createResultsFromTestResultItem(bean, new ArrayList<>());
-                for (Result result : results) {
-                    boolean newResult = result.getId() == null;
-                    analysis.setEnteredDate(DateUtil.getNowAsTimestamp());
-
-                    if (newResult) {
+                boolean existingResult = results.stream().anyMatch(result -> result.getId() != null);
+                analysis.setEnteredDate(DateUtil.getNowAsTimestamp());
+                if (firstComponentForAnalysis) {
+                    if (existingResult) {
+                        analysis.setRevision(String.valueOf(Integer.parseInt(analysis.getRevision()) + 1));
+                    } else {
                         analysis.setRevision("1");
+                    }
+                }
+                for (Result result : results) {
+                    // Existing Result rows are loaded as detached copies that still point
+                    // at the persisted source Analysis. Keep the whole release write-set
+                    // on the single detached target used for the audited Analysis update.
+                    result.setAnalysis(analysis);
+                    boolean newResult = result.getId() == null;
+                    if (newResult) {
                         actionDataSet.getNewResults()
                                 .add(new ResultSet(result, null, null, patient, sample, new HashMap<>(), false));
                     } else {
-                        analysis.setRevision(String.valueOf(Integer.parseInt(analysis.getRevision()) + 1));
                         actionDataSet.getModifiedResults()
                                 .add(new ResultSet(result, null, null, patient, sample, new HashMap<>(), false));
                     }
@@ -355,27 +490,83 @@ public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<P
                 }
                 analysis.setStatusId(SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.Finalized));
                 analysis.setReleasedDate(new java.sql.Timestamp(System.currentTimeMillis()));
+                if (firstComponentForAnalysis) {
+                    actionDataSet.getModifiedAnalysis().add(analysis);
+                }
             }
         }
 
-        logbookResultsPersistService.persistDataSet(actionDataSet, ResultUpdateRegister.getRegisteredUpdaters(),
-                form.getSystemUserId());
-        sample.setStatusId(SpringContext.getBean(IStatusService.class).getStatusID(OrderStatus.Finished));
+        specialtyCaseWriteGuard.requireExactReleaseSet(authorization, releasedAnalysisIds);
+
+        logbookResultsPersistService.persistSpecialtyReleaseDataSet(actionDataSet,
+                ResultUpdateRegister.getRegisteredUpdaters(), form.getSystemUserId(),
+                SpecialtyResultRelease.pathology(pathologySample));
+        IStatusService statuses = SpringContext.getBean(IStatusService.class);
+        Set<String> terminalStatusIds = new LinkedHashSet<>();
+        terminalStatusIds.add(statuses.getStatusID(AnalysisStatus.Finalized));
+        terminalStatusIds.add(statuses.getStatusID(AnalysisStatus.Canceled));
+        terminalStatusIds.add(statuses.getStatusID(AnalysisStatus.NonConforming_depricated));
+        if (specialtyCaseWriteGuard.allAnalysesTerminal(sample, terminalStatusIds)) {
+            Sample finishedSample = SpecialtyReleaseAuditSupport.detachedSample(sample, form.getSystemUserId());
+            finishedSample.setStatusId(statuses.getStatusID(OrderStatus.Finished));
+            sampleService.update(finishedSample);
+        }
     }
 
-    private void referToImmunoHistoChemistry(PathologySample pathologySample, PathologySampleForm form) {
-        List<Test> immunoHistologyTests = new ArrayList<>();
-        if (!form.getImmunoHistoChemistryTestIds().isEmpty()) {
-            form.getImmunoHistoChemistryTestIds().forEach(id -> {
-                Test t = testService.get(id);
-                if (t != null) {
-                    immunoHistologyTests.add(t);
-                }
-            });
+    protected ResultSaveService createResultSaveService(Analysis analysis, String systemUserId) {
+        return new ResultSaveService(analysis, systemUserId);
+    }
+
+    private void referToImmunoHistoChemistry(PathologySample pathologySample, PathologySampleForm form,
+            List<Analysis> pathologyAnalyses) {
+        TestSection immunohistochemistrySection = testSectionService
+                .getTestSectionByName(SpecialtyCaseWriteGuard.IMMUNOHISTOCHEMISTRY_SECTION);
+        if (immunohistochemistrySection == null || immunohistochemistrySection.getId() == null
+                || pathologyAnalyses == null || pathologyAnalyses.isEmpty()
+                || form.getImmunoHistoChemistryTestIds() == null
+                || form.getImmunoHistoChemistryTestIds().isEmpty()) {
+            throw new AccessDeniedException("error.notauthorized");
+        }
+        java.util.Map<String, Test> immunoHistologyTests = new LinkedHashMap<>();
+        for (String id : form.getImmunoHistoChemistryTestIds()) {
+            Test test = id != null && id.matches("[1-9][0-9]{0,9}") ? testService.get(id) : null;
+            if (test == null || !id.equals(test.getId()) || !test.isActive() || test.getTestSection() == null
+                    || !immunohistochemistrySection.getId().equals(test.getTestSection().getId())) {
+                throw new AccessDeniedException("error.notauthorized");
+            }
+            immunoHistologyTests.putIfAbsent(test.getId(), test);
+        }
+
+        Analysis currentAnalysis = pathologyAnalyses.get(0);
+        if (currentAnalysis == null || currentAnalysis.getSampleItem() == null
+                || currentAnalysis.getSampleItem().getId() == null) {
+            throw new AccessDeniedException("error.notauthorized");
         }
 
         ImmunohistochemistrySample immunoHistoSample = immunohistochemistrySampleService
                 .getByPathologySampleId(pathologySample.getId());
+        boolean completedCase = immunoHistoSample != null
+                && immunoHistoSample.getStatus() == ImmunohistochemistrySample.ImmunohistochemistryStatus.COMPLETED;
+        List<Test> missingTests = new ArrayList<>();
+        for (Test test : immunoHistologyTests.values()) {
+            Analysis existing = analysisService.getAnalysisBySampleItemAndTest(currentAnalysis.getSampleItem().getId(),
+                    test.getId());
+            if (existing == null) {
+                missingTests.add(test);
+            } else if (existing.getTest() == null || !test.getId().equals(existing.getTest().getId())
+                    || existing.getSampleItem() == null
+                    || !currentAnalysis.getSampleItem().getId().equals(existing.getSampleItem().getId())
+                    || existing.getTestSection() == null
+                    || !immunohistochemistrySection.getId().equals(existing.getTestSection().getId())) {
+                throw new AccessDeniedException("error.notauthorized");
+            }
+        }
+        if (completedCase) {
+            if (!missingTests.isEmpty()) {
+                throw new AccessDeniedException("error.notauthorized");
+            }
+            return;
+        }
         if (immunoHistoSample == null) {
             immunoHistoSample = new ImmunohistochemistrySample();
         }
@@ -384,24 +575,16 @@ public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<P
         immunoHistoSample.setSample(pathologySample.getSample());
         immunoHistoSample.setPathologySample(pathologySample);
         immunoHistoSample.setReffered(true);
+        immunoHistoSample.setSysUserId(form.getSystemUserId());
         immunohistochemistrySampleService.save(immunoHistoSample);
-
-        if (immunoHistologyTests.isEmpty()) {
-            return;
+        for (Test test : missingTests) {
+            createNewAnalysis(test, currentAnalysis, pathologySample.getProgram().getProgramName(),
+                    form.getSystemUserId(), immunohistochemistrySection);
         }
-        List<Analysis> analyses = analysisService.getAnalysesBySampleId(pathologySample.getSample().getId());
-        if (analyses == null || analyses.isEmpty()) {
-            return;
-        }
-        Analysis currentAnalysis = analyses.get(0);
-        immunoHistologyTests.forEach(test -> {
-            CreateNewAnalysis(test, currentAnalysis, pathologySample.getProgram().getProgramName(),
-                    form.getSystemUserId());
-        });
     }
 
-    private void CreateNewAnalysis(Test immunoHistologyTest, Analysis currentAnalysis, String programmeName,
-            String systemUserId) {
+    protected void createNewAnalysis(Test immunoHistologyTest, Analysis currentAnalysis, String programmeName,
+            String systemUserId, TestSection immunohistochemistrySection) {
         Analysis analysis = new Analysis();
         analysis.setTest(immunoHistologyTest);
         analysis.setIsReportable(currentAnalysis.getIsReportable());
@@ -411,8 +594,7 @@ public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<P
         analysis.setStatusId(SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.NotStarted));
         analysis.setParentAnalysis(currentAnalysis);
         analysis.setSampleItem(currentAnalysis.getSampleItem());
-        TestSection testSection = testSectionService.getTestSectionByName("Immunohistochemistry");
-        analysis.setTestSection(testSection);
+        analysis.setTestSection(immunohistochemistrySection);
         analysis.setSampleTypeName(currentAnalysis.getSampleTypeName());
         analysis.setSysUserId(systemUserId);
         analysisService.insert(analysis);

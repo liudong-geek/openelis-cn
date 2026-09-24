@@ -122,9 +122,10 @@ public class SpecimenRecollectionServiceTest {
         analysis.setSampleItem(item);
         analysis.setTest(test);
         analysis.setLastupdated(ts("2026-09-17T00:40:00Z"));
-        var evidence = new SpecimenIntakeEvidence(1, sample.getLastupdated().toInstant().toString(),
-                source.getLastupdated().toInstant().toString(), "2026-09-17T00:40:00Z", "11",
-                item.getCollectionDate().toInstant().toString(), item.getReceivedDate().toInstant().toString(),
+        var evidence = new SpecimenIntakeEvidence(1, SpecimenIntakeEvidence.wallClockTime(sample.getLastupdated()),
+                SpecimenIntakeEvidence.wallClockTime(source.getLastupdated()), "2026-09-17T00:40:00Z", "11",
+                SpecimenIntakeEvidence.instantTime(item.getCollectionDate()),
+                SpecimenIntakeEvidence.instantTime(item.getReceivedDate()),
                 List.of(new SpecimenIntakeEvidence.Analysis("1101", "31", "2026-09-17T00:40:00Z")));
         var reason = new SpecimenIntakeDecision.Reason("DICTIONARY:resultRejectionReasons", "51",
                 "2026-09-17T00:35:00Z", "标本凝固");
@@ -217,6 +218,24 @@ public class SpecimenRecollectionServiceTest {
         assertSame(item, source.getSampleItem());
         assertTrue(item.isRejected());
         assertEquals(List.of("sample_type_request:7", "specimen_recollection:7"), audits);
+    }
+
+    @Test
+    public void replacementRequestAndAuditDoNotGainASecondShanghaiOffset() throws Exception {
+        TimeZone original = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            JsonNode result = send(command(), 200);
+            SampleTypeRequest replacement = requests.get(1);
+            assertEquals(NOW.toString(), SpecimenIntakeEvidence.wallClockTime(replacement.getCreatedDate()));
+            assertEquals(NOW.toString(), SpecimenIntakeEvidence.wallClockTime(replacement.getLastupdated()));
+            assertEquals(NOW.toString(), SpecimenIntakeEvidence.wallClockTime(records.get(0).getLastupdated()));
+            assertEquals(NOW, records.get(0).getCreatedAt());
+            assertEquals(NOW.toString(), result.path("request").path("createdAt").asText());
+            assertEquals(NOW.toString(), result.path("request").path("lastUpdated").asText());
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @Test

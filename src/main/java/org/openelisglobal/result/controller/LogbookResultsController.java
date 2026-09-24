@@ -68,9 +68,10 @@ import org.openelisglobal.result.action.util.ResultUtil;
 import org.openelisglobal.result.action.util.ResultsLoadUtility;
 import org.openelisglobal.result.action.util.ResultsPaging;
 import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
+import org.openelisglobal.result.exception.ResultSaveValidationException;
 import org.openelisglobal.result.form.LogbookResultsForm;
 import org.openelisglobal.result.form.LogbookResultsForm.LogbookResults;
-import org.openelisglobal.result.service.LogbookResultsPersistService;
+import org.openelisglobal.result.service.LegacyResultEntryWriteService;
 import org.openelisglobal.result.service.ResultInventoryService;
 import org.openelisglobal.result.service.ResultSignatureService;
 import org.openelisglobal.result.valueholder.Result;
@@ -92,6 +93,8 @@ import org.openelisglobal.test.valueholder.TestSection;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl;
 import org.openelisglobal.userrole.service.UserRoleService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.ConcurrencyFailureException;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.Errors;
@@ -140,7 +143,7 @@ public class LogbookResultsController extends LogbookResultsBaseController {
     @Autowired
     private TestSectionService testSectionService;
     @Autowired
-    private LogbookResultsPersistService logbookPersistService;
+    private LegacyResultEntryWriteService legacyResultEntryWriteService;
     @Autowired
     private AnalysisService analysisService;
     @Autowired
@@ -348,6 +351,7 @@ public class LogbookResultsController extends LogbookResultsBaseController {
 
     @RequestMapping(value = { "/LogbookResults", "/PatientResults", "/AccessionResults",
             "/StatusResults" }, method = RequestMethod.POST)
+    @PreAuthorize("hasRole('RESULTS')")
     public ModelAndView showLogbookResultsUpdate(HttpServletRequest request,
             @ModelAttribute("form") @Validated(LogbookResultsForm.LogbookResults.class) LogbookResultsForm form,
             BindingResult result, RedirectAttributes redirectAttributes)
@@ -397,34 +401,37 @@ public class LogbookResultsController extends LogbookResultsBaseController {
         // user
         // ie: empty when another user saved and hasn't reloaded.
 
-        List<Result> checkPagedResults = (List<Result>) request.getSession()
-                .getAttribute(IActionConstants.RESULTS_SESSION_CACHE);
-        List<Result> checkResults = (List<Result>) checkPagedResults.get(0);
-        if (checkResults.size() == 0) {
+        Object cachedPages = request.getSession().getAttribute(IActionConstants.RESULTS_SESSION_CACHE);
+        if (!isUsableResultsSessionCache(cachedPages)) {
             LogEvent.logDebug(this.getClass().getSimpleName(), "LogbookResults()", "Attempted save of stale page.");
 
             List<TestResultItem> resultList = form.getTestResult();
-            for (TestResultItem item : resultList) {
-                item.setFailedValidation(true);
-                item.setNote("Result has been saved by another user.");
+            if (resultList != null) {
+                for (TestResultItem item : resultList) {
+                    if (item != null) {
+                        item.setFailedValidation(true);
+                        item.setNote("Result has been saved by another user.");
+                    }
+                }
             }
 
-            ResultsUpdateDataSet actionDataSet = new ResultsUpdateDataSet(getSysUserId(request));
-            actionDataSet.filterModifiedItems(form.getTestResult());
-
-            Errors errors = actionDataSet.validateModifiedItems();
-
-            if (true) {
-                saveErrors(errors);
-                return findForward(FWD_VALIDATION_ERROR, form);
-            }
+            result.reject("error.results.staleSave", "error.results.staleSave");
+            saveErrors(result);
+            return findForward(FWD_VALIDATION_ERROR, form);
         }
 
         List<IResultUpdate> updaters = ResultUpdateRegister.getRegisteredUpdaters();
 
         ResultsPaging paging = new ResultsPaging();
-        paging.updatePagedResults(request, form);
-        List<TestResultItem> tests = paging.getResults(request);
+        List<TestResultItem> tests;
+        try {
+            paging.updatePagedResults(request, form);
+            tests = paging.getResults(request);
+        } catch (ResultSaveValidationException e) {
+            result.reject(e.getErrorCode(), e.getErrorCode());
+            saveErrors(result);
+            return findForward(FWD_VALIDATION_ERROR, form);
+        }
 
         ResultsUpdateDataSet actionDataSet = new ResultsUpdateDataSet(getSysUserId(request));
         actionDataSet.filterModifiedItems(tests);
@@ -440,8 +447,7 @@ public class LogbookResultsController extends LogbookResultsBaseController {
         createAnalysisOnlyUpdates(actionDataSet);
 
         try {
-            List<Analysis> reflexAnalysises = logbookPersistService.persistDataSet(actionDataSet, updaters,
-                    getSysUserId(request));
+            List<Analysis> reflexAnalysises = legacyResultEntryWriteService.persist(request, actionDataSet, updaters);
             redirectAttributes.addFlashAttribute(REFLEX_ACCESSIONS, reflexAnalysises.stream()
                     .map(e -> analysisService.getOrderAccessionNumber(e)).collect(Collectors.toList()));
             try {
@@ -479,6 +485,14 @@ public class LogbookResultsController extends LogbookResultsBaseController {
                     }
                 }
             }
+        } catch (ResultSaveValidationException e) {
+            errors.reject(e.getErrorCode(), e.getErrorCode());
+            saveErrors(errors);
+            return findForward(FWD_VALIDATION_ERROR, form);
+        } catch (ConcurrencyFailureException e) {
+            errors.reject("error.results.staleSave", "error.results.staleSave");
+            saveErrors(errors);
+            return findForward(FWD_VALIDATION_ERROR, form);
         } catch (LIMSRuntimeException e) {
             String errorMsg;
             if (e.getCause() instanceof StaleObjectStateException) {
@@ -513,6 +527,25 @@ public class LogbookResultsController extends LogbookResultsBaseController {
         }
     }
 
+    static boolean isUsableResultsSessionCache(Object cachedPages) {
+        if (!(cachedPages instanceof List<?> pages) || pages.isEmpty()) {
+            return false;
+        }
+        boolean containsResult = false;
+        for (Object page : pages) {
+            if (!(page instanceof List<?> rows)) {
+                return false;
+            }
+            for (Object row : rows) {
+                if (!(row instanceof TestResultItem)) {
+                    return false;
+                }
+                containsResult = true;
+            }
+        }
+        return containsResult;
+    }
+
     private void createAnalysisOnlyUpdates(ResultsUpdateDataSet actionDataSet) {
         for (TestResultItem testResultItem : actionDataSet.getAnalysisOnlyChangeResults()) {
 
@@ -529,6 +562,18 @@ public class LogbookResultsController extends LogbookResultsBaseController {
     }
 
     private void createResultsFromItems(ResultsUpdateDataSet actionDataSet, boolean supportReferrals,
+            boolean alwaysValidate, boolean useTechnicianName, String statusRuleSet) {
+        ResultUtil.createResultsFromItems(actionDataSet, supportReferrals, alwaysValidate, useTechnicianName,
+                statusRuleSet, request);
+    }
+
+    /**
+     * Retained temporarily as a source-level comparison for the legacy JSP path.
+     * Writes no longer call this duplicate implementation; the shared ResultUtil
+     * path owns transition and audit-note rules for both REST and MVC entry.
+     */
+    @Deprecated
+    private void legacyCreateResultsFromItems(ResultsUpdateDataSet actionDataSet, boolean supportReferrals,
             boolean alwaysValidate, boolean useTechnicianName, String statusRuleSet) {
 
         Set<String> correctedFlagComputedIds = new HashSet<>();

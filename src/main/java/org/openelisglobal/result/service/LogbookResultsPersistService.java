@@ -11,4 +11,7 @@ public interface LogbookResultsPersistService {
             jakarta.servlet.http.HttpServletRequest request);
 
     List<Analysis> persistDataSet(ResultsUpdateDataSet actionDataSet, List<IResultUpdate> updaters, String sysUserId);
+
+    List<Analysis> persistSpecialtyReleaseDataSet(ResultsUpdateDataSet actionDataSet, List<IResultUpdate> updaters,
+            String sysUserId, SpecialtyResultRelease release);
 }

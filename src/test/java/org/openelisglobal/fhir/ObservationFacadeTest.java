@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Timestamp;
 import java.util.Arrays;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.openelisglobal.BaseWebContextSensitiveTest;
@@ -22,11 +23,15 @@ import org.openelisglobal.panel.service.PanelService;
 import org.openelisglobal.panel.valueholder.Panel;
 import org.openelisglobal.result.service.ResultService;
 import org.openelisglobal.result.valueholder.Result;
+import org.openelisglobal.spring.util.SpringContext;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
+import org.springframework.context.ApplicationContext;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockServletConfig;
 import org.springframework.mock.web.MockServletContext;
+import org.springframework.test.util.ReflectionTestUtils;
 
 public class ObservationFacadeTest extends BaseWebContextSensitiveTest {
 
@@ -51,10 +56,19 @@ public class ObservationFacadeTest extends BaseWebContextSensitiveTest {
     @Autowired
     private javax.sql.DataSource dataSource;
 
+    @Autowired
+    private ApplicationContext applicationContext;
+
     private MockServletContext servletContext;
+    private AutowireCapableBeanFactory previousSpringFactory;
 
     @Before
     public void setUp() throws Exception {
+
+        previousSpringFactory = (AutowireCapableBeanFactory) ReflectionTestUtils.getField(SpringContext.class,
+                "factory");
+        ReflectionTestUtils.setField(SpringContext.class, "factory",
+                applicationContext.getAutowireCapableBeanFactory());
 
         executeDataSetWithStateManagement("testdata/result-facade.xml");
 
@@ -81,6 +95,11 @@ public class ObservationFacadeTest extends BaseWebContextSensitiveTest {
 
     }
 
+    @After
+    public void restoreSpringFactory() {
+        ReflectionTestUtils.setField(SpringContext.class, "factory", previousSpringFactory);
+    }
+
     @Test
     public void readObservation_shouldReturnSuccess() throws Exception {
 
@@ -102,6 +121,11 @@ public class ObservationFacadeTest extends BaseWebContextSensitiveTest {
         assertEquals("Observation", jsonResponse.get("resourceType").asText());
 
         assertEquals("final", jsonResponse.get("status").asText());
+        assertEquals("543216", jsonResponse.path("code").path("coding").get(0).path("code").asText());
+        assertEquals("Patient/550e8400-e29b-41d4-a716-446655440004",
+                jsonResponse.path("subject").path("reference").asText());
+        assertEquals("Specimen/68438220-5cef-44c4-9e6f-9f88e6b93271",
+                jsonResponse.path("specimen").path("reference").asText());
     }
 
     @Test

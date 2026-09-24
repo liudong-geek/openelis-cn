@@ -17,6 +17,7 @@ import {
   TextArea,
   Loading,
   InlineLoading,
+  InlineNotification,
   Link,
 } from "@carbon/react";
 import Tag from "../common/LocalizedTag";
@@ -26,6 +27,7 @@ import {
   postToOpenElisServerFullResponse,
   postToOpenElisServerForPDF,
   hasRole,
+  Roles,
 } from "../utils/Utils";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { NotificationContext } from "../layout/Layout";
@@ -36,6 +38,14 @@ import QuestionnaireResponse from "../common/QuestionnaireResponse";
 import "./PathologyDashboard.css";
 import PageBreadCrumb from "../common/PageBreadCrumb";
 import PostSavePrintDialog from "../barcodeWorkflow/PostSavePrintDialog";
+import {
+  applySuccessfulSpecialtyRelease,
+  canActAsSpecialtySpecialist,
+  selectableSpecialtyStatuses,
+  SPECIALTY_DASHBOARD_PATHS,
+  specialtyCaseUiPermissions,
+  specialtyReleaseValue,
+} from "../specialty/specialtyCaseAccess";
 
 function PathologyCaseView() {
   const intl = useIntl();
@@ -79,18 +89,27 @@ function PathologyCaseView() {
       reportLink: "",
     },
   });
+  const caseUiPermissions = specialtyCaseUiPermissions(
+    pathologySampleInfo,
+    userSessionDetails,
+    Roles.PATHOLOGIST,
+  );
+  const isCompleted = pathologySampleInfo.status === "COMPLETED";
+  const canActAsPathologist = canActAsSpecialtySpecialist(
+    userSessionDetails,
+    Roles.PATHOLOGIST,
+  );
 
-  async function displayStatus(response) {
+  async function displayStatus(response, releaseSubmitted = false) {
     var body = await response.json();
     console.debug(body);
-    setIsSubmitting(false);
     var status = response.status;
     setNotificationVisible(true);
     if (status == "200") {
-      const save1 = document.getElementById("pathology_save");
-      const save2 = document.getElementById("pathology_save2");
-      save1.disabled = true;
-      save2.disabled = true;
+      setPathologySampleInfo((sampleInfo) =>
+        applySuccessfulSpecialtyRelease(sampleInfo, releaseSubmitted),
+      );
+      setIsSubmitting(false);
       addNotification({
         kind: NotificationKinds.success,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -98,6 +117,7 @@ function PathologyCaseView() {
       });
       setPostSavePrintModel(body?.postSavePrintDialog || null);
     } else {
+      setIsSubmitting(false);
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -150,11 +170,16 @@ function PathologyCaseView() {
     });
 
   const save = (e) => {
-    if (isSubmitting) {
+    if (isSubmitting || !caseUiPermissions.canSave) {
       return;
     }
     setIsSubmitting(true);
     setPostSavePrintModel(null);
+    const releaseSubmitted = specialtyReleaseValue(
+      pathologySampleInfo,
+      userSessionDetails,
+      Roles.PATHOLOGIST,
+    );
     let submitValues = {
       assignedTechnicianId: pathologySampleInfo.assignedTechnicianId,
       assignedPathologistId: pathologySampleInfo.assignedPathologistId,
@@ -165,10 +190,7 @@ function PathologyCaseView() {
       grossExam: pathologySampleInfo.grossExam,
       microscopyExam: pathologySampleInfo.microscopyExam,
       conclusionText: pathologySampleInfo.conclusionText,
-      release:
-        pathologySampleInfo.release != undefined
-          ? pathologySampleInfo.release
-          : false,
+      release: releaseSubmitted,
       referToImmunoHistoChemistry:
         pathologySampleInfo.referToImmunoHistoChemistry,
     };
@@ -210,7 +232,7 @@ function PathologyCaseView() {
     postToOpenElisServerFullResponse(
       "/rest/pathology/caseView/" + pathologySampleId,
       JSON.stringify(submitValues),
-      displayStatus,
+      (response) => displayStatus(response, releaseSubmitted),
     );
   };
   let breadcrumbs = [
@@ -219,20 +241,6 @@ function PathologyCaseView() {
   ];
 
   const setInitialPathologySampleInfo = (e) => {
-    if (
-      hasRole(userSessionDetails, "Pathologist") &&
-      !e.assignedPathologistId &&
-      e.status === "READY_PATHOLOGIST"
-    ) {
-      e.assignedPathologistId = userSessionDetails.userId;
-      e.assignedPathologist =
-        userSessionDetails.lastName + " " + userSessionDetails.firstName;
-    }
-    if (!e.assignedTechnicianId) {
-      e.assignedTechnicianId = userSessionDetails.userId;
-      e.assignedTechnician =
-        userSessionDetails.lastName + " " + userSessionDetails.firstName;
-    }
     setPathologySampleInfo(e);
     setLoading(false);
     setInitialMount(true);
@@ -379,185 +387,557 @@ function PathologyCaseView() {
           </Section>
         </Column>
       </Grid>
-      <Grid fullWidth={true} className="orderLegendBody">
-        {notificationVisible === true ? <AlertDialog /> : ""}
-        {loading && <Loading description="Loading Dasboard..." />}
-        <Column lg={16} md={8} sm={4}>
-          <Button
-            id="pathology_save"
-            disabled={isSubmitting}
-            onClick={(e) => {
-              e.preventDefault();
-              save(e);
-            }}
-          >
-            <FormattedMessage id="label.button.save" />
-          </Button>
-        </Column>
-        {postSavePrintModel?.accessionNumber && (
+      {isCompleted && (
+        <InlineNotification
+          hideCloseButton
+          kind="info"
+          lowContrast
+          title={intl.formatMessage({ id: "label.readonly" })}
+          subtitle={intl.formatMessage({ id: "pathology.label.complete" })}
+        />
+      )}
+      {!loading && caseUiPermissions.requiresAssignment && (
+        <div className="specialty-case-assignment-notice">
+          <InlineNotification
+            hideCloseButton
+            kind="warning"
+            lowContrast
+            title={intl.formatMessage({ id: "label.readonly" })}
+            subtitle={intl.formatMessage({
+              id: "specialty.case.assignmentRequired",
+            })}
+          />
+          <Link href={SPECIALTY_DASHBOARD_PATHS.pathology}>
+            <FormattedMessage id="specialty.case.returnToDashboard" />
+          </Link>
+        </div>
+      )}
+      <fieldset
+        className="specialty-case-editing-boundary"
+        disabled={!caseUiPermissions.canEdit}
+      >
+        <Grid fullWidth={true} className="orderLegendBody">
+          {notificationVisible === true ? <AlertDialog /> : ""}
+          {loading && <Loading description="Loading Dasboard..." />}
           <Column lg={16} md={8} sm={4}>
-            <PostSavePrintDialog
-              accessionNumber={postSavePrintModel.accessionNumber}
-              printableLabelTypes={postSavePrintModel.printableLabelTypes || []}
-            />
+            <Button
+              id="pathology_save"
+              disabled={isSubmitting || !caseUiPermissions.canSave}
+              onClick={(e) => {
+                e.preventDefault();
+                save(e);
+              }}
+            >
+              <FormattedMessage id="label.button.save" />
+            </Button>
           </Column>
-        )}
-        <Column lg={16} md={8} sm={4}>
-          <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-        </Column>
-        <Column lg={4} md={2} sm={2}>
-          <Select
-            id="status"
-            name="status"
-            labelText={intl.formatMessage({ id: "label.button.select.status" })}
-            value={pathologySampleInfo.status}
-            onChange={(event) => {
-              setPathologySampleInfo({
-                ...pathologySampleInfo,
-                status: event.target.value,
-              });
-            }}
-          >
-            <SelectItem disabled value="placeholder" text="Status" />
-
-            {statuses.map((status, index) => {
-              return (
-                <SelectItem key={index} text={status.value} value={status.id} />
-              );
-            })}
-          </Select>
-        </Column>
-        <Column lg={4} md={2} sm={2}>
-          <Select
-            id="assignedTechnician"
-            name="assignedTechnician"
-            labelText={intl.formatMessage({
-              id: "label.button.select.technician",
-            })}
-            value={pathologySampleInfo.assignedTechnicianId}
-            onChange={(event) => {
-              setPathologySampleInfo({
-                ...pathologySampleInfo,
-                assignedTechnicianId: event.target.value,
-              });
-            }}
-          >
-            <SelectItem />
-            {technicianUsers.map((user, index) => {
-              return (
-                <SelectItem key={index} text={user.value} value={user.id} />
-              );
-            })}
-          </Select>
-        </Column>
-
-        <Column lg={4} md={2} sm={2}>
-          <Select
-            id="assignedPathologist"
-            name="assignedPathologist"
-            labelText={
-              <FormattedMessage id="label.button.select.pathologist" />
-            }
-            value={pathologySampleInfo.assignedPathologistId}
-            onChange={(e) => {
-              setPathologySampleInfo({
-                ...pathologySampleInfo,
-                assignedPathologistId: e.target.value,
-              });
-            }}
-          >
-            <SelectItem />
-            {pathologistUsers.map((user, index) => {
-              return (
-                <SelectItem key={index} text={user.value} value={user.id} />
-              );
-            })}
-          </Select>
-        </Column>
-        <Column lg={16} md={8} sm={4}></Column>
-        <Column lg={16} md={8} sm={4}>
-          <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-        </Column>
-        <Column lg={16} md={8} sm={4}>
-          <Grid fullWidth={true} className="gridBoundary">
+          {postSavePrintModel?.accessionNumber && (
             <Column lg={16} md={8} sm={4}>
-              <h5>
-                {" "}
-                <FormattedMessage id="immunohistochemistry.label.reports" />
-              </h5>
-              {loadingReport && <InlineLoading />}
-              <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+              <PostSavePrintDialog
+                accessionNumber={postSavePrintModel.accessionNumber}
+                printableLabelTypes={
+                  postSavePrintModel.printableLabelTypes || []
+                }
+              />
             </Column>
+          )}
+          <Column lg={16} md={8} sm={4}>
+            <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+          </Column>
+          <Column lg={4} md={2} sm={2}>
+            <Select
+              id="status"
+              name="status"
+              labelText={intl.formatMessage({
+                id: "label.button.select.status",
+              })}
+              value={pathologySampleInfo.status}
+              onChange={(event) => {
+                setPathologySampleInfo({
+                  ...pathologySampleInfo,
+                  status: event.target.value,
+                });
+              }}
+            >
+              <SelectItem disabled value="placeholder" text="Status" />
 
-            {pathologySampleInfo.reports &&
-              pathologySampleInfo.reports.map((report, index) => {
+              {isCompleted && (
+                <SelectItem
+                  disabled
+                  value="COMPLETED"
+                  text={intl.formatMessage({ id: "pathology.label.complete" })}
+                />
+              )}
+              {selectableSpecialtyStatuses(statuses).map((status, index) => {
                 return (
-                  <>
-                    <Column lg={2} md={4} sm={4}>
-                      <IconButton
-                        label={intl.formatMessage({
-                          id: "label.button.remove.report",
-                        })}
-                        onClick={() => {
-                          var info = { ...pathologySampleInfo };
-                          info["reports"].splice(index, 1);
-                          setPathologySampleInfo(info);
-                        }}
-                        kind="tertiary"
-                        size="sm"
-                      >
-                        <Subtract size={18} />{" "}
-                        <FormattedMessage id="immunohistochemistry.label.report" />
-                      </IconButton>
-                    </Column>
-                    <Column lg={2} md={4} sm={4}>
-                      <FileUploader
-                        style={{ marginTop: "-20px" }}
-                        buttonLabel={
-                          <FormattedMessage id="label.button.uploadfile" />
-                        }
-                        iconDescription="file upload"
-                        multiple={false}
-                        accept={["image/jpeg", "image/png", "application/pdf"]}
-                        disabled={reportParams[index]?.submited}
-                        name=""
-                        buttonKind="primary"
-                        size="lg"
-                        filenameStatus="edit"
-                        onChange={async (e) => {
-                          e.preventDefault();
-                          let file = e.target.files[0];
-                          var newReports = [...pathologySampleInfo.reports];
-                          let encodedFile = await toBase64(file);
-                          newReports[index].base64Image = encodedFile;
-                          setPathologySampleInfo({
-                            ...pathologySampleInfo,
-                            reports: newReports,
-                          });
-                        }}
-                        onClick={function noRefCheck() {}}
-                        onDelete={(e) => {
-                          e.preventDefault();
-                        }}
-                      />
-                    </Column>
-                    <Column lg={3}>
-                      <h6>
-                        <FormattedMessage id="pathology.label.report" />
-                      </h6>
-                    </Column>
-                    {pathologySampleInfo.reports[index].image && (
-                      <>
-                        {!reportParams[index]?.submited && (
-                          <Column lg={2} md={1} sm={2}>
+                  <SelectItem
+                    key={index}
+                    text={status.value}
+                    value={status.id}
+                  />
+                );
+              })}
+            </Select>
+          </Column>
+          <Column lg={4} md={2} sm={2}>
+            <Select
+              disabled
+              id="assignedTechnician"
+              name="assignedTechnician"
+              labelText={intl.formatMessage({
+                id: "label.button.select.technician",
+              })}
+              value={pathologySampleInfo.assignedTechnicianId}
+            >
+              <SelectItem />
+              {technicianUsers.map((user, index) => {
+                return (
+                  <SelectItem key={index} text={user.value} value={user.id} />
+                );
+              })}
+            </Select>
+          </Column>
+
+          <Column lg={4} md={2} sm={2}>
+            <Select
+              disabled
+              id="assignedPathologist"
+              name="assignedPathologist"
+              labelText={
+                <FormattedMessage id="label.button.select.pathologist" />
+              }
+              value={pathologySampleInfo.assignedPathologistId}
+            >
+              <SelectItem />
+              {pathologistUsers.map((user, index) => {
+                return (
+                  <SelectItem key={index} text={user.value} value={user.id} />
+                );
+              })}
+            </Select>
+          </Column>
+          <Column lg={16} md={8} sm={4}></Column>
+          <Column lg={16} md={8} sm={4}>
+            <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+          </Column>
+          <Column lg={16} md={8} sm={4}>
+            <Grid fullWidth={true} className="gridBoundary">
+              <Column lg={16} md={8} sm={4}>
+                <h5>
+                  {" "}
+                  <FormattedMessage id="immunohistochemistry.label.reports" />
+                </h5>
+                {loadingReport && <InlineLoading />}
+                <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+              </Column>
+
+              {pathologySampleInfo.reports &&
+                pathologySampleInfo.reports.map((report, index) => {
+                  return (
+                    <>
+                      <Column lg={2} md={4} sm={4}>
+                        <IconButton
+                          label={intl.formatMessage({
+                            id: "label.button.remove.report",
+                          })}
+                          onClick={() => {
+                            var info = { ...pathologySampleInfo };
+                            info["reports"].splice(index, 1);
+                            setPathologySampleInfo(info);
+                          }}
+                          kind="tertiary"
+                          size="sm"
+                        >
+                          <Subtract size={18} />{" "}
+                          <FormattedMessage id="immunohistochemistry.label.report" />
+                        </IconButton>
+                      </Column>
+                      <Column lg={2} md={4} sm={4}>
+                        <FileUploader
+                          style={{ marginTop: "-20px" }}
+                          buttonLabel={
+                            <FormattedMessage id="label.button.uploadfile" />
+                          }
+                          iconDescription="file upload"
+                          multiple={false}
+                          accept={[
+                            "image/jpeg",
+                            "image/png",
+                            "application/pdf",
+                          ]}
+                          disabled={reportParams[index]?.submited}
+                          name=""
+                          buttonKind="primary"
+                          size="lg"
+                          filenameStatus="edit"
+                          onChange={async (e) => {
+                            e.preventDefault();
+                            let file = e.target.files[0];
+                            var newReports = [...pathologySampleInfo.reports];
+                            let encodedFile = await toBase64(file);
+                            newReports[index].base64Image = encodedFile;
+                            setPathologySampleInfo({
+                              ...pathologySampleInfo,
+                              reports: newReports,
+                            });
+                          }}
+                          onClick={function noRefCheck() {}}
+                          onDelete={(e) => {
+                            e.preventDefault();
+                          }}
+                        />
+                      </Column>
+                      <Column lg={3}>
+                        <h6>
+                          <FormattedMessage id="pathology.label.report" />
+                        </h6>
+                      </Column>
+                      {pathologySampleInfo.reports[index].image && (
+                        <>
+                          {!reportParams[index]?.submited && (
+                            <Column lg={2} md={1} sm={2}>
+                              <Button
+                                onClick={() => {
+                                  var win = window.open();
+                                  win.document.write(
+                                    '<iframe src="' +
+                                      report.fileType +
+                                      ";base64," +
+                                      report.image +
+                                      '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>',
+                                  );
+                                }}
+                              >
+                                <Launch />{" "}
+                                <FormattedMessage id="pathology.label.view" />
+                              </Button>
+                            </Column>
+                          )}
+                        </>
+                      )}
+
+                      {reportParams[index]?.submited && (
+                        <Column lg={2} md={1} sm={2}>
+                          <Button
+                            onClick={() => {
+                              window.open(
+                                reportParams[index]?.reportLink,
+                                "_blank",
+                              );
+                            }}
+                          >
+                            <Launch />{" "}
+                            <FormattedMessage id="pathology.label.view" />
+                          </Button>
+                        </Column>
+                      )}
+                      <Column lg={3} md={2} sm={2}>
+                        <Button
+                          disabled={reportParams[index]?.submited}
+                          onClick={(e) => {
+                            setLoadingReport(true);
+                            const form = {
+                              report: "PatientPathologyReport",
+                              programSampleId: pathologySampleId,
+                            };
+                            postToOpenElisServerForPDF(
+                              "/rest/ReportPrint",
+                              JSON.stringify(form),
+                              (e, blob) => reportStatus(e, blob, index),
+                            );
+                          }}
+                        >
+                          {" "}
+                          <FormattedMessage id="button.label.genarateReport" />
+                        </Button>
+                      </Column>
+                      <Column lg={3} md={2} sm={2} />
+                      <Column lg={16} md={8} sm={4}>
+                        <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+                      </Column>
+                    </>
+                  );
+                })}
+
+              <Column lg={16} md={8} sm={4}>
+                <Button
+                  onClick={() => {
+                    setPathologySampleInfo({
+                      ...pathologySampleInfo,
+                      reports: [
+                        ...(pathologySampleInfo.reports || []),
+                        { id: "", reportType: "PATHOLOGY" },
+                      ],
+                    });
+                  }}
+                >
+                  <FormattedMessage id="immunohistochemistry.label.addreport" />
+                </Button>
+              </Column>
+            </Grid>
+          </Column>
+
+          <Column lg={16} md={8} sm={4}>
+            <Grid fullWidth={true} className="gridBoundary">
+              <Column lg={16} md={8} sm={4}>
+                <h5>
+                  <FormattedMessage id="pathology.label.blocks" />
+                </h5>
+                <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+              </Column>
+              {pathologySampleInfo.blocks &&
+                pathologySampleInfo.blocks.map((block, index) => {
+                  return (
+                    <>
+                      <Column lg={2} md={8} sm={4}>
+                        <IconButton
+                          label={intl.formatMessage({
+                            id: "label.button.remove.block",
+                          })}
+                          onClick={() => {
+                            var info = { ...pathologySampleInfo };
+                            info["blocks"].splice(index, 1);
+                            setPathologySampleInfo(info);
+                          }}
+                          kind="tertiary"
+                          size="sm"
+                        >
+                          <Subtract size={18} />{" "}
+                          <FormattedMessage id="pathology.label.block" />
+                        </IconButton>
+                      </Column>
+                      <Column lg={3} md={2} sm={1} key={index}>
+                        <TextInput
+                          id="blockNumber"
+                          labelText={intl.formatMessage({
+                            id: "pathology.label.block.number",
+                          })}
+                          hideLabel={true}
+                          placeholder={intl.formatMessage({
+                            id: "pathology.label.block.number",
+                          })}
+                          value={block.blockNumber}
+                          type="number"
+                          onChange={(e) => {
+                            var newBlocks = [...pathologySampleInfo.blocks];
+                            newBlocks[index].blockNumber = e.target.value;
+                            setPathologySampleInfo({
+                              ...pathologySampleInfo,
+                              blocks: newBlocks,
+                            });
+                          }}
+                        />
+                      </Column>
+                      <Column lg={3} md={2} sm={1}>
+                        <TextInput
+                          id="location"
+                          labelText={intl.formatMessage({
+                            id: "pathology.label.location",
+                          })}
+                          hideLabel={true}
+                          placeholder={intl.formatMessage({
+                            id: "pathology.label.location",
+                          })}
+                          value={block.location}
+                          onChange={(e) => {
+                            var newBlocks = [...pathologySampleInfo.blocks];
+                            newBlocks[index].location = e.target.value;
+                            setPathologySampleInfo({
+                              ...pathologySampleInfo,
+                              blocks: newBlocks,
+                            });
+                          }}
+                        />
+                      </Column>
+                      <Column lg={3} md={2} sm={2}>
+                        <Button
+                          onClick={(e) => {
+                            window.open(
+                              config.serverBaseUrl +
+                                "/LabelMakerServlet?labelType=block&code=" +
+                                block.blockNumber,
+                              "_blank",
+                            );
+                          }}
+                        >
+                          {" "}
+                          <FormattedMessage id="pathology.label.printlabel" />
+                        </Button>
+                      </Column>
+                      <Column lg={5} md={2} sm={0} />
+                      <Column lg={16} md={8} sm={4}>
+                        <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+                      </Column>
+                    </>
+                  );
+                })}
+              <Column lg={2} md={8} sm={4}>
+                <TextInput
+                  id="blocksToAdd"
+                  labelText={intl.formatMessage({
+                    id: "pathology.label.block.add.number",
+                  })}
+                  hideLabel={true}
+                  placeholder={intl.formatMessage({
+                    id: "pathology.label.block.add.number",
+                  })}
+                  value={blocksToAdd}
+                  type="number"
+                  onChange={(e) => {
+                    setBlocksToAdd(e.target.value);
+                  }}
+                />
+              </Column>
+              <Column lg={14} md={8} sm={4}>
+                <Button
+                  onClick={() => {
+                    const maxBlockNumber = pathologySampleInfo.blocks.reduce(
+                      (max, block) => {
+                        const blockNumber = block.blockNumber || 0;
+                        return Math.ceil(Math.max(max, blockNumber));
+                      },
+                      0,
+                    );
+
+                    var allBlocks = pathologySampleInfo.blocks || [];
+                    Array.from({ length: blocksToAdd }, (_, index) => {
+                      allBlocks.push({
+                        id: "",
+                        blockNumber: maxBlockNumber + 1 + index,
+                      });
+                    });
+
+                    setPathologySampleInfo({
+                      ...pathologySampleInfo,
+                      blocks: allBlocks,
+                    });
+                  }}
+                >
+                  <FormattedMessage id="pathology.label.addblock" />
+                </Button>
+              </Column>
+            </Grid>
+          </Column>
+
+          <Column lg={16} md={8} sm={4}>
+            <Grid fullWidth={true} className="gridBoundary">
+              <Column lg={16} md={8} sm={4}>
+                <h5>
+                  <FormattedMessage id="pathology.label.slides" />
+                </h5>
+                <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+              </Column>
+
+              {pathologySampleInfo.slides &&
+                pathologySampleInfo.slides.map((slide, index) => {
+                  return (
+                    <>
+                      <Column lg={2} md={8} sm={4}>
+                        <IconButton
+                          label={intl.formatMessage({
+                            id: "label.button.remove.slide",
+                          })}
+                          onClick={() => {
+                            var info = { ...pathologySampleInfo };
+                            info["slides"].splice(index, 1);
+                            setPathologySampleInfo(info);
+                          }}
+                          kind="tertiary"
+                          size="sm"
+                        >
+                          <Subtract size={18} />{" "}
+                          <FormattedMessage id="pathology.label.slide" />
+                        </IconButton>
+                      </Column>
+                      <Column lg={3} md={2} sm={1} key={index}>
+                        <TextInput
+                          id="slideNumber"
+                          labelText={intl.formatMessage({
+                            id: "pathology.label.slide.number",
+                          })}
+                          hideLabel={true}
+                          placeholder={intl.formatMessage({
+                            id: "pathology.label.slide.number",
+                          })}
+                          value={slide.slideNumber}
+                          type="number"
+                          onChange={(e) => {
+                            var newSlides = [...pathologySampleInfo.slides];
+                            newSlides[index].slideNumber = e.target.value;
+                            setPathologySampleInfo({
+                              ...pathologySampleInfo,
+                              slides: newSlides,
+                            });
+                          }}
+                        />
+                      </Column>
+                      <Column lg={3} md={2} sm={1}>
+                        <TextInput
+                          id="location"
+                          labelText={intl.formatMessage({
+                            id: "pathology.label.location",
+                          })}
+                          hideLabel={true}
+                          placeholder={intl.formatMessage({
+                            id: "pathology.label.location",
+                          })}
+                          value={slide.location}
+                          onChange={(e) => {
+                            var newSlides = [...pathologySampleInfo.slides];
+                            newSlides[index].location = e.target.value;
+                            setPathologySampleInfo({
+                              ...pathologySampleInfo,
+                              slides: newSlides,
+                            });
+                          }}
+                        />
+                      </Column>
+                      <Column lg={3} md={1} sm={2}>
+                        <FileUploader
+                          style={{ marginTop: "-10px" }}
+                          buttonLabel={
+                            <FormattedMessage id="label.button.uploadfile" />
+                          }
+                          iconDescription="file upload"
+                          multiple={false}
+                          accept={[
+                            "image/jpeg",
+                            "image/png",
+                            "application/pdf",
+                          ]}
+                          disabled={false}
+                          name=""
+                          buttonKind="primary"
+                          size="lg"
+                          filenameStatus="edit"
+                          onChange={async (e) => {
+                            e.preventDefault();
+                            let file = e.target.files[0];
+                            var newSlides = [...pathologySampleInfo.slides];
+                            let encodedFile = await toBase64(file);
+                            newSlides[index].base64Image = encodedFile;
+                            setPathologySampleInfo({
+                              ...pathologySampleInfo,
+                              slides: newSlides,
+                            });
+                          }}
+                          onClick={function noRefCheck() {}}
+                          onDelete={(e) => {
+                            e.preventDefault();
+                          }}
+                        />
+                      </Column>
+                      <Column lg={3} md={1} sm={2}>
+                        {pathologySampleInfo.slides[index].image && (
+                          <>
                             <Button
                               onClick={() => {
                                 var win = window.open();
                                 win.document.write(
                                   '<iframe src="' +
-                                    report.fileType +
+                                    slide.fileType +
                                     ";base64," +
-                                    report.image +
+                                    slide.image +
                                     '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>',
                                 );
                               }}
@@ -565,737 +945,428 @@ function PathologyCaseView() {
                               <Launch />{" "}
                               <FormattedMessage id="pathology.label.view" />
                             </Button>
-                          </Column>
+                          </>
                         )}
-                      </>
-                    )}
-
-                    {reportParams[index]?.submited && (
+                      </Column>
                       <Column lg={2} md={1} sm={2}>
                         <Button
-                          onClick={() => {
+                          onClick={(e) => {
                             window.open(
-                              reportParams[index]?.reportLink,
+                              config.serverBaseUrl +
+                                "/LabelMakerServlet?labelType=slide&code=" +
+                                slide.slideNumber,
                               "_blank",
                             );
                           }}
                         >
-                          <Launch />{" "}
-                          <FormattedMessage id="pathology.label.view" />
+                          <FormattedMessage id="pathology.label.printlabel" />
                         </Button>
                       </Column>
-                    )}
-                    <Column lg={3} md={2} sm={2}>
-                      <Button
-                        disabled={reportParams[index]?.submited}
-                        onClick={(e) => {
-                          setLoadingReport(true);
-                          const form = {
-                            report: "PatientPathologyReport",
-                            programSampleId: pathologySampleId,
-                          };
-                          postToOpenElisServerForPDF(
-                            "/rest/ReportPrint",
-                            JSON.stringify(form),
-                            (e, blob) => reportStatus(e, blob, index),
-                          );
-                        }}
-                      >
-                        {" "}
-                        <FormattedMessage id="button.label.genarateReport" />
-                      </Button>
-                    </Column>
-                    <Column lg={3} md={2} sm={2} />
-                    <Column lg={16} md={8} sm={4}>
-                      <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-                    </Column>
-                  </>
-                );
-              })}
-
-            <Column lg={16} md={8} sm={4}>
-              <Button
-                onClick={() => {
-                  setPathologySampleInfo({
-                    ...pathologySampleInfo,
-                    reports: [
-                      ...(pathologySampleInfo.reports || []),
-                      { id: "", reportType: "PATHOLOGY" },
-                    ],
-                  });
-                }}
-              >
-                <FormattedMessage id="immunohistochemistry.label.addreport" />
-              </Button>
-            </Column>
-          </Grid>
-        </Column>
-
-        <Column lg={16} md={8} sm={4}>
-          <Grid fullWidth={true} className="gridBoundary">
-            <Column lg={16} md={8} sm={4}>
-              <h5>
-                <FormattedMessage id="pathology.label.blocks" />
-              </h5>
-              <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-            </Column>
-            {pathologySampleInfo.blocks &&
-              pathologySampleInfo.blocks.map((block, index) => {
-                return (
-                  <>
-                    <Column lg={2} md={8} sm={4}>
-                      <IconButton
-                        label={intl.formatMessage({
-                          id: "label.button.remove.block",
-                        })}
-                        onClick={() => {
-                          var info = { ...pathologySampleInfo };
-                          info["blocks"].splice(index, 1);
-                          setPathologySampleInfo(info);
-                        }}
-                        kind="tertiary"
-                        size="sm"
-                      >
-                        <Subtract size={18} />{" "}
-                        <FormattedMessage id="pathology.label.block" />
-                      </IconButton>
-                    </Column>
-                    <Column lg={3} md={2} sm={1} key={index}>
-                      <TextInput
-                        id="blockNumber"
-                        labelText={intl.formatMessage({
-                          id: "pathology.label.block.number",
-                        })}
-                        hideLabel={true}
-                        placeholder={intl.formatMessage({
-                          id: "pathology.label.block.number",
-                        })}
-                        value={block.blockNumber}
-                        type="number"
-                        onChange={(e) => {
-                          var newBlocks = [...pathologySampleInfo.blocks];
-                          newBlocks[index].blockNumber = e.target.value;
-                          setPathologySampleInfo({
-                            ...pathologySampleInfo,
-                            blocks: newBlocks,
-                          });
-                        }}
-                      />
-                    </Column>
-                    <Column lg={3} md={2} sm={1}>
-                      <TextInput
-                        id="location"
-                        labelText={intl.formatMessage({
-                          id: "pathology.label.location",
-                        })}
-                        hideLabel={true}
-                        placeholder={intl.formatMessage({
-                          id: "pathology.label.location",
-                        })}
-                        value={block.location}
-                        onChange={(e) => {
-                          var newBlocks = [...pathologySampleInfo.blocks];
-                          newBlocks[index].location = e.target.value;
-                          setPathologySampleInfo({
-                            ...pathologySampleInfo,
-                            blocks: newBlocks,
-                          });
-                        }}
-                      />
-                    </Column>
-                    <Column lg={3} md={2} sm={2}>
-                      <Button
-                        onClick={(e) => {
-                          window.open(
-                            config.serverBaseUrl +
-                              "/LabelMakerServlet?labelType=block&code=" +
-                              block.blockNumber,
-                            "_blank",
-                          );
-                        }}
-                      >
-                        {" "}
-                        <FormattedMessage id="pathology.label.printlabel" />
-                      </Button>
-                    </Column>
-                    <Column lg={5} md={2} sm={0} />
-                    <Column lg={16} md={8} sm={4}>
-                      <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-                    </Column>
-                  </>
-                );
-              })}
-            <Column lg={2} md={8} sm={4}>
-              <TextInput
-                id="blocksToAdd"
-                labelText={intl.formatMessage({
-                  id: "pathology.label.block.add.number",
-                })}
-                hideLabel={true}
-                placeholder={intl.formatMessage({
-                  id: "pathology.label.block.add.number",
-                })}
-                value={blocksToAdd}
-                type="number"
-                onChange={(e) => {
-                  setBlocksToAdd(e.target.value);
-                }}
-              />
-            </Column>
-            <Column lg={14} md={8} sm={4}>
-              <Button
-                onClick={() => {
-                  const maxBlockNumber = pathologySampleInfo.blocks.reduce(
-                    (max, block) => {
-                      const blockNumber = block.blockNumber || 0;
-                      return Math.ceil(Math.max(max, blockNumber));
-                    },
-                    0,
+                    </>
                   );
+                })}
 
-                  var allBlocks = pathologySampleInfo.blocks || [];
-                  Array.from({ length: blocksToAdd }, (_, index) => {
-                    allBlocks.push({
-                      id: "",
-                      blockNumber: maxBlockNumber + 1 + index,
+              <Column lg={2} md={8} sm={4}>
+                <TextInput
+                  id="slidesToAdd"
+                  labelText={intl.formatMessage({
+                    id: "pathology.label.slide.add.number",
+                  })}
+                  hideLabel={true}
+                  placeholder={intl.formatMessage({
+                    id: "pathology.label.slide.add.number",
+                  })}
+                  value={slidesToAdd}
+                  type="number"
+                  onChange={(e) => {
+                    setSlidesToAdd(e.target.value);
+                  }}
+                />
+              </Column>
+              <Column lg={14} md={8} sm={4}>
+                <Button
+                  onClick={() => {
+                    const maxSlideNumber = pathologySampleInfo.slides.reduce(
+                      (max, slide) => {
+                        const slideNumber = slide.slideNumber || 0;
+                        return Math.ceil(Math.max(max, slideNumber));
+                      },
+                      0,
+                    );
+
+                    var allSlides = pathologySampleInfo.slides || [];
+                    Array.from({ length: slidesToAdd }, (_, index) => {
+                      allSlides.push({
+                        id: "",
+                        slideNumber: maxSlideNumber + 1 + index,
+                      });
                     });
-                  });
 
-                  setPathologySampleInfo({
-                    ...pathologySampleInfo,
-                    blocks: allBlocks,
-                  });
-                }}
-              >
-                <FormattedMessage id="pathology.label.addblock" />
-              </Button>
-            </Column>
-          </Grid>
-        </Column>
+                    setPathologySampleInfo({
+                      ...pathologySampleInfo,
+                      slides: allSlides,
+                    });
+                  }}
+                >
+                  <FormattedMessage id="pathology.label.addslide" />
+                </Button>
+              </Column>
+            </Grid>
+          </Column>
 
-        <Column lg={16} md={8} sm={4}>
-          <Grid fullWidth={true} className="gridBoundary">
-            <Column lg={16} md={8} sm={4}>
-              <h5>
-                <FormattedMessage id="pathology.label.slides" />
-              </h5>
-              <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-            </Column>
-
-            {pathologySampleInfo.slides &&
-              pathologySampleInfo.slides.map((slide, index) => {
-                return (
-                  <>
-                    <Column lg={2} md={8} sm={4}>
-                      <IconButton
-                        label={intl.formatMessage({
-                          id: "label.button.remove.slide",
-                        })}
-                        onClick={() => {
-                          var info = { ...pathologySampleInfo };
-                          info["slides"].splice(index, 1);
-                          setPathologySampleInfo(info);
-                        }}
-                        kind="tertiary"
-                        size="sm"
-                      >
-                        <Subtract size={18} />{" "}
-                        <FormattedMessage id="pathology.label.slide" />
-                      </IconButton>
-                    </Column>
-                    <Column lg={3} md={2} sm={1} key={index}>
-                      <TextInput
-                        id="slideNumber"
-                        labelText={intl.formatMessage({
-                          id: "pathology.label.slide.number",
-                        })}
-                        hideLabel={true}
-                        placeholder={intl.formatMessage({
-                          id: "pathology.label.slide.number",
-                        })}
-                        value={slide.slideNumber}
-                        type="number"
-                        onChange={(e) => {
-                          var newSlides = [...pathologySampleInfo.slides];
-                          newSlides[index].slideNumber = e.target.value;
-                          setPathologySampleInfo({
-                            ...pathologySampleInfo,
-                            slides: newSlides,
-                          });
-                        }}
-                      />
-                    </Column>
-                    <Column lg={3} md={2} sm={1}>
-                      <TextInput
-                        id="location"
-                        labelText={intl.formatMessage({
-                          id: "pathology.label.location",
-                        })}
-                        hideLabel={true}
-                        placeholder={intl.formatMessage({
-                          id: "pathology.label.location",
-                        })}
-                        value={slide.location}
-                        onChange={(e) => {
-                          var newSlides = [...pathologySampleInfo.slides];
-                          newSlides[index].location = e.target.value;
-                          setPathologySampleInfo({
-                            ...pathologySampleInfo,
-                            slides: newSlides,
-                          });
-                        }}
-                      />
-                    </Column>
-                    <Column lg={3} md={1} sm={2}>
-                      <FileUploader
-                        style={{ marginTop: "-10px" }}
-                        buttonLabel={
-                          <FormattedMessage id="label.button.uploadfile" />
+          <Column lg={16} md={8} sm={4}></Column>
+          {hasRole(userSessionDetails, Roles.PATHOLOGIST) && (
+            <fieldset
+              className="specialty-case-field-boundary"
+              disabled={!caseUiPermissions.canEditSpecialistFields}
+            >
+              <Column lg={16} md={8} sm={4}>
+                <Grid fullWidth={true} className="gridBoundary">
+                  <Column lg={4} md={8} sm={4}>
+                    {initialMount && (
+                      <FilterableMultiSelect
+                        id="techniques"
+                        titleText={
+                          <FormattedMessage id="pathology.label.techniques" />
                         }
-                        iconDescription="file upload"
-                        multiple={false}
-                        accept={["image/jpeg", "image/png", "application/pdf"]}
-                        disabled={false}
-                        name=""
-                        buttonKind="primary"
-                        size="lg"
-                        filenameStatus="edit"
-                        onChange={async (e) => {
-                          e.preventDefault();
-                          let file = e.target.files[0];
-                          var newSlides = [...pathologySampleInfo.slides];
-                          let encodedFile = await toBase64(file);
-                          newSlides[index].base64Image = encodedFile;
+                        items={techniques}
+                        itemToString={(item) => (item ? item.value : "")}
+                        initialSelectedItems={pathologySampleInfo.techniques}
+                        onChange={(changes) => {
                           setPathologySampleInfo({
                             ...pathologySampleInfo,
-                            slides: newSlides,
+                            techniques: changes.selectedItems,
                           });
                         }}
-                        onClick={function noRefCheck() {}}
-                        onDelete={(e) => {
-                          e.preventDefault();
-                        }}
+                        selectionFeedback="top-after-reopen"
                       />
-                    </Column>
-                    <Column lg={3} md={1} sm={2}>
-                      {pathologySampleInfo.slides[index].image && (
-                        <>
-                          <Button
-                            onClick={() => {
-                              var win = window.open();
-                              win.document.write(
-                                '<iframe src="' +
-                                  slide.fileType +
-                                  ";base64," +
-                                  slide.image +
-                                  '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>',
-                              );
+                    )}
+                  </Column>
+                  <Column lg={16} md={8} sm={4}>
+                    {pathologySampleInfo.techniques &&
+                      pathologySampleInfo.techniques.map((technique, index) => (
+                        <Tag
+                          key={index}
+                          filter
+                          onClose={() => {
+                            var info = { ...pathologySampleInfo };
+                            info["techniques"].splice(index, 1);
+                            setPathologySampleInfo(info);
+                          }}
+                        >
+                          {technique.value}
+                        </Tag>
+                      ))}
+                  </Column>
+                </Grid>
+              </Column>
+              <Column lg={16} md={8} sm={4}>
+                <Grid fullWidth={true} className="gridBoundary">
+                  <Column lg={4} md={8} sm={4}>
+                    {initialMount && (
+                      <FilterableMultiSelect
+                        id="requests"
+                        titleText={
+                          <FormattedMessage id="pathology.label.request" />
+                        }
+                        items={requests}
+                        itemToString={(item) => (item ? item.value : "")}
+                        initialSelectedItems={pathologySampleInfo.requests}
+                        onChange={(changes) => {
+                          setPathologySampleInfo({
+                            ...pathologySampleInfo,
+                            requests: changes.selectedItems,
+                          });
+                        }}
+                        selectionFeedback="top-after-reopen"
+                      />
+                    )}
+                  </Column>
+                  <Column lg={12} md={4} sm={2} />
+                  <Column lg={16} md={8} sm={4}>
+                    <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+                  </Column>
+                  {pathologySampleInfo.requests &&
+                    pathologySampleInfo.requests.map((request, index) => (
+                      <>
+                        <Column lg={2} md={4} sm={2}>
+                          <Tag
+                            key={index}
+                            filter
+                            onClose={() => {
+                              var info = { ...pathologySampleInfo };
+                              info["requests"].splice(index, 1);
+                              setPathologySampleInfo(info);
                             }}
                           >
-                            <Launch />{" "}
-                            <FormattedMessage id="pathology.label.view" />
-                          </Button>
-                        </>
-                      )}
+                            {request.value}
+                          </Tag>
+                        </Column>
+                        <Column lg={2} md={8} sm={4}>
+                          <Select
+                            id={"requeststatus" + index}
+                            name="requeststatus"
+                            labelText={
+                              <FormattedMessage id="label.button.select.status" />
+                            }
+                            value={request.status ? request.status : "OPENED"}
+                            onChange={(e) => {
+                              var newRequests = [
+                                ...pathologySampleInfo.requests,
+                              ];
+                              newRequests[index].status = e.target.value;
+                              setPathologySampleInfo({
+                                ...pathologySampleInfo,
+                                requests: newRequests,
+                              });
+                            }}
+                          >
+                            <SelectItem />
+                            {requestStatuses.map((status, index) => {
+                              return (
+                                <SelectItem
+                                  key={index}
+                                  text={status.value}
+                                  value={status.id}
+                                />
+                              );
+                            })}
+                          </Select>
+                        </Column>
+                        <Column lg={12} md={4} sm={2} />
+                        <Column lg={16} md={8} sm={4}>
+                          <div> &nbsp; </div>
+                        </Column>
+                      </>
+                    ))}
+                </Grid>
+              </Column>
+              <Column lg={16} md={8} sm={4}>
+                <Grid fullWidth={true} className="gridBoundary">
+                  <Column lg={16} md={8} sm={4}>
+                    <TextArea
+                      labelText={
+                        <FormattedMessage id="pathology.label.grossexam" />
+                      }
+                      value={pathologySampleInfo.grossExam}
+                      onChange={(e) => {
+                        setPathologySampleInfo({
+                          ...pathologySampleInfo,
+                          grossExam: e.target.value,
+                        });
+                      }}
+                    />
+                  </Column>
+                  <Column lg={16} md={8} sm={4}>
+                    <TextArea
+                      labelText={
+                        <FormattedMessage id="pathology.label.microexam" />
+                      }
+                      value={pathologySampleInfo.microscopyExam}
+                      onChange={(e) => {
+                        setPathologySampleInfo({
+                          ...pathologySampleInfo,
+                          microscopyExam: e.target.value,
+                        });
+                      }}
+                    />
+                  </Column>
+                </Grid>
+              </Column>
+              <Column lg={16} md={8} sm={4}>
+                <Grid fullWidth={true} className="gridBoundary">
+                  {pagination && (
+                    <Column lg={16} md={8} sm={4}>
+                      <Link>
+                        {currentApiPage} / {totalApiPages}
+                      </Link>
+                      <div style={{ display: "flex", gap: "10px" }}>
+                        <Button
+                          hasIconOnly
+                          iconDescription="previous"
+                          disabled={previousPage != null ? false : true}
+                          onClick={loadPreviousConclusionsPage}
+                          renderIcon={ArrowLeft}
+                          size="sm"
+                        />
+                        <Button
+                          hasIconOnly
+                          iconDescription="next"
+                          disabled={nextPage != null ? false : true}
+                          renderIcon={ArrowRight}
+                          onClick={loadNextCOnclusionsPage}
+                          size="sm"
+                        />
+                      </div>
                     </Column>
-                    <Column lg={2} md={1} sm={2}>
-                      <Button
-                        onClick={(e) => {
-                          window.open(
-                            config.serverBaseUrl +
-                              "/LabelMakerServlet?labelType=slide&code=" +
-                              slide.slideNumber,
-                            "_blank",
-                          );
+                  )}
+                  <Column lg={16}>
+                    <br />
+                    <br />
+                  </Column>
+                  <Column lg={4} md={8} sm={4}>
+                    {initialMount && (
+                      <FilterableMultiSelect
+                        id="conclusion"
+                        titleText={
+                          <FormattedMessage id="pathology.label.conclusion" />
+                        }
+                        items={conclusions}
+                        itemToString={(item) => (item ? item.value : "")}
+                        initialSelectedItems={pathologySampleInfo.conclusions}
+                        onChange={(changes) => {
+                          setPathologySampleInfo({
+                            ...pathologySampleInfo,
+                            conclusions: changes.selectedItems,
+                          });
                         }}
-                      >
-                        <FormattedMessage id="pathology.label.printlabel" />
-                      </Button>
+                        selectionFeedback="top-after-reopen"
+                      />
+                    )}
+                  </Column>
+                  <Column lg={12} md={8} sm={4}>
+                    {pathologySampleInfo.conclusions &&
+                      pathologySampleInfo.conclusions.map(
+                        (conclusion, index) => (
+                          <Tag
+                            key={index}
+                            filter
+                            onClose={() => {
+                              var info = { ...pathologySampleInfo };
+                              info["conclusions"].splice(index, 1);
+                              setPathologySampleInfo(info);
+                            }}
+                          >
+                            {conclusion.value}
+                          </Tag>
+                        ),
+                      )}
+                  </Column>
+                </Grid>
+              </Column>
+              <Column lg={16} md={8} sm={4}>
+                <Grid fullWidth={true} className="gridBoundary">
+                  <Column lg={16} md={8} sm={4}>
+                    <TextArea
+                      labelText={
+                        <FormattedMessage id="pathology.label.textconclusion" />
+                      }
+                      value={pathologySampleInfo.conclusionText}
+                      onChange={(e) => {
+                        setPathologySampleInfo({
+                          ...pathologySampleInfo,
+                          conclusionText: e.target.value,
+                        });
+                      }}
+                    />
+                  </Column>
+                </Grid>
+              </Column>
+            </fieldset>
+          )}
+          {canActAsPathologist && (
+            <fieldset
+              className="specialty-case-field-boundary"
+              disabled={!caseUiPermissions.canEditSpecialistFields}
+            >
+              <Column lg={16} md={8} sm={4}>
+                <Grid fullWidth={true} className="gridBoundary">
+                <Column lg={4} md={4} sm={2}>
+                  <Checkbox
+                    labelText={intl.formatMessage({
+                      id: "pathology.label.refer",
+                    })}
+                    id="referToImmunoHistoChemistry"
+                    checked={Boolean(
+                      pathologySampleInfo.referToImmunoHistoChemistry,
+                    )}
+                    onChange={() => {
+                      setPathologySampleInfo({
+                        ...pathologySampleInfo,
+                        referToImmunoHistoChemistry:
+                          !pathologySampleInfo.referToImmunoHistoChemistry,
+                      });
+                    }}
+                  />
+                </Column>
+                {pathologySampleInfo.referToImmunoHistoChemistry && (
+                  <>
+                    <Column lg={4} md={4} sm={2}>
+                      <FilterableMultiSelect
+                        id="ihctests"
+                        titleText={
+                          <FormattedMessage id="label.button.select.test" />
+                        }
+                        items={immunoHistoChemistryTests}
+                        itemToString={(item) => (item ? item.value : "")}
+                        onChange={(changes) => {
+                          setPathologySampleInfo({
+                            ...pathologySampleInfo,
+                            immunoHistoChemistryTestIds: changes.selectedItems,
+                          });
+                        }}
+                        selectionFeedback="top-after-reopen"
+                      />
+                    </Column>
+                    <Column lg={8} md={4} sm={2}>
+                      {pathologySampleInfo.immunoHistoChemistryTestIds &&
+                        pathologySampleInfo.immunoHistoChemistryTestIds.map(
+                          (test, index) => (
+                            <Tag
+                              key={index}
+                              filter
+                              onClose={() => {
+                                var info = { ...pathologySampleInfo };
+                                info["immunoHistoChemistryTestIds"].splice(
+                                  index,
+                                  1,
+                                );
+                                setPathologySampleInfo(info);
+                              }}
+                            >
+                              {test.value}
+                            </Tag>
+                          ),
+                        )}
                     </Column>
                   </>
-                );
-              })}
-
-            <Column lg={2} md={8} sm={4}>
-              <TextInput
-                id="slidesToAdd"
-                labelText={intl.formatMessage({
-                  id: "pathology.label.slide.add.number",
-                })}
-                hideLabel={true}
-                placeholder={intl.formatMessage({
-                  id: "pathology.label.slide.add.number",
-                })}
-                value={slidesToAdd}
-                type="number"
-                onChange={(e) => {
-                  setSlidesToAdd(e.target.value);
-                }}
-              />
-            </Column>
-            <Column lg={14} md={8} sm={4}>
-              <Button
-                onClick={() => {
-                  const maxSlideNumber = pathologySampleInfo.slides.reduce(
-                    (max, slide) => {
-                      const slideNumber = slide.slideNumber || 0;
-                      return Math.ceil(Math.max(max, slideNumber));
-                    },
-                    0,
-                  );
-
-                  var allSlides = pathologySampleInfo.slides || [];
-                  Array.from({ length: slidesToAdd }, (_, index) => {
-                    allSlides.push({
-                      id: "",
-                      slideNumber: maxSlideNumber + 1 + index,
-                    });
-                  });
-
-                  setPathologySampleInfo({
-                    ...pathologySampleInfo,
-                    slides: allSlides,
-                  });
-                }}
-              >
-                <FormattedMessage id="pathology.label.addslide" />
-              </Button>
-            </Column>
-          </Grid>
-        </Column>
-
-        <Column lg={16} md={8} sm={4}></Column>
-        {hasRole(userSessionDetails, "Pathologist") && (
-          <>
-            <Column lg={16} md={8} sm={4}>
-              <Grid fullWidth={true} className="gridBoundary">
-                <Column lg={4} md={8} sm={4}>
-                  {initialMount && (
-                    <FilterableMultiSelect
-                      id="techniques"
-                      titleText={
-                        <FormattedMessage id="pathology.label.techniques" />
-                      }
-                      items={techniques}
-                      itemToString={(item) => (item ? item.value : "")}
-                      initialSelectedItems={pathologySampleInfo.techniques}
-                      onChange={(changes) => {
-                        setPathologySampleInfo({
-                          ...pathologySampleInfo,
-                          techniques: changes.selectedItems,
-                        });
-                      }}
-                      selectionFeedback="top-after-reopen"
-                    />
-                  )}
-                </Column>
-                <Column lg={16} md={8} sm={4}>
-                  {pathologySampleInfo.techniques &&
-                    pathologySampleInfo.techniques.map((technique, index) => (
-                      <Tag
-                        key={index}
-                        filter
-                        onClose={() => {
-                          var info = { ...pathologySampleInfo };
-                          info["techniques"].splice(index, 1);
-                          setPathologySampleInfo(info);
-                        }}
-                      >
-                        {technique.value}
-                      </Tag>
-                    ))}
-                </Column>
-              </Grid>
-            </Column>
-            <Column lg={16} md={8} sm={4}>
-              <Grid fullWidth={true} className="gridBoundary">
-                <Column lg={4} md={8} sm={4}>
-                  {initialMount && (
-                    <FilterableMultiSelect
-                      id="requests"
-                      titleText={
-                        <FormattedMessage id="pathology.label.request" />
-                      }
-                      items={requests}
-                      itemToString={(item) => (item ? item.value : "")}
-                      initialSelectedItems={pathologySampleInfo.requests}
-                      onChange={(changes) => {
-                        setPathologySampleInfo({
-                          ...pathologySampleInfo,
-                          requests: changes.selectedItems,
-                        });
-                      }}
-                      selectionFeedback="top-after-reopen"
-                    />
-                  )}
-                </Column>
-                <Column lg={12} md={4} sm={2} />
-                <Column lg={16} md={8} sm={4}>
-                  <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-                </Column>
-                {pathologySampleInfo.requests &&
-                  pathologySampleInfo.requests.map((request, index) => (
-                    <>
-                      <Column lg={2} md={4} sm={2}>
-                        <Tag
-                          key={index}
-                          filter
-                          onClose={() => {
-                            var info = { ...pathologySampleInfo };
-                            info["requests"].splice(index, 1);
-                            setPathologySampleInfo(info);
-                          }}
-                        >
-                          {request.value}
-                        </Tag>
-                      </Column>
-                      <Column lg={2} md={8} sm={4}>
-                        <Select
-                          id={"requeststatus" + index}
-                          name="requeststatus"
-                          labelText={
-                            <FormattedMessage id="label.button.select.status" />
-                          }
-                          value={request.status ? request.status : "OPENED"}
-                          onChange={(e) => {
-                            var newRequests = [...pathologySampleInfo.requests];
-                            newRequests[index].status = e.target.value;
-                            setPathologySampleInfo({
-                              ...pathologySampleInfo,
-                              requests: newRequests,
-                            });
-                          }}
-                        >
-                          <SelectItem />
-                          {requestStatuses.map((status, index) => {
-                            return (
-                              <SelectItem
-                                key={index}
-                                text={status.value}
-                                value={status.id}
-                              />
-                            );
-                          })}
-                        </Select>
-                      </Column>
-                      <Column lg={12} md={4} sm={2} />
-                      <Column lg={16} md={8} sm={4}>
-                        <div> &nbsp; </div>
-                      </Column>
-                    </>
-                  ))}
-              </Grid>
-            </Column>
-            <Column lg={16} md={8} sm={4}>
-              <Grid fullWidth={true} className="gridBoundary">
-                <Column lg={16} md={8} sm={4}>
-                  <TextArea
-                    labelText={
-                      <FormattedMessage id="pathology.label.grossexam" />
-                    }
-                    value={pathologySampleInfo.grossExam}
-                    onChange={(e) => {
-                      setPathologySampleInfo({
-                        ...pathologySampleInfo,
-                        grossExam: e.target.value,
-                      });
-                    }}
-                  />
-                </Column>
-                <Column lg={16} md={8} sm={4}>
-                  <TextArea
-                    labelText={
-                      <FormattedMessage id="pathology.label.microexam" />
-                    }
-                    value={pathologySampleInfo.microscopyExam}
-                    onChange={(e) => {
-                      setPathologySampleInfo({
-                        ...pathologySampleInfo,
-                        microscopyExam: e.target.value,
-                      });
-                    }}
-                  />
-                </Column>
-              </Grid>
-            </Column>
-            <Column lg={16} md={8} sm={4}>
-              <Grid fullWidth={true} className="gridBoundary">
-                {pagination && (
-                  <Column lg={16} md={8} sm={4}>
-                    <Link>
-                      {currentApiPage} / {totalApiPages}
-                    </Link>
-                    <div style={{ display: "flex", gap: "10px" }}>
-                      <Button
-                        hasIconOnly
-                        iconDescription="previous"
-                        disabled={previousPage != null ? false : true}
-                        onClick={loadPreviousConclusionsPage}
-                        renderIcon={ArrowLeft}
-                        size="sm"
-                      />
-                      <Button
-                        hasIconOnly
-                        iconDescription="next"
-                        disabled={nextPage != null ? false : true}
-                        renderIcon={ArrowRight}
-                        onClick={loadNextCOnclusionsPage}
-                        size="sm"
-                      />
-                    </div>
-                  </Column>
                 )}
-                <Column lg={16}>
-                  <br />
-                  <br />
-                </Column>
-                <Column lg={4} md={8} sm={4}>
-                  {initialMount && (
-                    <FilterableMultiSelect
-                      id="conclusion"
-                      titleText={
-                        <FormattedMessage id="pathology.label.conclusion" />
-                      }
-                      items={conclusions}
-                      itemToString={(item) => (item ? item.value : "")}
-                      initialSelectedItems={pathologySampleInfo.conclusions}
-                      onChange={(changes) => {
-                        setPathologySampleInfo({
-                          ...pathologySampleInfo,
-                          conclusions: changes.selectedItems,
-                        });
-                      }}
-                      selectionFeedback="top-after-reopen"
-                    />
-                  )}
-                </Column>
-                <Column lg={12} md={8} sm={4}>
-                  {pathologySampleInfo.conclusions &&
-                    pathologySampleInfo.conclusions.map((conclusion, index) => (
-                      <Tag
-                        key={index}
-                        filter
-                        onClose={() => {
-                          var info = { ...pathologySampleInfo };
-                          info["conclusions"].splice(index, 1);
-                          setPathologySampleInfo(info);
-                        }}
-                      >
-                        {conclusion.value}
-                      </Tag>
-                    ))}
-                </Column>
-              </Grid>
-            </Column>
-            <Column lg={16} md={8} sm={4}>
-              <Grid fullWidth={true} className="gridBoundary">
-                <Column lg={16} md={8} sm={4}>
-                  <TextArea
-                    labelText={
-                      <FormattedMessage id="pathology.label.textconclusion" />
-                    }
-                    value={pathologySampleInfo.conclusionText}
-                    onChange={(e) => {
-                      setPathologySampleInfo({
-                        ...pathologySampleInfo,
-                        conclusionText: e.target.value,
-                      });
-                    }}
-                  />
-                </Column>
-              </Grid>
-            </Column>
-          </>
-        )}
-        <Column lg={16} md={8} sm={4}>
-          <Grid fullWidth={true} className="gridBoundary">
-            <Column lg={4} md={4} sm={2}>
-              <Checkbox
-                labelText={intl.formatMessage({ id: "pathology.label.refer" })}
-                id="referToImmunoHistoChemistry"
-                onChange={() => {
-                  setPathologySampleInfo({
-                    ...pathologySampleInfo,
-                    referToImmunoHistoChemistry:
-                      !pathologySampleInfo.referToImmunoHistoChemistry,
-                  });
-                }}
-              />
-            </Column>
-            {pathologySampleInfo.referToImmunoHistoChemistry && (
-              <>
-                <Column lg={4} md={4} sm={2}>
-                  <FilterableMultiSelect
-                    id="ihctests"
-                    titleText={
-                      <FormattedMessage id="label.button.select.test" />
-                    }
-                    items={immunoHistoChemistryTests}
-                    itemToString={(item) => (item ? item.value : "")}
-                    onChange={(changes) => {
-                      setPathologySampleInfo({
-                        ...pathologySampleInfo,
-                        immunoHistoChemistryTestIds: changes.selectedItems,
-                      });
-                    }}
-                    selectionFeedback="top-after-reopen"
-                  />
-                </Column>
-                <Column lg={8} md={4} sm={2}>
-                  {pathologySampleInfo.immunoHistoChemistryTestIds &&
-                    pathologySampleInfo.immunoHistoChemistryTestIds.map(
-                      (test, index) => (
-                        <Tag
-                          key={index}
-                          filter
-                          onClose={() => {
-                            var info = { ...pathologySampleInfo };
-                            info["immunoHistoChemistryTestIds"].splice(
-                              index,
-                              1,
-                            );
-                            setPathologySampleInfo(info);
-                          }}
-                        >
-                          {test.value}
-                        </Tag>
-                      ),
-                    )}
-                </Column>
-              </>
-            )}
-          </Grid>
-        </Column>
-        {pathologySampleInfo.assignedPathologistId &&
-          pathologySampleInfo.assignedTechnicianId && (
-            <Column lg={16} md={8} sm={4}>
-              <Checkbox
-                labelText={intl.formatMessage({
-                  id: "pathology.label.release",
-                })}
-                id="release"
-                onChange={() => {
-                  setPathologySampleInfo({
-                    ...pathologySampleInfo,
-                    release: !pathologySampleInfo.release,
-                  });
-                }}
-              />
-            </Column>
+                </Grid>
+              </Column>
+            </fieldset>
           )}
-        <Column lg={16}>
-          <Button
-            id="pathology_save2"
-            disabled={isSubmitting}
-            onClick={(e) => {
-              e.preventDefault();
-              save(e);
-            }}
-          >
-            <FormattedMessage id="label.button.save" />
-          </Button>
-        </Column>
-      </Grid>
+          {caseUiPermissions.canRelease &&
+            pathologySampleInfo.assignedPathologistId &&
+            pathologySampleInfo.assignedTechnicianId && (
+              <Column lg={16} md={8} sm={4}>
+                <Checkbox
+                  labelText={intl.formatMessage({
+                    id: "pathology.label.release",
+                  })}
+                  id="release"
+                  onChange={() => {
+                    setPathologySampleInfo({
+                      ...pathologySampleInfo,
+                      release: !pathologySampleInfo.release,
+                    });
+                  }}
+                />
+              </Column>
+            )}
+          <Column lg={16}>
+            <Button
+              id="pathology_save2"
+              disabled={isSubmitting || !caseUiPermissions.canSave}
+              onClick={(e) => {
+                e.preventDefault();
+                save(e);
+              }}
+            >
+              <FormattedMessage id="label.button.save" />
+            </Button>
+          </Column>
+        </Grid>
+      </fieldset>
     </>
   );
 }

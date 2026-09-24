@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.openelisglobal.BaseWebContextSensitiveTest;
@@ -41,6 +42,13 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 public class LogBookPersistServiceTest extends BaseWebContextSensitiveTest {
 
+    private static final String NUMERIC_ANALYSIS_ID = "1";
+    private static final String NUMERIC_RESULT_ID = "3";
+    private static final String METHOD_ID = "1";
+    private static final String USER_ID = "1";
+    private static final String PATIENT_ID = "1";
+    private Object previousCd4ScriptletId;
+
     @Autowired
     AnalysisService analysisService;
     @Autowired
@@ -64,6 +72,7 @@ public class LogBookPersistServiceTest extends BaseWebContextSensitiveTest {
 
     @Before
     public void setUp() throws Exception {
+        previousCd4ScriptletId = ReflectionTestUtils.getField(TestReflexUtil.class, "CD4_SCRIPTLET_ID");
         executeDataSetWithStateManagement("testdata/logbook-db.xml");
         Scriptlet cd4Scriptlet = new Scriptlet();
         cd4Scriptlet.setScriptletName("Calculate CD4");
@@ -74,9 +83,14 @@ public class LogBookPersistServiceTest extends BaseWebContextSensitiveTest {
         }
     }
 
-    private TestResultItem getTestResultItem() {
-        Result result = resultService.getAll().get(0);
-        Method method = methodService.getAll().get(0);
+    @After
+    public void restoreCd4ScriptletId() {
+        ReflectionTestUtils.setField(TestReflexUtil.class, "CD4_SCRIPTLET_ID", previousCd4ScriptletId);
+    }
+
+    private TestResultItem getTestResultItem(Analysis analysis) {
+        Result result = resultService.get(NUMERIC_RESULT_ID);
+        Method method = methodService.get(METHOD_ID);
 
         TestResultItem item = new TestResultItem();
         item.setAccessionNumber("S-TEST-001");
@@ -91,7 +105,7 @@ public class LogBookPersistServiceTest extends BaseWebContextSensitiveTest {
         item.setResultId(result.getId());
         item.setTestDate("2024-01-15");
         item.setTestMethod(method.getMethodName());
-        item.setAnalysisId("1");
+        item.setAnalysisId(analysis.getId());
         item.setTechnician("John Doe");
         item.setTechnicianSignatureId(null);
         return item;
@@ -101,10 +115,10 @@ public class LogBookPersistServiceTest extends BaseWebContextSensitiveTest {
     public void saveNewResult_shouldSaveNewResultsFromResultSet() throws Exception {
         Map<String, List<String>> reflexMap = new HashMap<>();
 
-        SystemUser systemUser = systemUserService.getAll().get(0);
-        Analysis analysis = analysisService.getAll().get(0);
+        SystemUser systemUser = systemUserService.get(USER_ID);
+        Analysis analysis = analysisService.get(NUMERIC_ANALYSIS_ID);
 
-        TestResultItem testResultItem = getTestResultItem();
+        TestResultItem testResultItem = getTestResultItem(analysis);
 
         ResultSaveBean saveBean = new ResultSaveBean();
         saveBean.setResultType(testResultItem.getResultType());
@@ -120,7 +134,7 @@ public class LogBookPersistServiceTest extends BaseWebContextSensitiveTest {
         List<Result> deletableResults = new ArrayList<>();
         List<Result> results = resultSaveService.createResultsFromTestResultItem(saveBean, deletableResults);
 
-        Patient patient = patientService.getAll().get(0);
+        Patient patient = patientService.get(PATIENT_ID);
         String sampleTestingStartedId = SpringContext.getBean(IStatusService.class)
                 .getStatusID(org.openelisglobal.common.services.StatusService.OrderStatus.Started);
         Sample sample = analysis.getSampleItem().getSample();
@@ -153,10 +167,10 @@ public class LogBookPersistServiceTest extends BaseWebContextSensitiveTest {
     public void modifyResult_shouldUpdateResultIntheDatabase() {
         Map<String, List<String>> reflexMap = new HashMap<>();
 
-        SystemUser systemUser = systemUserService.getAll().get(0);
-        Analysis analysis = analysisService.getAll().get(0);
+        SystemUser systemUser = systemUserService.get(USER_ID);
+        Analysis analysis = analysisService.get(NUMERIC_ANALYSIS_ID);
 
-        TestResultItem testResultItem = getTestResultItem();
+        TestResultItem testResultItem = getTestResultItem(analysis);
 
         ResultSaveBean saveBean = new ResultSaveBean();
         saveBean.setResultType(testResultItem.getResultType());
@@ -173,7 +187,7 @@ public class LogBookPersistServiceTest extends BaseWebContextSensitiveTest {
         List<Result> deletableResults = new ArrayList<>();
         List<Result> results = resultSaveService.createResultsFromTestResultItem(saveBean, deletableResults);
 
-        Patient patient = patientService.getAll().get(0);
+        Patient patient = patientService.get(PATIENT_ID);
         String sampleTestingStartedId = SpringContext.getBean(IStatusService.class)
                 .getStatusID(org.openelisglobal.common.services.StatusService.OrderStatus.Started);
         Sample sample = analysis.getSampleItem().getSample();

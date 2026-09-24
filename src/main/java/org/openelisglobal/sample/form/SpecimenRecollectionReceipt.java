@@ -43,7 +43,7 @@ public final class SpecimenRecollectionReceipt {
                 request.getTypeOfSample().getId(), request.getRequestedQuantity(),
                 request.getUnitOfMeasure() == null ? null : request.getUnitOfMeasure().getId(),
                 ids(request.getRequestedTests(), false), ids(request.getRequestedPanels(), true), "REQUESTED", null,
-                time(request.getCreatedDate()), time(request.getLastupdated()));
+                wallClockTime(request.getCreatedDate()), wallClockTime(request.getLastupdated()));
         result.set("request", JSON.valueToTree(view));
         return result;
     }
@@ -135,10 +135,10 @@ public final class SpecimenRecollectionReceipt {
         return value.textValue();
     }
 
-    private static String time(Timestamp value) {
+    private static String wallClockTime(Timestamp value) {
         if (value == null)
             throw invalid();
-        return value.toInstant().toString();
+        return SpecimenIntakeEvidence.wallClockTime(value);
     }
 
     private static IllegalArgumentException invalid() {

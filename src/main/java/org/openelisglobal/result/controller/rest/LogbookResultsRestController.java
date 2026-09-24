@@ -45,10 +45,11 @@ import org.openelisglobal.result.action.util.ResultsLoadUtility;
 import org.openelisglobal.result.action.util.ResultsPaging;
 import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
 import org.openelisglobal.result.controller.LogbookResultsBaseController;
+import org.openelisglobal.result.exception.ResultSaveValidationException;
 import org.openelisglobal.result.form.LogbookResultsForm;
 import org.openelisglobal.result.form.LogbookResultsForm.LogbookResults;
 import org.openelisglobal.result.form.StatusResultsForm;
-import org.openelisglobal.result.service.LogbookResultsPersistService;
+import org.openelisglobal.result.service.LegacyResultEntryWriteService;
 import org.openelisglobal.result.valueholder.Result;
 import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.valueholder.OrderPriority;
@@ -65,12 +66,17 @@ import org.openelisglobal.test.service.TestSectionService;
 import org.openelisglobal.test.valueholder.TestSection;
 import org.openelisglobal.userrole.service.UserRoleService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.ConcurrencyFailureException;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.Errors;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.WebDataBinder;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.InitBinder;
 import org.springframework.web.bind.annotation.ModelAttribute;
@@ -109,7 +115,7 @@ public class LogbookResultsRestController extends LogbookResultsBaseController {
     @Autowired
     private TestSectionService testSectionService;
     @Autowired
-    private LogbookResultsPersistService logbookPersistService;
+    private LegacyResultEntryWriteService legacyResultEntryWriteService;
     @Autowired
     private AnalysisService analysisService;
     @Autowired
@@ -140,7 +146,7 @@ public class LogbookResultsRestController extends LogbookResultsBaseController {
     private final String REFERRAL_CONFORMATION_ID;
     private static final String REFLEX_ACCESSIONS = "reflex_accessions";
 
-    private LogbookResultsRestController(ReferralTypeService referralTypeService) {
+    LogbookResultsRestController(ReferralTypeService referralTypeService) {
         ReferralType referralType = referralTypeService.getReferralTypeByName("Confirmation");
         if (referralType != null) {
             REFERRAL_CONFORMATION_ID = referralType.getId();
@@ -415,6 +421,7 @@ public class LogbookResultsRestController extends LogbookResultsBaseController {
 
     @PostMapping(value = "LogbookResults", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
+    @PreAuthorize("hasRole('RESULTS')")
     public Map<String, List<String>> showReactLogbookResultsUpdate(HttpServletRequest request,
             @Validated(LogbookResultsForm.LogbookResults.class) @RequestBody LogbookResultsForm form,
             BindingResult result) throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
@@ -434,28 +441,15 @@ public class LogbookResultsRestController extends LogbookResultsBaseController {
 
         if (result.hasErrors()) {
             saveErrors(result);
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "error.validation");
         }
 
-        List<Result> checkPagedResults = (List<Result>) request.getSession()
-                .getAttribute(IActionConstants.RESULTS_SESSION_CACHE);
-        List<Result> checkResults = (List<Result>) checkPagedResults.get(0);
-        if (checkResults.size() == 0) {
+        Object cachedPages = request.getSession().getAttribute(IActionConstants.RESULTS_SESSION_CACHE);
+        if (!(cachedPages instanceof List<?> pages) || pages.isEmpty() || !(pages.get(0) instanceof List<?> firstPage)
+                || firstPage.isEmpty()) {
             LogEvent.logDebug(this.getClass().getSimpleName(), "LogbookResults()", "Attempted save of stale page.");
-
-            List<TestResultItem> resultList = form.getTestResult();
-            for (TestResultItem item : resultList) {
-                item.setFailedValidation(true);
-                item.setNote("Result has been saved by another user.");
-            }
-
-            ResultsUpdateDataSet actionDataSet = new ResultsUpdateDataSet(getSysUserId(request));
-            actionDataSet.filterModifiedItems(form.getTestResult());
-
-            Errors errors = actionDataSet.validateModifiedItems();
-
-            if (true) {
-                saveErrors(errors);
-            }
+            throw new ResultSaveValidationException("error.results.staleSave");
         }
 
         List<IResultUpdate> updaters = ResultUpdateRegister.getRegisteredUpdaters();
@@ -471,6 +465,8 @@ public class LogbookResultsRestController extends LogbookResultsBaseController {
 
         if (errors.hasErrors()) {
             saveErrors(errors);
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "error.validation");
         }
 
         ResultUtil.createResultsFromItems(actionDataSet, supportReferrals, alwaysValidate, useTechnicianName,
@@ -478,8 +474,7 @@ public class LogbookResultsRestController extends LogbookResultsBaseController {
         ResultUtil.createAnalysisOnlyUpdates(actionDataSet, request);
 
         try {
-            List<Analysis> reflexAnalysises = logbookPersistService.persistDataSet(actionDataSet, updaters,
-                    getSysUserId(request));
+            List<Analysis> reflexAnalysises = legacyResultEntryWriteService.persist(request, actionDataSet, updaters);
             reflexMap.put("reflex", reflexAnalysises.stream().filter(e -> !e.getResultCalculated())
                     .map(e -> analysisService.getOrderAccessionNumber(e)).collect(Collectors.toList()));
             reflexMap.put("calculated", reflexAnalysises.stream().filter(e -> e.getResultCalculated())
@@ -546,16 +541,12 @@ public class LogbookResultsRestController extends LogbookResultsBaseController {
                 });
             }
         } catch (LIMSRuntimeException e) {
-            String errorMsg;
             if (e.getCause() instanceof StaleObjectStateException) {
-                errorMsg = "errors.OptimisticLockException";
-            } else {
-                LogEvent.logDebug(e);
-                errorMsg = "errors.UpdateException";
+                throw new ResultSaveValidationException("error.results.staleSave");
             }
-
-            errors.reject(errorMsg, errorMsg);
-            saveErrors(errors);
+            LogEvent.logDebug(e);
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "errors.UpdateException", e);
         }
 
         for (IResultUpdate updater : updaters) {
@@ -574,6 +565,23 @@ public class LogbookResultsRestController extends LogbookResultsBaseController {
             params.put("type", form.getType());
         }
         return reflexMap;
+    }
+
+    @ExceptionHandler(ResultSaveValidationException.class)
+    public ResponseEntity<Map<String, String>> resultSaveValidationFailure(ResultSaveValidationException exception) {
+        String code = exception.getErrorCode();
+        List<String> known = List.of("error.results.analysisMismatch", "error.results.orderMismatch",
+                "error.results.staleSave", "error.results.resultMismatch", "error.results.testMismatch",
+                "error.results.componentMismatch", "error.results.specimenNotEligible",
+                "error.results.reviewedResultLocked");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("error", code != null && known.contains(code) ? code : "error.save.msg"));
+    }
+
+    @ExceptionHandler(ConcurrencyFailureException.class)
+    public ResponseEntity<Map<String, String>> concurrentResultSaveFailure(ConcurrencyFailureException exception) {
+        LogEvent.logDebug(exception);
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "error.results.staleSave"));
     }
 
     private String findLogBookForward(String forward) {

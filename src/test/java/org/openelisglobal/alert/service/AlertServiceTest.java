@@ -2,6 +2,8 @@ package org.openelisglobal.alert.service;
 
 import static org.junit.Assert.*;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
@@ -13,6 +15,8 @@ import org.openelisglobal.alert.valueholder.AlertType;
 import org.springframework.beans.factory.annotation.Autowired;
 
 public class AlertServiceTest extends BaseWebContextSensitiveTest {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Autowired
     private AlertService alertService;
@@ -124,7 +128,7 @@ public class AlertServiceTest extends BaseWebContextSensitiveTest {
     }
 
     @Test
-    public void criticalResultAlert_ReevaluationReturnsFrozenAlertAcrossLifecycle() {
+    public void criticalResultAlert_ReevaluationReturnsFrozenAlertAcrossLifecycle() throws JsonProcessingException {
         Alert original = alertService.createAlert(AlertType.CRITICAL_RESULT, "Result", 88002L, AlertSeverity.CRITICAL,
                 "Original", criticalContext("6.5"));
         alertService.acknowledgeAlert(original.getId(), 1, "Read-back confirmed");
@@ -135,7 +139,7 @@ public class AlertServiceTest extends BaseWebContextSensitiveTest {
 
         assertEquals(original.getId(), replay.getId());
         assertEquals("Original", replay.getMessage());
-        assertEquals(criticalContext("6.5"), replay.getContextData());
+        assertEquals(OBJECT_MAPPER.readTree(criticalContext("6.5")), OBJECT_MAPPER.readTree(replay.getContextData()));
         assertEquals(Integer.valueOf(0), replay.getDuplicateCount());
     }
 

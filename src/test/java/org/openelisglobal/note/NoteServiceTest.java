@@ -277,8 +277,8 @@ public class NoteServiceTest extends BaseWebContextSensitiveTest {
                 new NoteServiceImpl.NoteType[] { NoteServiceImpl.NoteType.INTERNAL }, false,
                 StringUtil.EncodeContext.HTML);
 
-        assertTrue(result.contains("I"));
-        assertFalse(result.contains("E"));
+        assertTrue(result.contains("Note text here"));
+        assertFalse(result.contains("Another note text"));
     }
 
     @Test

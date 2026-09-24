@@ -202,8 +202,8 @@ public abstract class BaseWebContextSensitiveTest extends AbstractTransactionalJ
                 roleId = rs.next() ? rs.getString(1) : null;
             }
             if (roleId == null) {
-                try (java.sql.PreparedStatement insert = conn.prepareStatement(
-                        "INSERT INTO clinlims.system_role (id, name, description, is_grouping_role, "
+                try (java.sql.PreparedStatement insert = conn
+                        .prepareStatement("INSERT INTO clinlims.system_role (id, name, description, is_grouping_role, "
                                 + "display_key, active, editable) VALUES "
                                 + "(nextval('clinlims.system_role_seq'), 'Global Administrator', "
                                 + "'Test FHIR administrator', false, 'role.maintenance', true, false) "
@@ -214,8 +214,8 @@ public abstract class BaseWebContextSensitiveTest extends AbstractTransactionalJ
                     }
                 }
             }
-            try (java.sql.PreparedStatement insertLink = conn.prepareStatement(
-                    "INSERT INTO clinlims.system_user_role (system_user_id, role_id) "
+            try (java.sql.PreparedStatement insertLink = conn
+                    .prepareStatement("INSERT INTO clinlims.system_user_role (system_user_id, role_id) "
                             + "SELECT 1, ?::numeric WHERE NOT EXISTS "
                             + "(SELECT 1 FROM clinlims.system_user_role WHERE system_user_id = 1 AND role_id = ?::numeric)")) {
                 insertLink.setString(1, roleId);
@@ -355,10 +355,38 @@ public abstract class BaseWebContextSensitiveTest extends AbstractTransactionalJ
      * @throws SQLException if any truncation fails
      */
     private void truncateTablesInConnection(Connection conn, String[] tableNames) throws SQLException {
+        boolean ownsTransaction = conn.getAutoCommit();
+        if (ownsTransaction) {
+            conn.setAutoCommit(false);
+        }
         try (Statement stmt = conn.createStatement()) {
+            // Immutable evidence tables deliberately reject TRUNCATE, including a
+            // cascading truncate from an unrelated fixture parent. Suppress normal
+            // triggers only for the reset statements in this test-owned transaction,
+            // then restore them before DBUnit inserts any fixture data. SET LOCAL is
+            // automatically undone by commit, rollback or connection loss, so a
+            // failed test cannot leave a protection trigger disabled.
+            stmt.execute("SET LOCAL session_replication_role = replica");
             for (String tableName : tableNames) {
                 stmt.execute("TRUNCATE TABLE " + tableName + " RESTART IDENTITY CASCADE");
                 logger.debug("Truncating table: {}", tableName);
+            }
+            stmt.execute("SET LOCAL session_replication_role = origin");
+            if (ownsTransaction) {
+                conn.commit();
+            }
+        } catch (SQLException e) {
+            if (ownsTransaction) {
+                try {
+                    conn.rollback();
+                } catch (SQLException rollbackFailure) {
+                    e.addSuppressed(rollbackFailure);
+                }
+            }
+            throw e;
+        } finally {
+            if (ownsTransaction) {
+                conn.setAutoCommit(true);
             }
         }
     }

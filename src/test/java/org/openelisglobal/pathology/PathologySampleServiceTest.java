@@ -17,6 +17,7 @@ import org.openelisglobal.program.valueholder.pathology.PathologySample;
 import org.openelisglobal.systemuser.service.SystemUserService;
 import org.openelisglobal.systemuser.valueholder.SystemUser;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 
 public class PathologySampleServiceTest extends BaseWebContextSensitiveTest {
 
@@ -60,9 +61,10 @@ public class PathologySampleServiceTest extends BaseWebContextSensitiveTest {
     }
 
     @Test
-    public void assignTechnician_shouldAssignTechnicianToPathologySample() throws SQLException, DatabaseUnitException {
+    public void assignTechnician_withoutResultsCaseScopeIsRejected() throws SQLException, DatabaseUnitException {
         SystemUser curUser = systemUserService.getUserById("1004");
-        pathologySampleService.assignTechnician(2, curUser, "");
+        Assert.assertThrows(AccessDeniedException.class,
+                () -> pathologySampleService.assignTechnician(2, curUser, "1001"));
 
         PathologySample pathologySample = pathologySampleService.get(1);
 
@@ -73,9 +75,10 @@ public class PathologySampleServiceTest extends BaseWebContextSensitiveTest {
     }
 
     @Test
-    public void assignPathologist_shouldAssignPathologistToPathologySample() {
+    public void assignPathologist_withoutPathologistCaseScopeIsRejected() {
         SystemUser curUser = systemUserService.getUserById("1004");
-        pathologySampleService.assignPathologist(2, curUser, "");
+        Assert.assertThrows(AccessDeniedException.class,
+                () -> pathologySampleService.assignPathologist(2, curUser, "1001"));
 
         PathologySample pathologySample = pathologySampleService.get(1);
 
@@ -103,7 +106,7 @@ public class PathologySampleServiceTest extends BaseWebContextSensitiveTest {
     }
 
     @Test
-    public void updateWithFormValues_shouldUpdatePathologySampleWithFormValues() {
+    public void updateWithFormValues_withoutDraftCaseScopeIsRejected() {
         PathologySampleForm pathologySampleForm = new PathologySampleForm();
         pathologySampleForm.setSystemUserId("2");
 
@@ -120,7 +123,8 @@ public class PathologySampleServiceTest extends BaseWebContextSensitiveTest {
         pathologySampleForm.setBlocks(pathologyBlocks);
         pathologySampleForm.setSlides(Collections.singletonList(new PathologySampleForm.PathologySlideForm()));
         pathologySampleForm.setReports(Collections.singletonList(new PathologySampleForm.PathologyReportForm()));
-        pathologySampleService.updateWithFormValues(2, pathologySampleForm);
+        Assert.assertThrows(AccessDeniedException.class,
+                () -> pathologySampleService.updateWithFormValues(2, pathologySampleForm));
 
         Assert.assertEquals(Integer.parseInt("2"), pathologySampleForm.getBlocks().size());
         Assert.assertEquals("2", pathologySampleForm.getSystemUserId());

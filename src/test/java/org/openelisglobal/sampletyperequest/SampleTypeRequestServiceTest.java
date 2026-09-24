@@ -138,12 +138,14 @@ public class SampleTypeRequestServiceTest extends BaseWebContextSensitiveTest {
 
     @Test
     public void fulfillRequest_shouldLinkSampleItemAndMarkCollected() {
-        SampleTypeRequest response = sampleTypeRequestService.fulfillRequest(101, "2");
+        // Request 101 is for serum. Item 3 belongs to the same order and is also
+        // serum; item 2 is whole blood and must be rejected by the identity guard.
+        SampleTypeRequest response = sampleTypeRequestService.fulfillRequest(101, "3");
 
         SampleTypeRequest fulfilled = sampleTypeRequestService.get(101);
         assertEquals(Integer.valueOf(101), response.getId());
         assertEquals(SampleTypeRequest.Status.COLLECTED, fulfilled.getStatus());
-        assertEquals("2", fulfilled.getSampleItem().getId());
+        assertEquals("3", fulfilled.getSampleItem().getId());
         assertTrue(fulfilled.isFulfilled());
 
         assertEquals(SampleTypeRequest.Status.REQUESTED, sampleTypeRequestService.get(102).getStatus());
@@ -157,6 +159,11 @@ public class SampleTypeRequestServiceTest extends BaseWebContextSensitiveTest {
     @Test(expected = ObjectNotFoundException.class)
     public void fulfillRequest_shouldRejectUnknownSampleItem() {
         sampleTypeRequestService.fulfillRequest(101, "999");
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void fulfillRequest_shouldRejectMismatchedSampleType() {
+        sampleTypeRequestService.fulfillRequest(101, "2");
     }
 
     @Test(expected = IllegalStateException.class)

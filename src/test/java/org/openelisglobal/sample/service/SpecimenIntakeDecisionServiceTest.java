@@ -309,12 +309,13 @@ public class SpecimenIntakeDecisionServiceTest {
         var tube = tubes.get("100" + (index + 1));
         var analysis = analyses.get(index);
         var planned = requests.get(index);
-        var evidence = new SpecimenIntakeEvidence(1, sample.getLastupdated().toInstant().toString(),
-                planned.getLastupdated().toInstant().toString(), tube.getLastupdated().toInstant().toString(),
-                type.getId(), tube.getCollectionDate().toInstant().toString(),
-                tube.getReceivedDate().toInstant().toString(),
+        var evidence = new SpecimenIntakeEvidence(1, SpecimenIntakeEvidence.wallClockTime(sample.getLastupdated()),
+                SpecimenIntakeEvidence.wallClockTime(planned.getLastupdated()),
+                SpecimenIntakeEvidence.wallClockTime(tube.getLastupdated()), type.getId(),
+                SpecimenIntakeEvidence.instantTime(tube.getCollectionDate()),
+                SpecimenIntakeEvidence.instantTime(tube.getReceivedDate()),
                 List.of(new SpecimenIntakeEvidence.Analysis(analysis.getId(), test.getId(),
-                        analysis.getLastupdated().toInstant().toString())));
+                        SpecimenIntakeEvidence.wallClockTime(analysis.getLastupdated()))));
         var result = json.createObjectNode().put("version", 1)
                 .put("operationId", "00000000-0000-4000-8000-00000000000" + (index + 1)).put("sampleId", "701")
                 .put("labNo", "SIM-INTAKE-701").put("patientId", "801").put("requestId", "" + (901 + index))
@@ -941,11 +942,11 @@ public class SpecimenIntakeDecisionServiceTest {
             var r = requests.stream().filter(v -> v.getSampleItem().getId().equals(t.getId())).findFirst()
                     .orElseThrow();
             var tube = new IntakeTube(t.getId(), sample.getId(), sample.getAccessionNumber(), "2026-09-01T00:00:00Z",
-                    type.getId(), type.getIsActive(), t.getCollectionDate().toInstant().toString(),
-                    t.getReceivedDate().toInstant().toString(), t.getLastupdated().toInstant().toString(), null,
-                    t.getRejectReasonId(), "H", "H");
+                    type.getId(), type.getIsActive(), SpecimenIntakeEvidence.instantTime(t.getCollectionDate()),
+                    SpecimenIntakeEvidence.instantTime(t.getReceivedDate()),
+                    SpecimenIntakeEvidence.wallClockTime(t.getLastupdated()), null, t.getRejectReasonId(), "H", "H");
             var request = new IntakeRequest(r.getId().toString(), sample.getId(), t.getId(), type.getId(),
-                    r.getStatus(), r.getRequestedTests(), r.getLastupdated().toInstant().toString());
+                    r.getStatus(), r.getRequestedTests(), SpecimenIntakeEvidence.wallClockTime(r.getLastupdated()));
             return new IntakeState(tube, List.of("801"), List.of(request),
                     analyses.stream().filter(a -> a.getSampleItem().getId().equals(t.getId()))
                             .map(a -> new IntakeTest(a.getId(), a.getTest().getId(), a.getTest().getIsActive()))
@@ -965,12 +966,13 @@ public class SpecimenIntakeDecisionServiceTest {
             var r = requests.stream().filter(v -> v.getSampleItem().getId().equals(t.getId())).findFirst()
                     .orElseThrow();
             return new SpecimenView(t.getId(), r.getId().toString(), t.getSortOrder(), type.getId(), t.getQuantity(),
-                    null, t.getStatusId(), t.isVoided(), t.isRejected(), t.getCollectionDate().toInstant().toString(),
-                    t.getReceivedDate().toInstant().toString(), t.getCollector(),
-                    t.getLastupdated().toInstant().toString(),
+                    null, t.getStatusId(), t.isVoided(), t.isRejected(),
+                    SpecimenIntakeEvidence.instantTime(t.getCollectionDate()),
+                    SpecimenIntakeEvidence.instantTime(t.getReceivedDate()), t.getCollector(),
+                    SpecimenIntakeEvidence.wallClockTime(t.getLastupdated()),
                     analyses.stream().filter(a -> a.getSampleItem().getId().equals(t.getId()))
                             .map(a -> new AnalysisView(a.getId(), a.getTest().getId(), a.getStatusId(),
-                                    a.getLastupdated().toInstant().toString()))
+                                    SpecimenIntakeEvidence.wallClockTime(a.getLastupdated())))
                             .toList());
         }).toList();
         var read = new TransactionTemplate(transactions);

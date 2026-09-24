@@ -7,27 +7,49 @@ import static org.junit.Assert.assertTrue;
 
 import java.sql.Timestamp;
 import java.util.List;
+import java.util.Locale;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.openelisglobal.BaseWebContextSensitiveTest;
 import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.IdValuePair;
+import org.openelisglobal.internationalization.MessageUtil;
 import org.openelisglobal.patient.valueholder.Patient;
 import org.openelisglobal.resultlimit.service.ResultLimitService;
 import org.openelisglobal.resultlimits.valueholder.ResultLimit;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContext;
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 public class ResultLimitServiceTest extends BaseWebContextSensitiveTest {
 
     @Autowired
     private ResultLimitService resultLimitService;
 
+    @Autowired
+    private MessageSource messageSource;
+
     private List<ResultLimit> resultLimitList;
+    private Object previousMessageUtilInstance;
+    private LocaleContext previousLocaleContext;
     private static int NUMBER_OF_PAGES = 1;
 
     @Before
     public void setup() throws Exception {
+        previousMessageUtilInstance = ReflectionTestUtils.getField(MessageUtil.class, "instance");
+        previousLocaleContext = LocaleContextHolder.getLocaleContext();
+        MessageUtil.setMessageSource(messageSource);
+        LocaleContextHolder.setLocale(Locale.ENGLISH);
         executeDataSetWithStateManagement("testdata/result-limit.xml");
+    }
+
+    @After
+    public void restoreMessageSource() {
+        LocaleContextHolder.setLocaleContext(previousLocaleContext);
+        ReflectionTestUtils.setField(MessageUtil.class, "instance", previousMessageUtilInstance);
     }
 
     @Test

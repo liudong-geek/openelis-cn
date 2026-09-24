@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -117,6 +118,35 @@ public record SpecimenIntakeEvidence(int schema, String sampleVersion, String re
         } catch (java.time.DateTimeException e) {
             throw invalid();
         }
+    }
+
+    /**
+     * Preserve a JDBC value read from PostgreSQL {@code TIMESTAMP WITHOUT TIME
+     * ZONE}. The driver has already interpreted that wall clock using the
+     * connection time zone; converting it to {@link LocalDateTime} and then
+     * assigning UTC would add the local offset a second time.
+     */
+    public static String wallClockTime(Timestamp value) {
+        if (value == null) {
+            throw invalid();
+        }
+        return value.toInstant().toString();
+    }
+
+    /** Build a JDBC value for a {@code TIMESTAMP WITHOUT TIME ZONE} column. */
+    public static Timestamp wallClockTimestamp(String value) {
+        return Timestamp.from(time(value));
+    }
+
+    /**
+     * Preserve a JDBC value read from {@code TIMESTAMP WITH TIME ZONE} as an
+     * instant.
+     */
+    public static String instantTime(Timestamp value) {
+        if (value == null) {
+            throw invalid();
+        }
+        return value.toInstant().toString();
     }
 
     public static IllegalArgumentException invalid() {

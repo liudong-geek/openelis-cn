@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
 import java.util.List;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
@@ -18,6 +19,7 @@ import org.openelisglobal.common.action.IActionConstants;
 import org.openelisglobal.login.valueholder.UserSessionData;
 import org.openelisglobal.report.ReportingData;
 import org.openelisglobal.report.service.PatientReportService;
+import org.openelisglobal.reportdefinition.service.ReportDefinitionService;
 import org.openelisglobal.systemuser.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -35,9 +37,14 @@ public class PatientReportRestControllerTest extends BaseWebContextSensitiveTest
     @Autowired
     private PatientReportService patientReportService;
 
+    private Object previousUserService;
+    private Object previousReportDefinitionService;
+
     @Before
     @Override
     public void setUp() throws Exception {
+        previousUserService = ReflectionTestUtils.getField(patientReportService, "userService");
+        previousReportDefinitionService = ReflectionTestUtils.getField(patientReportService, "reportDefinitionService");
         super.setUp();
         executeDataSetWithStateManagement("testdata/patient-results-report.xml");
 
@@ -46,6 +53,16 @@ public class PatientReportRestControllerTest extends BaseWebContextSensitiveTest
                 .thenAnswer(invocation -> invocation.getArgument(1)); // Return results unfiltered
 
         ReflectionTestUtils.setField(patientReportService, "userService", userServiceMock);
+
+        ReportDefinitionService reportDefinitionServiceMock = Mockito.mock(ReportDefinitionService.class);
+        Mockito.when(reportDefinitionServiceMock.getActiveByReportType(anyString())).thenReturn(null);
+        ReflectionTestUtils.setField(patientReportService, "reportDefinitionService", reportDefinitionServiceMock);
+    }
+
+    @After
+    public void restoreCollaborators() {
+        ReflectionTestUtils.setField(patientReportService, "userService", previousUserService);
+        ReflectionTestUtils.setField(patientReportService, "reportDefinitionService", previousReportDefinitionService);
     }
 
     private RequestPostProcessor mockAuthUser() {

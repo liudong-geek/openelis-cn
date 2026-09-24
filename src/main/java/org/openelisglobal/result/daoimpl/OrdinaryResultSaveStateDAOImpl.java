@@ -9,6 +9,7 @@ import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO;
+import org.openelisglobal.sample.form.SpecimenIntakeEvidence;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +41,53 @@ public class OrdinaryResultSaveStateDAOImpl implements OrdinaryResultSaveStateDA
         return row == null ? null
                 : new SpecimenState((String) row[0], (String) row[1], (String) row[2], (String) row[3], (String) row[4],
                         (Boolean) row[5], (Boolean) row[6]);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ResultOwnerState findResultOwnerState(String resultId) {
+        Object[] row = entityManager.unwrap(Session.class)
+                .createQuery("select r.id, a.id, a.test.id, si.id, si.sample.id from Result r "
+                        + "join r.analysis a join a.sampleItem si where r.id = :id", Object[].class)
+                .setParameter("id", resultId).setHibernateFlushMode(FlushMode.MANUAL).setTimeout(15).uniqueResult();
+        return row == null ? null
+                : new ResultOwnerState((String) row[0], (String) row[1], (String) row[2], (String) row[3],
+                        (String) row[4]);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SpecialtyOwnerState findPathologyOwnerState(Integer ownerId) {
+        return findSpecialtyOwnerState("PathologySample", ownerId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SpecialtyOwnerState findCytologyOwnerState(Integer ownerId) {
+        return findSpecialtyOwnerState("CytologySample", ownerId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SpecialtyOwnerState findImmunohistochemistryOwnerState(Integer ownerId) {
+        return findSpecialtyOwnerState("ImmunohistochemistrySample", ownerId);
+    }
+
+    private SpecialtyOwnerState findSpecialtyOwnerState(String entityName, Integer ownerId) {
+        Object[] row = entityManager.unwrap(Session.class)
+                .createQuery("select ps.id, ps.sample.id, ps.status from " + entityName + " ps where ps.id = :id",
+                        Object[].class)
+                .setParameter("id", ownerId).setHibernateFlushMode(FlushMode.MANUAL).setTimeout(15).uniqueResult();
+        return row == null ? null : new SpecialtyOwnerState((Integer) row[0], (String) row[1], String.valueOf(row[2]));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String findAnalysisVersion(String analysisId) {
+        Date version = entityManager.unwrap(Session.class)
+                .createQuery("select a.lastupdated from Analysis a where a.id = :id", Date.class)
+                .setParameter("id", analysisId).setHibernateFlushMode(FlushMode.MANUAL).setTimeout(15).uniqueResult();
+        return version == null ? null : String.valueOf(version.getTime());
     }
 
     @Override
@@ -86,16 +134,16 @@ public class OrdinaryResultSaveStateDAOImpl implements OrdinaryResultSaveStateDA
                 + "where si.id = :id", Object[].class, id).uniqueResult();
         if (row == null)
             return null;
-        var tube = new IntakeTube((String) row[0], (String) row[1], (String) row[2], time(row[3]), (String) row[4],
-                (Boolean) row[5], time(row[6]), time(row[7]), time(row[8]), (String) row[9], (String) row[10],
-                (String) row[11], configuration.getPropertyValue("domain.human"));
+        var tube = new IntakeTube((String) row[0], (String) row[1], (String) row[2], wallClockTime(row[3]),
+                (String) row[4], (Boolean) row[5], instantTime(row[6]), instantTime(row[7]), wallClockTime(row[8]),
+                (String) row[9], (String) row[10], (String) row[11], configuration.getPropertyValue("domain.human"));
         var requests = intakeQuery("select r.id, r.sample.id, r.sampleItem.id, r.typeOfSample.id, r.status, "
                 + "r.requestedTests, r.lastupdated from SampleTypeRequest r where r.sampleItem.id = :id order by r.id",
                 Object[].class, id)
                 .setMaxResults(2).list().stream()
                 .map(r -> new IntakeRequest(r[0].toString(), (String) r[1], (String) r[2], (String) r[3],
                         (org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest.Status) r[4], (String) r[5],
-                        time(r[6])))
+                        wallClockTime(r[6])))
                 .toList();
         var tests = intakeQuery("select a.id, a.test.id, a.test.isActive from Analysis a "
                 + "where a.sampleItem.id = :id order by a.id", Object[].class, id).setMaxResults(5001).list().stream()
@@ -111,8 +159,9 @@ public class OrdinaryResultSaveStateDAOImpl implements OrdinaryResultSaveStateDA
             return null;
         var sample = item.getSample();
         var tube = new IntakeTube(item.getId(), sample.getId(), sample.getAccessionNumber(),
-                time(sample.getReceivedTimestamp()), item.getTypeOfSample().getId(), item.getTypeOfSample().isActive(),
-                time(item.getCollectionDate()), time(item.getReceivedDate()), time(item.getLastupdated()),
+                wallClockTime(sample.getReceivedTimestamp()), item.getTypeOfSample().getId(),
+                item.getTypeOfSample().isActive(), instantTime(item.getCollectionDate()),
+                instantTime(item.getReceivedDate()), wallClockTime(item.getLastupdated()),
                 item.getParentSampleItem() == null ? null : item.getParentSampleItem().getId(),
                 item.getRejectReasonId(), sample.getDomain(), configuration.getPropertyValue("domain.human"));
         var requests = intakeQuery("from SampleTypeRequest r where r.sampleItem.id = :id order by r.id",
@@ -122,7 +171,7 @@ public class OrdinaryResultSaveStateDAOImpl implements OrdinaryResultSaveStateDA
                         r.getSample() == null ? null : r.getSample().getId(),
                         r.getSampleItem() == null ? null : r.getSampleItem().getId(),
                         r.getTypeOfSample() == null ? null : r.getTypeOfSample().getId(), r.getStatus(),
-                        r.getRequestedTests(), time(r.getLastupdated())))
+                        r.getRequestedTests(), wallClockTime(r.getLastupdated())))
                 .toList();
         var tests = intakeQuery("from Analysis a where a.sampleItem.id = :id order by a.id", Analysis.class, id)
                 .setMaxResults(5001).list().stream()
@@ -146,8 +195,12 @@ public class OrdinaryResultSaveStateDAOImpl implements OrdinaryResultSaveStateDA
                 org.openelisglobal.sample.valueholder.SpecimenIntakeDecision.class, id).setMaxResults(2).list();
     }
 
-    private static String time(Object value) {
-        return value == null ? null : ((Timestamp) value).toInstant().toString();
+    private static String wallClockTime(Object value) {
+        return value == null ? null : SpecimenIntakeEvidence.wallClockTime((Timestamp) value);
+    }
+
+    private static String instantTime(Object value) {
+        return value == null ? null : SpecimenIntakeEvidence.instantTime((Timestamp) value);
     }
 
     @Override

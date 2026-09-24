@@ -6,6 +6,9 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -21,7 +24,6 @@ import org.openelisglobal.qc.dto.InstrumentQCStatus;
 import org.openelisglobal.qc.dto.QCDashboardSummary;
 import org.openelisglobal.qc.dto.TriggeredRuleDetail;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * Integration tests for QCDashboardService.
@@ -73,14 +75,35 @@ public class QCDashboardServiceTest extends BaseWebContextSensitiveTest {
      * ordering while ensuring all dates fall within the service's default 30-day
      * window.
      */
-    private void rebaseTimestampsToNow() {
-        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+    private void rebaseTimestampsToNow() throws SQLException {
         String interval = "NOW() - INTERVAL '2 days' - TIMESTAMP '" + DATA_ANCHOR + "'";
 
-        jdbc.execute("UPDATE qc_result SET run_date_time = run_date_time + (" + interval + ")");
-        jdbc.execute("UPDATE qc_rule_violation SET violation_date_time = violation_date_time + (" + interval + ")");
-        jdbc.execute("UPDATE qc_rule_violation SET resolved_date_time = resolved_date_time + (" + interval
-                + ") WHERE resolved_date_time IS NOT NULL");
+        try (Connection connection = dataSource.getConnection()) {
+            boolean originalAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try (Statement statement = connection.createStatement()) {
+                // violation_date_time is immutable production evidence. This bounded,
+                // test-only transaction rebases fixture timestamps before assertions,
+                // then restores all triggers before the fixture becomes observable.
+                statement.execute("SET LOCAL session_replication_role = replica");
+                statement.executeUpdate("UPDATE qc_result SET run_date_time = run_date_time + (" + interval + ")");
+                statement.executeUpdate(
+                        "UPDATE qc_rule_violation SET violation_date_time = violation_date_time + (" + interval + ")");
+                statement.executeUpdate("UPDATE qc_rule_violation SET resolved_date_time = resolved_date_time + ("
+                        + interval + ") WHERE resolved_date_time IS NOT NULL");
+                statement.execute("SET LOCAL session_replication_role = origin");
+                connection.commit();
+            } catch (SQLException failure) {
+                try {
+                    connection.rollback();
+                } catch (SQLException rollbackFailure) {
+                    failure.addSuppressed(rollbackFailure);
+                }
+                throw failure;
+            } finally {
+                connection.setAutoCommit(originalAutoCommit);
+            }
+        }
     }
 
     // ==================== getAllInstrumentComplianceStatus ====================

@@ -654,10 +654,7 @@ describe("taskFocusedMenu", () => {
     qcRoot.menu.isActive = false;
 
     const result = buildTaskFocusedMenu(source, {
-      roles: [
-        ROLE_NAMES.LAB_SUPERVISOR,
-        ROLE_NAMES.ANALYSER_IMPORT,
-      ],
+      roles: [ROLE_NAMES.LAB_SUPERVISOR, ROLE_NAMES.ANALYSER_IMPORT],
     });
 
     expect(findById(result, "menu_analyzers_qc")).toBeNull();
@@ -741,6 +738,94 @@ describe("taskFocusedMenu", () => {
         "menu_pathology",
       ).menu.actionURL,
     ).toBe("/PathologyDashboard");
+  });
+
+  test.each([
+    {
+      role: ROLE_NAMES.PATHOLOGIST,
+      modules: { pathology: true, immunohistochemistry: true },
+      visible: ["menu_pathology", "menu_immunochem"],
+      hidden: ["menu_results_unified", "menu_cytology"],
+    },
+    {
+      role: ROLE_NAMES.CYTOPATHOLOGIST,
+      modules: { cytology: true },
+      visible: ["menu_cytology"],
+      hidden: ["menu_results_unified", "menu_pathology", "menu_immunochem"],
+    },
+  ])(
+    "shows the authorized specialty inside the results workspace for $role",
+    ({ role, modules, visible, hidden }) => {
+      const source = [
+        item("menu_results", "", [item("menu_results_unified", "/Results")]),
+        item("menu_pathology", "/PathologyDashboard"),
+        item("menu_immunochem", "/ImmunohistochemistryDashboard"),
+        item("menu_cytology", "/CytologyDashboard"),
+      ];
+      const result = buildTaskFocusedMenu(source, {
+        roles: [role],
+        userLabRolesMap: {
+          Pathology: [ROLE_NAMES.RESULTS],
+          Immunohistochemistry: [ROLE_NAMES.RESULTS],
+          Cytology: [ROLE_NAMES.RESULTS],
+        },
+        optionalModules: modules,
+      });
+
+      expect(findById(result, "menu_testing_workspace")).not.toBeNull();
+      visible.forEach((id) => expect(findById(result, id)).not.toBeNull());
+      hidden.forEach((id) => expect(findById(result, id)).toBeNull());
+    },
+  );
+
+  test("hides a specialty menu when its global specialist lacks that lab-unit scope", () => {
+    const result = buildTaskFocusedMenu(
+      [
+        item("menu_results", "", [item("menu_results_unified", "/Results")]),
+        item("menu_pathology", "/PathologyDashboard"),
+      ],
+      {
+        roles: [ROLE_NAMES.PATHOLOGIST],
+        userLabRolesMap: { Cytology: [ROLE_NAMES.RESULTS] },
+        optionalModules: { pathology: true },
+      },
+    );
+
+    expect(findById(result, "menu_pathology")).toBeNull();
+    expect(findById(result, "menu_testing_workspace")).toBeNull();
+  });
+
+  test("shows specialty menus to Results users only for their assigned lab unit", () => {
+    const result = buildTaskFocusedMenu(
+      [
+        item("menu_results", "", [item("menu_results_unified", "/Results")]),
+        item("menu_pathology", "/PathologyDashboard"),
+        item("menu_cytology", "/CytologyDashboard"),
+      ],
+      {
+        roles: [ROLE_NAMES.RESULTS],
+        userLabRolesMap: { Pathology: [ROLE_NAMES.RESULTS] },
+        optionalModules: { pathology: true, cytology: true },
+      },
+    );
+
+    expect(findById(result, "menu_results_unified")).not.toBeNull();
+    expect(findById(result, "menu_pathology")).not.toBeNull();
+    expect(findById(result, "menu_cytology")).toBeNull();
+  });
+
+  test("creates the results workspace for an in-scope specialist when the server omits its root", () => {
+    const result = buildTaskFocusedMenu(
+      [item("menu_pathology", "/PathologyDashboard")],
+      {
+        roles: [ROLE_NAMES.PATHOLOGIST],
+        userLabRolesMap: { Pathology: [ROLE_NAMES.RESULTS] },
+        optionalModules: { pathology: true },
+      },
+    );
+
+    expect(findById(result, "menu_testing_workspace")).not.toBeNull();
+    expect(findById(result, "menu_pathology")).not.toBeNull();
   });
 
   test("hides generic-sample menus and routes only in the China profile", () => {

@@ -241,6 +241,29 @@ public class OrdinaryResultSaveStateDAOTest {
     }
 
     @Test
+    public void analysisVersionUsesMappedDateTypeWithoutImplicitFlush() {
+        OrdinaryResultSaveStateDAOImpl dao = new OrdinaryResultSaveStateDAOImpl();
+        EntityManager em = mock(EntityManager.class);
+        Session session = mock(Session.class);
+        Query<java.util.Date> query = mock(Query.class, RETURNS_SELF);
+        ReflectionTestUtils.setField(dao, "entityManager", em);
+        when(em.unwrap(Session.class)).thenReturn(session);
+        when(session.createQuery("select a.lastupdated from Analysis a where a.id = :id", java.util.Date.class))
+                .thenReturn(query);
+        java.util.Date version = new java.util.Date(1_788_218_400_123L);
+        doReturn(version).when(query).uniqueResult();
+
+        assertEquals(String.valueOf(version.getTime()), dao.findAnalysisVersion("101"));
+        verify(query).setParameter("id", "101");
+        verify(query).setHibernateFlushMode(FlushMode.MANUAL);
+        verify(query).setTimeout(15);
+        verify(em, never()).flush();
+
+        doReturn(null).when(query).uniqueResult();
+        assertNull(dao.findAnalysisVersion("999"));
+    }
+
+    @Test
     public void specimenLockRetainsManagedObjectAndDoesNotRefreshOrFlush() {
         OrdinaryResultSaveStateDAOImpl dao = new OrdinaryResultSaveStateDAOImpl();
         EntityManager em = mock(EntityManager.class);

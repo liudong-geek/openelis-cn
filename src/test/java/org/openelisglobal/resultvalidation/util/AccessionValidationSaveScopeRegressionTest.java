@@ -33,10 +33,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/** Real review projection, adapter and save construction; simulated records, no persistence. */
+/**
+ * Real review projection, adapter and save construction; simulated records, no
+ * persistence.
+ */
 public class AccessionValidationSaveScopeRegressionTest {
     private Object oldFactory, oldForms, oldIdentity;
-    private final Map<String, Object> oldSaveServices = new HashMap<>();
     private final Map<Class<?>, Object> beans = new HashMap<>();
     private final Map<String, Result> storedById = new HashMap<>();
     private final List<Result> stored = new ArrayList<>();
@@ -64,11 +66,6 @@ public class AccessionValidationSaveScopeRegressionTest {
         resultService = factory.getBean(ResultService.class);
         definitions = factory.getBean(TestResultService.class);
         components = factory.getBean(TestResultComponentService.class);
-        for (String field : List.of("resultService", "testResultService")) {
-            oldSaveServices.put(field, ReflectionTestUtils.getField(ResultSaveService.class, field));
-        }
-        ReflectionTestUtils.setField(ResultSaveService.class, "resultService", resultService);
-        ReflectionTestUtils.setField(ResultSaveService.class, "testResultService", definitions);
         utility = new ResultsValidationUtility();
         for (var field : ResultsValidationUtility.class.getDeclaredFields()) {
             if (field.isAnnotationPresent(Autowired.class)) {
@@ -102,7 +99,6 @@ public class AccessionValidationSaveScopeRegressionTest {
 
     @After
     public void restore() {
-        oldSaveServices.forEach((field, value) -> ReflectionTestUtils.setField(ResultSaveService.class, field, value));
         ReflectionTestUtils.setField(SpringContext.class, "factory", oldFactory);
         ReflectionTestUtils.setField(FormFields.class, "instance", oldForms);
         ReflectionTestUtils.setField(TestIdentityService.class, "instance", oldIdentity);
@@ -127,11 +123,11 @@ public class AccessionValidationSaveScopeRegressionTest {
                 Result explicit = storedResult("602", explicitOption);
                 Result secondary = withSecondary ? storedResult("603", otherOption) : null;
 
-                List<AnalysisItem> projected = utility.testResultListToAnalysisItemList(
-                        stored.stream().map(this::reviewItem).toList());
+                List<AnalysisItem> projected = utility
+                        .testResultListToAnalysisItemList(stored.stream().map(this::reviewItem).toList());
                 assertEquals(type + ": one row per actual component", withSecondary ? 2 : 1, projected.size());
-                AnalysisItem primary = projected.stream()
-                        .filter(row -> "701".equals(row.getTestResultComponentId())).findFirst().orElseThrow();
+                AnalysisItem primary = projected.stream().filter(row -> "701".equals(row.getTestResultComponentId()))
+                        .findFirst().orElseThrow();
                 assertEquals(List.of("601", "602"),
                         primary.getResultMembers().stream().map(AnalysisItem.ResultMember::resultId).toList());
 

@@ -11,6 +11,7 @@ import java.util.Set;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.result.form.SpecimenResultAdmission;
+import org.openelisglobal.sample.form.SpecimenIntakeEvidence;
 import org.openelisglobal.sample.service.EntryCurrentStateReader.AnalysisView;
 import org.openelisglobal.sample.service.EntryCurrentStateReader.SpecimenView;
 import org.openelisglobal.systemuser.service.UserService;
@@ -134,10 +135,10 @@ public class SpecimenResultAdmissionReader {
         return Objects.equals(sampleId, tube.getSample().getId()) && Objects.equals(item.id(), tube.getId())
                 && Objects.equals(item.statusId(), tube.getStatusId()) && item.voided() == tube.isVoided()
                 && item.rejected() == tube.isRejected()
-                && Objects.equals(item.lastUpdated(), tube.getLastupdated().toInstant().toString())
+                && Objects.equals(item.lastUpdated(), SpecimenIntakeEvidence.wallClockTime(tube.getLastupdated()))
                 && Objects.equals(view.testId(), actual.getTest().getId())
                 && Objects.equals(view.statusId(), actual.getStatusId())
-                && Objects.equals(view.lastUpdated(), actual.getLastupdated().toInstant().toString());
+                && Objects.equals(view.lastUpdated(), SpecimenIntakeEvidence.wallClockTime(actual.getLastupdated()));
     }
 
     private static void requireCurrentTransaction() {

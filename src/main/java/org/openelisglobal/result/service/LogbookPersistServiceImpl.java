@@ -13,16 +13,16 @@ import java.util.UUID;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.constants.Constants;
-import org.openelisglobal.common.formfields.FormFields.Field;
 import org.openelisglobal.common.formfields.FormFields;
+import org.openelisglobal.common.formfields.FormFields.Field;
 import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.ResultSaveService;
 import org.openelisglobal.common.services.StatusService.OrderStatus;
 import org.openelisglobal.common.services.beanAdapters.ResultSaveBeanAdapter;
 import org.openelisglobal.common.services.registration.ResultUpdateRegister;
 import org.openelisglobal.common.services.registration.interfaces.IResultUpdate;
-import org.openelisglobal.common.util.ConfigurationProperties.Property;
 import org.openelisglobal.common.util.ConfigurationProperties;
+import org.openelisglobal.common.util.ConfigurationProperties.Property;
 import org.openelisglobal.common.util.ControllerUtills;
 import org.openelisglobal.dataexchange.orderresult.OrderResponseWorker.Event;
 import org.openelisglobal.internationalization.MessageUtil;
@@ -156,11 +156,11 @@ public class LogbookPersistServiceImpl implements LogbookResultsPersistService {
             verifyActor.run();
             requireEntryPermission(userId, analysis);
             requireSingleAnalysis(data, analysis);
-            verifyOriginal.run();
             if (!response.isEmpty() && (!Objects.equals(response.get("analysisStatusId"), analysis.getStatusId())
                     || analysis.getLastupdated() == null || !Objects.equals(response.get("analysisLastupdated"),
                             String.valueOf(analysis.getLastupdated().getTime()))))
                 throw new ResultSaveValidationException("error.results.staleSave");
+            verifyOriginal.run();
         };
         // Keep the original source-state closure; never re-read the newly prepared
         // status as though it were the state on which the editor based this save.
@@ -220,8 +220,17 @@ public class LogbookPersistServiceImpl implements LogbookResultsPersistService {
         return persistGuardedDataSet(actionDataSet, updaters, sysUserId, verifySpecimens);
     }
 
+    @Override
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.SERIALIZABLE, rollbackFor = Exception.class)
+    public List<Analysis> persistSpecialtyReleaseDataSet(ResultsUpdateDataSet actionDataSet,
+            List<IResultUpdate> updaters, String sysUserId, SpecialtyResultRelease release) {
+        Runnable verifySpecimens = specimenWriteGuard.beginSpecialtyRelease(actionDataSet, release);
+        return persistGuardedDataSet(actionDataSet, updaters, sysUserId, verifySpecimens);
+    }
+
     private List<Analysis> persistGuardedDataSet(ResultsUpdateDataSet actionDataSet, List<IResultUpdate> updaters,
             String sysUserId, Runnable verifySpecimens) {
+        specimenWriteGuard.validateResultIdentities(actionDataSet);
         for (Note note : actionDataSet.getNoteList()) {
             noteService.insert(note);
         }
@@ -231,14 +240,9 @@ public class LogbookPersistServiceImpl implements LogbookResultsPersistService {
             resultSet.result.setFhirUuid(UUID.randomUUID());
             String resultId;
 
-            // Check if result already exists for this specific Analysis (not Sample+Test)
-            // This allows different aliquots (SampleItems) of the same sample to have
-            // results for the same test type, since each aliquot has its own Analysis
-            if (resultSet.result.getId() == null) {
-                resultId = resultService.insert(resultSet.result);
-            } else {
-                continue;
-            }
+            resultId = resultService.insert(resultSet.result);
+            resultSet.result.setId(resultId);
+            specimenWriteGuard.requireInsertedResultIdentity(resultSet.result, resultId);
 
             if (resultSet.signature != null) {
                 resultSet.signature.setResultId(resultSet.result.getId());
@@ -249,7 +253,6 @@ public class LogbookPersistServiceImpl implements LogbookResultsPersistService {
                 resultSet.testKit.setResultId(resultSet.result.getId());
                 resultInventoryService.insert(resultSet.testKit);
             }
-            resultSet.result.setId(resultId);
         }
 
         for (ReferralSet referralSet : actionDataSet.getSavableReferralSets()) {
@@ -323,8 +326,7 @@ public class LogbookPersistServiceImpl implements LogbookResultsPersistService {
     protected List<Analysis> setTestReflexes(ResultsUpdateDataSet actionDataSet, String sysUserId) {
         TestReflexUtil testReflexUtil = new TestReflexUtil();
         TestCalculatedUtil testCaliculatedUtil = new TestCalculatedUtil();
-        List allResults = actionDataSet.getNewResults();
-        allResults.addAll(actionDataSet.getModifiedResults());
+        List<ResultSet> allResults = resultSetsForReflexes(actionDataSet);
         List<Analysis> reflexAnalysises = testReflexUtil
                 .addNewTestsToDBForReflexTests(convertToTestReflexBeanList(allResults), sysUserId);
         testReflexUtil.updateModifiedReflexes(convertToTestReflexBeanList(actionDataSet.getModifiedResults()),
@@ -333,6 +335,12 @@ public class LogbookPersistServiceImpl implements LogbookResultsPersistService {
                 sysUserId);
         reflexAnalysises.addAll(caclculatedAnalyses);
         return reflexAnalysises;
+    }
+
+    static List<ResultSet> resultSetsForReflexes(ResultsUpdateDataSet actionDataSet) {
+        List<ResultSet> allResults = new ArrayList<>(actionDataSet.getNewResults());
+        allResults.addAll(actionDataSet.getModifiedResults());
+        return allResults;
     }
 
     private List<TestReflexBean> convertToTestReflexBeanList(List<ResultSet> resultSetList) {

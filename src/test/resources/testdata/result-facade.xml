@@ -52,63 +52,112 @@
         name_localization_id="2" reporting_description=""
         active_begin="2013-11-01" active_end="2013-12-01"
         lastupdated="2023-10-01 12:00:00" />
+    <!-- Production-compatible order, analysis and physical-specimen states.
+        FHIR writes go through the same specimen/review guard as UI entry. -->
     <status_of_sample id="1"
-        description="Sample Description 1" code="1" status_type="ANALYSIS"
-        lastupdated="2025-03-18" name="Technical Acceptance" />
-    <status_of_sample id="3"
-        description="The sample has been entered into the system" code="1"
+        description="No tests have been run for this order" code="1"
+        status_type="ORDER" lastupdated="2025-03-18" name="Test Entered" />
+    <status_of_sample id="2"
+        description="Some tests have been run on this order" code="1"
         status_type="ORDER" lastupdated="2025-03-18" name="Testing Started" />
-    <status_of_sample id="6" description="Finalized"
-        code="6" status_type="ANALYSIS" lastupdated="2025-03-18"
-        name="Finalized" />
+    <status_of_sample id="3"
+        description="All tests have been run on this order" code="1"
+        status_type="ORDER" lastupdated="2025-03-18" name="Testing finished" />
+    <status_of_sample id="4"
+        description="This test has not yet been done" code="1"
+        status_type="ANALYSIS" lastupdated="2025-03-18" name="Not Tested" />
+    <status_of_sample id="6"
+        description="The results of the analysis are final" code="1"
+        status_type="ANALYSIS" lastupdated="2025-03-18" name="Finalized" />
     <status_of_sample id="7"
-        description="Technical Rejected" code="6" status_type="ANALYSIS"
-        lastupdated="2025-03-18" name="Technical Rejected" />
-
-    <status_of_sample id="8" description="Test Canceled"
-        code="6" status_type="ANALYSIS" lastupdated="2025-03-18"
-        name="Test Canceled" />
+        description="The biologist rejected this result" code="1"
+        status_type="ANALYSIS" lastupdated="2025-03-18"
+        name="Biologist Rejection" />
+    <status_of_sample id="13"
+        description="The order is non-conforming" code="1"
+        status_type="ANALYSIS" lastupdated="2025-03-18" name="NonConforming" />
+    <status_of_sample id="14"
+        description="Test was canceled" code="1" status_type="ANALYSIS"
+        lastupdated="2025-03-18" name="Test Canceled" />
+    <status_of_sample id="15"
+        description="Technician accepted the result" code="1"
+        status_type="ANALYSIS" lastupdated="2025-03-18"
+        name="Technical Acceptance" />
+    <status_of_sample id="16"
+        description="Technician rejected the result" code="1"
+        status_type="ANALYSIS" lastupdated="2025-03-18"
+        name="Technical Rejected" />
+    <status_of_sample id="19"
+        description="The sample was canceled" code="1" status_type="SAMPLE"
+        lastupdated="2025-03-18" name="SampleCanceled" />
+    <status_of_sample id="20"
+        description="The sample has been entered" code="1"
+        status_type="SAMPLE" lastupdated="2025-03-18" name="SampleEntered" />
+    <status_of_sample id="24"
+        description="The sample was disposed" code="1" status_type="SAMPLE"
+        lastupdated="2025-03-18" name="SampleDisposed" />
+    <status_of_sample id="25"
+        description="The sample was rejected" code="1" status_type="ANALYSIS"
+        lastupdated="2025-03-18" name="Sample Rejected" />
+    <status_of_sample id="26"
+        description="The sample was rejected" code="1" status_type="SAMPLE"
+        lastupdated="2025-03-18" name="Sample Rejected" />
 
     <type_of_sample id="1" description="Blood Sample"
-        domain="H" name_localization_id="1" lastupdated="2023-12-01 12:00:00" />
+        domain="H" is_active="true" name_localization_id="1"
+        lastupdated="2023-12-01 12:00:00" />
     <type_of_sample id="2" description="Urine Sample"
-        domain="H" name_localization_id="2" lastupdated="2023-12-01 12:00:00" />
+        domain="H" is_active="true" name_localization_id="2"
+        lastupdated="2023-12-01 12:00:00" />
     <type_of_sample id="3" description="Serum Sample"
-        domain="H" name_localization_id="1" lastupdated="2023-12-01 12:00:00" />
+        domain="H" is_active="true" name_localization_id="1"
+        lastupdated="2023-12-01 12:00:00" />
 
     <sample id="1" accession_number="DEV01260000000000001"
-        status_id="3" received_date="2024-06-03 00:00:00.0"
+        domain="H" status_id="3" received_date="2024-06-03 00:00:00.0"
         entered_date="2024-06-03 00:00:00.0"
         collection_date="2024-06-03 00:00:00.0"
         lastupdated="2023-11-01 12:00:00" />
 
     <sample id="2" accession_number="DEV01260000000000002"
-        status_id="3" received_date="2024-06-04 00:00:00.0"
+        domain="H" status_id="3" received_date="2024-06-04 00:00:00.0"
         entered_date="2024-06-03 00:00:00.0"
         collection_date="2024-06-03 00:00:00.0"
         lastupdated="2023-11-01 12:00:00" />
 
     <!-- A received specimen reserved for result-creation tests. It deliberately
-         has no result so duplicate-result protection remains enabled. -->
+        has no result so duplicate-result protection remains enabled. -->
     <sample id="3" accession_number="DEV01260000000000003"
-        status_id="3" received_date="2026-03-09 09:30:00.0"
+        domain="H" status_id="3" received_date="2026-03-09 09:30:00.0"
         entered_date="2026-03-09 09:00:00.0"
         collection_date="2026-03-09 09:15:00.0"
         lastupdated="2026-03-09 09:30:00" />
 
-    <sample_item id="601" sort_order="1" status_id="3"
+    <sample_item id="601" sort_order="1" status_id="20"
         fhir_uuid="68438220-5cef-44c4-9e6f-9f88e6b93270" samp_id="1"
-        typeosamp_id="3" collection_date="2023-11-15" received_date="2023-11-15"
-        lastupdated="2023-12-01 12:00:00" />
-    <sample_item id="602" sort_order="12" status_id="3"
+        typeosamp_id="3" collection_date="2023-11-15"
+        received_date="2023-11-15" lastupdated="2023-12-01 12:00:00" />
+    <sample_item id="602" sort_order="12" status_id="20"
         fhir_uuid="68438220-5cef-44c4-9e6f-9f88e6b93271" samp_id="2"
-        typeosamp_id="2" collection_date="2023-11-15" received_date="2023-11-15"
-        lastupdated="2023-12-01 12:00:00" />
-    <sample_item id="603" sort_order="1" status_id="3"
+        typeosamp_id="2" collection_date="2023-11-15"
+        received_date="2023-11-15" lastupdated="2023-12-01 12:00:00" />
+    <sample_item id="603" sort_order="1" status_id="20"
         fhir_uuid="68438220-5cef-44c4-9e6f-9f88e6b93272" samp_id="3"
         typeosamp_id="3" collection_date="2026-03-09 09:15:00"
-        received_date="2026-03-09 09:30:00"
-        lastupdated="2026-03-09 09:30:00" />
+        received_date="2026-03-09 09:30:00" lastupdated="2026-03-09 09:30:00" />
+
+    <!-- The writable observations use two independently collected tubes. Each
+        tube has one current request; the released read-only tube is unchanged. -->
+    <sample_type_request id="1001" sample_id="1"
+        type_of_sample_id="3" sort_order="1" requested_quantity="1.0"
+        requested_tests="1" status="COLLECTED" sample_item_id="601"
+        created_date="2025-07-07 08:00:00" last_updated="2025-07-07 08:00:00"
+        sysuser_id="1" />
+    <sample_type_request id="1003" sample_id="3"
+        type_of_sample_id="3" sort_order="1" requested_quantity="1.0"
+        requested_tests="1" status="COLLECTED" sample_item_id="603"
+        created_date="2026-03-09 09:40:00" last_updated="2026-03-09 09:40:00"
+        sysuser_id="1" />
 
     <organization id="3" lastupdated="2024-06-03 12:00:00.0"
         name="Global Health Org" city="New York" zip_code="10001"
@@ -127,14 +176,14 @@
 
     <test_section id="1" name="TB"
         description="SectionDescription1" org_id="3" is_external="N"
-        is_active="Y" domain="CLINICAL"
-        lastupdated="2025-03-20 12:00:00.0" sort_order="2147483647"
-        name_localization_id="1" display_key="TestKey1" />
+        is_active="Y" domain="CLINICAL" lastupdated="2025-03-20 12:00:00.0"
+        sort_order="2147483647" name_localization_id="1"
+        display_key="TestKey1" />
     <test_section id="2" name="TestSection2"
         description="SectionDescription2" org_id="4" is_external="N"
-        is_active="Y" domain="CLINICAL"
-        lastupdated="2025-03-21 13:00:00.0" sort_order="2147483646"
-        name_localization_id="2" display_key="TestKey2" />
+        is_active="Y" domain="CLINICAL" lastupdated="2025-03-21 13:00:00.0"
+        sort_order="2147483646" name_localization_id="2"
+        display_key="TestKey2" />
 
     <test_formats id="1" lastupdated="2025-03-21 12:00:00" />
     <test_formats id="2" lastupdated="2025-03-21 12:00:00" />
@@ -148,8 +197,7 @@
         test_section_id="1" scriptlet_id="1" test_format_id="1"
         local_code="CBC" sort_order="2147483646" name="Complete Blood Count"
         orderable="true" guid="abc-123" name_localization_id="1"
-        reporting_name_localization_id="2" is_active="Y"
-        domain="CLINICAL"
+        reporting_name_localization_id="2" is_active="Y" domain="CLINICAL"
         antimicrobial_resistance="true" />
     <test id="2" method_id="2" uom_id="2" description="Urine Test"
         loinc="543216" reporting_description="Urinalysis"
@@ -160,31 +208,34 @@
         test_section_id="2" scriptlet_id="2" test_format_id="2"
         local_code="UA" sort_order="2147483646" name="Urinalysis"
         orderable="true" guid="def-456" name_localization_id="2"
-        domain="CLINICAL"
-        antimicrobial_resistance="false" />
+        domain="CLINICAL" antimicrobial_resistance="false" />
+
+    <!-- Canonical result model required by the guarded FHIR result intake. -->
+    <test_result_component
+        id="10000000-0000-0000-0000-000000000001" test_id="1" code="PRIMARY"
+        label="Complete Blood Count" display_order="0" result_type="N"
+        uom_id="1" significant_digits="2" allow_multiple_readings="false"
+        is_active="Y" is_primary="true" show_on_report="true"
+        lastupdated="2025-04-01 12:00:00" />
+    <test_result_component
+        id="10000000-0000-0000-0000-000000000002" test_id="2" code="PRIMARY"
+        label="Urinalysis" display_order="0" result_type="N" uom_id="2"
+        significant_digits="0" allow_multiple_readings="false" is_active="Y"
+        is_primary="true" show_on_report="true"
+        lastupdated="2025-04-01 12:30:00" />
 
     <test_result id="1" test_id="1" result_group="1"
         flags="FLAG1" tst_rslt_type="N" value="5.6" significant_digits="2"
         quant_limit="10.0" cont_level="High" lastupdated="2025-04-01 12:00:00"
         scriptlet_id="1" sort_order="1" is_quantifiable="true"
-        is_active="true" is_normal="true" />
+        is_active="true" is_normal="true"
+        component_id="10000000-0000-0000-0000-000000000001" />
     <test_result id="2" test_id="2" result_group="2"
         flags="FLAG2" tst_rslt_type="N" value="14.5" significant_digits="0"
         quant_limit="15.1" cont_level="High" lastupdated="2025-04-01 12:30:00"
         scriptlet_id="2" sort_order="2" is_quantifiable="true"
-        is_active="true" is_normal="true" />
-
-    <!-- Canonical result model required by the guarded FHIR result intake. -->
-    <test_result_component id="10000000-0000-0000-0000-000000000001"
-        test_id="1" code="PRIMARY" label="Complete Blood Count"
-        display_order="0" result_type="N" uom_id="1" significant_digits="2"
-        allow_multiple_readings="false" is_active="Y" is_primary="true"
-        show_on_report="true" lastupdated="2025-04-01 12:00:00" />
-    <test_result_component id="10000000-0000-0000-0000-000000000002"
-        test_id="2" code="PRIMARY" label="Urinalysis"
-        display_order="0" result_type="N" uom_id="2" significant_digits="0"
-        allow_multiple_readings="false" is_active="Y" is_primary="true"
-        show_on_report="true" lastupdated="2025-04-01 12:30:00" />
+        is_active="true" is_normal="true"
+        component_id="10000000-0000-0000-0000-000000000002" />
 
     <analyte id="3" analyte_id="3" name="Cholesterol"
         external_id="EXT125" lastupdated="2025-03-05 09:45:00"
@@ -216,16 +267,14 @@
 
 
     <analysis id="1" sampitem_id="601" test_id="1"
-        test_sect_id="1" revision="1" status_id="1" analysis_type="ROUTINE"
-        started_date="2025-07-07 10:00:00"
-        completed_date="2025-07-07 12:00:00"
-        released_date="2025-07-07 13:00:00" printed_date="2025-07-07 14:00:00"
-        entry_date="2025-07-07 09:00:00" panel_id="1" is_reportable="Y"
-        method_id="1" lastupdated="2025-07-07 14:00:00"
+        test_sect_id="1" revision="1" status_id="15" analysis_type="ROUTINE"
+        started_date="2025-07-07 10:00:00" entry_date="2025-07-07 09:00:00"
+        panel_id="1" is_reportable="Y" method_id="1"
+        lastupdated="2025-07-07 14:00:00"
         fhir_uuid="f8b9e2c1-7a2d-4e8b-b3a4-9c1e7f6d2b01" />
 
-    <analysis id="2" sampitem_id="602" test_id="1"
-        test_sect_id="1" revision="1" status_id="6" analysis_type="CONFIRM"
+    <analysis id="2" sampitem_id="602" test_id="2"
+        test_sect_id="2" revision="1" status_id="6" analysis_type="CONFIRM"
         started_date="2025-07-07 11:00:00"
         completed_date="2025-07-07 13:00:00"
         released_date="2025-07-07 14:00:00" printed_date="2025-07-07 15:00:00"
@@ -234,10 +283,10 @@
         fhir_uuid="f8b9e2c1-7a2d-4e8b-b3a4-9c1e7f6d2b02" />
 
     <analysis id="3" sampitem_id="603" test_id="1"
-        test_sect_id="1" revision="1" status_id="1" analysis_type="ROUTINE"
-        started_date="2026-03-09 09:45:00"
-        entry_date="2026-03-09 09:30:00" panel_id="1" is_reportable="Y"
-        method_id="1" lastupdated="2026-03-09 09:45:00"
+        test_sect_id="1" revision="1" status_id="4" analysis_type="ROUTINE"
+        started_date="2026-03-09 09:45:00" entry_date="2026-03-09 09:30:00"
+        panel_id="1" is_reportable="Y" method_id="1"
+        lastupdated="2026-03-09 09:45:00"
         fhir_uuid="f8b9e2c1-7a2d-4e8b-b3a4-9c1e7f6d2b03" />
 
     <result id="3" analysis_id="1" sort_order="1" result_type="N"
@@ -323,6 +372,25 @@
         dict_entry="Free sample request form or vice versa. Please submit another sample."
         local_Abbrev="DE1" dictionary_category_id="1" sort_order="1"
         lastUpdated="2023-11-01 12:00:00" />
+
+    <!-- Explicit first-intake decisions preserve the prerequisite enforced
+        by the production result-write guard. -->
+    <specimen_intake_decision id="1001"
+        operation_id="22222222-2222-4222-8222-222222222601" sample_id="1"
+        lab_no="DEV01260000000000001" patient_id="1" request_id="1001"
+        sample_item_id="601" decision="ACCEPTED"
+        evidence_json='{"schema":1,"sampleVersion":"2023-11-01T12:00:00Z","requestVersion":"2025-07-07T08:00:00Z","itemVersion":"2023-12-01T12:00:00Z","typeOfSampleId":"3","collectionDate":"2023-11-15T00:00:00Z","receivedDate":"2023-11-15T00:00:00Z","analyses":[{"id":"1","testId":"1","version":"2025-07-07T14:00:00Z"}]}'
+        evidence_digest="9adb770cacfee1059a3ec336d767a807b792911677e6e2ab7626a2bde5885075"
+        created_by="1" created_at="2026-09-20 00:00:00"
+        last_updated="2026-09-20 00:00:00" />
+    <specimen_intake_decision id="1003"
+        operation_id="22222222-2222-4222-8222-222222222603" sample_id="3"
+        lab_no="DEV01260000000000003" patient_id="1" request_id="1003"
+        sample_item_id="603" decision="ACCEPTED"
+        evidence_json='{"schema":1,"sampleVersion":"2026-03-09T09:30:00Z","requestVersion":"2026-03-09T09:40:00Z","itemVersion":"2026-03-09T09:30:00Z","typeOfSampleId":"3","collectionDate":"2026-03-09T09:15:00Z","receivedDate":"2026-03-09T09:30:00Z","analyses":[{"id":"3","testId":"1","version":"2026-03-09T09:45:00Z"}]}'
+        evidence_digest="63a17f513509b28ff73944146bf1bf1a42e83b10ad47d7d904921f6b4e57e691"
+        created_by="1" created_at="2026-09-20 00:00:00"
+        last_updated="2026-09-20 00:00:00" />
 
 
 

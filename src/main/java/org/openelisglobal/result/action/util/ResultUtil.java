@@ -68,8 +68,6 @@ import org.openelisglobal.result.service.ResultSignatureService;
 import org.openelisglobal.result.valueholder.Result;
 import org.openelisglobal.result.valueholder.ResultInventory;
 import org.openelisglobal.result.valueholder.ResultSignature;
-import org.openelisglobal.resultlimit.service.ResultLimitService;
-import org.openelisglobal.resultlimits.valueholder.ResultLimit;
 import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.samplehuman.service.SampleHumanService;
@@ -84,20 +82,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 // TODO unused
 public class ResultUtil {
-    private static final DictionaryService dictionaryService = SpringContext.getBean(DictionaryService.class);
-    private static final TestAnalyteService testAnalyteService = SpringContext.getBean(TestAnalyteService.class);
-    private static final AnalysisService analysisService = SpringContext.getBean(AnalysisService.class);
-    private static final NoteService noteService = SpringContext.getBean(NoteService.class);
-    private static final MethodService methodService = SpringContext.getBean(MethodService.class);
-    private static final UserModuleService userModuleService = SpringContext.getBean(UserModuleService.class);
-    private static final SampleHumanService sampleHumanService = SpringContext.getBean(SampleHumanService.class);
-    private static final UserRoleService userRoleService = SpringContext.getBean(UserRoleService.class);
-    private static final ResultLimitService resultLimitService = SpringContext.getBean(ResultLimitService.class);
-    private static final OrganizationService organizationService = SpringContext.getBean(OrganizationService.class);
-    private static final ResultInventoryService resultInventoryService = SpringContext
-            .getBean(ResultInventoryService.class);
-    private static final ResultSignatureService resultSigService = SpringContext.getBean(ResultSignatureService.class);
-
     private static String RESULT_EDIT_ROLE_ID;
     private static String REFERRAL_CONFORMATION_ID;
 
@@ -105,7 +89,7 @@ public class ResultUtil {
 
     public static String getStringValueOfResult(Result result) {
         if (TypeOfTestResultServiceImpl.ResultType.isDictionaryVariant(result.getResultType())) {
-            return dictionaryService.getDictionaryById(result.getValue()).getLocalizedName();
+            return bean(DictionaryService.class).getDictionaryById(result.getValue()).getLocalizedName();
         } else {
             return result.getValue();
         }
@@ -122,7 +106,7 @@ public class ResultUtil {
          *
          */
         if (result.getTestResult() != null) {
-            List<TestAnalyte> testAnalyteList = testAnalyteService
+            List<TestAnalyte> testAnalyteList = bean(TestAnalyteService.class)
                     .getAllTestAnalytesPerTest(result.getTestResult().getTest());
 
             if (testAnalyteList.size() == 1) {
@@ -156,7 +140,7 @@ public class ResultUtil {
     public static List<Analyte> getOtherAnalyteForResult(Result result) {
         List<Analyte> otherAnalyte = new ArrayList<>();
         if (result.getTestResult() != null) {
-            List<TestAnalyte> testAnalyteList = testAnalyteService
+            List<TestAnalyte> testAnalyteList = bean(TestAnalyteService.class)
                     .getAllTestAnalytesPerTest(result.getTestResult().getTest());
             if (testAnalyteList == null) {
                 return otherAnalyte; // or handle the null case appropriately
@@ -228,7 +212,7 @@ public class ResultUtil {
     public static Analysis resolveModifiedAnalysis(ResultsUpdateDataSet actionDataSet, String analysisId) {
         Analysis analysis = actionDataSet.findModifiedAnalysis(analysisId);
         if (analysis == null) {
-            analysis = analysisService.get(analysisId);
+            analysis = bean(AnalysisService.class).get(analysisId);
             actionDataSet.getModifiedAnalysis().add(analysis);
         }
         return analysis;
@@ -244,7 +228,7 @@ public class ResultUtil {
                 analysis.setAnalysisType(testResultItem.getAnalysisMethod());
             }
             if (!GenericValidator.isBlankOrNull(testResultItem.getTestMethod())) {
-                analysis.setMethod(methodService.get(testResultItem.getTestMethod()));
+                analysis.setMethod(bean(MethodService.class).get(testResultItem.getTestMethod()));
             }
             if (testResultItem.getResultFile() != null) {
                 ResultFile resultFile = createResultFile(testResultItem.getResultFile());
@@ -264,14 +248,7 @@ public class ResultUtil {
         // post forceTechApproval=true with a blank forceTechApprovalNote and bypass the
         // audit_trail invariant otherwise. Fail fast at the BAD_REQUEST level so
         // partial persistence cannot occur for any item in the batch.
-        for (TestResultItem testResultItem : actionDataSet.getModifiedItems()) {
-            if (isForcedToAcceptance(testResultItem)
-                    && GenericValidator.isBlankOrNull(testResultItem.getForceTechApprovalNote())) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Unconditional acceptance requires a non-blank justification note " + "(testResult["
-                                + testResultItem.getAnalysisId() + "].forceTechApprovalNote).");
-            }
-        }
+        requireForceAcceptanceReasons(actionDataSet);
 
         Set<String> correctedFlagComputedIds = new HashSet<>();
 
@@ -281,20 +258,16 @@ public class ResultUtil {
             analysis.setStatusId(getStatusForTestResult(testResultItem, alwaysValidate));
             analysis.setSysUserId(ControllerUtills.getSysUserId(request));
             if (!GenericValidator.isBlankOrNull(testResultItem.getTestMethod())) {
-                analysis.setMethod(methodService.get(testResultItem.getTestMethod()));
+                analysis.setMethod(bean(MethodService.class).get(testResultItem.getTestMethod()));
             }
 
-            actionDataSet.addToNoteList(noteService.createSavableNote(analysis, NoteType.INTERNAL,
+            actionDataSet.addToNoteList(bean(NoteService.class).createSavableNote(analysis, NoteType.INTERNAL,
                     testResultItem.getNote(), RESULT_SUBJECT, ControllerUtills.getSysUserId(request)));
 
             // OGC-745: persist unconditional-acceptance justification as a
             // distinct note type so supervisor audit review can filter on it.
-            if (ResultUtil.isForcedToAcceptance(testResultItem)
-                    && !GenericValidator.isBlankOrNull(testResultItem.getForceTechApprovalNote())) {
-                actionDataSet.addToNoteList(noteService.createSavableNote(analysis,
-                        NoteType.UNCONDITIONAL_ACCEPTANCE_REASON, testResultItem.getForceTechApprovalNote(),
-                        RESULT_SUBJECT, ControllerUtills.getSysUserId(request)));
-            }
+            addForceAcceptanceAuditNote(actionDataSet, testResultItem, analysis, ControllerUtills.getSysUserId(request),
+                    bean(NoteService.class));
 
             if (testResultItem.isShadowRejected()) {
                 testResultItem.setResultValue("");
@@ -302,8 +275,9 @@ public class ResultUtil {
                 String rejectedReasonId = testResultItem.getRejectReasonId();
                 for (IdValuePair rejectReason : DisplayListService.getInstance().getList(ListType.REJECTION_REASONS)) {
                     if (rejectedReasonId.equals(rejectReason.getId())) {
-                        actionDataSet.addToNoteList(noteService.createSavableNote(analysis, NoteType.REJECTION_REASON,
-                                rejectReason.getValue(), RESULT_SUBJECT, ControllerUtills.getSysUserId(request)));
+                        actionDataSet.addToNoteList(bean(NoteService.class).createSavableNote(analysis,
+                                NoteType.REJECTION_REASON, rejectReason.getValue(), RESULT_SUBJECT,
+                                ControllerUtills.getSysUserId(request)));
                         break;
                     }
                 }
@@ -317,19 +291,19 @@ public class ResultUtil {
                     actionDataSet.getDeletableResults());
 
             boolean correctedSinceReport = resultSaveService.isUpdatedResult()
-                    && analysisService.patientReportHasBeenDone(analysis);
+                    && bean(AnalysisService.class).patientReportHasBeenDone(analysis);
             if (correctedFlagComputedIds.add(analysis.getId())) {
                 analysis.setCorrectedSincePatientReport(correctedSinceReport);
             } else if (correctedSinceReport) {
                 analysis.setCorrectedSincePatientReport(true);
             }
 
-            if (analysisService.hasBeenCorrectedSinceLastPatientReport(analysis)) {
-                Note note = noteService.createSavableNote(analysis, NoteType.EXTERNAL,
+            if (bean(AnalysisService.class).hasBeenCorrectedSinceLastPatientReport(analysis)) {
+                Note note = bean(NoteService.class).createSavableNote(analysis, NoteType.EXTERNAL,
                         MessageUtil.getMessage("note.corrected.result"), RESULT_SUBJECT,
                         ControllerUtills.getSysUserId(request));
-                if (!noteService.duplicateNoteExists(note)) {
-                    actionDataSet.addToNoteList(noteService.createSavableNote(analysis, NoteType.EXTERNAL,
+                if (!bean(NoteService.class).duplicateNoteExists(note)) {
+                    actionDataSet.addToNoteList(bean(NoteService.class).createSavableNote(analysis, NoteType.EXTERNAL,
                             MessageUtil.getMessage("note.corrected.result"), RESULT_SUBJECT,
                             ControllerUtills.getSysUserId(request)));
                 }
@@ -352,6 +326,26 @@ public class ResultUtil {
         }
     }
 
+    static void requireForceAcceptanceReasons(ResultsUpdateDataSet actionDataSet) {
+        for (TestResultItem testResultItem : actionDataSet.getModifiedItems()) {
+            if (isForcedToAcceptance(testResultItem)
+                    && GenericValidator.isBlankOrNull(testResultItem.getForceTechApprovalNote())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Unconditional acceptance requires a non-blank justification note " + "(testResult["
+                                + testResultItem.getAnalysisId() + "].forceTechApprovalNote).");
+            }
+        }
+    }
+
+    static void addForceAcceptanceAuditNote(ResultsUpdateDataSet actionDataSet, TestResultItem testResultItem,
+            Analysis analysis, String actor, NoteService notes) {
+        if (isForcedToAcceptance(testResultItem)
+                && !GenericValidator.isBlankOrNull(testResultItem.getForceTechApprovalNote())) {
+            actionDataSet.addToNoteList(notes.createSavableNote(analysis, NoteType.UNCONDITIONAL_ACCEPTANCE_REASON,
+                    testResultItem.getForceTechApprovalNote(), RESULT_SUBJECT, actor));
+        }
+    }
+
     public static void handleReferrals(TestResultItem testResultItem, ReferralItem referralItem, List<Result> results,
             Analysis analysis, ResultsUpdateDataSet actionDataSet, HttpServletRequest request) {
         // List<Referral> referrals = new ArrayList<>();
@@ -365,7 +359,7 @@ public class ResultUtil {
         referral.setRequestDate(new Timestamp(new Date().getTime()));
         referral.setSentDate(DateUtil.convertStringDateToTruncatedTimestamp(referralItem.getReferredSendDate()));
         referral.setRequesterName(referralItem.getReferrer());
-        referral.setOrganization(organizationService.get(referralItem.getReferredInstituteId()));
+        referral.setOrganization(bean(OrganizationService.class).get(referralItem.getReferredInstituteId()));
         referral.setAnalysis(analysis);
 
         referral.setReferralReasonId(referralItem.getReferralReasonId());
@@ -389,7 +383,7 @@ public class ResultUtil {
             if ("0".equals(testResultItem.getResultValue()) || StringUtils.isBlank(testResultItem.getResultValue())) {
                 originalResultNote = originalResultNote + "";
             } else {
-                Dictionary dictionary = dictionaryService.get(testResultItem.getResultValue());
+                Dictionary dictionary = bean(DictionaryService.class).get(testResultItem.getResultValue());
                 if (dictionary.getLocalizedDictionaryName() == null) {
                     originalResultNote = originalResultNote + dictionary.getDictEntry();
                 } else {
@@ -401,8 +395,8 @@ public class ResultUtil {
             originalResultNote = originalResultNote + testResultItem.getResultValue();
         }
 
-        actionDataSet.addToNoteList(noteService.createSavableNote(analysis, NoteType.INTERNAL, originalResultNote,
-                RESULT_SUBJECT, ControllerUtills.getSysUserId(request)));
+        actionDataSet.addToNoteList(bean(NoteService.class).createSavableNote(analysis, NoteType.INTERNAL,
+                originalResultNote, RESULT_SUBJECT, ControllerUtills.getSysUserId(request)));
     }
 
     public static boolean analysisShouldBeUpdated(TestResultItem testResultItem, Result result,
@@ -527,7 +521,7 @@ public class ResultUtil {
 
         if (!GenericValidator.isBlankOrNull(testKitId)) {
             testKit.setId(testKitId);
-            testKit = resultInventoryService.get(testKitId);
+            testKit = bean(ResultInventoryService.class).get(testKitId);
         }
 
         testKit.setInventoryLocationId(testResult.getTestKitInventoryId());
@@ -569,7 +563,7 @@ public class ResultUtil {
             sig = new ResultSignature();
 
             if (!GenericValidator.isBlankOrNull(testResult.getTechnicianSignatureId())) {
-                sig = resultSigService.get(testResult.getTechnicianSignatureId());
+                sig = bean(ResultSignatureService.class).get(testResult.getTechnicianSignatureId());
             }
 
             sig.setIsSupervisor(false);
@@ -586,15 +580,15 @@ public class ResultUtil {
     }
 
     public static boolean userNotInRole(HttpServletRequest request) {
-        if (userModuleService.isUserAdmin(request)) {
+        if (bean(UserModuleService.class).isUserAdmin(request)) {
             return false;
         }
-        List<String> roleIds = userRoleService.getRoleIdsForUser(ControllerUtills.getSysUserId(request));
+        List<String> roleIds = bean(UserRoleService.class).getRoleIdsForUser(ControllerUtills.getSysUserId(request));
         return !roleIds.contains(RESULT_EDIT_ROLE_ID);
     }
 
     public static Patient getPatient(Sample sample) {
-        return sampleHumanService.getPatientForSample(sample);
+        return bean(SampleHumanService.class).getPatientForSample(sample);
     }
 
     public static ResultFile createResultFile(TestResultItem.ResultFileForm fileForm) {
@@ -613,6 +607,10 @@ public class ResultUtil {
         file.setLastupdated(now);
 
         return file;
+    }
+
+    private static <T> T bean(Class<T> type) {
+        return SpringContext.getBean(type);
     }
 
 }

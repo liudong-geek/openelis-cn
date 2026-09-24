@@ -2,6 +2,7 @@ package org.openelisglobal.cytology;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 import java.sql.Timestamp;
@@ -17,6 +18,7 @@ import org.openelisglobal.program.valueholder.cytology.CytologySample.CytologySt
 import org.openelisglobal.systemuser.service.SystemUserService;
 import org.openelisglobal.systemuser.valueholder.SystemUser;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 
 public class CytologySampleServiceTest extends BaseWebContextSensitiveTest {
 
@@ -244,19 +246,19 @@ public class CytologySampleServiceTest extends BaseWebContextSensitiveTest {
     }
 
     @Test
-    public void assignTechnician_shouldAssignTechnicianToCytologySample() {
+    public void assignTechnician_withoutResultsCaseScopeIsRejected() {
         SystemUser systemUser = systemUserService.get("1");
-        cytologySampleService.assignTechnician(2, systemUser);
+        assertThrows(AccessDeniedException.class, () -> cytologySampleService.assignTechnician(2, systemUser));
         CytologySample cytologySample = cytologySampleService.get(2);
-        assertEquals("1", cytologySample.getTechnician().getId());
+        assertEquals("4", cytologySample.getTechnician().getId());
     }
 
     @Test
-    public void assignCycoPathologist_shouldAssignCycoPathologistToCytologySample() {
+    public void assignCytoPathologist_withoutSpecialistCaseScopeIsRejected() {
         SystemUser systemUser = systemUserService.get("1");
-        cytologySampleService.assignCytoPathologist(2, systemUser);
+        assertThrows(AccessDeniedException.class, () -> cytologySampleService.assignCytoPathologist(2, systemUser));
         CytologySample cytologySample = cytologySampleService.get(2);
-        assertEquals("1", cytologySample.getCytoPathologist().getId());
+        assertEquals("2", cytologySample.getCytoPathologist().getId());
     }
 
     @Test

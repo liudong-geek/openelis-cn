@@ -23,8 +23,9 @@ import org.openelisglobal.dataexchange.fhir.service.FhirTransformService;
 import org.openelisglobal.login.valueholder.UserSessionData;
 import org.openelisglobal.note.service.NoteService;
 import org.openelisglobal.result.action.util.ResultsValidation;
-import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO.SpecimenState;
 import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO;
+import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO.ResultOwnerState;
+import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO.SpecimenState;
 import org.openelisglobal.result.exception.ResultSaveValidationException;
 import org.openelisglobal.result.service.LogbookPersistServiceImpl;
 import org.openelisglobal.result.service.LogbookResultsPersistService;
@@ -72,7 +73,6 @@ public class ResultSpecimenSaveHttpTest {
     private org.openelisglobal.result.service.ResultService results;
     private org.openelisglobal.systemuser.service.UserService users;
     private LogbookResultsPersistService service;
-    private final Map<String, Object> savedStatics = new HashMap<>();
     private final Map<String, StoredResult> durable = new HashMap<>();
     private final Map<String, StoredResult> staged = new HashMap<>();
     private String flushedStatus;
@@ -224,6 +224,10 @@ public class ResultSpecimenSaveHttpTest {
         dao = mock(OrdinaryResultSaveStateDAO.class);
         when(dao.findState("101")).thenAnswer(call -> new OrdinaryResultSaveStateDAO.State("101", flushedStatus,
                 analysis.getReleasedDate(), analysis.getPrintedDate()));
+        when(dao.findResultOwnerState(anyString())).thenAnswer(call -> {
+            StoredResult saved = staged.get(call.getArgument(0));
+            return saved == null ? null : new ResultOwnerState(saved.id(), saved.analysisId(), "401", "201", "301");
+        });
         doAnswer(call -> {
             flushedStatus = analysis.getStatusId();
             return null;
@@ -275,14 +279,6 @@ public class ResultSpecimenSaveHttpTest {
         definition.setTestResultType("N");
         definition.setIsActive(true);
         when(definitions.getActiveTestResultsByTest("401")).thenReturn(List.of(definition));
-        for (String name : List.of("resultService", "testResultService", "resultSigService", "referralResultService")) {
-            savedStatics.put(name,
-                    ReflectionTestUtils.getField(org.openelisglobal.common.services.ResultSaveService.class, name));
-        }
-        ReflectionTestUtils.setField(org.openelisglobal.common.services.ResultSaveService.class, "resultService",
-                results);
-        ReflectionTestUtils.setField(org.openelisglobal.common.services.ResultSaveService.class, "testResultService",
-                definitions);
         doAnswer(call -> {
             org.openelisglobal.result.valueholder.Result result = call.getArgument(0);
             StoredResult saved = staged.get(result.getId());
@@ -334,8 +330,6 @@ public class ResultSpecimenSaveHttpTest {
 
     @After
     public void restore() {
-        savedStatics.forEach((key, value) -> ReflectionTestUtils
-                .setField(org.openelisglobal.common.services.ResultSaveService.class, key, value));
         SecurityContextHolder.setContext(oldSecurity);
         ReflectionTestUtils.setField(SpringContext.class, "factory", oldFactory);
         ReflectionTestUtils.setField(FormFields.class, "instance", oldForms);

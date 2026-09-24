@@ -350,6 +350,34 @@ public class EntryCurrentStateReaderTest {
     }
 
     @Test
+    public void recoveryDoesNotDoubleShiftVersionsOrSpecimenInstantsInShanghai() {
+        var originalZone = java.util.TimeZone.getDefault();
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Shanghai"));
+            sample.setLastupdated(Timestamp.from(java.time.Instant.parse("2026-09-13T08:00:00Z")));
+            logical.get(0).setCreatedDate(Timestamp.from(java.time.Instant.parse("2026-09-13T08:01:00Z")));
+            logical.get(0).setLastupdated(Timestamp.from(java.time.Instant.parse("2026-09-13T08:02:00Z")));
+            var item = collect(0, "801");
+            item.setCollectionDate(Timestamp.from(java.time.Instant.parse("2026-09-13T08:10:00Z")));
+            item.setReceivedDate(Timestamp.from(java.time.Instant.parse("2026-09-13T08:20:00Z")));
+            item.setLastupdated(Timestamp.from(java.time.Instant.parse("2026-09-13T08:30:00Z")));
+            analyses.getAnalysesBySampleItem(item).get(0)
+                    .setLastupdated(Timestamp.from(java.time.Instant.parse("2026-09-13T08:25:00Z")));
+
+            var snapshot = read();
+            assertEquals("2026-09-13T08:00:00Z", snapshot.lastUpdated());
+            assertEquals("2026-09-13T08:01:00Z", snapshot.requestedSpecimens().get(0).createdAt());
+            assertEquals("2026-09-13T08:02:00Z", snapshot.requestedSpecimens().get(0).lastUpdated());
+            assertEquals("2026-09-13T08:10:00Z", snapshot.physicalSpecimens().get(0).collectionDate());
+            assertEquals("2026-09-13T08:20:00Z", snapshot.physicalSpecimens().get(0).receivedDate());
+            assertEquals("2026-09-13T08:30:00Z", snapshot.physicalSpecimens().get(0).lastUpdated());
+            assertEquals("2026-09-13T08:25:00Z", snapshot.physicalSpecimens().get(0).analyses().get(0).lastUpdated());
+        } finally {
+            java.util.TimeZone.setDefault(originalZone);
+        }
+    }
+
+    @Test
     public void pendingRequestsAreCurrentRowsWithNoInventedPhysicalItems() {
         var snapshot = read();
         assertEquals(3, snapshot.requestedSpecimens().size());

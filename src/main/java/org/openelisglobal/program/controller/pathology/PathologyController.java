@@ -7,10 +7,12 @@ import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.rest.BaseRestController;
 import org.openelisglobal.program.bean.PathologyDashBoardCount;
 import org.openelisglobal.program.service.PathologyDisplayService;
 import org.openelisglobal.program.service.PathologySampleService;
+import org.openelisglobal.program.service.SpecialtyCaseWriteGuard;
 import org.openelisglobal.program.valueholder.pathology.PathologyCaseViewDisplayItem;
 import org.openelisglobal.program.valueholder.pathology.PathologyDisplayItem;
 import org.openelisglobal.program.valueholder.pathology.PathologySample.PathologyStatus;
@@ -18,6 +20,7 @@ import org.openelisglobal.systemuser.service.SystemUserService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,43 +32,49 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class PathologyController extends BaseRestController {
 
+    private static final List<String> READ_ROLES = List.of(Constants.ROLE_RESULTS, Constants.ROLE_PATHOLOGIST);
+
     @Autowired
     private PathologySampleService pathologySampleService;
     @Autowired
     private PathologyDisplayService pathologyDisplayService;
     @Autowired
     private SystemUserService systemUserService;
+    @Autowired
+    private SpecialtyCaseWriteGuard specialtyCaseWriteGuard;
 
     @GetMapping(value = "/rest/pathology/dashboard", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAnyRole('RESULTS', 'PATHOLOGIST')")
     @ResponseBody
     public List<PathologyDisplayItem> getFilteredPathologyEntries(@RequestParam(required = false) String searchTerm,
             @RequestParam PathologyStatus... statuses) {
-        return pathologySampleService.searchWithStatusAndTerm(Arrays.asList(statuses), searchTerm).stream()
+        return specialtyCaseWriteGuard
+                .filterReadable(pathologySampleService.searchWithStatusAndTerm(Arrays.asList(statuses), searchTerm),
+                        READ_ROLES)
+                .stream()
                 .map(e -> pathologyDisplayService.convertToDisplayItem(e.getId())).collect(Collectors.toList());
     }
 
     @GetMapping(value = "/rest/pathology/dashboard/count", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAnyRole('RESULTS', 'PATHOLOGIST')")
     @ResponseBody
     public ResponseEntity<PathologyDashBoardCount> getFilteredPathologyEntries() {
         PathologyDashBoardCount count = new PathologyDashBoardCount();
-        count.setInProgress(pathologySampleService.getCountWithStatus(
-                Arrays.asList(PathologyStatus.GROSSING, PathologyStatus.CUTTING, PathologyStatus.GROSSING,
-                        PathologyStatus.SLICING, PathologyStatus.STAINING, PathologyStatus.PROCESSING)));
-        count.setAwaitingReview(
-                pathologySampleService.getCountWithStatus(Arrays.asList(PathologyStatus.READY_PATHOLOGIST)));
-        count.setAdditionalRequests(
-                pathologySampleService.getCountWithStatus(Arrays.asList(PathologyStatus.ADDITIONAL_REQUEST)));
+        count.setInProgress(scopedCount(Arrays.asList(PathologyStatus.GROSSING, PathologyStatus.CUTTING,
+                PathologyStatus.SLICING, PathologyStatus.STAINING, PathologyStatus.PROCESSING)));
+        count.setAwaitingReview(scopedCount(List.of(PathologyStatus.READY_PATHOLOGIST)));
+        count.setAdditionalRequests(scopedCount(List.of(PathologyStatus.ADDITIONAL_REQUEST)));
 
         Timestamp currentTimestamp = new Timestamp(System.currentTimeMillis());
         Instant weekAgoInstant = Instant.now().minus(7, ChronoUnit.DAYS);
         Timestamp weekAgoTimestamp = Timestamp.from(weekAgoInstant);
 
-        count.setComplete(pathologySampleService.getCountWithStatusBetweenDates(
-                Arrays.asList(PathologyStatus.COMPLETED), weekAgoTimestamp, currentTimestamp));
+        count.setComplete(scopedCountBetween(List.of(PathologyStatus.COMPLETED), weekAgoTimestamp, currentTimestamp));
         return ResponseEntity.ok(count);
     }
 
     @PostMapping(value = "/rest/pathology/assignTechnician", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasRole('RESULTS')")
     @ResponseBody
     public ResponseEntity<String> assignTechnician(@RequestParam Integer pathologySampleId,
             HttpServletRequest request) {
@@ -75,6 +84,7 @@ public class PathologyController extends BaseRestController {
     }
 
     @PostMapping(value = "/rest/pathology/assignPathologist", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasRole('PATHOLOGIST')")
     @ResponseBody
     public ResponseEntity<String> assignPathologist(@RequestParam Integer pathologySampleId,
             HttpServletRequest request) {
@@ -85,13 +95,28 @@ public class PathologyController extends BaseRestController {
     }
 
     @GetMapping(value = "/rest/pathology/caseView/{pathologySampleId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAnyRole('RESULTS', 'PATHOLOGIST')")
     @ResponseBody
     public PathologyCaseViewDisplayItem getFilteredPathologyEntries(
             @PathVariable("pathologySampleId") Integer pathologySampleId) {
+        specialtyCaseWriteGuard.requireRead(pathologySampleService.get(pathologySampleId), READ_ROLES);
         return pathologyDisplayService.convertToCaseDisplayItem(pathologySampleId);
     }
 
+    private long scopedCount(List<PathologyStatus> statuses) {
+        return specialtyCaseWriteGuard.filterReadable(pathologySampleService.getWithStatus(statuses), READ_ROLES)
+                .size();
+    }
+
+    private long scopedCountBetween(List<PathologyStatus> statuses, Timestamp from, Timestamp to) {
+        return specialtyCaseWriteGuard.filterReadable(pathologySampleService.getWithStatus(statuses), READ_ROLES)
+                .stream().filter(value -> value.getLastupdated() != null && !value.getLastupdated().before(from)
+                        && !value.getLastupdated().after(to))
+                .count();
+    }
+
     @PostMapping(value = "/rest/pathology/caseView/{pathologySampleId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasAnyRole('RESULTS', 'PATHOLOGIST')")
     @ResponseBody
     public PathologySampleForm getFilteredPathologyEntries(@PathVariable("pathologySampleId") Integer pathologySampleId,
             @RequestBody PathologySampleForm form, HttpServletRequest request) {

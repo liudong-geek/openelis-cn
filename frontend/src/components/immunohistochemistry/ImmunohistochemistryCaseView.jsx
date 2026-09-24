@@ -19,6 +19,7 @@ import {
   Toggle,
   TextArea,
   FilterableMultiSelect,
+  InlineNotification,
   Link,
 } from "@carbon/react";
 import Tag from "../common/LocalizedTag";
@@ -28,6 +29,7 @@ import {
   postToOpenElisServerFullResponse,
   postToOpenElisServerForPDF,
   hasRole,
+  Roles,
 } from "../utils/Utils";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { NotificationContext } from "../layout/Layout";
@@ -39,6 +41,13 @@ import QuestionnaireResponse from "../common/QuestionnaireResponse";
 import "./../pathology/PathologyDashboard.css";
 import PageBreadCrumb from "../common/PageBreadCrumb";
 import PostSavePrintDialog from "../barcodeWorkflow/PostSavePrintDialog";
+import {
+  applySuccessfulSpecialtyRelease,
+  selectableSpecialtyStatuses,
+  SPECIALTY_DASHBOARD_PATHS,
+  specialtyCaseUiPermissions,
+  specialtyReleaseValue,
+} from "../specialty/specialtyCaseAccess";
 
 let breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -107,18 +116,22 @@ function ImmunohistochemistryCaseView() {
       reportLink: "",
     },
   });
-
-  async function displayStatus(response) {
+  const caseUiPermissions = specialtyCaseUiPermissions(
+    immunohistochemistrySampleInfo,
+    userSessionDetails,
+    Roles.PATHOLOGIST,
+  );
+  const isCompleted = immunohistochemistrySampleInfo.status === "COMPLETED";
+  async function displayStatus(response, releaseSubmitted = false) {
     var body = await response.json();
     console.debug(body);
-    setIsSubmitting(false);
     var status = response.status;
     setNotificationVisible(true);
     if (status == "200") {
-      const save1 = document.getElementById("pathology_save");
-      const save2 = document.getElementById("pathology_save2");
-      save1.disabled = true;
-      save2.disabled = true;
+      setImmunohistochemistrySampleInfo((sampleInfo) =>
+        applySuccessfulSpecialtyRelease(sampleInfo, releaseSubmitted),
+      );
+      setIsSubmitting(false);
       addNotification({
         kind: NotificationKinds.success,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -128,6 +141,7 @@ function ImmunohistochemistryCaseView() {
         body?.postSavePrintDialog || buildFallbackPostSavePrintDialog(),
       );
     } else {
+      setIsSubmitting(false);
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -911,27 +925,29 @@ function ImmunohistochemistryCaseView() {
     });
 
   const save = () => {
-    if (isSubmitting) {
+    if (isSubmitting || !caseUiPermissions.canSave) {
       return;
     }
     setIsSubmitting(true);
     setPostSavePrintModel(null);
+    const releaseSubmitted = specialtyReleaseValue(
+      immunohistochemistrySampleInfo,
+      userSessionDetails,
+      Roles.PATHOLOGIST,
+    );
     let submitValues = {
       assignedTechnicianId: immunohistochemistrySampleInfo.assignedTechnicianId,
       assignedPathologistId:
         immunohistochemistrySampleInfo.assignedPathologistId,
       status: immunohistochemistrySampleInfo.status,
       reports: immunohistochemistrySampleInfo.reports,
-      release:
-        immunohistochemistrySampleInfo.release != undefined
-          ? immunohistochemistrySampleInfo.release
-          : false,
+      release: releaseSubmitted,
     };
 
     postToOpenElisServerFullResponse(
       "/rest/immunohistochemistry/caseView/" + immunohistochemistrySampleId,
       JSON.stringify(submitValues),
-      displayStatus,
+      (response) => displayStatus(response, releaseSubmitted),
     );
   };
 
@@ -942,20 +958,6 @@ function ImmunohistochemistryCaseView() {
   };
 
   const setInitialImmunohistochemistrySampleInfo = (e) => {
-    if (
-      hasRole(userSessionDetails, "Pathologist") &&
-      !e.assignedPathologistId &&
-      e.status === "READY_PATHOLOGIST"
-    ) {
-      e.assignedPathologistId = userSessionDetails.userId;
-      e.assignedPathologist =
-        userSessionDetails.lastName + " " + userSessionDetails.firstName;
-    }
-    if (!e.assignedTechnicianId) {
-      e.assignedTechnicianId = userSessionDetails.userId;
-      e.assignedTechnician =
-        userSessionDetails.lastName + " " + userSessionDetails.firstName;
-    }
     setImmunohistochemistrySampleInfo(e);
     setLoading(false);
   };
@@ -1055,263 +1057,312 @@ function ImmunohistochemistryCaseView() {
           </Section>
         </Column>
       </Grid>
-      <Stack gap={4}>
-        <Grid fullWidth={true} className="orderLegendBody">
-          {notificationVisible === true ? <AlertDialog /> : ""}
-          {(loading || resultsLoading) && (
-            <Loading description="Loading Dasboard..." />
-          )}
+      {isCompleted && (
+        <InlineNotification
+          hideCloseButton
+          kind="info"
+          lowContrast
+          title={intl.formatMessage({ id: "label.readonly" })}
+          subtitle={intl.formatMessage({ id: "pathology.label.complete" })}
+        />
+      )}
+      {!loading && caseUiPermissions.requiresAssignment && (
+        <div className="specialty-case-assignment-notice">
+          <InlineNotification
+            hideCloseButton
+            kind="warning"
+            lowContrast
+            title={intl.formatMessage({ id: "label.readonly" })}
+            subtitle={intl.formatMessage({
+              id: "specialty.case.assignmentRequired",
+            })}
+          />
+          <Link href={SPECIALTY_DASHBOARD_PATHS.immunohistochemistry}>
+            <FormattedMessage id="specialty.case.returnToDashboard" />
+          </Link>
+        </div>
+      )}
+      <fieldset
+        className="specialty-case-editing-boundary"
+        disabled={!caseUiPermissions.canEdit}
+      >
+        <Stack gap={4}>
+          <Grid fullWidth={true} className="orderLegendBody">
+            {notificationVisible === true ? <AlertDialog /> : ""}
+            {(loading || resultsLoading) && (
+              <Loading description="Loading Dasboard..." />
+            )}
 
-          <Column lg={16} md={8} sm={4}>
-            <Button
-              id="pathology_save"
-              disabled={isSubmitting}
-              onClick={(e) => {
-                e.preventDefault();
-                save(e);
-              }}
-            >
-              <FormattedMessage id="label.button.save" />
-            </Button>
-          </Column>
-          {postSavePrintModel?.accessionNumber && (
             <Column lg={16} md={8} sm={4}>
-              <PostSavePrintDialog
-                accessionNumber={postSavePrintModel.accessionNumber}
-                printableLabelTypes={
-                  postSavePrintModel.printableLabelTypes || []
-                }
-              />
+              <Button
+                id="pathology_save"
+                disabled={isSubmitting || !caseUiPermissions.canSave}
+                onClick={(e) => {
+                  e.preventDefault();
+                  save(e);
+                }}
+              >
+                <FormattedMessage id="label.button.save" />
+              </Button>
             </Column>
-          )}
-          <Column lg={16} md={8} sm={4}>
-            <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-          </Column>
-          <Column lg={4} md={2} sm={2}>
-            <Select
-              id="status"
-              name="status"
-              labelText={intl.formatMessage({
-                id: "label.button.select.status",
-              })}
-              value={immunohistochemistrySampleInfo.status}
-              onChange={(event) => {
-                setImmunohistochemistrySampleInfo({
-                  ...immunohistochemistrySampleInfo,
-                  status: event.target.value,
-                });
-              }}
-            >
-              <SelectItem disabled value="placeholder" text="Status" />
-
-              {statuses.map((status, index) => {
-                return (
-                  <SelectItem
-                    key={index}
-                    text={status.value}
-                    value={status.id}
-                  />
-                );
-              })}
-            </Select>
-          </Column>
-          <Column lg={4} md={2} sm={2}>
-            <Select
-              id="assignedTechnician"
-              name="assignedTechnician"
-              labelText={
-                <FormattedMessage id="label.button.select.technician" />
-              }
-              value={immunohistochemistrySampleInfo.assignedTechnicianId}
-              onChange={(event) => {
-                setImmunohistochemistrySampleInfo({
-                  ...immunohistochemistrySampleInfo,
-                  assignedTechnicianId: event.target.value,
-                });
-              }}
-            >
-              <SelectItem />
-              {technicianUsers.map((user, index) => {
-                return (
-                  <SelectItem key={index} text={user.value} value={user.id} />
-                );
-              })}
-            </Select>
-          </Column>
-          <Column lg={4} md={2} sm={2}>
-            <Select
-              id="assignedPathologist"
-              name="assignedPathologist"
-              labelText={
-                <FormattedMessage id="label.button.select.pathologist" />
-              }
-              value={immunohistochemistrySampleInfo.assignedPathologistId}
-              onChange={(e) => {
-                setImmunohistochemistrySampleInfo({
-                  ...immunohistochemistrySampleInfo,
-                  assignedPathologistId: e.target.value,
-                });
-              }}
-            >
-              <SelectItem />
-              {pathologistUsers.map((user, index) => {
-                return (
-                  <SelectItem key={index} text={user.value} value={user.id} />
-                );
-              })}
-            </Select>
-          </Column>
-          <Column lg={16} md={8} sm={4}>
-            <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-          </Column>
-          <Column lg={16} md={8} sm={4}>
-            <Grid fullWidth={true} className="gridBoundary">
+            {postSavePrintModel?.accessionNumber && (
               <Column lg={16} md={8} sm={4}>
-                <h5>
-                  <FormattedMessage id="sidenav.label.results" />
-                </h5>
-              </Column>
-              <Column lg={16} md={8} sm={4}>
-                <SearchResults
-                  results={results}
-                  setResultForm={setResults}
-                  refreshOnSubmit={false}
+                <PostSavePrintDialog
+                  accessionNumber={postSavePrintModel.accessionNumber}
+                  printableLabelTypes={
+                    postSavePrintModel.printableLabelTypes || []
+                  }
                 />
               </Column>
-            </Grid>
-          </Column>
+            )}
+            <Column lg={16} md={8} sm={4}>
+              <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+            </Column>
+            <Column lg={4} md={2} sm={2}>
+              <Select
+                id="status"
+                name="status"
+                labelText={intl.formatMessage({
+                  id: "label.button.select.status",
+                })}
+                value={immunohistochemistrySampleInfo.status}
+                onChange={(event) => {
+                  setImmunohistochemistrySampleInfo({
+                    ...immunohistochemistrySampleInfo,
+                    status: event.target.value,
+                  });
+                }}
+              >
+                <SelectItem disabled value="placeholder" text="Status" />
 
-          <Column lg={16} md={8} sm={4}>
-            <Grid fullWidth={true} className="gridBoundary">
-              <Column lg={4} md={2} sm={2}>
-                <Select
-                  id="report"
-                  name="report"
-                  labelText={intl.formatMessage({
-                    id: "immunohistochemistry.label.addreport",
-                  })}
-                  onChange={(event) => {
-                    setImmunohistochemistrySampleInfo({
-                      ...immunohistochemistrySampleInfo,
-                      reports: [
-                        ...(immunohistochemistrySampleInfo.reports || []),
-                        { id: "", reportType: event.target.value },
-                      ],
-                    });
-                  }}
-                >
+                {isCompleted && (
                   <SelectItem
                     disabled
-                    value="ADD"
+                    value="COMPLETED"
                     text={intl.formatMessage({
-                      id: "immunohistochemistry.label.addreport",
+                      id: "pathology.label.complete",
                     })}
                   />
-                  {reportTypes.map((report, index) => {
-                    return (
-                      <SelectItem
-                        key={index}
-                        text={report.value}
-                        value={report.id}
-                      />
-                    );
-                  })}
-                </Select>
-              </Column>
-              <Column lg={12} md={2} sm={2}></Column>
-              <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-              <Column lg={16} md={8} sm={4}>
-                <h5>
-                  {" "}
-                  <FormattedMessage id="immunohistochemistry.label.reports" />
-                </h5>
-                {loadingReport && <InlineLoading />}
-              </Column>
-              <Column lg={16} md={8} sm={4}>
-                <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-              </Column>
-              {immunohistochemistrySampleInfo.reports &&
-                immunohistochemistrySampleInfo.reports.map((report, index) => {
+                )}
+                {selectableSpecialtyStatuses(statuses).map((status, index) => {
                   return (
-                    <>
-                      <Column lg={2} md={8} sm={4}>
-                        <IconButton
-                          label={intl.formatMessage({
-                            id: "label.button.remove.report",
-                          })}
-                          onClick={() => {
-                            var info = { ...immunohistochemistrySampleInfo };
-                            info["reports"].splice(index, 1);
-                            setImmunohistochemistrySampleInfo(info);
-                          }}
-                          kind="tertiary"
-                          size="sm"
-                        >
-                          <Subtract size={18} />{" "}
-                          <FormattedMessage id="immunohistochemistry.label.report" />
-                        </IconButton>
-                      </Column>
+                    <SelectItem
+                      key={index}
+                      text={status.value}
+                      value={status.id}
+                    />
+                  );
+                })}
+              </Select>
+            </Column>
+            <Column lg={4} md={2} sm={2}>
+              <Select
+                disabled
+                id="assignedTechnician"
+                name="assignedTechnician"
+                labelText={
+                  <FormattedMessage id="label.button.select.technician" />
+                }
+                value={immunohistochemistrySampleInfo.assignedTechnicianId}
+              >
+                <SelectItem />
+                {technicianUsers.map((user, index) => {
+                  return (
+                    <SelectItem key={index} text={user.value} value={user.id} />
+                  );
+                })}
+              </Select>
+            </Column>
+            <Column lg={4} md={2} sm={2}>
+              <Select
+                disabled
+                id="assignedPathologist"
+                name="assignedPathologist"
+                labelText={
+                  <FormattedMessage id="label.button.select.pathologist" />
+                }
+                value={immunohistochemistrySampleInfo.assignedPathologistId}
+              >
+                <SelectItem />
+                {pathologistUsers.map((user, index) => {
+                  return (
+                    <SelectItem key={index} text={user.value} value={user.id} />
+                  );
+                })}
+              </Select>
+            </Column>
+            <Column lg={16} md={8} sm={4}>
+              <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+            </Column>
+            <Column lg={16} md={8} sm={4}>
+              <Grid fullWidth={true} className="gridBoundary">
+                <Column lg={16} md={8} sm={4}>
+                  <h5>
+                    <FormattedMessage id="sidenav.label.results" />
+                  </h5>
+                </Column>
+                <Column lg={16} md={8} sm={4}>
+                  <SearchResults
+                    results={results}
+                    setResultForm={setResults}
+                    refreshOnSubmit={false}
+                  />
+                </Column>
+              </Grid>
+            </Column>
 
-                      <Column lg={3} md={2} sm={2}>
-                        <FileUploader
-                          style={{ marginTop: "-20px" }}
-                          buttonLabel={
-                            <FormattedMessage id="label.button.uploadfile" />
-                          }
-                          iconDescription="file upload"
-                          multiple={false}
-                          accept={[
-                            "image/jpeg",
-                            "image/png",
-                            "application/pdf",
-                          ]}
-                          disabled={reportParams[index]?.submited}
-                          name=""
-                          buttonKind="primary"
-                          size="lg"
-                          filenameStatus="edit"
-                          onChange={async (e) => {
-                            e.preventDefault();
-                            let file = e.target.files[0];
-                            var newReports = [
-                              ...immunohistochemistrySampleInfo.reports,
-                            ];
-                            let encodedFile = await toBase64(file);
-                            newReports[index].base64Image = encodedFile;
-                            setImmunohistochemistrySampleInfo({
-                              ...immunohistochemistrySampleInfo,
-                              reports: newReports,
-                            });
-                          }}
-                          onClick={function noRefCheck() {}}
-                          onDelete={(e) => {
-                            e.preventDefault();
-                          }}
+            <Column lg={16} md={8} sm={4}>
+              <Grid fullWidth={true} className="gridBoundary">
+                <Column lg={4} md={2} sm={2}>
+                  <Select
+                    id="report"
+                    name="report"
+                    labelText={intl.formatMessage({
+                      id: "immunohistochemistry.label.addreport",
+                    })}
+                    onChange={(event) => {
+                      setImmunohistochemistrySampleInfo({
+                        ...immunohistochemistrySampleInfo,
+                        reports: [
+                          ...(immunohistochemistrySampleInfo.reports || []),
+                          { id: "", reportType: event.target.value },
+                        ],
+                      });
+                    }}
+                  >
+                    <SelectItem
+                      disabled
+                      value="ADD"
+                      text={intl.formatMessage({
+                        id: "immunohistochemistry.label.addreport",
+                      })}
+                    />
+                    {reportTypes.map((report, index) => {
+                      return (
+                        <SelectItem
+                          key={index}
+                          text={report.value}
+                          value={report.id}
                         />
-                      </Column>
-                      <Column lg={4} md={2} sm={2}>
-                        <h6>
-                          {
-                            reportTypes.filter(
-                              (type) => type.id === report.reportType,
-                            )[0]?.value
-                          }
-                        </h6>
-                      </Column>
-
-                      {immunohistochemistrySampleInfo.reports[index].image && (
+                      );
+                    })}
+                  </Select>
+                </Column>
+                <Column lg={12} md={2} sm={2}></Column>
+                <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+                <Column lg={16} md={8} sm={4}>
+                  <h5>
+                    {" "}
+                    <FormattedMessage id="immunohistochemistry.label.reports" />
+                  </h5>
+                  {loadingReport && <InlineLoading />}
+                </Column>
+                <Column lg={16} md={8} sm={4}>
+                  <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+                </Column>
+                {immunohistochemistrySampleInfo.reports &&
+                  immunohistochemistrySampleInfo.reports.map(
+                    (report, index) => {
+                      return (
                         <>
-                          {!reportParams[index]?.submited && (
-                            <Column lg={2} md={2} sm={2}>
+                          <Column lg={2} md={8} sm={4}>
+                            <IconButton
+                              label={intl.formatMessage({
+                                id: "label.button.remove.report",
+                              })}
+                              onClick={() => {
+                                var info = {
+                                  ...immunohistochemistrySampleInfo,
+                                };
+                                info["reports"].splice(index, 1);
+                                setImmunohistochemistrySampleInfo(info);
+                              }}
+                              kind="tertiary"
+                              size="sm"
+                            >
+                              <Subtract size={18} />{" "}
+                              <FormattedMessage id="immunohistochemistry.label.report" />
+                            </IconButton>
+                          </Column>
+
+                          <Column lg={3} md={2} sm={2}>
+                            <FileUploader
+                              style={{ marginTop: "-20px" }}
+                              buttonLabel={
+                                <FormattedMessage id="label.button.uploadfile" />
+                              }
+                              iconDescription="file upload"
+                              multiple={false}
+                              accept={[
+                                "image/jpeg",
+                                "image/png",
+                                "application/pdf",
+                              ]}
+                              disabled={reportParams[index]?.submited}
+                              name=""
+                              buttonKind="primary"
+                              size="lg"
+                              filenameStatus="edit"
+                              onChange={async (e) => {
+                                e.preventDefault();
+                                let file = e.target.files[0];
+                                var newReports = [
+                                  ...immunohistochemistrySampleInfo.reports,
+                                ];
+                                let encodedFile = await toBase64(file);
+                                newReports[index].base64Image = encodedFile;
+                                setImmunohistochemistrySampleInfo({
+                                  ...immunohistochemistrySampleInfo,
+                                  reports: newReports,
+                                });
+                              }}
+                              onClick={function noRefCheck() {}}
+                              onDelete={(e) => {
+                                e.preventDefault();
+                              }}
+                            />
+                          </Column>
+                          <Column lg={4} md={2} sm={2}>
+                            <h6>
+                              {
+                                reportTypes.filter(
+                                  (type) => type.id === report.reportType,
+                                )[0]?.value
+                              }
+                            </h6>
+                          </Column>
+
+                          {immunohistochemistrySampleInfo.reports[index]
+                            .image && (
+                            <>
+                              {!reportParams[index]?.submited && (
+                                <Column lg={2} md={2} sm={2}>
+                                  <Button
+                                    onClick={() => {
+                                      var win = window.open();
+                                      win.document.write(
+                                        '<iframe src="' +
+                                          report.fileType +
+                                          ";base64," +
+                                          report.image +
+                                          '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>',
+                                      );
+                                    }}
+                                  >
+                                    <Launch />{" "}
+                                    <FormattedMessage id="pathology.label.view" />
+                                  </Button>
+                                </Column>
+                              )}
+                            </>
+                          )}
+                          {reportParams[index]?.submited && (
+                            <Column lg={2} md={1} sm={2}>
                               <Button
                                 onClick={() => {
-                                  var win = window.open();
-                                  win.document.write(
-                                    '<iframe src="' +
-                                      report.fileType +
-                                      ";base64," +
-                                      report.image +
-                                      '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>',
+                                  window.open(
+                                    reportParams[index]?.reportLink,
+                                    "_blank",
                                   );
                                 }}
                               >
@@ -1320,384 +1371,378 @@ function ImmunohistochemistryCaseView() {
                               </Button>
                             </Column>
                           )}
+
+                          <Column lg={3} md={2} sm={2}>
+                            <Button
+                              disabled={reportParams[index]?.submited}
+                              onClick={(e) => {
+                                setLoadingReport(true);
+                                const form = {
+                                  report: getReportName(report.reportType),
+                                  programSampleId: immunohistochemistrySampleId,
+                                  erPercent: reportParams[index]?.erPercent,
+                                  erIntensity: reportParams[index]?.erIntensity,
+                                  erScore: reportParams[index]?.erScore,
+                                  prPercent: reportParams[index]?.prPercent,
+                                  prIntensity: reportParams[index]?.prIntensity,
+                                  prScore: reportParams[index]?.prScore,
+                                  mib: reportParams[index]?.mib,
+                                  pattern: reportParams[index]?.pattern,
+                                  herAssesment:
+                                    reportParams[index]?.herAssesment,
+                                  herScore: reportParams[index]?.herScore,
+                                  diagnosis: reportParams[index]?.diagnosis,
+                                  molecularSubType:
+                                    reportParams[index]?.molecularSubType,
+                                  conclusion: reportParams[index]?.conclusion,
+                                  ihcScore: reportParams[index]?.ihcScore,
+                                  ihcRatio: reportParams[index]?.ihcRatio,
+                                  averageChrom:
+                                    reportParams[index]?.averageChrom,
+                                  averageHer2: reportParams[index]?.averageHer2,
+                                  numberOfcancerNuclei:
+                                    reportParams[index]?.numberOfcancerNuclei,
+                                  codedConclusions: reportParams[
+                                    index
+                                  ]?.codedConclusions.map(
+                                    (conclusion) => conclusion.id,
+                                  ),
+                                };
+                                postToOpenElisServerForPDF(
+                                  "/rest/ReportPrint",
+                                  JSON.stringify(form),
+                                  (e, blob) => reportStatus(e, blob, index),
+                                );
+                              }}
+                            >
+                              {" "}
+                              <FormattedMessage id="button.label.genarateReport" />
+                            </Button>
+                          </Column>
+                          <Column lg={2} md={2} sm={2}>
+                            <Toggle
+                              toggled={reportParams[index]?.toggled}
+                              disabled={reportParams[index]?.submited}
+                              aria-label="toggle button"
+                              id={index + "_toggle"}
+                              labelText={intl.formatMessage({
+                                id: "button.label.showHidePram",
+                              })}
+                              onToggle={(e) => toggleReportParam(e, index)}
+                            />
+                          </Column>
+                          {/* <Column lg={1} md={2} sm={2}/> */}
+                          {reportParams[index]?.toggled &&
+                            createReportParams(report.reportType, index)}
+                          <Column lg={16} md={8} sm={4}>
+                            <div>
+                              {" "}
+                              &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;
+                            </div>
+                          </Column>
                         </>
-                      )}
-                      {reportParams[index]?.submited && (
-                        <Column lg={2} md={1} sm={2}>
-                          <Button
-                            onClick={() => {
-                              window.open(
-                                reportParams[index]?.reportLink,
-                                "_blank",
-                              );
-                            }}
-                          >
-                            <Launch />{" "}
-                            <FormattedMessage id="pathology.label.view" />
-                          </Button>
-                        </Column>
-                      )}
+                      );
+                    },
+                  )}
+              </Grid>
+            </Column>
 
-                      <Column lg={3} md={2} sm={2}>
-                        <Button
-                          disabled={reportParams[index]?.submited}
-                          onClick={(e) => {
-                            setLoadingReport(true);
-                            const form = {
-                              report: getReportName(report.reportType),
-                              programSampleId: immunohistochemistrySampleId,
-                              erPercent: reportParams[index]?.erPercent,
-                              erIntensity: reportParams[index]?.erIntensity,
-                              erScore: reportParams[index]?.erScore,
-                              prPercent: reportParams[index]?.prPercent,
-                              prIntensity: reportParams[index]?.prIntensity,
-                              prScore: reportParams[index]?.prScore,
-                              mib: reportParams[index]?.mib,
-                              pattern: reportParams[index]?.pattern,
-                              herAssesment: reportParams[index]?.herAssesment,
-                              herScore: reportParams[index]?.herScore,
-                              diagnosis: reportParams[index]?.diagnosis,
-                              molecularSubType:
-                                reportParams[index]?.molecularSubType,
-                              conclusion: reportParams[index]?.conclusion,
-                              ihcScore: reportParams[index]?.ihcScore,
-                              ihcRatio: reportParams[index]?.ihcRatio,
-                              averageChrom: reportParams[index]?.averageChrom,
-                              averageHer2: reportParams[index]?.averageHer2,
-                              numberOfcancerNuclei:
-                                reportParams[index]?.numberOfcancerNuclei,
-                              codedConclusions: reportParams[
-                                index
-                              ]?.codedConclusions.map(
-                                (conclusion) => conclusion.id,
-                              ),
-                            };
-                            postToOpenElisServerForPDF(
-                              "/rest/ReportPrint",
-                              JSON.stringify(form),
-                              (e, blob) => reportStatus(e, blob, index),
-                            );
-                          }}
-                        >
-                          {" "}
-                          <FormattedMessage id="button.label.genarateReport" />
-                        </Button>
-                      </Column>
-                      <Column lg={2} md={2} sm={2}>
-                        <Toggle
-                          toggled={reportParams[index]?.toggled}
-                          disabled={reportParams[index]?.submited}
-                          aria-label="toggle button"
-                          id={index + "_toggle"}
-                          labelText={intl.formatMessage({
-                            id: "button.label.showHidePram",
-                          })}
-                          onToggle={(e) => toggleReportParam(e, index)}
-                        />
-                      </Column>
-                      {/* <Column lg={1} md={2} sm={2}/> */}
-                      {reportParams[index]?.toggled &&
-                        createReportParams(report.reportType, index)}
-                      <Column lg={16} md={8} sm={4}>
-                        <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-                      </Column>
-                    </>
-                  );
-                })}
-            </Grid>
-          </Column>
-
-          {immunohistochemistrySampleInfo.reffered && (
-            <>
-              <Column lg={16} md={8} sm={4}>
-                <Grid fullWidth={true} className="gridBoundary">
-                  <Column lg={16} md={8} sm={4}>
-                    <h5>
-                      {" "}
-                      <FormattedMessage id="pathology.label.blocks" />
-                    </h5>
-                  </Column>
-                  <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-                  <Column lg={16} md={8} sm={4} />
-                  {immunohistochemistrySampleInfo.blocks &&
-                    immunohistochemistrySampleInfo.blocks.map(
-                      (block, index) => {
-                        return (
-                          <>
-                            <Column lg={2} md={2} sm={1} key={index}>
-                              <TextInput
-                                id="blockNumber"
-                                labelText={intl.formatMessage({
-                                  id: "pathology.label.block.number",
-                                })}
-                                hideLabel={true}
-                                placeholder={intl.formatMessage({
-                                  id: "pathology.label.block.number",
-                                })}
-                                value={block.blockNumber}
-                                disabled={true}
-                              />
-                            </Column>
-                            <Column lg={2} md={2} sm={1}>
-                              <TextInput
-                                id="location"
-                                labelText={intl.formatMessage({
-                                  id: "pathology.label.location",
-                                })}
-                                hideLabel={true}
-                                placeholder={intl.formatMessage({
-                                  id: "pathology.label.location",
-                                })}
-                                value={block.location}
-                                disabled={true}
-                              />
-                            </Column>
-                            <Column lg={2} md={2} sm={2}>
-                              <Button
-                                onClick={() => {
-                                  window.open(
-                                    config.serverBaseUrl +
-                                      "/LabelMakerServlet?labelType=block&code=" +
-                                      block.blockNumber,
-                                    "_blank",
-                                  );
-                                }}
-                              >
-                                {" "}
-                                <FormattedMessage id="pathology.label.printlabel" />
-                              </Button>
-                            </Column>
-                            <Column lg={10} md={2} sm={0} />
-                            <Column lg={16} md={8} sm={4}>
-                              <div>
-                                {" "}
-                                &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;
-                              </div>
-                            </Column>
-                          </>
-                        );
-                      },
-                    )}
-                </Grid>
-              </Column>
-
-              <Column lg={16} md={8} sm={4}>
-                <Grid fullWidth={true} className="gridBoundary">
-                  <Column lg={16} md={8} sm={4}>
-                    <h5>
-                      {" "}
-                      <FormattedMessage id="pathology.label.slides" />
-                    </h5>
-                    <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-                  </Column>
-
-                  <Column lg={16} md={8} sm={4} />
-                  {immunohistochemistrySampleInfo.slides &&
-                    immunohistochemistrySampleInfo.slides.map(
-                      (slide, index) => {
-                        return (
-                          <>
-                            <Column lg={2} md={2} sm={1} key={index}>
-                              <TextInput
-                                id="slideNumber"
-                                labelText={intl.formatMessage({
-                                  id: "pathology.label.slide.number",
-                                })}
-                                hideLabel={true}
-                                disabled={true}
-                                placeholder={intl.formatMessage({
-                                  id: "pathology.label.slide.number",
-                                })}
-                                value={slide.slideNumber}
-                              />
-                            </Column>
-                            <Column lg={2} md={2} sm={1}>
-                              <TextInput
-                                id="location"
-                                labelText={intl.formatMessage({
-                                  id: "pathology.label.location",
-                                })}
-                                hideLabel={true}
-                                placeholder={intl.formatMessage({
-                                  id: "pathology.label.location",
-                                })}
-                                value={slide.location}
-                                disabled={true}
-                              />
-                            </Column>
-                            <Column lg={2} md={1} sm={2}>
-                              {immunohistochemistrySampleInfo.slides[index]
-                                .image && (
-                                <>
-                                  <Button
-                                    onClick={() => {
-                                      var win = window.open();
-                                      win.document.write(
-                                        '<iframe src="' +
-                                          slide.fileType +
-                                          ";base64," +
-                                          slide.image +
-                                          '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>',
-                                      );
-                                    }}
-                                  >
-                                    <Launch />{" "}
-                                    <FormattedMessage id="pathology.label.view" />
-                                  </Button>
-                                </>
-                              )}
-                            </Column>
-                            <Column lg={2} md={1} sm={2}>
-                              <Button
-                                onClick={() => {
-                                  window.open(
-                                    config.serverBaseUrl +
-                                      "/LabelMakerServlet?labelType=slide&code=" +
-                                      slide.slideNumber,
-                                    "_blank",
-                                  );
-                                }}
-                              >
-                                {" "}
-                                <FormattedMessage id="pathology.label.printlabel" />
-                              </Button>
-                            </Column>
-                            <Column lg={8} md={1} sm={2} />
-                            <Column lg={16} md={8} sm={4}>
-                              <div>
-                                {" "}
-                                &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;
-                              </div>
-                            </Column>
-                          </>
-                        );
-                      },
-                    )}
-                </Grid>
-              </Column>
-
-              {hasRole(userSessionDetails, "Pathologist") && (
+            {immunohistochemistrySampleInfo.reffered && (
+              <>
                 <Column lg={16} md={8} sm={4}>
                   <Grid fullWidth={true} className="gridBoundary">
-                    <>
-                      <Column lg={2} md={4} sm={2}>
-                        <h6>
-                          <FormattedMessage id="pathology.label.techniques" />
-                          :{" "}
-                        </h6>
-                      </Column>
-                      <Column lg={14} md={4} sm={2}>
-                        {immunohistochemistrySampleInfo.techniques &&
-                          immunohistochemistrySampleInfo.techniques.map(
-                            (technique, index) => (
-                              <>
-                                <Tag key={index}>{technique.value} </Tag>
-                              </>
-                            ),
-                          )}
-                      </Column>
-                      <Column lg={2} md={4} sm={2}>
-                        <h6>
-                          <FormattedMessage id="pathology.label.request" />
-                          :{" "}
-                        </h6>
-                      </Column>
-                      <Column lg={14} md={4} sm={2}>
-                        {immunohistochemistrySampleInfo.requests &&
-                          immunohistochemistrySampleInfo.requests.map(
-                            (technique, index) => (
-                              <>
-                                <Tag key={index}> {technique.value} </Tag>
-                              </>
-                            ),
-                          )}
-                      </Column>
-                      <Column lg={2} md={4} sm={2}>
-                        <h6>
-                          {" "}
-                          <FormattedMessage id="pathology.label.grossexam" /> :
-                        </h6>
-                      </Column>
-                      <Column lg={14} md={4} sm={2}>
-                        <Tag>{immunohistochemistrySampleInfo.grossExam} </Tag>
-                      </Column>
-                      <Column lg={2} md={4} sm={2}>
-                        <h6>
-                          {" "}
-                          <FormattedMessage id="pathology.label.microexam" /> :
-                        </h6>
-                      </Column>
-                      <Column lg={14} md={4} sm={2}>
-                        <Tag>
-                          {immunohistochemistrySampleInfo.microscopyExam}{" "}
-                        </Tag>
-                      </Column>
-                      <Column lg={2} md={4} sm={2}>
-                        <h6>
-                          {" "}
-                          <FormattedMessage id="pathology.label.conclusion" /> :
-                        </h6>
-                      </Column>
-                      <Column lg={14} md={4} sm={2}>
-                        {immunohistochemistrySampleInfo.conclusions &&
-                          immunohistochemistrySampleInfo.conclusions.map(
-                            (conclusion, index) => (
-                              <>
-                                <Tag key={index}> {conclusion.value} </Tag>
-                              </>
-                            ),
-                          )}
-                      </Column>
-                      <Column lg={2} md={4} sm={2}>
-                        <h6>
-                          {" "}
-                          <FormattedMessage id="pathology.label.textconclusion" />{" "}
-                          :
-                        </h6>
-                      </Column>
-                      <Column lg={14} md={4} sm={2}>
-                        <Tag>
-                          {immunohistochemistrySampleInfo.conclusionText}
-                        </Tag>
-                      </Column>
-                    </>
+                    <Column lg={16} md={8} sm={4}>
+                      <h5>
+                        {" "}
+                        <FormattedMessage id="pathology.label.blocks" />
+                      </h5>
+                    </Column>
+                    <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+                    <Column lg={16} md={8} sm={4} />
+                    {immunohistochemistrySampleInfo.blocks &&
+                      immunohistochemistrySampleInfo.blocks.map(
+                        (block, index) => {
+                          return (
+                            <>
+                              <Column lg={2} md={2} sm={1} key={index}>
+                                <TextInput
+                                  id="blockNumber"
+                                  labelText={intl.formatMessage({
+                                    id: "pathology.label.block.number",
+                                  })}
+                                  hideLabel={true}
+                                  placeholder={intl.formatMessage({
+                                    id: "pathology.label.block.number",
+                                  })}
+                                  value={block.blockNumber}
+                                  disabled={true}
+                                />
+                              </Column>
+                              <Column lg={2} md={2} sm={1}>
+                                <TextInput
+                                  id="location"
+                                  labelText={intl.formatMessage({
+                                    id: "pathology.label.location",
+                                  })}
+                                  hideLabel={true}
+                                  placeholder={intl.formatMessage({
+                                    id: "pathology.label.location",
+                                  })}
+                                  value={block.location}
+                                  disabled={true}
+                                />
+                              </Column>
+                              <Column lg={2} md={2} sm={2}>
+                                <Button
+                                  onClick={() => {
+                                    window.open(
+                                      config.serverBaseUrl +
+                                        "/LabelMakerServlet?labelType=block&code=" +
+                                        block.blockNumber,
+                                      "_blank",
+                                    );
+                                  }}
+                                >
+                                  {" "}
+                                  <FormattedMessage id="pathology.label.printlabel" />
+                                </Button>
+                              </Column>
+                              <Column lg={10} md={2} sm={0} />
+                              <Column lg={16} md={8} sm={4}>
+                                <div>
+                                  {" "}
+                                  &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;
+                                </div>
+                              </Column>
+                            </>
+                          );
+                        },
+                      )}
                   </Grid>
                 </Column>
-              )}
-            </>
-          )}
-          {immunohistochemistrySampleInfo.assignedPathologistId &&
-            immunohistochemistrySampleInfo.assignedTechnicianId && (
-              <Column lg={16}>
-                <Checkbox
-                  labelText={intl.formatMessage({
-                    id: "pathology.label.release",
-                  })}
-                  id="release"
-                  onChange={() => {
-                    setImmunohistochemistrySampleInfo({
-                      ...immunohistochemistrySampleInfo,
-                      release: !immunohistochemistrySampleInfo.release,
-                    });
-                  }}
-                />
-              </Column>
-            )}
 
-          <Column>
-            <Button
-              id="pathology_save2"
-              disabled={isSubmitting}
-              onClick={(e) => {
-                e.preventDefault();
-                save(e);
-              }}
-            >
-              <FormattedMessage id="label.button.save" />
-            </Button>
-          </Column>
-        </Grid>
-      </Stack>
+                <Column lg={16} md={8} sm={4}>
+                  <Grid fullWidth={true} className="gridBoundary">
+                    <Column lg={16} md={8} sm={4}>
+                      <h5>
+                        {" "}
+                        <FormattedMessage id="pathology.label.slides" />
+                      </h5>
+                      <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+                    </Column>
+
+                    <Column lg={16} md={8} sm={4} />
+                    {immunohistochemistrySampleInfo.slides &&
+                      immunohistochemistrySampleInfo.slides.map(
+                        (slide, index) => {
+                          return (
+                            <>
+                              <Column lg={2} md={2} sm={1} key={index}>
+                                <TextInput
+                                  id="slideNumber"
+                                  labelText={intl.formatMessage({
+                                    id: "pathology.label.slide.number",
+                                  })}
+                                  hideLabel={true}
+                                  disabled={true}
+                                  placeholder={intl.formatMessage({
+                                    id: "pathology.label.slide.number",
+                                  })}
+                                  value={slide.slideNumber}
+                                />
+                              </Column>
+                              <Column lg={2} md={2} sm={1}>
+                                <TextInput
+                                  id="location"
+                                  labelText={intl.formatMessage({
+                                    id: "pathology.label.location",
+                                  })}
+                                  hideLabel={true}
+                                  placeholder={intl.formatMessage({
+                                    id: "pathology.label.location",
+                                  })}
+                                  value={slide.location}
+                                  disabled={true}
+                                />
+                              </Column>
+                              <Column lg={2} md={1} sm={2}>
+                                {immunohistochemistrySampleInfo.slides[index]
+                                  .image && (
+                                  <>
+                                    <Button
+                                      onClick={() => {
+                                        var win = window.open();
+                                        win.document.write(
+                                          '<iframe src="' +
+                                            slide.fileType +
+                                            ";base64," +
+                                            slide.image +
+                                            '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>',
+                                        );
+                                      }}
+                                    >
+                                      <Launch />{" "}
+                                      <FormattedMessage id="pathology.label.view" />
+                                    </Button>
+                                  </>
+                                )}
+                              </Column>
+                              <Column lg={2} md={1} sm={2}>
+                                <Button
+                                  onClick={() => {
+                                    window.open(
+                                      config.serverBaseUrl +
+                                        "/LabelMakerServlet?labelType=slide&code=" +
+                                        slide.slideNumber,
+                                      "_blank",
+                                    );
+                                  }}
+                                >
+                                  {" "}
+                                  <FormattedMessage id="pathology.label.printlabel" />
+                                </Button>
+                              </Column>
+                              <Column lg={8} md={1} sm={2} />
+                              <Column lg={16} md={8} sm={4}>
+                                <div>
+                                  {" "}
+                                  &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;
+                                </div>
+                              </Column>
+                            </>
+                          );
+                        },
+                      )}
+                  </Grid>
+                </Column>
+
+                {hasRole(userSessionDetails, Roles.PATHOLOGIST) && (
+                  <Column lg={16} md={8} sm={4}>
+                    <Grid fullWidth={true} className="gridBoundary">
+                      <>
+                        <Column lg={2} md={4} sm={2}>
+                          <h6>
+                            <FormattedMessage id="pathology.label.techniques" />
+                            :{" "}
+                          </h6>
+                        </Column>
+                        <Column lg={14} md={4} sm={2}>
+                          {immunohistochemistrySampleInfo.techniques &&
+                            immunohistochemistrySampleInfo.techniques.map(
+                              (technique, index) => (
+                                <>
+                                  <Tag key={index}>{technique.value} </Tag>
+                                </>
+                              ),
+                            )}
+                        </Column>
+                        <Column lg={2} md={4} sm={2}>
+                          <h6>
+                            <FormattedMessage id="pathology.label.request" />
+                            :{" "}
+                          </h6>
+                        </Column>
+                        <Column lg={14} md={4} sm={2}>
+                          {immunohistochemistrySampleInfo.requests &&
+                            immunohistochemistrySampleInfo.requests.map(
+                              (technique, index) => (
+                                <>
+                                  <Tag key={index}> {technique.value} </Tag>
+                                </>
+                              ),
+                            )}
+                        </Column>
+                        <Column lg={2} md={4} sm={2}>
+                          <h6>
+                            {" "}
+                            <FormattedMessage id="pathology.label.grossexam" />{" "}
+                            :
+                          </h6>
+                        </Column>
+                        <Column lg={14} md={4} sm={2}>
+                          <Tag>{immunohistochemistrySampleInfo.grossExam} </Tag>
+                        </Column>
+                        <Column lg={2} md={4} sm={2}>
+                          <h6>
+                            {" "}
+                            <FormattedMessage id="pathology.label.microexam" />{" "}
+                            :
+                          </h6>
+                        </Column>
+                        <Column lg={14} md={4} sm={2}>
+                          <Tag>
+                            {immunohistochemistrySampleInfo.microscopyExam}{" "}
+                          </Tag>
+                        </Column>
+                        <Column lg={2} md={4} sm={2}>
+                          <h6>
+                            {" "}
+                            <FormattedMessage id="pathology.label.conclusion" />{" "}
+                            :
+                          </h6>
+                        </Column>
+                        <Column lg={14} md={4} sm={2}>
+                          {immunohistochemistrySampleInfo.conclusions &&
+                            immunohistochemistrySampleInfo.conclusions.map(
+                              (conclusion, index) => (
+                                <>
+                                  <Tag key={index}> {conclusion.value} </Tag>
+                                </>
+                              ),
+                            )}
+                        </Column>
+                        <Column lg={2} md={4} sm={2}>
+                          <h6>
+                            {" "}
+                            <FormattedMessage id="pathology.label.textconclusion" />{" "}
+                            :
+                          </h6>
+                        </Column>
+                        <Column lg={14} md={4} sm={2}>
+                          <Tag>
+                            {immunohistochemistrySampleInfo.conclusionText}
+                          </Tag>
+                        </Column>
+                      </>
+                    </Grid>
+                  </Column>
+                )}
+              </>
+            )}
+            {caseUiPermissions.canRelease &&
+              immunohistochemistrySampleInfo.assignedPathologistId &&
+              immunohistochemistrySampleInfo.assignedTechnicianId && (
+                <Column lg={16}>
+                  <Checkbox
+                    labelText={intl.formatMessage({
+                      id: "pathology.label.release",
+                    })}
+                    id="release"
+                    onChange={() => {
+                      setImmunohistochemistrySampleInfo({
+                        ...immunohistochemistrySampleInfo,
+                        release: !immunohistochemistrySampleInfo.release,
+                      });
+                    }}
+                  />
+                </Column>
+              )}
+
+            <Column>
+              <Button
+                id="pathology_save2"
+                disabled={isSubmitting || !caseUiPermissions.canSave}
+                onClick={(e) => {
+                  e.preventDefault();
+                  save(e);
+                }}
+              >
+                <FormattedMessage id="label.button.save" />
+              </Button>
+            </Column>
+          </Grid>
+        </Stack>
+      </fieldset>
     </>
   );
 }

@@ -1,15 +1,19 @@
 package org.openelisglobal.program.service.cytology;
 
-import jakarta.transaction.Transactional;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.GenericValidator;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.action.IActionConstants;
+import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.service.AuditableBaseObjectServiceImpl;
 import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.ResultSaveService;
@@ -25,12 +29,20 @@ import org.openelisglobal.internationalization.MessageUtil;
 import org.openelisglobal.patient.valueholder.Patient;
 import org.openelisglobal.program.controller.cytology.CytologySampleForm;
 import org.openelisglobal.program.dao.cytology.CytologySampleDAO;
+import org.openelisglobal.program.service.SpecialtyCaseWriteGuard;
+import org.openelisglobal.program.service.SpecialtyCaseWriteGuard.Assignment;
+import org.openelisglobal.program.service.SpecialtyCaseWriteGuard.Authorization;
 import org.openelisglobal.program.valueholder.cytology.CytologySample;
 import org.openelisglobal.program.valueholder.cytology.CytologySample.CytologyStatus;
+import org.openelisglobal.program.valueholder.cytology.CytologyDiagnosis;
+import org.openelisglobal.program.valueholder.cytology.CytologyDiagnosisCategoryResultsMap;
+import org.openelisglobal.program.valueholder.cytology.CytologySpecimenAdequacy;
 import org.openelisglobal.result.action.util.ResultSet;
 import org.openelisglobal.result.action.util.ResultsLoadUtility;
 import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
 import org.openelisglobal.result.service.LogbookResultsPersistService;
+import org.openelisglobal.result.service.SpecialtyReleaseAuditSupport;
+import org.openelisglobal.result.service.SpecialtyResultRelease;
 import org.openelisglobal.result.valueholder.Result;
 import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.valueholder.Sample;
@@ -41,6 +53,8 @@ import org.openelisglobal.test.beanItems.TestResultItem;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl.ResultType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CytologySampleServiceImpl extends AuditableBaseObjectServiceImpl<CytologySample, Integer>
@@ -61,6 +75,9 @@ public class CytologySampleServiceImpl extends AuditableBaseObjectServiceImpl<Cy
     @Autowired
     private LogbookResultsPersistService logbookResultsPersistService;
 
+    @Autowired
+    private SpecialtyCaseWriteGuard specialtyCaseWriteGuard;
+
     CytologySampleServiceImpl() {
         super(CytologySample.class);
         this.auditTrailLog = true;
@@ -76,11 +93,17 @@ public class CytologySampleServiceImpl extends AuditableBaseObjectServiceImpl<Cy
         return baseObjectDAO.getWithStatus(statuses);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     @Override
     public void assignTechnician(Integer cytologySampleId, SystemUser systemUser) {
-        CytologySample cytologySample = get(cytologySampleId);
+        CytologySample persisted = get(cytologySampleId);
+        Authorization authorization = specialtyCaseWriteGuard.require(systemUser == null ? null : systemUser.getId(),
+                persisted, Constants.ROLE_RESULTS);
+        specialtyCaseWriteGuard.requireSelfAssignment(authorization, systemUser, persisted.getTechnician());
+        CytologySample cytologySample = copyCytologySample(persisted);
         cytologySample.setTechnician(systemUser);
+        cytologySample.setSysUserId(authorization.actor());
+        update(cytologySample);
     }
 
     @Transactional
@@ -107,11 +130,16 @@ public class CytologySampleServiceImpl extends AuditableBaseObjectServiceImpl<Cy
         return cytologySamples;
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     @Override
     public void assignCytoPathologist(Integer cytologySampleId, SystemUser systemUser) {
-        CytologySample cytologySample = get(cytologySampleId);
+        CytologySample persisted = get(cytologySampleId);
+        Authorization authorization = specialtyCaseWriteGuard.require(systemUser == null ? null : systemUser.getId(),
+                persisted, Constants.ROLE_CYTOPATHOLOGIST);
+        specialtyCaseWriteGuard.requireSelfAssignment(authorization, systemUser, persisted.getCytoPathologist());
+        CytologySample cytologySample = copyCytologySample(persisted);
         cytologySample.setCytoPathologist(systemUser);
+        cytologySample.setSysUserId(authorization.actor());
         update(cytologySample);
     }
 
@@ -125,24 +153,62 @@ public class CytologySampleServiceImpl extends AuditableBaseObjectServiceImpl<Cy
         return baseObjectDAO.getCountWithStatusBetweenDates(statuses, from, to);
     }
 
-    @Transactional
+    private CytologySample copyCytologySample(CytologySample source) {
+        CytologySample copy = new CytologySample();
+        copy.setId(source.getId());
+        copy.setLastupdated(source.getLastupdated());
+        copy.setProgram(source.getProgram());
+        copy.setSample(source.getSample());
+        copy.setQuestionnaireResponseUuid(source.getQuestionnaireResponseUuid());
+        copy.setTechnician(source.getTechnician());
+        copy.setCytoPathologist(source.getCytoPathologist());
+        copy.setStatus(source.getStatus());
+        copy.setSlides(source.getSlides() == null ? new ArrayList<>() : new ArrayList<>(source.getSlides()));
+        copy.setSpecimenAdequacy(source.getSpecimenAdequacy());
+        copy.setDiagnosis(source.getDiagnosis());
+        copy.setReports(source.getReports() == null ? new ArrayList<>() : new ArrayList<>(source.getReports()));
+        return copy;
+    }
+
+    @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     @Override
     public void updateWithFormValues(Integer cytologySampleId, CytologySampleForm form) {
-        CytologySample cytologySample = get(cytologySampleId);
-        if (!GenericValidator.isBlankOrNull(form.getAssignedCytoPathologistId())) {
-            cytologySample.setCytoPathologist(systemUserService.get(form.getAssignedCytoPathologistId()));
+        boolean release = Boolean.TRUE.equals(form.getRelease());
+        CytologySample persisted = get(cytologySampleId);
+        Authorization authorization = specialtyCaseWriteGuard.require(form.getSystemUserId(), persisted,
+                release ? List.of(Constants.ROLE_CYTOPATHOLOGIST)
+                        : List.of(Constants.ROLE_RESULTS, Constants.ROLE_CYTOPATHOLOGIST));
+        specialtyCaseWriteGuard.requireDraftStatus(release, form.getStatus());
+        if (release) {
+            specialtyCaseWriteGuard.requireReleaseAssignments(authorization,
+                    new Assignment(Constants.ROLE_CYTOPATHOLOGIST, persisted.getCytoPathologist()),
+                    persisted.getTechnician());
+        } else {
+            specialtyCaseWriteGuard.requireCurrentAssignment(authorization,
+                    List.of(new Assignment(Constants.ROLE_CYTOPATHOLOGIST, persisted.getCytoPathologist()),
+                            new Assignment(Constants.ROLE_RESULTS, persisted.getTechnician())));
         }
-        if (!GenericValidator.isBlankOrNull(form.getAssignedTechnicianId())) {
-            cytologySample.setTechnician(systemUserService.get(form.getAssignedTechnicianId()));
+        specialtyCaseWriteGuard.requireUnchangedAssignment(persisted.getCytoPathologist(),
+                form.getAssignedCytoPathologistId());
+        specialtyCaseWriteGuard.requireUnchangedAssignment(persisted.getTechnician(), form.getAssignedTechnicianId());
+        boolean specimenAdequacyChanged = !specimenAdequacySignature(persisted.getSpecimenAdequacy())
+                .equals(specimenAdequacySignature(form.getSpecimenAdequacy()));
+        boolean diagnosisChanged = !diagnosisSignature(persisted.getDiagnosis())
+                .equals(diagnosisSignature(form.getDiagnosis()));
+        if (specimenAdequacyChanged || diagnosisChanged) {
+            specialtyCaseWriteGuard.requireCurrentAssignment(authorization,
+                    List.of(new Assignment(Constants.ROLE_CYTOPATHOLOGIST, persisted.getCytoPathologist())));
         }
+        CytologySample cytologySample = copyCytologySample(persisted);
+        cytologySample.setSysUserId(authorization.actor());
         cytologySample.setStatus(form.getStatus());
 
         cytologySample.getSlides().removeAll(cytologySample.getSlides());
         if (form.getSlides() != null)
             form.getSlides().stream().forEach(e -> e.setId(null));
         cytologySample.getSlides().addAll(form.getSlides());
-        if (form.getSpecimenAdequacy() != null) {
-            cytologySample.setSpecimenAdequacy(form.getSpecimenAdequacy());
+        if (specimenAdequacyChanged && form.getSpecimenAdequacy() != null) {
+            cytologySample.setSpecimenAdequacy(rebuildSpecimenAdequacy(form.getSpecimenAdequacy()));
         }
 
         cytologySample.getReports().removeAll(cytologySample.getReports());
@@ -151,16 +217,84 @@ public class CytologySampleServiceImpl extends AuditableBaseObjectServiceImpl<Cy
             cytologySample.getReports().addAll(form.getReports());
         }
 
-        if (form.getDiagnosis() != null) {
-            cytologySample.setDiagnosis(form.getDiagnosis());
+        if (diagnosisChanged && form.getDiagnosis() != null) {
+            cytologySample.setDiagnosis(rebuildDiagnosis(form.getDiagnosis()));
         }
 
-        if (form.getRelease()) {
-            validateCytologySample(cytologySample, form);
+        if (release) {
+            cytologySample.setStatus(CytologyStatus.COMPLETED);
+            cytologySample = update(cytologySample);
+            validateCytologySample(cytologySample, form, authorization);
+        } else {
+            update(cytologySample);
         }
     }
 
-    private void validateCytologySample(CytologySample cytologySample, CytologySampleForm form) {
+    private CytologySpecimenAdequacy rebuildSpecimenAdequacy(CytologySpecimenAdequacy submitted) {
+        CytologySpecimenAdequacy rebuilt = new CytologySpecimenAdequacy();
+        rebuilt.setResultType(submitted.getResultType());
+        rebuilt.setSatisfaction(submitted.getSatisfaction());
+        rebuilt.setValues(submitted.getValues() == null ? new ArrayList<>() : new ArrayList<>(submitted.getValues()));
+        return rebuilt;
+    }
+
+    private CytologyDiagnosis rebuildDiagnosis(CytologyDiagnosis submitted) {
+        CytologyDiagnosis rebuilt = new CytologyDiagnosis();
+        rebuilt.setNegativeDiagnosis(submitted.getNegativeDiagnosis());
+        List<CytologyDiagnosisCategoryResultsMap> rebuiltMaps = new ArrayList<>();
+        if (submitted.getDiagnosisResultsMaps() != null) {
+            for (CytologyDiagnosisCategoryResultsMap submittedMap : submitted.getDiagnosisResultsMaps()) {
+                if (submittedMap == null) {
+                    throw new org.springframework.security.access.AccessDeniedException("error.notauthorized");
+                }
+                CytologyDiagnosisCategoryResultsMap rebuiltMap = new CytologyDiagnosisCategoryResultsMap();
+                rebuiltMap.setCategory(submittedMap.getCategory());
+                rebuiltMap.setResultType(submittedMap.getResultType());
+                rebuiltMap.setResults(submittedMap.getResults() == null ? new ArrayList<>()
+                        : new ArrayList<>(submittedMap.getResults()));
+                rebuiltMaps.add(rebuiltMap);
+            }
+        }
+        rebuilt.setDiagnosisResultsMaps(rebuiltMaps);
+        return rebuilt;
+    }
+
+    private List<String> specimenAdequacySignature(
+            org.openelisglobal.program.valueholder.cytology.CytologySpecimenAdequacy adequacy) {
+        if (adequacy == null) {
+            return List.of();
+        }
+        List<String> signature = new ArrayList<>();
+        signature.add("resultType=" + Objects.toString(adequacy.getResultType(), ""));
+        signature.add("satisfaction=" + Objects.toString(adequacy.getSatisfaction(), ""));
+        if (adequacy.getValues() != null) {
+            adequacy.getValues().stream().map(StringUtils::defaultString).sorted()
+                    .forEach(value -> signature.add("value=" + value));
+        }
+        return signature;
+    }
+
+    private List<String> diagnosisSignature(
+            org.openelisglobal.program.valueholder.cytology.CytologyDiagnosis diagnosis) {
+        if (diagnosis == null) {
+            return List.of();
+        }
+        List<String> signature = new ArrayList<>();
+        signature.add("negative=" + Objects.toString(diagnosis.getNegativeDiagnosis(), ""));
+        if (diagnosis.getDiagnosisResultsMaps() != null) {
+            diagnosis.getDiagnosisResultsMaps().stream().map(resultMap -> {
+                List<String> results = resultMap.getResults() == null ? new ArrayList<>()
+                        : resultMap.getResults().stream().map(StringUtils::defaultString).sorted()
+                                .collect(Collectors.toList());
+                return Objects.toString(resultMap.getCategory(), "") + ":"
+                        + Objects.toString(resultMap.getResultType(), "") + ":" + String.join("\u001f", results);
+            }).sorted().forEach(value -> signature.add("result=" + value));
+        }
+        return signature;
+    }
+
+    private void validateCytologySample(CytologySample cytologySample, CytologySampleForm form,
+            Authorization authorization) {
         cytologySample.setStatus(CytologyStatus.COMPLETED);
         Sample sample = cytologySample.getSample();
         Patient patient = sampleService.getPatient(sample);
@@ -168,25 +302,41 @@ public class CytologySampleServiceImpl extends AuditableBaseObjectServiceImpl<Cy
 
         ResultsLoadUtility resultsUtility = SpringContext.getBean(ResultsLoadUtility.class);
         List<TestResultItem> testResultItems = resultsUtility.getGroupedTestsForSample(sample);
+        Set<String> releasedAnalysisIds = new LinkedHashSet<>();
         for (TestResultItem testResultItem : testResultItems) {
-            if (!testResultItem.getIsGroupSeparator()) {
+            if (!testResultItem.getIsGroupSeparator()
+                    && authorization.analysisIds().contains(testResultItem.getAnalysisId())) {
+                releasedAnalysisIds.add(testResultItem.getAnalysisId());
                 if (ResultType.isTextOnlyVariant(testResultItem.getResultType())) {
                     testResultItem.setResultValue(MessageUtil.getMessage("result.cytoology.seereport"));
                 }
-                Analysis analysis = analysisService.get(sample.getId());
+                Analysis analysis = actionDataSet.findModifiedAnalysis(testResultItem.getAnalysisId());
+                boolean firstComponentForAnalysis = analysis == null;
+                if (firstComponentForAnalysis) {
+                    analysis = SpecialtyReleaseAuditSupport.detachedAnalysis(
+                            analysisService.get(testResultItem.getAnalysisId()), form.getSystemUserId());
+                }
                 ResultSaveBean bean = ResultSaveBeanAdapter.fromTestResultItem(testResultItem);
-                ResultSaveService resultSaveService = new ResultSaveService(analysis, form.getSystemUserId());
+                ResultSaveService resultSaveService = createResultSaveService(analysis, form.getSystemUserId());
                 List<Result> results = resultSaveService.createResultsFromTestResultItem(bean, new ArrayList<>());
-                for (Result result : results) {
-                    boolean newResult = result.getId() == null;
-                    analysis.setEnteredDate(DateUtil.getNowAsTimestamp());
-
-                    if (newResult) {
+                boolean existingResult = results.stream().anyMatch(result -> result.getId() != null);
+                analysis.setEnteredDate(DateUtil.getNowAsTimestamp());
+                if (firstComponentForAnalysis) {
+                    if (existingResult) {
+                        analysis.setRevision(String.valueOf(Integer.parseInt(analysis.getRevision()) + 1));
+                    } else {
                         analysis.setRevision("1");
+                    }
+                }
+                for (Result result : results) {
+                    // Existing Result rows must share the detached release target rather
+                    // than retain their persisted source Analysis instance.
+                    result.setAnalysis(analysis);
+                    boolean newResult = result.getId() == null;
+                    if (newResult) {
                         actionDataSet.getNewResults()
                                 .add(new ResultSet(result, null, null, patient, sample, new HashMap<>(), false));
                     } else {
-                        analysis.setRevision(String.valueOf(Integer.parseInt(analysis.getRevision()) + 1));
                         actionDataSet.getModifiedResults()
                                 .add(new ResultSet(result, null, null, patient, sample, new HashMap<>(), false));
                     }
@@ -226,11 +376,30 @@ public class CytologySampleServiceImpl extends AuditableBaseObjectServiceImpl<Cy
                 }
                 analysis.setStatusId(SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.Finalized));
                 analysis.setReleasedDate(new java.sql.Timestamp(System.currentTimeMillis()));
+                if (firstComponentForAnalysis) {
+                    actionDataSet.getModifiedAnalysis().add(analysis);
+                }
             }
         }
 
-        logbookResultsPersistService.persistDataSet(actionDataSet, ResultUpdateRegister.getRegisteredUpdaters(),
-                form.getSystemUserId());
-        sample.setStatusId(SpringContext.getBean(IStatusService.class).getStatusID(OrderStatus.Finished));
+        specialtyCaseWriteGuard.requireExactReleaseSet(authorization, releasedAnalysisIds);
+
+        logbookResultsPersistService.persistSpecialtyReleaseDataSet(actionDataSet,
+                ResultUpdateRegister.getRegisteredUpdaters(), form.getSystemUserId(),
+                SpecialtyResultRelease.cytology(cytologySample));
+        IStatusService statuses = SpringContext.getBean(IStatusService.class);
+        Set<String> terminalStatusIds = new LinkedHashSet<>();
+        terminalStatusIds.add(statuses.getStatusID(AnalysisStatus.Finalized));
+        terminalStatusIds.add(statuses.getStatusID(AnalysisStatus.Canceled));
+        terminalStatusIds.add(statuses.getStatusID(AnalysisStatus.NonConforming_depricated));
+        if (specialtyCaseWriteGuard.allAnalysesTerminal(sample, terminalStatusIds)) {
+            Sample finishedSample = SpecialtyReleaseAuditSupport.detachedSample(sample, form.getSystemUserId());
+            finishedSample.setStatusId(statuses.getStatusID(OrderStatus.Finished));
+            sampleService.update(finishedSample);
+        }
+    }
+
+    protected ResultSaveService createResultSaveService(Analysis analysis, String systemUserId) {
+        return new ResultSaveService(analysis, systemUserId);
     }
 }

@@ -26,17 +26,17 @@ import org.openelisglobal.sample.exception.EntrySubmissionException;
 import org.openelisglobal.sample.form.SpecimenIntakeDecisionCommand;
 import org.openelisglobal.sample.form.SpecimenIntakeEvidence;
 import org.openelisglobal.sample.valueholder.Sample;
+import org.openelisglobal.sample.valueholder.SpecimenIntakeDecision;
 import org.openelisglobal.sample.valueholder.SpecimenIntakeDecision.Decision;
 import org.openelisglobal.sample.valueholder.SpecimenIntakeDecision.Reason;
-import org.openelisglobal.sample.valueholder.SpecimenIntakeDecision;
 import org.openelisglobal.sampleitem.service.SampleItemService;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
 import org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest;
 import org.openelisglobal.statusofsample.valueholder.StatusOfSample;
 import org.openelisglobal.systemuser.service.UserService;
 import org.springframework.beans.BeanUtils;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -180,7 +180,7 @@ public class SpecimenIntakeDecisionService {
         };
         precheck.run();
         Reason verifiedReason = input.reason() == null ? null
-                : new Reason(input.reason().namespace(), reason.getId(), time(reason.getLastupdated()),
+                : new Reason(input.reason().namespace(), reason.getId(), wallClockTime(reason.getLastupdated()),
                         reason.getDictEntry());
         SpecimenIntakeDecision row;
         try {
@@ -215,11 +215,11 @@ public class SpecimenIntakeDecisionService {
                 || currentItem.getLastupdated() == null) {
             throw conflict();
         }
-        String savedVersion = time(currentItem.getLastupdated());
+        String savedVersion = wallClockTime(currentItem.getLastupdated());
         String persistedId = savedRow.getId(), persistedAt = savedRow.getCreatedAt().toString();
         Runnable postcheck = () -> {
             var current = decisions.currentItem(input.sampleItemId());
-            if (current != currentItem || !savedVersion.equals(time(current.getLastupdated()))) {
+            if (current != currentItem || !savedVersion.equals(wallClockTime(current.getLastupdated()))) {
                 throw conflict();
             }
             boolean reject = input.decision() == Decision.REJECTED;
@@ -234,7 +234,7 @@ public class SpecimenIntakeDecisionService {
             normalized.setRejected(originalRejected);
             normalized.setRejectReasonId(originalReason);
             normalized.setStatusId(originalStatus);
-            normalized.setLastupdated(Timestamp.from(SpecimenIntakeEvidence.time(evidence.itemVersion())));
+            normalized.setLastupdated(SpecimenIntakeEvidence.wallClockTimestamp(evidence.itemVersion()));
             verifyGraph(graph, normalized, input, actor, request, permittedTests, frozenGraph);
             decisions.requireManaged(List.of(current, savedRow));
             validateReplay(savedRow, input, actor.userId());
@@ -332,12 +332,12 @@ public class SpecimenIntakeDecisionService {
 
     private SpecimenIntakeEvidence evidence(Graph graph) {
         try {
-            return new SpecimenIntakeEvidence(1, time(graph.sample().getLastupdated()),
-                    time(graph.planned().getLastupdated()), time(graph.item().getLastupdated()),
-                    graph.item().getTypeOfSample().getId(), time(graph.item().getCollectionDate()),
-                    time(graph.item().getReceivedDate()),
+            return new SpecimenIntakeEvidence(1, wallClockTime(graph.sample().getLastupdated()),
+                    wallClockTime(graph.planned().getLastupdated()), wallClockTime(graph.item().getLastupdated()),
+                    graph.item().getTypeOfSample().getId(), instantTime(graph.item().getCollectionDate()),
+                    instantTime(graph.item().getReceivedDate()),
                     graph.analyses().stream().map(a -> new SpecimenIntakeEvidence.Analysis(a.getId(),
-                            a.getTest().getId(), time(a.getLastupdated()))).toList());
+                            a.getTest().getId(), wallClockTime(a.getLastupdated()))).toList());
         } catch (IllegalArgumentException e) {
             throw conflict();
         }
@@ -393,28 +393,28 @@ public class SpecimenIntakeDecisionService {
             throw conflict();
         }
         var values = new ArrayList<String>();
-        values.add(id(type.getId()) + ":" + time(type.getLastupdated()));
+        values.add(id(type.getId()) + ":" + wallClockTime(type.getLastupdated()));
         for (var test : tests) {
             if (!test.isActive()) {
                 throw conflict();
             }
-            values.add(id(test.getId()) + ":" + time(test.getLastupdated()));
+            values.add(id(test.getId()) + ":" + wallClockTime(test.getLastupdated()));
         }
         if (input.reason() != null) {
             if (reason == null || category == null || reason.getDictionaryCategory() != category
                     || !"resultRejectionReasons".equals(category.getCategoryName()) || !"Y".equals(reason.getIsActive())
                     || !input.reason().id().equals(reason.getId())
-                    || !input.reason().version().equals(time(reason.getLastupdated()))
+                    || !input.reason().version().equals(wallClockTime(reason.getLastupdated()))
                     || !input.reason().label().equals(reason.getDictEntry())) {
                 throw reasonUnavailable();
             }
-            values.add(id(category.getId()) + ":" + time(category.getLastupdated()));
-            values.add(reason.getId() + ":" + time(reason.getLastupdated()) + ":" + reason.getDictEntry());
+            values.add(id(category.getId()) + ":" + wallClockTime(category.getLastupdated()));
+            values.add(reason.getId() + ":" + wallClockTime(reason.getLastupdated()) + ":" + reason.getDictEntry());
             if (rejectedStatus == null || !"SAMPLE".equals(rejectedStatus.getStatusType())
                     || !"Sample Rejected".equals(rejectedStatus.getStatusOfSampleName())) {
                 throw conflict();
             }
-            values.add(id(rejectedStatus.getId()) + ":" + time(rejectedStatus.getLastupdated()));
+            values.add(id(rejectedStatus.getId()) + ":" + wallClockTime(rejectedStatus.getLastupdated()));
         }
         return values.toString();
     }
@@ -443,7 +443,8 @@ public class SpecimenIntakeDecisionService {
                     || !"Y".equals(row.getKeepHistory())) {
                 throw auditUnavailable();
             }
-            values.add(id(row.getId()) + ":" + name + ":" + time(row.getLastupdated()) + ":" + row.getIsHl7Encoded());
+            values.add(id(row.getId()) + ":" + name + ":" + wallClockTime(row.getLastupdated()) + ":"
+                    + row.getIsHl7Encoded());
         }
         values.sort(String::compareTo);
         return values.toString();
@@ -491,11 +492,20 @@ public class SpecimenIntakeDecisionService {
         return copy;
     }
 
-    private static String time(Timestamp value) {
-        if (value == null) {
+    private static String wallClockTime(Timestamp value) {
+        try {
+            return SpecimenIntakeEvidence.wallClockTime(value);
+        } catch (IllegalArgumentException e) {
             throw conflict();
         }
-        return value.toInstant().toString();
+    }
+
+    private static String instantTime(Timestamp value) {
+        try {
+            return SpecimenIntakeEvidence.instantTime(value);
+        } catch (IllegalArgumentException e) {
+            throw conflict();
+        }
     }
 
     private static String id(String value) {

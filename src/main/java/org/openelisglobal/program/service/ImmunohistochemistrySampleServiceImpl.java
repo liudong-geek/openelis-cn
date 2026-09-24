@@ -1,15 +1,17 @@
 package org.openelisglobal.program.service;
 
-import jakarta.transaction.Transactional;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.validator.GenericValidator;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.action.IActionConstants;
+import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.service.AuditableBaseObjectServiceImpl;
 import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.ResultSaveService;
@@ -25,12 +27,16 @@ import org.openelisglobal.internationalization.MessageUtil;
 import org.openelisglobal.patient.valueholder.Patient;
 import org.openelisglobal.program.controller.immunohistochemistry.ImmunohistochemistrySampleForm;
 import org.openelisglobal.program.dao.ImmunohistochemistrySampleDAO;
+import org.openelisglobal.program.service.SpecialtyCaseWriteGuard.Assignment;
+import org.openelisglobal.program.service.SpecialtyCaseWriteGuard.Authorization;
 import org.openelisglobal.program.valueholder.immunohistochemistry.ImmunohistochemistrySample;
 import org.openelisglobal.program.valueholder.immunohistochemistry.ImmunohistochemistrySample.ImmunohistochemistryStatus;
 import org.openelisglobal.result.action.util.ResultSet;
 import org.openelisglobal.result.action.util.ResultsLoadUtility;
 import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
 import org.openelisglobal.result.service.LogbookResultsPersistService;
+import org.openelisglobal.result.service.SpecialtyReleaseAuditSupport;
+import org.openelisglobal.result.service.SpecialtyResultRelease;
 import org.openelisglobal.result.valueholder.Result;
 import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.valueholder.Sample;
@@ -41,6 +47,8 @@ import org.openelisglobal.test.beanItems.TestResultItem;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl.ResultType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ImmunohistochemistrySampleServiceImpl
@@ -56,6 +64,8 @@ public class ImmunohistochemistrySampleServiceImpl
     private AnalysisService analysisService;
     @Autowired
     private LogbookResultsPersistService logbookResultsPersistService;
+    @Autowired
+    private SpecialtyCaseWriteGuard specialtyCaseWriteGuard;
 
     ImmunohistochemistrySampleServiceImpl() {
         super(ImmunohistochemistrySample.class);
@@ -72,18 +82,30 @@ public class ImmunohistochemistrySampleServiceImpl
         return baseObjectDAO.getWithStatus(statuses);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     @Override
     public void assignTechnician(Integer immunohistochemistrySampleId, SystemUser systemUser) {
-        ImmunohistochemistrySample immunohistochemistrySample = get(immunohistochemistrySampleId);
+        ImmunohistochemistrySample persisted = get(immunohistochemistrySampleId);
+        Authorization authorization = specialtyCaseWriteGuard.require(systemUser == null ? null : systemUser.getId(),
+                persisted, Constants.ROLE_RESULTS);
+        specialtyCaseWriteGuard.requireSelfAssignment(authorization, systemUser, persisted.getTechnician());
+        ImmunohistochemistrySample immunohistochemistrySample = copyImmunohistochemistrySample(persisted);
         immunohistochemistrySample.setTechnician(systemUser);
+        immunohistochemistrySample.setSysUserId(authorization.actor());
+        update(immunohistochemistrySample);
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     @Override
     public void assignPathologist(Integer immunohistochemistrySampleId, SystemUser systemUser) {
-        ImmunohistochemistrySample immunohistochemistrySample = get(immunohistochemistrySampleId);
+        ImmunohistochemistrySample persisted = get(immunohistochemistrySampleId);
+        Authorization authorization = specialtyCaseWriteGuard.require(systemUser == null ? null : systemUser.getId(),
+                persisted, Constants.ROLE_PATHOLOGIST);
+        specialtyCaseWriteGuard.requireSelfAssignment(authorization, systemUser, persisted.getPathologist());
+        ImmunohistochemistrySample immunohistochemistrySample = copyImmunohistochemistrySample(persisted);
         immunohistochemistrySample.setPathologist(systemUser);
+        immunohistochemistrySample.setSysUserId(authorization.actor());
+        update(immunohistochemistrySample);
     }
 
     @Override
@@ -91,29 +113,61 @@ public class ImmunohistochemistrySampleServiceImpl
         return baseObjectDAO.getCountWithStatus(statuses);
     }
 
-    @Transactional
+    private ImmunohistochemistrySample copyImmunohistochemistrySample(ImmunohistochemistrySample source) {
+        ImmunohistochemistrySample copy = new ImmunohistochemistrySample();
+        copy.setId(source.getId());
+        copy.setLastupdated(source.getLastupdated());
+        copy.setProgram(source.getProgram());
+        copy.setSample(source.getSample());
+        copy.setQuestionnaireResponseUuid(source.getQuestionnaireResponseUuid());
+        copy.setTechnician(source.getTechnician());
+        copy.setPathologist(source.getPathologist());
+        copy.setStatus(source.getStatus());
+        copy.setReports(source.getReports() == null ? new ArrayList<>() : new ArrayList<>(source.getReports()));
+        copy.setPathologySample(source.getPathologySample());
+        copy.setReffered(source.getReffered());
+        return copy;
+    }
+
+    @Transactional(isolation = Isolation.SERIALIZABLE, rollbackFor = Exception.class)
     @Override
     public void updateWithFormValues(Integer immunohistochemistrySampleId, ImmunohistochemistrySampleForm form) {
-        ImmunohistochemistrySample immunohistochemistrySample = get(immunohistochemistrySampleId);
-        if (!GenericValidator.isBlankOrNull(form.getAssignedPathologistId())) {
-            immunohistochemistrySample.setPathologist(systemUserService.get(form.getAssignedPathologistId()));
+        boolean release = Boolean.TRUE.equals(form.getRelease());
+        ImmunohistochemistrySample persisted = get(immunohistochemistrySampleId);
+        Authorization authorization = specialtyCaseWriteGuard.require(form.getSystemUserId(), persisted,
+                release ? List.of(Constants.ROLE_PATHOLOGIST)
+                        : List.of(Constants.ROLE_RESULTS, Constants.ROLE_PATHOLOGIST));
+        specialtyCaseWriteGuard.requireDraftStatus(release, form.getStatus());
+        if (release) {
+            specialtyCaseWriteGuard.requireReleaseAssignments(authorization,
+                    new Assignment(Constants.ROLE_PATHOLOGIST, persisted.getPathologist()),
+                    persisted.getTechnician());
+        } else {
+            specialtyCaseWriteGuard.requireCurrentAssignment(authorization,
+                    List.of(new Assignment(Constants.ROLE_PATHOLOGIST, persisted.getPathologist()),
+                            new Assignment(Constants.ROLE_RESULTS, persisted.getTechnician())));
         }
-        if (!GenericValidator.isBlankOrNull(form.getAssignedTechnicianId())) {
-            immunohistochemistrySample.setTechnician(systemUserService.get(form.getAssignedTechnicianId()));
-        }
+        specialtyCaseWriteGuard.requireUnchangedAssignment(persisted.getPathologist(), form.getAssignedPathologistId());
+        specialtyCaseWriteGuard.requireUnchangedAssignment(persisted.getTechnician(), form.getAssignedTechnicianId());
+        ImmunohistochemistrySample immunohistochemistrySample = copyImmunohistochemistrySample(persisted);
+        immunohistochemistrySample.setSysUserId(authorization.actor());
         immunohistochemistrySample.setStatus(form.getStatus());
 
         immunohistochemistrySample.getReports().removeAll(immunohistochemistrySample.getReports());
         if (form.getReports() != null)
             form.getReports().stream().forEach(e -> e.setId(null));
         immunohistochemistrySample.getReports().addAll(form.getReports());
-        if (form.getRelease()) {
-            validateImmunohistochemistrySample(immunohistochemistrySample, form);
+        if (release) {
+            immunohistochemistrySample.setStatus(ImmunohistochemistryStatus.COMPLETED);
+            immunohistochemistrySample = update(immunohistochemistrySample);
+            validateImmunohistochemistrySample(immunohistochemistrySample, form, authorization);
+        } else {
+            update(immunohistochemistrySample);
         }
     }
 
     private void validateImmunohistochemistrySample(ImmunohistochemistrySample immunohistochemistrySample,
-            ImmunohistochemistrySampleForm form) {
+            ImmunohistochemistrySampleForm form, Authorization authorization) {
         immunohistochemistrySample.setStatus(ImmunohistochemistryStatus.COMPLETED);
         Sample sample = immunohistochemistrySample.getSample();
         Patient patient = sampleService.getPatient(sample);
@@ -121,26 +175,44 @@ public class ImmunohistochemistrySampleServiceImpl
 
         ResultsLoadUtility resultsUtility = SpringContext.getBean(ResultsLoadUtility.class);
         List<TestResultItem> testResultItems = resultsUtility.getGroupedTestsForSample(sample);
+        Set<String> releasedAnalysisIds = new LinkedHashSet<>();
         for (TestResultItem testResultItem : testResultItems) {
-            if (!testResultItem.getIsGroupSeparator()) {
+            if (!testResultItem.getIsGroupSeparator()
+                    && authorization.analysisIds().contains(testResultItem.getAnalysisId())) {
+                releasedAnalysisIds.add(testResultItem.getAnalysisId());
                 if (ResultType.isTextOnlyVariant(testResultItem.getResultType())) {
                     testResultItem.setResultValue(MessageUtil.getMessage("result.immunochemistry.seereport"));
                 }
-                Analysis analysis = analysisService.get(sample.getId());
+                Analysis analysis = actionDataSet.findModifiedAnalysis(testResultItem.getAnalysisId());
+                boolean firstComponentForAnalysis = analysis == null;
+                if (firstComponentForAnalysis) {
+                    analysis = SpecialtyReleaseAuditSupport.detachedAnalysis(
+                            analysisService.get(testResultItem.getAnalysisId()), form.getSystemUserId());
+                }
                 ResultSaveBean bean = ResultSaveBeanAdapter.fromTestResultItem(testResultItem);
-                ResultSaveService resultSaveService = new ResultSaveService(analysis, form.getSystemUserId());
+                ResultSaveService resultSaveService = createResultSaveService(analysis, form.getSystemUserId());
                 List<Result> results = resultSaveService.createResultsFromTestResultItem(bean, new ArrayList<>());
-                for (Result result : results) {
-                    boolean newResult = result.getId() == null;
-                    analysis.setEnteredDate(DateUtil.getNowAsTimestamp());
-
-                    if (newResult) {
-                        analysis.setRevision("1");
-                    } else {
+                boolean existingResult = results.stream().anyMatch(result -> result.getId() != null);
+                analysis.setEnteredDate(DateUtil.getNowAsTimestamp());
+                if (firstComponentForAnalysis) {
+                    if (existingResult) {
                         analysis.setRevision(String.valueOf(Integer.parseInt(analysis.getRevision()) + 1));
+                    } else {
+                        analysis.setRevision("1");
                     }
-                    actionDataSet.getNewResults()
-                            .add(new ResultSet(result, null, null, patient, sample, new HashMap<>(), false));
+                }
+                for (Result result : results) {
+                    // Existing Result rows must share the detached release target rather
+                    // than retain their persisted source Analysis instance.
+                    result.setAnalysis(analysis);
+                    boolean newResult = result.getId() == null;
+                    if (newResult) {
+                        actionDataSet.getNewResults()
+                                .add(new ResultSet(result, null, null, patient, sample, new HashMap<>(), false));
+                    } else {
+                        actionDataSet.getModifiedResults()
+                                .add(new ResultSet(result, null, null, patient, sample, new HashMap<>(), false));
+                    }
 
                     // analysis.setStartedDateForDisplay(testResultItem.getTestDate());
 
@@ -177,12 +249,31 @@ public class ImmunohistochemistrySampleServiceImpl
                 }
                 analysis.setStatusId(SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.Finalized));
                 analysis.setReleasedDate(new java.sql.Timestamp(System.currentTimeMillis()));
+                if (firstComponentForAnalysis) {
+                    actionDataSet.getModifiedAnalysis().add(analysis);
+                }
             }
         }
 
-        logbookResultsPersistService.persistDataSet(actionDataSet, ResultUpdateRegister.getRegisteredUpdaters(),
-                form.getSystemUserId());
-        sample.setStatusId(SpringContext.getBean(IStatusService.class).getStatusID(OrderStatus.Finished));
+        specialtyCaseWriteGuard.requireExactReleaseSet(authorization, releasedAnalysisIds);
+
+        logbookResultsPersistService.persistSpecialtyReleaseDataSet(actionDataSet,
+                ResultUpdateRegister.getRegisteredUpdaters(), form.getSystemUserId(),
+                SpecialtyResultRelease.immunohistochemistry(immunohistochemistrySample));
+        IStatusService statuses = SpringContext.getBean(IStatusService.class);
+        Set<String> terminalStatusIds = new LinkedHashSet<>();
+        terminalStatusIds.add(statuses.getStatusID(AnalysisStatus.Finalized));
+        terminalStatusIds.add(statuses.getStatusID(AnalysisStatus.Canceled));
+        terminalStatusIds.add(statuses.getStatusID(AnalysisStatus.NonConforming_depricated));
+        if (specialtyCaseWriteGuard.allAnalysesTerminal(sample, terminalStatusIds)) {
+            Sample finishedSample = SpecialtyReleaseAuditSupport.detachedSample(sample, form.getSystemUserId());
+            finishedSample.setStatusId(statuses.getStatusID(OrderStatus.Finished));
+            sampleService.update(finishedSample);
+        }
+    }
+
+    protected ResultSaveService createResultSaveService(Analysis analysis, String systemUserId) {
+        return new ResultSaveService(analysis, systemUserId);
     }
 
     @Override

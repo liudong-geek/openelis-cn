@@ -11,10 +11,12 @@ import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.propertyeditor.CaseInsensitiveEnumPropertyEditor;
 import org.openelisglobal.externalconnections.valueholder.ExternalConnection.AuthType;
 import org.openelisglobal.externalconnections.valueholder.ExternalConnection.ProgrammedConnection;
+import org.openelisglobal.result.exception.ResultSaveValidationException;
 import org.springframework.beans.propertyeditors.StringTrimmerEditor;
 import org.springframework.beans.propertyeditors.URIEditor;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -36,6 +38,11 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 @ControllerAdvice
 public class ControllerSetup extends ResponseEntityExceptionHandler {
 
+    private static final List<String> RESULT_CONFLICT_CODES = List.of("error.results.analysisMismatch",
+            "error.results.orderMismatch", "error.results.staleSave", "error.results.resultMismatch",
+            "error.results.testMismatch", "error.results.componentMismatch", "error.results.specimenNotEligible",
+            "error.results.reviewedResultLocked");
+
     @InitBinder
     public void initBinder(WebDataBinder binder) {
         binder.setAutoGrowCollectionLimit(2048);
@@ -45,6 +52,24 @@ public class ControllerSetup extends ResponseEntityExceptionHandler {
         binder.registerCustomEditor(AuthType.class, new CaseInsensitiveEnumPropertyEditor<>(AuthType.class));
         binder.registerCustomEditor(ProgrammedConnection.class,
                 new CaseInsensitiveEnumPropertyEditor<>(ProgrammedConnection.class));
+    }
+
+    @ExceptionHandler(ResultSaveValidationException.class)
+    protected ResponseEntity<Object> handleResultSaveValidationException(ResultSaveValidationException ex,
+            WebRequest request) {
+        LogEvent.logWarn(ex);
+        Map<String, Object> body = buildGenericErrorBody(HttpStatus.CONFLICT);
+        body.put("error", RESULT_CONFLICT_CODES.contains(ex.getErrorCode()) ? ex.getErrorCode() : "error.save.msg");
+        return new ResponseEntity<>(body, new HttpHeaders(), HttpStatus.CONFLICT);
+    }
+
+    @ExceptionHandler(ConcurrencyFailureException.class)
+    protected ResponseEntity<Object> handleConcurrencyFailureException(ConcurrencyFailureException ex,
+            WebRequest request) {
+        LogEvent.logWarn(ex);
+        Map<String, Object> body = buildGenericErrorBody(HttpStatus.CONFLICT);
+        body.put("error", "error.results.staleSave");
+        return new ResponseEntity<>(body, new HttpHeaders(), HttpStatus.CONFLICT);
     }
 
     @ExceptionHandler(value = { RuntimeException.class })

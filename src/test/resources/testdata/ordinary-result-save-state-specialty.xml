@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dataset>
+    <program id="91001" lastupdated="2026-09-01 08:00:00"
+        code="SEC_PATH" name="Security Pathology" manually_changed="false" />
+    <program id="91002" lastupdated="2026-09-01 08:00:00"
+        code="SEC_CYTO" name="Security Cytology" manually_changed="false" />
+    <program id="91003" lastupdated="2026-09-01 08:00:00"
+        code="SEC_IHC" name="Security Immunohistochemistry"
+        manually_changed="false" />
+
+    <sample id="91001" accession_number="SEC-PATH-91001" domain="H"
+        received_date="2026-09-01 08:00:00" entered_date="2026-09-01 08:00:00"
+        collection_date="2026-09-01 07:30:00"
+        lastupdated="2026-09-01 08:00:00" />
+    <sample id="91002" accession_number="SEC-CYTO-91002" domain="H"
+        received_date="2026-09-01 08:05:00" entered_date="2026-09-01 08:05:00"
+        collection_date="2026-09-01 07:35:00"
+        lastupdated="2026-09-01 08:05:00" />
+    <sample id="91003" accession_number="SEC-IHC-91003" domain="H"
+        received_date="2026-09-01 08:10:00" entered_date="2026-09-01 08:10:00"
+        collection_date="2026-09-01 07:40:00"
+        lastupdated="2026-09-01 08:10:00" />
+
+    <pathology_sample id="91001" program_id="91001"
+        sample_id="91001" status="COMPLETED"
+        last_updated="2026-09-01 09:00:00" />
+    <cytology_sample id="91002" program_id="91002"
+        sample_id="91002" status="READY_FOR_CYTOPATHOLOGIST"
+        last_updated="2026-09-01 09:05:00" />
+    <immunohistochemistry_sample id="91003"
+        program_id="91003" sample_id="91003" status="READY_PATHOLOGIST"
+        reffered="false" last_updated="2026-09-01 09:10:00" />
+</dataset>

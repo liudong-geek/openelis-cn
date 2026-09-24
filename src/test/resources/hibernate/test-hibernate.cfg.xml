@@ -13,6 +13,9 @@
         <property name="hibernate.format_sql">true</property>
         <property name="hibernate.jdbc.batch_size">50</property>
         <property name="hibernate.jdbc.batch_versioned_data">true</property>
+        <!-- Keep the JDBC connection until the persistence context closes so Spring
+            can safely apply and restore per-transaction isolation. -->
+        <property name="hibernate.connection.handling_mode">DELAYED_ACQUISITION_AND_HOLD</property>
         <!-- <property name="transaction.factory_class">org.hibernate.transaction.JDBCTransactionFactory</property>
             <property name="current_session_context_class">thread</property> -->
         <property name="hibernate.cache.provider_class">org.hibernate.cache.NoCacheProvider</property>

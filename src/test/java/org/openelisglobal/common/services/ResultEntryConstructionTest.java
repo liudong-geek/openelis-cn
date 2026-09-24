@@ -87,7 +87,6 @@ public class ResultEntryConstructionTest {
     }
 
     private Object oldFactory;
-    private final Map<String, Object> oldServices = new HashMap<>();
     private final Map<String, Result> persisted = new HashMap<>();
     private ResultService resultService;
     private TestResultService testResultService;
@@ -108,11 +107,6 @@ public class ResultEntryConstructionTest {
         componentService = mock(TestResultComponentService.class);
         when(factory.getBean(TestResultComponentService.class)).thenReturn(componentService);
         when(factory.getBean(TestAnalyteService.class)).thenReturn(mock(TestAnalyteService.class));
-        for (String name : List.of("resultService", "testResultService")) {
-            oldServices.put(name, ReflectionTestUtils.getField(ResultSaveService.class, name));
-        }
-        ReflectionTestUtils.setField(ResultSaveService.class, "resultService", resultService);
-        ReflectionTestUtils.setField(ResultSaveService.class, "testResultService", testResultService);
         when(resultService.get(any())).thenAnswer(call -> persisted.get(call.getArgument(0)));
         doAnswer(call -> {
             Result target = call.getArgument(0);
@@ -131,7 +125,6 @@ public class ResultEntryConstructionTest {
 
     @After
     public void cleanup() {
-        oldServices.forEach((name, value) -> ReflectionTestUtils.setField(ResultSaveService.class, name, value));
         ReflectionTestUtils.setField(SpringContext.class, "factory", oldFactory);
     }
 

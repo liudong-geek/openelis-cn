@@ -17,6 +17,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.openelisglobal.common.action.IActionConstants;
 import org.openelisglobal.common.paging.IPageDivider;
 import org.openelisglobal.common.paging.IPageFlattener;
@@ -25,6 +26,7 @@ import org.openelisglobal.common.paging.PagingBean;
 import org.openelisglobal.common.paging.PagingProperties;
 import org.openelisglobal.common.paging.PagingUtility;
 import org.openelisglobal.common.util.IdValuePair;
+import org.openelisglobal.result.exception.ResultSaveValidationException;
 import org.openelisglobal.result.form.ResultsPagingForm;
 import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.test.beanItems.TestResultItem;
@@ -117,11 +119,45 @@ public class ResultsPaging {
 
         @Override
         public void updateCache(List<TestResultItem> cacheItems, List<TestResultItem> clientItems) {
-            for (int i = 0; i < clientItems.size(); i++) {
-                if (clientItems.get(i).getIsModified()) {
-                    cacheItems.set(i, clientItems.get(i));
-                }
+            if (cacheItems == null || clientItems == null || cacheItems.size() != clientItems.size()) {
+                throw new ResultSaveValidationException("error.results.analysisMismatch");
             }
+            for (int i = 0; i < clientItems.size(); i++) {
+                TestResultItem cached = cacheItems.get(i);
+                TestResultItem posted = clientItems.get(i);
+                if (posted == null || cached == null)
+                    throw new ResultSaveValidationException("error.results.analysisMismatch");
+                if (!posted.getIsModified())
+                    continue;
+
+                // The session page is the server-owned identity and version snapshot. A
+                // posted row may change editable values only; replacing a page position
+                // with another analysis/result used to let a client escape the worklist
+                // and its lab-unit scope.
+                if (!Objects.equals(cached.getAnalysisId(), posted.getAnalysisId())
+                        || !Objects.equals(cached.getTestId(), posted.getTestId())
+                        || !Objects.equals(cached.getResultId(), posted.getResultId())
+                        || !Objects.equals(cached.getAccessionNumber(), posted.getAccessionNumber())
+                        || !Objects.equals(cached.getTechnicianSignatureId(), posted.getTechnicianSignatureId())
+                        || !Objects.equals(cached.getTestKitId(), posted.getTestKitId())
+                        || !Objects.equals(cached.getResultLimitId(), posted.getResultLimitId())
+                        || !Objects.equals(cached.getReferralId(), posted.getReferralId())
+                        || differsWhenSupplied(cached.getQualifiedResultId(), posted.getQualifiedResultId())
+                        || differsWhenSupplied(cached.getTestResultComponentId(), posted.getTestResultComponentId())
+                        || differsWhenSupplied(cached.getSampleItemId(), posted.getSampleItemId())) {
+                    throw new ResultSaveValidationException("error.results.analysisMismatch");
+                }
+                posted.setAnalysisLastupdated(cached.getAnalysisLastupdated());
+                posted.setSampleItemId(cached.getSampleItemId());
+                posted.setAccessionNumber(cached.getAccessionNumber());
+                posted.setQualifiedResultId(cached.getQualifiedResultId());
+                posted.setTestResultComponentId(cached.getTestResultComponentId());
+                cacheItems.set(i, posted);
+            }
+        }
+
+        private boolean differsWhenSupplied(String cached, String posted) {
+            return posted != null && !Objects.equals(cached, posted);
         }
 
         @Override

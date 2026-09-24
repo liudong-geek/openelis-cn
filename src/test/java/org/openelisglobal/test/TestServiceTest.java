@@ -7,6 +7,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.List;
 import java.util.Locale;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.openelisglobal.BaseWebContextSensitiveTest;
@@ -14,15 +15,25 @@ import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.method.valueholder.Method;
 import org.openelisglobal.test.service.TestService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.i18n.LocaleContext;
+import org.springframework.context.i18n.LocaleContextHolder;
 
 public class TestServiceTest extends BaseWebContextSensitiveTest {
 
     @Autowired
     private TestService testService;
+    private LocaleContext previousLocaleContext;
 
     @Before
     public void setUp() throws Exception {
+        previousLocaleContext = LocaleContextHolder.getLocaleContext();
+        LocaleContextHolder.setLocale(Locale.ENGLISH);
         executeDataSetWithStateManagement("testdata/test.xml");
+    }
+
+    @After
+    public void resetLocale() {
+        LocaleContextHolder.setLocaleContext(previousLocaleContext);
     }
 
     @Test

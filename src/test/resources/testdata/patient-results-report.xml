@@ -74,6 +74,10 @@
     <status_of_sample id="1" name="Final Result" code="1"
         status_type="SAMPLE" description="Finalized results" is_active="Y"
         lastupdated="2023-11-01 12:00:00" />
+    <status_of_sample id="6" name="Finalized" code="1"
+        status_type="ANALYSIS"
+        description="The results of the analysis are final" is_active="Y"
+        display_key="status.test.valid" lastupdated="2023-11-01 12:00:00" />
 
     <!-- Sample -->
     <sample id="1" accession_number="24-00001"

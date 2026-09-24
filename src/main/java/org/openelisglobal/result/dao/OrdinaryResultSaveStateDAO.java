@@ -22,6 +22,32 @@ public interface OrdinaryResultSaveStateDAO {
 
     SpecimenState findSpecimenState(String analysisId);
 
+    /**
+     * Persisted result ownership, read without flushing a submitted reassignment.
+     */
+    record ResultOwnerState(String resultId, String analysisId, String testId, String sampleItemId, String sampleId) {
+    }
+
+    ResultOwnerState findResultOwnerState(String resultId);
+
+    /**
+     * Persisted specialty-case owner used to authorize the dedicated release path.
+     */
+    record SpecialtyOwnerState(Integer ownerId, String sampleId, String status) {
+    }
+
+    SpecialtyOwnerState findPathologyOwnerState(Integer ownerId);
+
+    SpecialtyOwnerState findCytologyOwnerState(Integer ownerId);
+
+    SpecialtyOwnerState findImmunohistochemistryOwnerState(Integer ownerId);
+
+    /**
+     * Persisted optimistic-lock token, read as a scalar outside the first-level
+     * cache.
+     */
+    String findAnalysisVersion(String analysisId);
+
     org.openelisglobal.sampleitem.valueholder.SampleItem lockSpecimen(String sampleItemId);
 
     org.openelisglobal.analysis.valueholder.Analysis lockAnalysis(String analysisId);

@@ -5,8 +5,6 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import java.sql.Connection;
-import java.sql.Timestamp;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.After;
@@ -21,6 +19,7 @@ import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO;
 import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO.*;
 import org.openelisglobal.result.form.SpecimenResultAdmission;
+import org.openelisglobal.sample.form.SpecimenIntakeEvidence;
 import org.openelisglobal.sample.service.EntryCurrentStateReader.AnalysisView;
 import org.openelisglobal.sample.service.EntryCurrentStateReader.SpecimenView;
 import org.openelisglobal.sample.valueholder.Sample;
@@ -60,7 +59,7 @@ public class SpecimenResultAdmissionReaderTest {
         tube.setId("201");
         tube.setSample(sample);
         tube.setStatusId("2");
-        tube.setLastupdated(Timestamp.from(Instant.parse(TIME)));
+        tube.setLastupdated(SpecimenIntakeEvidence.wallClockTimestamp(TIME));
         var section = new TestSection();
         section.setId("601");
         var test = new org.openelisglobal.test.valueholder.Test();
@@ -72,7 +71,7 @@ public class SpecimenResultAdmissionReaderTest {
         analysis.setTestSection(section);
         analysis.setSampleItem(tube);
         analysis.setStatusId(statuses.getStatusID(AnalysisStatus.NotStarted));
-        analysis.setLastupdated(Timestamp.from(Instant.parse(TIME)));
+        analysis.setLastupdated(SpecimenIntakeEvidence.wallClockTimestamp(TIME));
         actual.add(analysis);
         refreshView();
         when(users.filterAnalysesByLabUnitRoles("801", actual, Constants.ROLE_RESULTS)).thenReturn(actual);
@@ -96,9 +95,9 @@ public class SpecimenResultAdmissionReaderTest {
         var tube = a.getSampleItem();
         physical.clear();
         physical.add(new SpecimenView("201", "501", "1", "601", 1.0, null, tube.getStatusId(), tube.isVoided(),
-                tube.isRejected(), TIME, TIME, "SIM", tube.getLastupdated().toInstant().toString(),
+                tube.isRejected(), TIME, TIME, "SIM", SpecimenIntakeEvidence.wallClockTime(tube.getLastupdated()),
                 actual.stream().map(v -> new AnalysisView(v.getId(), v.getTest().getId(), v.getStatusId(),
-                        v.getLastupdated().toInstant().toString())).toList()));
+                        SpecimenIntakeEvidence.wallClockTime(v.getLastupdated()))).toList()));
     }
 
     private SpecimenResultAdmission read() {
@@ -193,7 +192,7 @@ public class SpecimenResultAdmissionReaderTest {
         // Hydrate the persisted scalar without invoking the legacy display-date
         // formatter.
         org.springframework.test.util.ReflectionTestUtils.setField(actual.get(0), "releasedDate",
-                Timestamp.from(Instant.parse(TIME)));
+                SpecimenIntakeEvidence.wallClockTimestamp(TIME));
         refreshView();
         blocked(OrdinaryResultReviewPolicy.REVIEWED);
     }
@@ -206,7 +205,7 @@ public class SpecimenResultAdmissionReaderTest {
 
     @Test
     public void staleSnapshotVersionOrMovedOwnershipIsUnavailable() {
-        actual.get(0).setLastupdated(Timestamp.from(Instant.parse("2026-09-02T01:00:00Z")));
+        actual.get(0).setLastupdated(SpecimenIntakeEvidence.wallClockTimestamp("2026-09-02T01:00:00Z"));
         assertEquals("UNAVAILABLE", read().state());
         refreshView();
         actual.get(0).getSampleItem().getSample().setId("302");
@@ -235,7 +234,7 @@ public class SpecimenResultAdmissionReaderTest {
         a.setTestSection(actual.get(0).getTestSection());
         a.setSampleItem(actual.get(0).getSampleItem());
         a.setStatusId(actual.get(0).getStatusId());
-        a.setLastupdated(Timestamp.from(Instant.parse(TIME)));
+        a.setLastupdated(SpecimenIntakeEvidence.wallClockTimestamp(TIME));
         actual.add(a);
         refreshView();
         when(users.getAllDisplayUserTestsByLabUnit("801", Constants.ROLE_RESULTS))

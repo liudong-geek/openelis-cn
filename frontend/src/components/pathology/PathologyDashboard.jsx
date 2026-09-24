@@ -27,12 +27,14 @@ import {
   getFromOpenElisServer,
   postToOpenElisServerFullResponse,
   hasRole,
+  Roles,
 } from "../utils/Utils";
 import { NotificationContext } from "../layout/Layout";
 import { AlertDialog } from "../common/CustomNotification";
 import { FormattedMessage, useIntl } from "react-intl";
 import "./PathologyDashboard.css";
 import PageBreadCrumb from "../common/PageBreadCrumb";
+import { canClaimSpecialtyTechnician } from "../specialty/specialtyCaseAccess";
 
 function PathologyDashboard() {
   const componentMounted = useRef(false);
@@ -120,7 +122,11 @@ function PathologyDashboard() {
     var status = row.cells.find((e) => e.info.header === "status").value;
     var pathologySampleId = row.id;
 
-    if (cell.info.header === "assignedTechnician" && !cell.value) {
+    if (
+      cell.info.header === "assignedTechnician" &&
+      !cell.value &&
+      canClaimSpecialtyTechnician(userSessionDetails)
+    ) {
       return (
         <TableCell key={cell.id}>
           <Button
@@ -138,7 +144,7 @@ function PathologyDashboard() {
       cell.info.header === "assignedPathologist" &&
       !cell.value &&
       status === "READY_PATHOLOGIST" &&
-      hasRole(userSessionDetails, "Pathologist")
+      hasRole(userSessionDetails, Roles.PATHOLOGIST)
     ) {
       return (
         <TableCell key={cell.id}>

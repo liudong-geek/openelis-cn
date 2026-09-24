@@ -21,6 +21,7 @@ import org.openelisglobal.common.util.ConfigurationProperties.Property;
 import org.openelisglobal.common.util.DefaultConfigurationProperties;
 import org.openelisglobal.eqa.service.SampleEQAService;
 import org.openelisglobal.internationalization.MessageUtil;
+import org.openelisglobal.referral.service.ReferralService;
 import org.openelisglobal.result.service.ResultService;
 import org.openelisglobal.result.service.ResultServiceImpl;
 import org.openelisglobal.result.valueholder.Result;
@@ -82,6 +83,7 @@ public class ResultsReadbackProjectionTest {
         loader = new ResultsLoadUtility();
         ReflectionTestUtils.setField(loader, "analysisService", analyses);
         ReflectionTestUtils.setField(loader, "resultService", results);
+        ReflectionTestUtils.setField(loader, "referralService", mock(ReferralService.class));
         components = mock(TestResultComponentService.class);
         ReflectionTestUtils.setField(loader, "testResultComponentService", components);
         when(components.getActiveComponentsByTestId("401"))

@@ -11,6 +11,8 @@ const ROLE_NAMES = Object.freeze({
   AUDIT_TRAIL: "Audit Trail",
   ANALYSER_IMPORT: "Analyser Import",
   LAB_SUPERVISOR: "Lab Supervisor",
+  PATHOLOGIST: "Pathologist",
+  CYTOPATHOLOGIST: "Cytopathologist",
   RECEPTION: "Reception",
   RESULTS: "Results",
   VALIDATION: "Validation",
@@ -477,6 +479,69 @@ const allowedAnalyticsRoles = (item) =>
   /audittrail/i.test(getElementId(item))
     ? [ROLE_NAMES.GLOBAL_ADMIN, ROLE_NAMES.AUDIT_TRAIL]
     : [ROLE_NAMES.REPORTS];
+
+const allowedResultRoles = (item) => {
+  const elementId = getElementId(item);
+  const actionURL = getActionURL(item);
+
+  if (
+    /^menu_pathology(?:_|$)/i.test(elementId) ||
+    /^\/Pathology(?:Dashboard|CaseView)(?:[/?#]|$)/i.test(actionURL)
+  ) {
+    return [ROLE_NAMES.RESULTS, ROLE_NAMES.PATHOLOGIST];
+  }
+  if (
+    /^menu_immunochem(?:_|$)/i.test(elementId) ||
+    /^\/Immunohistochemistry(?:Dashboard|CaseView)(?:[/?#]|$)/i.test(actionURL)
+  ) {
+    return [ROLE_NAMES.RESULTS, ROLE_NAMES.PATHOLOGIST];
+  }
+  if (
+    /^menu_cytology(?:_|$)/i.test(elementId) ||
+    /^\/Cytology(?:Dashboard|CaseView)(?:[/?#]|$)/i.test(actionURL)
+  ) {
+    return [ROLE_NAMES.RESULTS, ROLE_NAMES.CYTOPATHOLOGIST];
+  }
+  if (/analy[sz]erresults/i.test(actionURL)) {
+    return [ROLE_NAMES.ANALYSER_IMPORT];
+  }
+  return [ROLE_NAMES.RESULTS];
+};
+
+const specialtyLabUnitForResult = (item) => {
+  const elementId = getElementId(item);
+  const actionURL = getActionURL(item);
+
+  if (
+    /^menu_pathology(?:_|$)/i.test(elementId) ||
+    /^\/Pathology(?:Dashboard|CaseView)(?:[/?#]|$)/i.test(actionURL)
+  ) {
+    return "Pathology";
+  }
+  if (
+    /^menu_immunochem(?:_|$)/i.test(elementId) ||
+    /^\/Immunohistochemistry(?:Dashboard|CaseView)(?:[/?#]|$)/i.test(actionURL)
+  ) {
+    return "Immunohistochemistry";
+  }
+  if (
+    /^menu_cytology(?:_|$)/i.test(elementId) ||
+    /^\/Cytology(?:Dashboard|CaseView)(?:[/?#]|$)/i.test(actionURL)
+  ) {
+    return "Cytology";
+  }
+  return null;
+};
+
+const hasSpecialtyResultsScope = (item, options, roleSet) => {
+  const labUnit = specialtyLabUnitForResult(item);
+  if (!labUnit || !hasKnownRole(roleSet)) return true;
+
+  const labRolesMap = options?.userLabRolesMap;
+  if (!labRolesMap || typeof labRolesMap !== "object") return false;
+  const labRoles = labRolesMap.AllLabUnits || labRolesMap[labUnit] || [];
+  return Array.isArray(labRoles) && labRoles.includes(ROLE_NAMES.RESULTS);
+};
 
 const filterItemsByRoles = (
   items,
@@ -980,22 +1045,23 @@ const buildChinaMenu = (items, options) => {
   const resultChildren = filterItemsByRoles(
     [...(results?.childMenus || []), ...resultExtras],
     roleSet,
-    (item) =>
-      /analy[sz]erresults/i.test(getActionURL(item))
-        ? [ROLE_NAMES.ANALYSER_IMPORT]
-        : [ROLE_NAMES.RESULTS],
-  );
+    allowedResultRoles,
+  ).filter((item) => hasSpecialtyResultsScope(item, options, roleSet));
   const canSeeCoreResults = canUseRoleSlice(roleSet, [ROLE_NAMES.RESULTS]);
   const canSeeAnalyzerResults = resultChildren.some((item) =>
     /analy[sz]erresults/i.test(getActionURL(item)),
   );
-  if ((canSeeCoreResults || canSeeAnalyzerResults) && results) {
+  if (canSeeCoreResults || canSeeAnalyzerResults || resultChildren.length > 0) {
+    const resultsRoot = results
+      ? { ...results, childMenus: uniqueByElementId(resultChildren) }
+      : createGroup(
+          "menu_results",
+          CHINA_TOP_LEVEL_DISPLAY_KEYS.results,
+          uniqueByElementId(resultChildren),
+        );
     addIfVisible(
       output,
-      withDisplayKey(
-        { ...results, childMenus: uniqueByElementId(resultChildren) },
-        CHINA_TOP_LEVEL_DISPLAY_KEYS.results,
-      ),
+      withDisplayKey(resultsRoot, CHINA_TOP_LEVEL_DISPLAY_KEYS.results),
     );
   }
 

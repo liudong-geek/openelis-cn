@@ -201,6 +201,40 @@ public class ResultSpecimenWriteGuardTest {
     }
 
     @Test
+    public void mergedReplacementCanBeVerifiedAfterAuditEvictsTheLockedAnalysis() {
+        Analysis evictedLock = tube("101", "201");
+        when(dao.lockSpecimen("201")).thenReturn(evictedLock.getSampleItem());
+        when(dao.lockAnalysis("101")).thenReturn(evictedLock);
+        var source = new OrdinaryResultSaveStateDAO.State("101", "1", null, null);
+        var target = new OrdinaryResultSaveStateDAO.State("101", "9", null, null);
+        when(dao.findState("101")).thenReturn(source, target);
+
+        Runnable recheck = guard.begin(data);
+        analysis.setStatusId("9");
+        recheck.run();
+
+        assertEquals("1", evictedLock.getStatusId());
+        verify(dao).flush();
+    }
+
+    @Test
+    public void persistedAllowedStateMustStillEqualTheFrozenWriteSetTarget() {
+        Analysis evictedLock = tube("101", "201");
+        when(dao.lockSpecimen("201")).thenReturn(evictedLock.getSampleItem());
+        when(dao.lockAnalysis("101")).thenReturn(evictedLock);
+        var source = new OrdinaryResultSaveStateDAO.State("101", "1", null, null);
+        var unexpected = new OrdinaryResultSaveStateDAO.State("101",
+                statuses.getStatusID(org.openelisglobal.common.services.StatusService.AnalysisStatus.BiologistRejected),
+                null, null);
+        when(dao.findState("101")).thenReturn(source, unexpected);
+
+        Runnable recheck = guard.begin(data);
+        analysis.setStatusId("9");
+        assertEquals(OrdinaryResultReviewPolicy.UNAVAILABLE,
+                assertThrows(ResultSaveValidationException.class, recheck::run).getErrorCode());
+    }
+
+    @Test
     public void ambiguousStatusConfigurationBlocksBeforeFirstWriteAndWhenItChangesLate() {
         Runnable recheck = guard.begin(data);
         when(statuses.getStatusID(SampleStatus.Canceled)).thenReturn("10");
@@ -513,6 +547,56 @@ public class ResultSpecimenWriteGuardTest {
         when(data.getNoteList()).thenReturn(List.of(new org.openelisglobal.note.valueholder.Note()));
         denied();
         verifyZeroInteractions(dao);
+    }
+
+    @Test
+    public void analysisNoteForTheLockedBatchRemainsValid() throws Exception {
+        withAnalysisTableId("77", () -> {
+            var note = analysisNote("101", "77");
+            when(data.getNoteList()).thenReturn(List.of(note));
+
+            guard.begin(data).run();
+        });
+    }
+
+    @Test
+    public void noteForAnotherAnalysisCannotBeMixedIntoTheBatch() throws Exception {
+        withAnalysisTableId("77", () -> {
+            when(data.getNoteList()).thenReturn(List.of(analysisNote("102", "77")));
+
+            assertEquals("error.results.analysisMismatch",
+                    assertThrows(ResultSaveValidationException.class, () -> guard.begin(data)).getErrorCode());
+        });
+    }
+
+    @Test
+    public void noteForAnotherReferenceTableCannotBeMixedIntoTheBatch() throws Exception {
+        withAnalysisTableId("77", () -> {
+            when(data.getNoteList()).thenReturn(List.of(analysisNote("101", "88")));
+
+            assertEquals("error.results.analysisMismatch",
+                    assertThrows(ResultSaveValidationException.class, () -> guard.begin(data)).getErrorCode());
+        });
+    }
+
+    private org.openelisglobal.note.valueholder.Note analysisNote(String analysisId, String tableId) {
+        var note = new org.openelisglobal.note.valueholder.Note();
+        note.setReferenceId(analysisId);
+        note.setReferenceTableId(tableId);
+        return note;
+    }
+
+    private void withAnalysisTableId(String tableId, Runnable assertion) throws Exception {
+        var field = org.openelisglobal.analysis.service.AnalysisServiceImpl.class
+                .getDeclaredField("TABLE_REFERENCE_ID");
+        field.setAccessible(true);
+        Object original = field.get(null);
+        try {
+            field.set(null, tableId);
+            assertion.run();
+        } finally {
+            field.set(null, original);
+        }
     }
 
     @Test

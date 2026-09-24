@@ -52,6 +52,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 import org.springframework.context.support.ReloadableResourceBundleMessageSource;
 import org.springframework.http.MediaType;
@@ -113,10 +114,11 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
         "org.openelisglobal.shipment", "org.openelisglobal.reportdefinition", "org.openelisglobal.scheduler",
         "org.openelisglobal.sitebranding", "org.openelisglobal.resultvalidation", "org.openelisglobal.plugin",
         "org.openelisglobal.fhir.providers", "org.openelisglobal.fhir.service", "org.openelisglobal.fhir.dao",
-        "org.openelisglobal.common.dao", "org.openelisglobal.report",
-        "org.openelisglobal.eqa", "org.openelisglobal.qc", "org.openelisglobal.externalconnections",
-        "org.openelisglobal.notifications", "org.openelisglobal.calendar", "org.openelisglobal.esig",
-        "org.openelisglobal.resultreporting.service", "org.openelisglobal.security" }, excludeFilters = {
+        "org.openelisglobal.common.dao", "org.openelisglobal.report", "org.openelisglobal.eqa", "org.openelisglobal.qc",
+        "org.openelisglobal.externalconnections", "org.openelisglobal.qachecklist.service",
+        "org.openelisglobal.qachecklist.dao", "org.openelisglobal.notifications", "org.openelisglobal.calendar",
+        "org.openelisglobal.esig", "org.openelisglobal.resultreporting.service",
+        "org.openelisglobal.security" }, excludeFilters = {
                 // Nested security-slice TestConfig classes live under packages scanned by
                 // this broad integration-test context. Without this exclusion Spring imports
                 // their mocked beans (for example userModuleService/referralService) beside
@@ -241,6 +243,7 @@ public class AppTestConfig implements WebMvcConfigurer {
 
     @Bean()
     @Profile("test")
+    @Primary
     public AuditTrailService auditTrailService() {
         return mock(AuditTrailService.class);
     }

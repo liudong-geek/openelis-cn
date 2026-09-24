@@ -8,6 +8,10 @@
         locale="en" value="GB" />
     <localization_value id="2" localization_id="1"
         locale="fr" value="GB" />
+    <!-- The China edition resolves an unqualified localized test lookup in
+        zh. -->
+    <localization_value id="9" localization_id="1"
+        locale="zh" value="GB" />
     <localization_value id="3" localization_id="2"
         locale="en" value="Lymph %" />
     <localization_value id="4" localization_id="2"
@@ -79,38 +83,73 @@
         active_begin="2013-11-01" active_end="2013-12-01"
         lastupdated="2023-10-01 12:00:00" />
 
-    <status_of_sample id="1" name="Pending" code="1"
-        status_type="SAMPLE" is_active="Y" lastupdated="2025-03-18" />
-
-    <status_of_sample id="2" name="Started" code="2"
-        status_type="SAMPLE" is_active="Y" lastupdated="2025-03-18" />
-
-    <status_of_sample id="3" name="Completed" code="3"
-        status_type="SAMPLE" is_active="Y" lastupdated="2025-03-18" />
+    <!-- Production-compatible status catalog. The guarded ordinary result-save
+        path requires each analysis state to be distinct and the physical tube to
+        be in SampleEntered. -->
+    <status_of_sample id="1" name="Test Entered" code="1"
+        status_type="ORDER" is_active="Y" lastupdated="2025-03-18" />
+    <status_of_sample id="2" name="Testing Started"
+        code="1" status_type="ORDER" is_active="Y" lastupdated="2025-03-18" />
+    <status_of_sample id="3" name="Testing finished"
+        code="1" status_type="ORDER" is_active="Y" lastupdated="2025-03-18" />
+    <status_of_sample id="4" name="Not Tested" code="1"
+        status_type="ANALYSIS" is_active="Y" lastupdated="2025-03-18" />
+    <status_of_sample id="6" name="Finalized" code="1"
+        status_type="ANALYSIS" is_active="Y" lastupdated="2025-03-18" />
+    <status_of_sample id="7" name="Biologist Rejection"
+        code="1" status_type="ANALYSIS" is_active="Y" lastupdated="2025-03-18" />
+    <status_of_sample id="13" name="NonConforming"
+        code="1" status_type="ANALYSIS" is_active="N" lastupdated="2025-03-18" />
+    <status_of_sample id="14" name="Test Canceled"
+        code="1" status_type="ANALYSIS" is_active="Y" lastupdated="2025-03-18" />
+    <status_of_sample id="15" name="Technical Acceptance"
+        code="1" status_type="ANALYSIS" is_active="Y" lastupdated="2025-03-18" />
+    <status_of_sample id="16" name="Technical Rejected"
+        code="1" status_type="ANALYSIS" is_active="Y" lastupdated="2025-03-18" />
+    <status_of_sample id="19" name="SampleCanceled"
+        code="1" status_type="SAMPLE" is_active="Y" lastupdated="2025-03-18" />
+    <status_of_sample id="20" name="SampleEntered"
+        code="1" status_type="SAMPLE" is_active="Y" lastupdated="2025-03-18" />
+    <status_of_sample id="24" name="SampleDisposed"
+        code="1" status_type="SAMPLE" is_active="Y" lastupdated="2025-03-18" />
+    <status_of_sample id="25" name="Sample Rejected"
+        code="1" status_type="ANALYSIS" is_active="Y" lastupdated="2025-03-18" />
+    <status_of_sample id="26" name="Sample Rejected"
+        code="1" status_type="SAMPLE" is_active="Y" lastupdated="2025-03-18" />
 
 
     <type_of_sample id="1" description="Blood Sample"
-        domain="H" name_localization_id="1" lastupdated="2023-12-01 12:00:00" />
+        domain="H" is_active="true" name_localization_id="1"
+        lastupdated="2023-12-01 12:00:00" />
     <type_of_sample id="2" description="Urine Sample"
-        domain="H" name_localization_id="2" lastupdated="2023-12-01 12:00:00" />
+        domain="H" is_active="true" name_localization_id="2"
+        lastupdated="2023-12-01 12:00:00" />
 
     <sample id="1" accession_number="S-TEST-001" status_id="1"
-        received_date="2024-06-03 00:00:00.0"
+        domain="H" received_date="2024-06-03 00:00:00.0"
         entered_date="2024-06-03 00:00:00.0"
         collection_date="2024-06-03 00:00:00.0"
         lastupdated="2023-11-01 12:00:00" />
     <sample id="2" accession_number="S-TEST-002" status_id="1"
-        received_date="2024-06-04 00:00:00.0"
+        domain="H" received_date="2024-06-04 00:00:00.0"
         entered_date="2024-06-03 00:00:00.0"
         collection_date="2024-06-03 00:00:00.0"
         lastupdated="2023-11-01 12:00:00" />
 
-    <sample_item id="601" sort_order="1" status_id="1"
+    <sample_item id="601" sort_order="1" status_id="20"
         samp_id="1" typeosamp_id="1" collection_date="2023-11-15 10:00:00"
-        lastupdated="2023-12-01 12:00:00" />
-    <sample_item id="602" sort_order="12" status_id="3"
+        received_date="2024-06-03 00:00:00" lastupdated="2023-12-01 12:00:00" />
+    <sample_item id="602" sort_order="12" status_id="20"
         samp_id="2" typeosamp_id="2" collection_date="2023-11-16 10:00:00"
         lastupdated="2023-12-01 12:00:00" />
+
+    <!-- Ordinary result writes require one fulfilled collection request for
+        the exact physical tube. -->
+    <sample_type_request id="1001" sample_id="1"
+        type_of_sample_id="1" sort_order="1" requested_quantity="1.0"
+        requested_tests="1" status="COLLECTED" sample_item_id="601"
+        created_date="2025-07-07 08:00:00" last_updated="2025-07-07 08:00:00"
+        sysuser_id="1" />
 
     <organization id="3" lastupdated="2024-06-03 12:00:00.0"
         name="Global Health Org" city="New York" zip_code="10001"
@@ -145,7 +184,7 @@
         lastupdated="2025-03-20 12:00:00" label_id="1" test_trailer_id="1"
         test_section_id="1" scriptlet_id="1" test_format_id="1"
         local_code="CBC" sort_order="2147483646" name="GB" orderable="true"
-        guid="abc-1234" name_localization_id="1"
+        guid="abc-1234" name_localization_id="1" is_active="Y"
         antimicrobial_resistance="true" />
     <test id="2" method_id="2" uom_id="2" description="Urine Test"
         loinc="543216" reporting_description="Urinalysis"
@@ -241,21 +280,19 @@
         loinc="67890" />
 
     <analysis id="1" sampitem_id="601" test_sect_id="1"
-        test_id="1" revision="1" status="1" started_date="2025-07-07 10:00:00"
-        completed_date="2025-07-07 12:00:00"
-        released_date="2025-07-07 13:00:00" printed_date="2025-07-07 14:00:00"
+        test_id="1" revision="1" status="4" started_date="2025-07-07 10:00:00"
         so_send_ready_date="2025-07-07 11:00:00" so_client_reference="REF001"
         so_notify_received_date="2025-07-07 12:30:00"
         so_notify_send_date="2025-07-07 11:30:00"
         so_send_date="2025-07-07 11:45:00" so_send_entry_by="Dr. Doe"
         so_send_entry_date="2025-07-07 11:45:00" analysis_type="ROUTINE"
         lastupdated="2025-07-07 14:00:00" is_reportable="Y"
-        reflex_trigger="true" status_id="1" entry_date="2025-07-07 09:00:00"
+        reflex_trigger="true" status_id="4" entry_date="2025-07-07 09:00:00"
         panel_id="1" referred_out="true" type_of_sample_name="Blood Sample"
         corrected="false" fhir_uuid="f8b9e2c1-7a2d-4e8b-b3a4-9c1e7f6d2b01"
         result_calculated="false" method_id="1" />
     <analysis id="2" sampitem_id="602" test_sect_id="2"
-        test_id="2" revision="1" status="3" started_date="2025-07-07 11:00:00"
+        test_id="2" revision="1" status="6" started_date="2025-07-07 11:00:00"
         completed_date="2025-07-07 13:00:00"
         released_date="2025-07-07 14:00:00" printed_date="2025-07-07 15:00:00"
         so_send_ready_date="2025-07-07 12:00:00" so_client_reference="REF002"
@@ -264,7 +301,7 @@
         so_send_date="2025-07-07 12:45:00" so_send_entry_by="Dr. Smith"
         so_send_entry_date="2025-07-07 12:45:00" analysis_type="CONFIRM"
         lastupdated="2025-07-07 14:00:00" is_reportable="Y"
-        reflex_trigger="true" status_id="3" entry_date="2025-07-07 10:00:00"
+        reflex_trigger="true" status_id="6" entry_date="2025-07-07 10:00:00"
         panel_id="2" referred_out="true" type_of_sample_name="Urine Sample"
         corrected="false" fhir_uuid="f8b9e2c1-7a2d-4e8b-b3a4-9c1e7f6d2b02"
         result_calculated="true" method_id="2" />
@@ -418,5 +455,19 @@
         national_id="56789" ethnicity="A" external_id="EX123"
         school_attend="Merryland College" birth_place="Nevada"
         entered_birth_date="1997-10-09" lastUpdated="2023-11-01 12:00:02" />
+
+    <sample_human id="1" samp_id="1" patient_id="1"
+        lastupdated="2023-11-01 12:00:00" />
+
+    <!-- Explicit accepted first-intake evidence for analysis 1. Maven tests
+        run in UTC, so these instants match the fixture's TIMESTAMP values. -->
+    <specimen_intake_decision id="1001"
+        operation_id="11111111-1111-4111-8111-111111111601" sample_id="1"
+        lab_no="S-TEST-001" patient_id="1" request_id="1001"
+        sample_item_id="601" decision="ACCEPTED"
+        evidence_json='{"schema":1,"sampleVersion":"2023-11-01T12:00:00Z","requestVersion":"2025-07-07T08:00:00Z","itemVersion":"2023-12-01T12:00:00Z","typeOfSampleId":"1","collectionDate":"2023-11-15T10:00:00Z","receivedDate":"2024-06-03T00:00:00Z","analyses":[{"id":"1","testId":"1","version":"2025-07-07T14:00:00Z"}]}'
+        evidence_digest="9dfa2eee4bee4191ddb1515ab440b045b8c1f43c4c5e39bb3263ae39bc9a354f"
+        created_by="1" created_at="2026-09-20 00:00:00"
+        last_updated="2026-09-20 00:00:00" />
 
 </dataset>

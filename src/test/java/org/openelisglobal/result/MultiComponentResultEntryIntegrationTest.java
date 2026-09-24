@@ -8,11 +8,13 @@ import static org.junit.Assert.assertTrue;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.openelisglobal.BaseWebContextSensitiveTest;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
+import org.openelisglobal.internationalization.MessageUtil;
 import org.openelisglobal.result.action.util.ResultUtil;
 import org.openelisglobal.result.action.util.ResultsLoadUtility;
 import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
@@ -20,6 +22,8 @@ import org.openelisglobal.test.beanItems.TestResultItem;
 import org.openelisglobal.testresultcomponent.service.TestResultComponentService;
 import org.openelisglobal.testresultcomponent.valueholder.TestResultComponent;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.MessageSource;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * v2.4 FRS §Result Components runtime behavior: ordering one multi-component
@@ -37,9 +41,21 @@ public class MultiComponentResultEntryIntegrationTest extends BaseWebContextSens
     @Autowired
     private AnalysisService analysisService;
 
+    @Autowired
+    private MessageSource messageSource;
+
+    private Object previousMessageUtilInstance;
+
     @Before
     public void init() throws Exception {
+        previousMessageUtilInstance = ReflectionTestUtils.getField(MessageUtil.class, "instance");
+        MessageUtil.setMessageSource(messageSource);
         executeDataSetWithStateManagement("testdata/analysis.xml");
+    }
+
+    @After
+    public void restoreMessageSource() {
+        ReflectionTestUtils.setField(MessageUtil.class, "instance", previousMessageUtilInstance);
     }
 
     private TestResultComponent component(String code, String label, int order, String type) {

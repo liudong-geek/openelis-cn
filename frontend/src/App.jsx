@@ -156,6 +156,21 @@ import SampleBatchEntrySetup from "./components/batchOrderEntry/SampleBatchEntry
 import AuditTrailReportIndex from "./components/reports/auditTrailReport/Index";
 import ReferredOutTests from "./components/resultPage/resultsReferredOut/ReferredOutTests";
 import { Roles } from "./components/utils/Utils";
+
+export const SPECIALTY_ROUTE_ACCESS = {
+  pathology: {
+    role: [Roles.RESULTS, Roles.PATHOLOGIST],
+    labUnitRole: { Pathology: [Roles.RESULTS] },
+  },
+  immunohistochemistry: {
+    role: [Roles.RESULTS, Roles.PATHOLOGIST],
+    labUnitRole: { Immunohistochemistry: [Roles.RESULTS] },
+  },
+  cytology: {
+    role: [Roles.RESULTS, Roles.CYTOPATHOLOGIST],
+    labUnitRole: { Cytology: [Roles.RESULTS] },
+  },
+};
 const NoteBookInstanceEntryForm = lazyWithRetry(
   () => import("./components/notebook/NoteBookInstanceEntryForm"),
 );
@@ -509,35 +524,40 @@ export default function App() {
                   path="/PathologyDashboard"
                   exact
                   component={() => <PathologyDashboard />}
-                  role=""
-                  labUnitRole={{ Pathology: [Roles.RESULTS] }}
+                  role={SPECIALTY_ROUTE_ACCESS.pathology.role}
+                  labUnitRole={SPECIALTY_ROUTE_ACCESS.pathology.labUnitRole}
                 />
                 <SecureRoute
                   path="/PathologyCaseView/:pathologySampleId"
                   exact
                   component={() => <PathologyCaseView />}
-                  role=""
-                  labUnitRole={{ Pathology: [Roles.RESULTS] }}
+                  role={SPECIALTY_ROUTE_ACCESS.pathology.role}
+                  labUnitRole={SPECIALTY_ROUTE_ACCESS.pathology.labUnitRole}
                 />
                 <SecureRoute
                   path="/ImmunohistochemistryDashboard"
                   exact
                   component={() => <ImmunohistochemistryDashboard />}
-                  role=""
-                  labUnitRole={{ Immunohistochemistry: [Roles.RESULTS] }}
+                  role={SPECIALTY_ROUTE_ACCESS.immunohistochemistry.role}
+                  labUnitRole={
+                    SPECIALTY_ROUTE_ACCESS.immunohistochemistry.labUnitRole
+                  }
                 />
                 <SecureRoute
                   path="/ImmunohistochemistryCaseView/:immunohistochemistrySampleId"
                   exact
                   component={() => <ImmunohistochemistryCaseView />}
-                  role=""
-                  labUnitRole={{ Immunohistochemistry: [Roles.RESULTS] }}
+                  role={SPECIALTY_ROUTE_ACCESS.immunohistochemistry.role}
+                  labUnitRole={
+                    SPECIALTY_ROUTE_ACCESS.immunohistochemistry.labUnitRole
+                  }
                 />
                 <SecureRoute
                   path="/CytologyDashboard"
                   exact
                   component={() => <CytologyDashboard />}
-                  role=""
+                  role={SPECIALTY_ROUTE_ACCESS.cytology.role}
+                  labUnitRole={SPECIALTY_ROUTE_ACCESS.cytology.labUnitRole}
                 />
                 <SecureRoute
                   path="/genericProgram"
@@ -613,8 +633,8 @@ export default function App() {
                   path="/CytologyCaseView/:cytologySampleId"
                   exact
                   component={() => <CytologyCaseView />}
-                  role=""
-                  labUnitRole={{ Cytology: [Roles.RESULTS] }}
+                  role={SPECIALTY_ROUTE_ACCESS.cytology.role}
+                  labUnitRole={SPECIALTY_ROUTE_ACCESS.cytology.labUnitRole}
                 />
                 <SecureRoute
                   path="/GenericSample/Order"

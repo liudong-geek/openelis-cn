@@ -20,6 +20,8 @@ import {
   RadioButtonGroup,
   RadioButton,
   InlineLoading,
+  InlineNotification,
+  Link,
 } from "@carbon/react";
 import { Launch, Subtract } from "@carbon/react/icons";
 import {
@@ -27,6 +29,7 @@ import {
   postToOpenElisServerFullResponse,
   postToOpenElisServerForPDF,
   hasRole,
+  Roles,
 } from "../utils/Utils";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { NotificationContext } from "../layout/Layout";
@@ -38,6 +41,13 @@ import QuestionnaireResponse from "../common/QuestionnaireResponse";
 import "../pathology/PathologyDashboard.css";
 import PageBreadCrumb from "../common/PageBreadCrumb";
 import PostSavePrintDialog from "../barcodeWorkflow/PostSavePrintDialog";
+import {
+  applySuccessfulSpecialtyRelease,
+  selectableSpecialtyStatuses,
+  SPECIALTY_DASHBOARD_PATHS,
+  specialtyCaseUiPermissions,
+  specialtyReleaseValue,
+} from "../specialty/specialtyCaseAccess";
 let breadcrumbs = [
   { label: "home.label", link: "/" },
   { label: "cytology.label.dashboard", link: "/CytologyDashboard" },
@@ -97,6 +107,12 @@ function CytologyCaseView() {
       reportLink: "",
     },
   });
+  const caseUiPermissions = specialtyCaseUiPermissions(
+    pathologySampleInfo,
+    userSessionDetails,
+    Roles.CYTOPATHOLOGIST,
+  );
+  const isCompleted = pathologySampleInfo.status === "COMPLETED";
 
   const handleConfirm = () => {
     var diagnosis = { ...pathologySampleInfo.diagnosis };
@@ -109,17 +125,16 @@ function CytologyCaseView() {
     setConfirmOpen(false);
   };
 
-  async function displayStatus(response) {
+  async function displayStatus(response, releaseSubmitted = false) {
     var body = await response.json();
     console.debug(body);
-    setIsSubmitting(false);
     var status = response.status;
     setNotificationVisible(true);
     if (status == "200") {
-      const save1 = document.getElementById("pathology_save");
-      const save2 = document.getElementById("pathology_save2");
-      save1.disabled = true;
-      save2.disabled = true;
+      setPathologySampleInfo((sampleInfo) =>
+        applySuccessfulSpecialtyRelease(sampleInfo, releaseSubmitted),
+      );
+      setIsSubmitting(false);
       addNotification({
         kind: NotificationKinds.success,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -129,6 +144,7 @@ function CytologyCaseView() {
         body?.postSavePrintDialog || buildFallbackPostSavePrintDialog(),
       );
     } else {
+      setIsSubmitting(false);
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -221,11 +237,16 @@ function CytologyCaseView() {
     });
 
   const save = (e) => {
-    if (isSubmitting) {
+    if (isSubmitting || !caseUiPermissions.canSave) {
       return;
     }
     setIsSubmitting(true);
     setPostSavePrintModel(null);
+    const releaseSubmitted = specialtyReleaseValue(
+      pathologySampleInfo,
+      userSessionDetails,
+      Roles.CYTOPATHOLOGIST,
+    );
     let specimenAdequacy = null;
     if (pathologySampleInfo.specimenAdequacy) {
       specimenAdequacy = pathologySampleInfo.specimenAdequacy;
@@ -273,10 +294,7 @@ function CytologyCaseView() {
       status: pathologySampleInfo.status,
       slides: pathologySampleInfo.slides,
       reports: pathologySampleInfo.reports,
-      release:
-        pathologySampleInfo.release != undefined
-          ? pathologySampleInfo.release
-          : false,
+      release: releaseSubmitted,
     };
 
     if (specimenAdequacy) {
@@ -299,7 +317,7 @@ function CytologyCaseView() {
     postToOpenElisServerFullResponse(
       "/rest/cytology/caseView/" + cytologySampleId,
       JSON.stringify(submitValues),
-      displayStatus,
+      (response) => displayStatus(response, releaseSubmitted),
     );
   };
   const filterDiagnosisResultsByCategory = (category, type) => {
@@ -315,20 +333,6 @@ function CytologyCaseView() {
   };
 
   const setInitialPathologySampleInfo = (e) => {
-    if (
-      hasRole(userSessionDetails, "Cytopathologist") &&
-      !e.assignedPathologistId &&
-      e.status === "READY_FOR_CYTOPATHOLOGIST"
-    ) {
-      e.assignedPathologistId = userSessionDetails.userId;
-      e.assignedPathologist =
-        userSessionDetails.lastName + " " + userSessionDetails.firstName;
-    }
-    if (!e.assignedTechnicianId) {
-      e.assignedTechnicianId = userSessionDetails.userId;
-      e.assignedTechnician =
-        userSessionDetails.lastName + " " + userSessionDetails.firstName;
-    }
     setPathologySampleInfo(e);
     setLoading(false);
     setInitialMount(true);
@@ -459,423 +463,262 @@ function CytologyCaseView() {
           </Section>
         </Column>
       </Grid>
-      <Grid fullWidth={true} className="orderLegendBody">
-        {notificationVisible === true ? <AlertDialog /> : ""}
-        {loading && <Loading description="Loading Dasboard..." />}
-        <ConfirmPopup
-          isOpen={isConfirmOpen}
-          onClose={() => setConfirmOpen(false)}
-          onConfirm={handleConfirm}
-          messageCode="cytology.label.confirmSelect"
+      {isCompleted && (
+        <InlineNotification
+          hideCloseButton
+          kind="info"
+          lowContrast
+          title={intl.formatMessage({ id: "label.readonly" })}
+          subtitle={intl.formatMessage({ id: "pathology.label.complete" })}
         />
-        <Column lg={16} md={8} sm={4}>
-          <Button
-            id="pathology_save"
-            disabled={isSubmitting}
-            onClick={(e) => {
-              e.preventDefault();
-              save(e);
-            }}
-          >
-            <FormattedMessage id="label.button.save" />
-          </Button>
-        </Column>
-        {postSavePrintModel?.accessionNumber && (
+      )}
+      {!loading && caseUiPermissions.requiresAssignment && (
+        <div className="specialty-case-assignment-notice">
+          <InlineNotification
+            hideCloseButton
+            kind="warning"
+            lowContrast
+            title={intl.formatMessage({ id: "label.readonly" })}
+            subtitle={intl.formatMessage({
+              id: "specialty.case.assignmentRequired",
+            })}
+          />
+          <Link href={SPECIALTY_DASHBOARD_PATHS.cytology}>
+            <FormattedMessage id="specialty.case.returnToDashboard" />
+          </Link>
+        </div>
+      )}
+      <fieldset
+        className="specialty-case-editing-boundary"
+        disabled={!caseUiPermissions.canEdit}
+      >
+        <Grid fullWidth={true} className="orderLegendBody">
+          {notificationVisible === true ? <AlertDialog /> : ""}
+          {loading && <Loading description="Loading Dasboard..." />}
+          <ConfirmPopup
+            isOpen={isConfirmOpen}
+            onClose={() => setConfirmOpen(false)}
+            onConfirm={handleConfirm}
+            messageCode="cytology.label.confirmSelect"
+          />
           <Column lg={16} md={8} sm={4}>
-            <PostSavePrintDialog
-              accessionNumber={postSavePrintModel.accessionNumber}
-              printableLabelTypes={postSavePrintModel.printableLabelTypes || []}
-            />
+            <Button
+              id="pathology_save"
+              disabled={isSubmitting || !caseUiPermissions.canSave}
+              onClick={(e) => {
+                e.preventDefault();
+                save(e);
+              }}
+            >
+              <FormattedMessage id="label.button.save" />
+            </Button>
           </Column>
-        )}
-        <Column lg={16} md={8} sm={4}>
-          <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-        </Column>
-        <Column lg={4} md={2} sm={2}>
-          <Select
-            id="status"
-            name="status"
-            labelText={intl.formatMessage({ id: "label.filters.status" })}
-            value={pathologySampleInfo.status}
-            onChange={(event) => {
-              setPathologySampleInfo({
-                ...pathologySampleInfo,
-                status: event.target.value,
-              });
-            }}
-          >
-            <SelectItem disabled value="placeholder" text="Status" />
-
-            {statuses.map((status, index) => {
-              return (
-                <SelectItem key={index} text={status.value} value={status.id} />
-              );
-            })}
-          </Select>
-        </Column>
-        <Column lg={2} md={1} sm={2}></Column>
-        <Column lg={2} md={1} sm={2}>
-          <Select
-            id="assignedTechnician"
-            name="assignedTechnician"
-            labelText={intl.formatMessage({ id: "assigned.technician.label" })}
-            value={pathologySampleInfo.assignedTechnicianId}
-            onChange={(event) => {
-              setPathologySampleInfo({
-                ...pathologySampleInfo,
-                assignedTechnicianId: event.target.value,
-              });
-            }}
-          >
-            <SelectItem />
-            {technicianUsers.map((user, index) => {
-              return (
-                <SelectItem key={index} text={user.value} value={user.id} />
-              );
-            })}
-          </Select>
-        </Column>
-        <Column lg={2} md={4} sm={2} />
-        <Column lg={4} md={2} sm={2}>
-          <Select
-            id="assignedPathologist"
-            name="assignedPathologist"
-            labelText={intl.formatMessage({
-              id: "assigned.cytopathologist.label",
-            })}
-            value={pathologySampleInfo.assignedPathologistId}
-            onChange={(e) => {
-              setPathologySampleInfo({
-                ...pathologySampleInfo,
-                assignedPathologistId: e.target.value,
-              });
-            }}
-          >
-            <SelectItem />
-            {pathologistUsers.map((user, index) => {
-              return (
-                <SelectItem key={index} text={user.value} value={user.id} />
-              );
-            })}
-          </Select>
-        </Column>
-        <Column lg={16} md={8} sm={4}>
-          <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-        </Column>
-        <Column lg={16} md={8} sm={4}>
-          <Grid fullWidth={true} className="gridBoundary">
+          {postSavePrintModel?.accessionNumber && (
             <Column lg={16} md={8} sm={4}>
-              <h5>
-                {" "}
-                <FormattedMessage id="pathology.label.slides" />
-              </h5>
-              <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-            </Column>
-            {pathologySampleInfo.slides &&
-              pathologySampleInfo.slides.map((slide, index) => {
-                return (
-                  <>
-                    <Column lg={2} md={8} sm={4}>
-                      <IconButton
-                        label={intl.formatMessage({
-                          id: "label.button.remove.slide",
-                        })}
-                        onClick={() => {
-                          var info = { ...pathologySampleInfo };
-                          info["slides"].splice(index, 1);
-                          setPathologySampleInfo(info);
-                        }}
-                        kind="tertiary"
-                        size="sm"
-                      >
-                        <Subtract size={18} />{" "}
-                        <FormattedMessage id="pathology.label.slide" />
-                      </IconButton>
-                    </Column>
-                    <Column lg={3} md={2} sm={1} key={index}>
-                      <TextInput
-                        id="slideNumber"
-                        labelText={
-                          <FormattedMessage id="pathology.label.slide.number" />
-                        }
-                        hideLabel={true}
-                        placeholder={intl.formatMessage({
-                          id: "pathology.label.slide.number",
-                        })}
-                        value={slide.slideNumber}
-                        type="number"
-                        onChange={(e) => {
-                          var newSlides = [...pathologySampleInfo.slides];
-                          newSlides[index].slideNumber = e.target.value;
-                          setPathologySampleInfo({
-                            ...pathologySampleInfo,
-                            slides: newSlides,
-                          });
-                        }}
-                      />
-                    </Column>
-                    <Column lg={3} md={2} sm={1}>
-                      <TextInput
-                        id="location"
-                        labelText={
-                          <FormattedMessage id="pathology.label.location" />
-                        }
-                        hideLabel={true}
-                        placeholder={intl.formatMessage({
-                          id: "pathology.label.location",
-                        })}
-                        value={slide.location}
-                        onChange={(e) => {
-                          var newSlides = [...pathologySampleInfo.slides];
-                          newSlides[index].location = e.target.value;
-                          setPathologySampleInfo({
-                            ...pathologySampleInfo,
-                            slides: newSlides,
-                          });
-                        }}
-                      />
-                    </Column>
-                    <Column lg={3} md={1} sm={2}>
-                      <FileUploader
-                        style={{ marginTop: "-10px" }}
-                        buttonLabel={
-                          <FormattedMessage id="label.button.uploadfile" />
-                        }
-                        iconDescription="file upload"
-                        multiple={false}
-                        accept={["image/jpeg", "image/png", "application/pdf"]}
-                        disabled={false}
-                        name=""
-                        buttonKind="primary"
-                        size="lg"
-                        filenameStatus="edit"
-                        onChange={async (e) => {
-                          e.preventDefault();
-                          let file = e.target.files[0];
-                          var newSlides = [...pathologySampleInfo.slides];
-                          let encodedFile = await toBase64(file);
-                          newSlides[index].base64Image = encodedFile;
-                          setPathologySampleInfo({
-                            ...pathologySampleInfo,
-                            slides: newSlides,
-                          });
-                        }}
-                        onClick={function noRefCheck() {}}
-                        onDelete={(e) => {
-                          e.preventDefault();
-                        }}
-                      />
-                    </Column>
-                    <Column lg={2} md={1} sm={2}>
-                      {pathologySampleInfo.slides[index].image && (
-                        <>
-                          <Button
-                            onClick={() => {
-                              var win = window.open();
-                              win.document.write(
-                                '<iframe src="' +
-                                  slide.fileType +
-                                  ";base64," +
-                                  slide.image +
-                                  '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>',
-                              );
-                            }}
-                          >
-                            <Launch />{" "}
-                            <FormattedMessage id="pathology.label.view" />
-                          </Button>
-                        </>
-                      )}
-                    </Column>
-                    <Column lg={2} md={1} sm={2}>
-                      <Button
-                        onClick={(e) => {
-                          window.open(
-                            config.serverBaseUrl +
-                              "/LabelMakerServlet?labelType=slide&code=" +
-                              slide.slideNumber,
-                            "_blank",
-                          );
-                        }}
-                      >
-                        {" "}
-                        <FormattedMessage id="pathology.label.printlabel" />
-                      </Button>
-                    </Column>
-                  </>
-                );
-              })}
-
-            <Column lg={2} md={8} sm={4}>
-              <TextInput
-                id="slidesToAdd"
-                labelText={intl.formatMessage({
-                  id: "pathology.label.slide.add.number",
-                })}
-                hideLabel={true}
-                placeholder={intl.formatMessage({
-                  id: "pathology.label.slide.add.number",
-                })}
-                value={slidesToAdd}
-                type="number"
-                onChange={(e) => {
-                  setSlidesToAdd(e.target.value);
-                }}
+              <PostSavePrintDialog
+                accessionNumber={postSavePrintModel.accessionNumber}
+                printableLabelTypes={
+                  postSavePrintModel.printableLabelTypes || []
+                }
               />
             </Column>
-            <Column lg={14} md={8} sm={4}>
-              <Button
-                onClick={() => {
-                  const maxSlideNumber = pathologySampleInfo.slides.reduce(
-                    (max, slide) => {
-                      const slideNumber = slide.slideNumber || 0;
-                      return Math.ceil(Math.max(max, slideNumber));
-                    },
-                    0,
-                  );
+          )}
+          <Column lg={16} md={8} sm={4}>
+            <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+          </Column>
+          <Column lg={4} md={2} sm={2}>
+            <Select
+              id="status"
+              name="status"
+              labelText={intl.formatMessage({ id: "label.filters.status" })}
+              value={pathologySampleInfo.status}
+              onChange={(event) => {
+                setPathologySampleInfo({
+                  ...pathologySampleInfo,
+                  status: event.target.value,
+                });
+              }}
+            >
+              <SelectItem disabled value="placeholder" text="Status" />
 
-                  var allSlides = pathologySampleInfo.slides || [];
-                  Array.from({ length: slidesToAdd }, (_, index) => {
-                    allSlides.push({
-                      id: "",
-                      slideNumber: maxSlideNumber + 1 + index,
-                    });
-                  });
-
-                  setPathologySampleInfo({
-                    ...pathologySampleInfo,
-                    slides: allSlides,
-                  });
-                }}
-              >
-                <FormattedMessage id="pathology.label.addslide" />
-              </Button>
-            </Column>
-          </Grid>
-        </Column>
-
-        <Column lg={16} md={8} sm={4}>
-          <Grid fullWidth={true} className="gridBoundary">
-            <Column lg={4} md={2} sm={2}>
-              <Select
-                id="report"
-                name="report"
-                labelText={
-                  <FormattedMessage id="immunohistochemistry.label.addreport" />
-                }
-                onChange={(event) => {
-                  setPathologySampleInfo({
-                    ...pathologySampleInfo,
-                    reports: [
-                      ...(pathologySampleInfo.reports || []),
-                      { id: "", reportType: event.target.value },
-                    ],
-                  });
-                }}
-              >
+              {isCompleted && (
                 <SelectItem
                   disabled
-                  value="ADD"
-                  text={intl.formatMessage({
-                    id: "immunohistochemistry.label.addreport",
-                  })}
+                  value="COMPLETED"
+                  text={intl.formatMessage({ id: "pathology.label.complete" })}
                 />
-                {reportTypes.map((report, index) => {
-                  return (
-                    <SelectItem
-                      key={index}
-                      text={report.value}
-                      value={report.id}
-                    />
-                  );
-                })}
-              </Select>
-            </Column>
-            <Column lg={12} md={2} sm={2}></Column>
-            <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-            <Column lg={16} md={8} sm={4}>
-              <h5>
-                {" "}
-                <FormattedMessage id="immunohistochemistry.label.reports" />
-              </h5>
-              {loadingReport && <InlineLoading />}
-              <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-            </Column>
-            {pathologySampleInfo.reports &&
-              pathologySampleInfo.reports.map((report, index) => {
+              )}
+              {selectableSpecialtyStatuses(statuses).map((status, index) => {
                 return (
-                  <>
-                    <Column lg={2} md={8} sm={4}>
-                      <IconButton
-                        label={intl.formatMessage({
-                          id: "label.button.remove.report",
-                        })}
-                        onClick={() => {
-                          var info = { ...pathologySampleInfo };
-                          info["reports"].splice(index, 1);
-                          setPathologySampleInfo(info);
-                        }}
-                        kind="tertiary"
-                        size="sm"
-                      >
-                        <Subtract size={18} />{" "}
-                        <FormattedMessage id="immunohistochemistry.label.report" />
-                      </IconButton>
-                    </Column>
-
-                    <Column lg={3} md={1} sm={2}>
-                      <FileUploader
-                        style={{ marginTop: "-20px" }}
-                        buttonLabel={
-                          <FormattedMessage id="label.button.uploadfile" />
-                        }
-                        iconDescription="file upload"
-                        multiple={false}
-                        accept={["image/jpeg", "image/png", "application/pdf"]}
-                        disabled={reportParams[index]?.submited}
-                        name=""
-                        buttonKind="primary"
-                        size="lg"
-                        filenameStatus="edit"
-                        onChange={async (e) => {
-                          e.preventDefault();
-                          let file = e.target.files[0];
-                          var newReports = [...pathologySampleInfo.reports];
-                          let encodedFile = await toBase64(file);
-                          newReports[index].base64Image = encodedFile;
-                          setPathologySampleInfo({
-                            ...pathologySampleInfo,
-                            reports: newReports,
-                          });
-                        }}
-                        onClick={function noRefCheck() {}}
-                        onDelete={(e) => {
-                          e.preventDefault();
-                        }}
-                      />
-                    </Column>
-                    <Column lg={4}>
-                      <h6>
-                        {
-                          reportTypes.filter(
-                            (type) => type.id === report.reportType,
-                          )[0]?.value
-                        }
-                      </h6>
-                    </Column>
-
-                    {pathologySampleInfo.reports[index].image && (
-                      <>
-                        {!reportParams[index]?.submited && (
-                          <Column lg={2} md={1} sm={2}>
+                  <SelectItem
+                    key={index}
+                    text={status.value}
+                    value={status.id}
+                  />
+                );
+              })}
+            </Select>
+          </Column>
+          <Column lg={2} md={1} sm={2}></Column>
+          <Column lg={2} md={1} sm={2}>
+            <Select
+              disabled
+              id="assignedTechnician"
+              name="assignedTechnician"
+              labelText={intl.formatMessage({
+                id: "assigned.technician.label",
+              })}
+              value={pathologySampleInfo.assignedTechnicianId}
+            >
+              <SelectItem />
+              {technicianUsers.map((user, index) => {
+                return (
+                  <SelectItem key={index} text={user.value} value={user.id} />
+                );
+              })}
+            </Select>
+          </Column>
+          <Column lg={2} md={4} sm={2} />
+          <Column lg={4} md={2} sm={2}>
+            <Select
+              disabled
+              id="assignedPathologist"
+              name="assignedPathologist"
+              labelText={intl.formatMessage({
+                id: "assigned.cytopathologist.label",
+              })}
+              value={pathologySampleInfo.assignedPathologistId}
+            >
+              <SelectItem />
+              {pathologistUsers.map((user, index) => {
+                return (
+                  <SelectItem key={index} text={user.value} value={user.id} />
+                );
+              })}
+            </Select>
+          </Column>
+          <Column lg={16} md={8} sm={4}>
+            <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+          </Column>
+          <Column lg={16} md={8} sm={4}>
+            <Grid fullWidth={true} className="gridBoundary">
+              <Column lg={16} md={8} sm={4}>
+                <h5>
+                  {" "}
+                  <FormattedMessage id="pathology.label.slides" />
+                </h5>
+                <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+              </Column>
+              {pathologySampleInfo.slides &&
+                pathologySampleInfo.slides.map((slide, index) => {
+                  return (
+                    <>
+                      <Column lg={2} md={8} sm={4}>
+                        <IconButton
+                          label={intl.formatMessage({
+                            id: "label.button.remove.slide",
+                          })}
+                          onClick={() => {
+                            var info = { ...pathologySampleInfo };
+                            info["slides"].splice(index, 1);
+                            setPathologySampleInfo(info);
+                          }}
+                          kind="tertiary"
+                          size="sm"
+                        >
+                          <Subtract size={18} />{" "}
+                          <FormattedMessage id="pathology.label.slide" />
+                        </IconButton>
+                      </Column>
+                      <Column lg={3} md={2} sm={1} key={index}>
+                        <TextInput
+                          id="slideNumber"
+                          labelText={
+                            <FormattedMessage id="pathology.label.slide.number" />
+                          }
+                          hideLabel={true}
+                          placeholder={intl.formatMessage({
+                            id: "pathology.label.slide.number",
+                          })}
+                          value={slide.slideNumber}
+                          type="number"
+                          onChange={(e) => {
+                            var newSlides = [...pathologySampleInfo.slides];
+                            newSlides[index].slideNumber = e.target.value;
+                            setPathologySampleInfo({
+                              ...pathologySampleInfo,
+                              slides: newSlides,
+                            });
+                          }}
+                        />
+                      </Column>
+                      <Column lg={3} md={2} sm={1}>
+                        <TextInput
+                          id="location"
+                          labelText={
+                            <FormattedMessage id="pathology.label.location" />
+                          }
+                          hideLabel={true}
+                          placeholder={intl.formatMessage({
+                            id: "pathology.label.location",
+                          })}
+                          value={slide.location}
+                          onChange={(e) => {
+                            var newSlides = [...pathologySampleInfo.slides];
+                            newSlides[index].location = e.target.value;
+                            setPathologySampleInfo({
+                              ...pathologySampleInfo,
+                              slides: newSlides,
+                            });
+                          }}
+                        />
+                      </Column>
+                      <Column lg={3} md={1} sm={2}>
+                        <FileUploader
+                          style={{ marginTop: "-10px" }}
+                          buttonLabel={
+                            <FormattedMessage id="label.button.uploadfile" />
+                          }
+                          iconDescription="file upload"
+                          multiple={false}
+                          accept={[
+                            "image/jpeg",
+                            "image/png",
+                            "application/pdf",
+                          ]}
+                          disabled={false}
+                          name=""
+                          buttonKind="primary"
+                          size="lg"
+                          filenameStatus="edit"
+                          onChange={async (e) => {
+                            e.preventDefault();
+                            let file = e.target.files[0];
+                            var newSlides = [...pathologySampleInfo.slides];
+                            let encodedFile = await toBase64(file);
+                            newSlides[index].base64Image = encodedFile;
+                            setPathologySampleInfo({
+                              ...pathologySampleInfo,
+                              slides: newSlides,
+                            });
+                          }}
+                          onClick={function noRefCheck() {}}
+                          onDelete={(e) => {
+                            e.preventDefault();
+                          }}
+                        />
+                      </Column>
+                      <Column lg={2} md={1} sm={2}>
+                        {pathologySampleInfo.slides[index].image && (
+                          <>
                             <Button
                               onClick={() => {
                                 var win = window.open();
                                 win.document.write(
                                   '<iframe src="' +
-                                    report.fileType +
+                                    slide.fileType +
                                     ";base64," +
-                                    report.image +
+                                    slide.image +
                                     '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>',
                                 );
                               }}
@@ -883,922 +726,1174 @@ function CytologyCaseView() {
                               <Launch />{" "}
                               <FormattedMessage id="pathology.label.view" />
                             </Button>
-                          </Column>
+                          </>
                         )}
-                      </>
-                    )}
-
-                    {reportParams[index]?.submited && (
+                      </Column>
                       <Column lg={2} md={1} sm={2}>
                         <Button
-                          onClick={() => {
+                          onClick={(e) => {
                             window.open(
-                              reportParams[index]?.reportLink,
+                              config.serverBaseUrl +
+                                "/LabelMakerServlet?labelType=slide&code=" +
+                                slide.slideNumber,
                               "_blank",
                             );
                           }}
                         >
-                          <Launch />{" "}
-                          <FormattedMessage id="pathology.label.view" />
+                          {" "}
+                          <FormattedMessage id="pathology.label.printlabel" />
                         </Button>
                       </Column>
-                    )}
-                    <Column lg={3} md={2} sm={2}>
-                      <Button
-                        disabled={reportParams[index]?.submited}
-                        id={"generate_report_" + index}
-                        onClick={(e) => {
-                          setLoadingReport(true);
-                          const form = {
-                            report: "PatientCytologyReport",
-                            programSampleId: cytologySampleId,
-                          };
-                          postToOpenElisServerForPDF(
-                            "/rest/ReportPrint",
-                            JSON.stringify(form),
-                            (e, blob) => reportStatus(e, blob, index),
-                          );
-                        }}
-                      >
-                        {" "}
-                        <FormattedMessage id="button.label.genarateReport" />
-                      </Button>
-                    </Column>
-                    <Column lg={2} md={2} sm={2} />
-                    <Column lg={16} md={8} sm={4}>
-                      <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-                    </Column>
-                  </>
-                );
-              })}
-          </Grid>
-        </Column>
-
-        <Column lg={16} md={8} sm={4}></Column>
-        {hasRole(userSessionDetails, "Cytopathologist") && initialMount && (
-          <>
-            <Column lg={16} md={8} sm={4}>
-              <Grid fullWidth={true} className="gridBoundary">
-                <Column lg={4} md={1} sm={2}>
-                  <Select
-                    id="specimenAdequacy"
-                    name="specimenAdequacy"
-                    labelText={
-                      <FormattedMessage id="cytology.label.specimen" />
-                    }
-                    value={pathologySampleInfo.specimenAdequacy?.satisfaction}
-                    onChange={(event) => {
-                      var specimenAdequacy = {
-                        ...pathologySampleInfo.specimenAdequacy,
-                      };
-                      specimenAdequacy.satisfaction = event.target.value;
-                      specimenAdequacy.resultType = "DICTIONARY";
-                      specimenAdequacy.values = [];
-                      setPathologySampleInfo({
-                        ...pathologySampleInfo,
-                        specimenAdequacy: specimenAdequacy,
-                      });
-                    }}
-                  >
-                    <SelectItem />
-                    {adequacySatisfactionList.map((user, index) => {
-                      return (
-                        <SelectItem
-                          key={index}
-                          text={user.value}
-                          value={user.id}
-                        />
-                      );
-                    })}
-                  </Select>
-                </Column>
-                {pathologySampleInfo.specimenAdequacy &&
-                  pathologySampleInfo.specimenAdequacy.satisfaction ===
-                    "UN_SATISFACTORY_FOR_EVALUATION" && (
-                    <>
-                      <Column lg={4} md={4} sm={2}>
-                        {initialMount && (
-                          <FilterableMultiSelect
-                            id="adequacy"
-                            titleText={
-                              <FormattedMessage id="label.button.select" />
-                            }
-                            items={unSatisfactoryForEvaluation}
-                            itemToString={(item) => (item ? item.value : "")}
-                            initialSelectedItems={
-                              pathologySampleInfo.specimenAdequacy?.values
-                            }
-                            onChange={(changes) => {
-                              var specimenAdequacy = {
-                                ...pathologySampleInfo.specimenAdequacy,
-                              };
-                              specimenAdequacy.values = changes.selectedItems;
-                              setPathologySampleInfo({
-                                ...pathologySampleInfo,
-                                specimenAdequacy: specimenAdequacy,
-                              });
-                            }}
-                            selectionFeedback="top-after-reopen"
-                          />
-                        )}
-                      </Column>
-                      <Column lg={8} md={4} sm={2}>
-                        {pathologySampleInfo.specimenAdequacy &&
-                          pathologySampleInfo.specimenAdequacy.values.map(
-                            (adequacy, index) => (
-                              <Tag key={index}>{adequacy.value}</Tag>
-                            ),
-                          )}
-                      </Column>
                     </>
-                  )}
-                {pathologySampleInfo.specimenAdequacy?.satisfaction ===
-                  "SATISFACTORY_FOR_EVALUATION" && (
-                  <Column lg={8}>
-                    <RadioButtonGroup
-                      valueSelected={
-                        pathologySampleInfo.specimenAdequacy?.values[0]?.id
-                      }
-                      legendText={intl.formatMessage({
-                        id: "label.button.select",
-                      })}
-                      name="adequacy"
-                      id="adequacy"
-                      onChange={(value) => {
-                        var specimenAdequacy = {
-                          ...pathologySampleInfo.specimenAdequacy,
-                        };
-                        specimenAdequacy.values = [{ id: value }];
-                        setPathologySampleInfo({
-                          ...pathologySampleInfo,
-                          specimenAdequacy: specimenAdequacy,
-                        });
-                      }}
-                    >
-                      {satisfactoryForEvaluation.map((adequacy, index) => (
-                        <RadioButton
-                          key={index}
-                          index={index}
-                          id={"adquacy" + index}
-                          labelText={adequacy.value}
-                          value={adequacy.id}
-                        />
-                      ))}
-                    </RadioButtonGroup>
-                  </Column>
-                )}
-              </Grid>
-            </Column>
-            <Column lg={16} md={8} sm={4}>
-              <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-            </Column>
-
-            <Column lg={16} md={8} sm={4}>
-              <Checkbox
-                checked={
-                  pathologySampleInfo.diagnosis
-                    ? pathologySampleInfo.diagnosis.negativeDiagnosis
-                    : true
-                }
-                labelText={intl.formatMessage({
-                  id: "cytology.label.negative",
+                  );
                 })}
-                id="checked"
-                onChange={(e) => {
-                  if (e.target.checked) {
-                    setConfirmOpen(true);
-                  } else {
-                    var diagnosis = { ...pathologySampleInfo.diagnosis };
-                    diagnosis.negativeDiagnosis = e.target.checked;
-                    diagnosis.diagnosisResultsMaps = [];
+
+              <Column lg={2} md={8} sm={4}>
+                <TextInput
+                  id="slidesToAdd"
+                  labelText={intl.formatMessage({
+                    id: "pathology.label.slide.add.number",
+                  })}
+                  hideLabel={true}
+                  placeholder={intl.formatMessage({
+                    id: "pathology.label.slide.add.number",
+                  })}
+                  value={slidesToAdd}
+                  type="number"
+                  onChange={(e) => {
+                    setSlidesToAdd(e.target.value);
+                  }}
+                />
+              </Column>
+              <Column lg={14} md={8} sm={4}>
+                <Button
+                  onClick={() => {
+                    const maxSlideNumber = pathologySampleInfo.slides.reduce(
+                      (max, slide) => {
+                        const slideNumber = slide.slideNumber || 0;
+                        return Math.ceil(Math.max(max, slideNumber));
+                      },
+                      0,
+                    );
+
+                    var allSlides = pathologySampleInfo.slides || [];
+                    Array.from({ length: slidesToAdd }, (_, index) => {
+                      allSlides.push({
+                        id: "",
+                        slideNumber: maxSlideNumber + 1 + index,
+                      });
+                    });
+
                     setPathologySampleInfo({
                       ...pathologySampleInfo,
-                      diagnosis: diagnosis,
+                      slides: allSlides,
                     });
+                  }}
+                >
+                  <FormattedMessage id="pathology.label.addslide" />
+                </Button>
+              </Column>
+            </Grid>
+          </Column>
+
+          <Column lg={16} md={8} sm={4}>
+            <Grid fullWidth={true} className="gridBoundary">
+              <Column lg={4} md={2} sm={2}>
+                <Select
+                  id="report"
+                  name="report"
+                  labelText={
+                    <FormattedMessage id="immunohistochemistry.label.addreport" />
                   }
-                }}
-              />
-            </Column>
-            {pathologySampleInfo.diagnosis &&
-              !pathologySampleInfo.diagnosis.negativeDiagnosis && (
-                <>
-                  <Column lg={16} md={8} sm={4}>
-                    <Grid fullWidth={true} className="gridBoundary">
+                  onChange={(event) => {
+                    setPathologySampleInfo({
+                      ...pathologySampleInfo,
+                      reports: [
+                        ...(pathologySampleInfo.reports || []),
+                        { id: "", reportType: event.target.value },
+                      ],
+                    });
+                  }}
+                >
+                  <SelectItem
+                    disabled
+                    value="ADD"
+                    text={intl.formatMessage({
+                      id: "immunohistochemistry.label.addreport",
+                    })}
+                  />
+                  {reportTypes.map((report, index) => {
+                    return (
+                      <SelectItem
+                        key={index}
+                        text={report.value}
+                        value={report.id}
+                      />
+                    );
+                  })}
+                </Select>
+              </Column>
+              <Column lg={12} md={2} sm={2}></Column>
+              <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+              <Column lg={16} md={8} sm={4}>
+                <h5>
+                  {" "}
+                  <FormattedMessage id="immunohistochemistry.label.reports" />
+                </h5>
+                {loadingReport && <InlineLoading />}
+                <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+              </Column>
+              {pathologySampleInfo.reports &&
+                pathologySampleInfo.reports.map((report, index) => {
+                  return (
+                    <>
+                      <Column lg={2} md={8} sm={4}>
+                        <IconButton
+                          label={intl.formatMessage({
+                            id: "label.button.remove.report",
+                          })}
+                          onClick={() => {
+                            var info = { ...pathologySampleInfo };
+                            info["reports"].splice(index, 1);
+                            setPathologySampleInfo(info);
+                          }}
+                          kind="tertiary"
+                          size="sm"
+                        >
+                          <Subtract size={18} />{" "}
+                          <FormattedMessage id="immunohistochemistry.label.report" />
+                        </IconButton>
+                      </Column>
+
+                      <Column lg={3} md={1} sm={2}>
+                        <FileUploader
+                          style={{ marginTop: "-20px" }}
+                          buttonLabel={
+                            <FormattedMessage id="label.button.uploadfile" />
+                          }
+                          iconDescription="file upload"
+                          multiple={false}
+                          accept={[
+                            "image/jpeg",
+                            "image/png",
+                            "application/pdf",
+                          ]}
+                          disabled={reportParams[index]?.submited}
+                          name=""
+                          buttonKind="primary"
+                          size="lg"
+                          filenameStatus="edit"
+                          onChange={async (e) => {
+                            e.preventDefault();
+                            let file = e.target.files[0];
+                            var newReports = [...pathologySampleInfo.reports];
+                            let encodedFile = await toBase64(file);
+                            newReports[index].base64Image = encodedFile;
+                            setPathologySampleInfo({
+                              ...pathologySampleInfo,
+                              reports: newReports,
+                            });
+                          }}
+                          onClick={function noRefCheck() {}}
+                          onDelete={(e) => {
+                            e.preventDefault();
+                          }}
+                        />
+                      </Column>
+                      <Column lg={4}>
+                        <h6>
+                          {
+                            reportTypes.filter(
+                              (type) => type.id === report.reportType,
+                            )[0]?.value
+                          }
+                        </h6>
+                      </Column>
+
+                      {pathologySampleInfo.reports[index].image && (
+                        <>
+                          {!reportParams[index]?.submited && (
+                            <Column lg={2} md={1} sm={2}>
+                              <Button
+                                onClick={() => {
+                                  var win = window.open();
+                                  win.document.write(
+                                    '<iframe src="' +
+                                      report.fileType +
+                                      ";base64," +
+                                      report.image +
+                                      '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>',
+                                  );
+                                }}
+                              >
+                                <Launch />{" "}
+                                <FormattedMessage id="pathology.label.view" />
+                              </Button>
+                            </Column>
+                          )}
+                        </>
+                      )}
+
+                      {reportParams[index]?.submited && (
+                        <Column lg={2} md={1} sm={2}>
+                          <Button
+                            onClick={() => {
+                              window.open(
+                                reportParams[index]?.reportLink,
+                                "_blank",
+                              );
+                            }}
+                          >
+                            <Launch />{" "}
+                            <FormattedMessage id="pathology.label.view" />
+                          </Button>
+                        </Column>
+                      )}
+                      <Column lg={3} md={2} sm={2}>
+                        <Button
+                          disabled={reportParams[index]?.submited}
+                          id={"generate_report_" + index}
+                          onClick={(e) => {
+                            setLoadingReport(true);
+                            const form = {
+                              report: "PatientCytologyReport",
+                              programSampleId: cytologySampleId,
+                            };
+                            postToOpenElisServerForPDF(
+                              "/rest/ReportPrint",
+                              JSON.stringify(form),
+                              (e, blob) => reportStatus(e, blob, index),
+                            );
+                          }}
+                        >
+                          {" "}
+                          <FormattedMessage id="button.label.genarateReport" />
+                        </Button>
+                      </Column>
+                      <Column lg={2} md={2} sm={2} />
                       <Column lg={16} md={8} sm={4}>
                         <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-                        <FormattedMessage id="cytology.label.cellabnomality" />
                       </Column>
-                      <Column lg={4} md={8} sm={4}>
-                        <FilterableMultiSelect
-                          id="cellAbnomality"
-                          titleText={
-                            <FormattedMessage id="label.button.select" />
-                          }
-                          items={combinedDiagnoses}
-                          itemToString={(item) => (item ? item.value : "")}
-                          initialSelectedItems={
-                            filterDiagnosisResultsByCategory(
-                              "EPITHELIAL_CELL_ABNORMALITY",
-                              "DICTIONARY",
-                            )?.results
-                          }
-                          onChange={(changes) => {
-                            var diagnosis = {
-                              ...pathologySampleInfo.diagnosis,
-                            };
-                            var diagnosisResultsMaps =
-                              diagnosis.diagnosisResultsMaps;
-                            var filteredMapIndex =
-                              diagnosisResultsMaps?.findIndex(
-                                (r) =>
-                                  r.category ===
-                                    "EPITHELIAL_CELL_ABNORMALITY" &&
-                                  r.resultType === "DICTIONARY",
-                              );
-                            var diagnosisResultMap = {};
-                            var newDiagnosisResultMaps = [];
-                            diagnosisResultMap.category =
-                              "EPITHELIAL_CELL_ABNORMALITY";
-                            diagnosisResultMap.resultType = "DICTIONARY";
-                            diagnosisResultMap.results = changes.selectedItems;
+                    </>
+                  );
+                })}
+            </Grid>
+          </Column>
 
-                            if (filteredMapIndex != -1) {
-                              diagnosisResultsMaps[filteredMapIndex] =
-                                diagnosisResultMap;
-                              newDiagnosisResultMaps = diagnosisResultsMaps;
-                            } else {
-                              if (!diagnosisResultsMaps) {
-                                diagnosisResultsMaps = [];
-                              }
-                              newDiagnosisResultMaps = [
-                                ...diagnosisResultsMaps,
-                                diagnosisResultMap,
-                              ];
-                            }
-                            diagnosis.diagnosisResultsMaps =
-                              newDiagnosisResultMaps;
+          <Column lg={16} md={8} sm={4}></Column>
+          {hasRole(userSessionDetails, Roles.CYTOPATHOLOGIST) &&
+            initialMount && (
+              <fieldset
+                className="specialty-case-field-boundary"
+                disabled={!caseUiPermissions.canEditSpecialistFields}
+              >
+                <Column lg={16} md={8} sm={4}>
+                  <Grid fullWidth={true} className="gridBoundary">
+                    <Column lg={4} md={1} sm={2}>
+                      <Select
+                        id="specimenAdequacy"
+                        name="specimenAdequacy"
+                        labelText={
+                          <FormattedMessage id="cytology.label.specimen" />
+                        }
+                        value={
+                          pathologySampleInfo.specimenAdequacy?.satisfaction
+                        }
+                        onChange={(event) => {
+                          var specimenAdequacy = {
+                            ...pathologySampleInfo.specimenAdequacy,
+                          };
+                          specimenAdequacy.satisfaction = event.target.value;
+                          specimenAdequacy.resultType = "DICTIONARY";
+                          specimenAdequacy.values = [];
+                          setPathologySampleInfo({
+                            ...pathologySampleInfo,
+                            specimenAdequacy: specimenAdequacy,
+                          });
+                        }}
+                      >
+                        <SelectItem />
+                        {adequacySatisfactionList.map((user, index) => {
+                          return (
+                            <SelectItem
+                              key={index}
+                              text={user.value}
+                              value={user.id}
+                            />
+                          );
+                        })}
+                      </Select>
+                    </Column>
+                    {pathologySampleInfo.specimenAdequacy &&
+                      pathologySampleInfo.specimenAdequacy.satisfaction ===
+                        "UN_SATISFACTORY_FOR_EVALUATION" && (
+                        <>
+                          <Column lg={4} md={4} sm={2}>
+                            {initialMount && (
+                              <FilterableMultiSelect
+                                id="adequacy"
+                                titleText={
+                                  <FormattedMessage id="label.button.select" />
+                                }
+                                items={unSatisfactoryForEvaluation}
+                                itemToString={(item) =>
+                                  item ? item.value : ""
+                                }
+                                initialSelectedItems={
+                                  pathologySampleInfo.specimenAdequacy?.values
+                                }
+                                onChange={(changes) => {
+                                  var specimenAdequacy = {
+                                    ...pathologySampleInfo.specimenAdequacy,
+                                  };
+                                  specimenAdequacy.values =
+                                    changes.selectedItems;
+                                  setPathologySampleInfo({
+                                    ...pathologySampleInfo,
+                                    specimenAdequacy: specimenAdequacy,
+                                  });
+                                }}
+                                selectionFeedback="top-after-reopen"
+                              />
+                            )}
+                          </Column>
+                          <Column lg={8} md={4} sm={2}>
+                            {pathologySampleInfo.specimenAdequacy &&
+                              pathologySampleInfo.specimenAdequacy.values.map(
+                                (adequacy, index) => (
+                                  <Tag key={index}>{adequacy.value}</Tag>
+                                ),
+                              )}
+                          </Column>
+                        </>
+                      )}
+                    {pathologySampleInfo.specimenAdequacy?.satisfaction ===
+                      "SATISFACTORY_FOR_EVALUATION" && (
+                      <Column lg={8}>
+                        <RadioButtonGroup
+                          valueSelected={
+                            pathologySampleInfo.specimenAdequacy?.values[0]?.id
+                          }
+                          legendText={intl.formatMessage({
+                            id: "label.button.select",
+                          })}
+                          name="adequacy"
+                          id="adequacy"
+                          onChange={(value) => {
+                            var specimenAdequacy = {
+                              ...pathologySampleInfo.specimenAdequacy,
+                            };
+                            specimenAdequacy.values = [{ id: value }];
                             setPathologySampleInfo({
                               ...pathologySampleInfo,
-                              diagnosis: diagnosis,
+                              specimenAdequacy: specimenAdequacy,
                             });
                           }}
-                          selectionFeedback="top-after-reopen"
-                        />
+                        >
+                          {satisfactoryForEvaluation.map((adequacy, index) => (
+                            <RadioButton
+                              key={index}
+                              index={index}
+                              id={"adquacy" + index}
+                              labelText={adequacy.value}
+                              value={adequacy.id}
+                            />
+                          ))}
+                        </RadioButtonGroup>
                       </Column>
-                      {diagnosisResultEpithelialCellSquamous &&
-                        pathologySampleInfo && (
-                          <>
-                            <Column lg={1} md={4} sm={2}>
-                              <FormattedMessage id="cytology.label.squamous" />
-                            </Column>
-                            <Column lg={3} md={4} sm={2}>
-                              {filterDiagnosisResultsByCategory(
-                                "EPITHELIAL_CELL_ABNORMALITY",
-                                "DICTIONARY",
-                              )
-                                ?.results.filter((result) =>
-                                  diagnosisResultEpithelialCellSquamous?.some(
-                                    (item) => item.id == result.id,
-                                  ),
-                                )
-                                ?.map((result, index) => (
-                                  <DismissibleTag
-                                    key={index}
-                                    onClose={() => {
-                                      var diagnosisResultsMap =
-                                        filterDiagnosisResultsByCategory(
-                                          "EPITHELIAL_CELL_ABNORMALITY",
-                                          "DICTIONARY",
-                                        );
-                                      var resultIndex =
-                                        diagnosisResultsMap.results.findIndex(
-                                          (r) => r.id == result.id,
-                                        );
-                                      diagnosisResultsMap["results"].splice(
-                                        resultIndex,
-                                        1,
-                                      );
-                                      var newDiagnosis = {
-                                        ...pathologySampleInfo.diagnosis,
-                                      };
-                                      var newDiagnosisResultsMaps =
-                                        newDiagnosis.diagnosisResultsMaps;
-                                      var filteredMapIndex =
-                                        newDiagnosisResultsMaps?.findIndex(
-                                          (r) =>
-                                            r.category ===
-                                              "EPITHELIAL_CELL_ABNORMALITY" &&
-                                            r.resultType === "DICTIONARY",
-                                        );
-                                      newDiagnosisResultsMaps[
-                                        filteredMapIndex
-                                      ] = diagnosisResultsMap;
-                                      newDiagnosis.diagnosisResultsMaps =
-                                        newDiagnosisResultsMaps;
-                                      setPathologySampleInfo({
-                                        ...pathologySampleInfo,
-                                        diagnosis: newDiagnosis,
-                                      });
-                                    }}
-                                    text={result.value}
-                                    title={intl.formatMessage({
-                                      id: "label.button.remove",
-                                    })}
-                                    dismissTooltipLabel={intl.formatMessage({
-                                      id: "label.button.remove",
-                                    })}
-                                  />
-                                ))}
-                            </Column>
-                          </>
-                        )}
+                    )}
+                  </Grid>
+                </Column>
+                <Column lg={16} md={8} sm={4}>
+                  <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
+                </Column>
 
-                      {diagnosisResultEpithelialCellGlandular &&
-                        pathologySampleInfo && (
-                          <>
-                            <Column lg={1} md={4} sm={2}>
-                              <FormattedMessage id="cytology.label.glandular" />
-                            </Column>
-                            <Column lg={3} md={4} sm={2}>
-                              {filterDiagnosisResultsByCategory(
-                                "EPITHELIAL_CELL_ABNORMALITY",
-                                "DICTIONARY",
-                              )
-                                ?.results.filter((result) =>
-                                  diagnosisResultEpithelialCellGlandular?.some(
-                                    (item) => item.id == result.id,
-                                  ),
-                                )
-                                ?.map((result, index) => (
-                                  <DismissibleTag
-                                    key={index}
-                                    onClose={() => {
-                                      var diagnosisResultsMap =
-                                        filterDiagnosisResultsByCategory(
-                                          "EPITHELIAL_CELL_ABNORMALITY",
-                                          "DICTIONARY",
-                                        );
-                                      var resultIndex =
-                                        diagnosisResultsMap.results.findIndex(
-                                          (r) => r.id == result.id,
-                                        );
-                                      diagnosisResultsMap["results"].splice(
-                                        resultIndex,
-                                        1,
-                                      );
-                                      var newDiagnosis = {
-                                        ...pathologySampleInfo.diagnosis,
-                                      };
-                                      var newDiagnosisResultsMaps =
-                                        newDiagnosis.diagnosisResultsMaps;
-                                      var filteredMapIndex =
-                                        newDiagnosisResultsMaps?.findIndex(
-                                          (r) =>
-                                            r.category ===
-                                              "EPITHELIAL_CELL_ABNORMALITY" &&
-                                            r.resultType === "DICTIONARY",
-                                        );
-                                      newDiagnosisResultsMaps[
-                                        filteredMapIndex
-                                      ] = diagnosisResultsMap;
-                                      newDiagnosis.diagnosisResultsMaps =
-                                        newDiagnosisResultsMaps;
-                                      setPathologySampleInfo({
-                                        ...pathologySampleInfo,
-                                        diagnosis: newDiagnosis,
-                                      });
-                                    }}
-                                    text={result.value}
-                                    title={intl.formatMessage({
-                                      id: "label.button.remove",
-                                    })}
-                                    dismissTooltipLabel={intl.formatMessage({
-                                      id: "label.button.remove",
-                                    })}
-                                  />
-                                ))}
-                            </Column>
-                          </>
-                        )}
-
-                      <Column lg={4} md={4} sm={2}>
-                        <FormattedMessage id="cytology.label.other" /> :
-                        <TextInput
-                          id="otherNeoPlasms"
-                          labelText={intl.formatMessage({
-                            id: "enterText.label",
-                          })}
-                          hideLabel={true}
-                          placeholder={intl.formatMessage({
-                            id: "otherMalignant.placeholder",
-                          })}
-                          value={
-                            filterDiagnosisResultsByCategory(
-                              "EPITHELIAL_CELL_ABNORMALITY",
-                              "TEXT",
-                            )?.results[0].value
-                          }
-                          onChange={(e) => {
-                            var diagnosis = {
-                              ...pathologySampleInfo.diagnosis,
-                            };
-                            var diagnosisResultsMaps =
-                              diagnosis.diagnosisResultsMaps;
-                            var filteredMapIndex =
-                              diagnosisResultsMaps?.findIndex(
-                                (r) =>
-                                  r.category ===
-                                    "EPITHELIAL_CELL_ABNORMALITY" &&
-                                  r.resultType === "TEXT",
-                              );
-                            var diagnosisResultMap = {};
-                            var newDiagnosisResultMaps = [];
-                            diagnosisResultMap.category =
-                              "EPITHELIAL_CELL_ABNORMALITY";
-                            diagnosisResultMap.resultType = "TEXT";
-                            diagnosisResultMap.results = [
-                              { id: e.target.value, value: e.target.value },
-                            ];
-
-                            if (filteredMapIndex != -1) {
-                              diagnosisResultsMaps[filteredMapIndex] =
-                                diagnosisResultMap;
-                              newDiagnosisResultMaps = diagnosisResultsMaps;
-                            } else {
-                              if (!diagnosisResultsMaps) {
-                                diagnosisResultsMaps = [];
-                              }
-                              newDiagnosisResultMaps = [
-                                ...diagnosisResultsMaps,
-                                diagnosisResultMap,
-                              ];
-                            }
-                            diagnosis.diagnosisResultsMaps =
-                              newDiagnosisResultMaps;
-                            setPathologySampleInfo({
-                              ...pathologySampleInfo,
-                              diagnosis: diagnosis,
-                            });
-                          }}
-                        />
-                      </Column>
-                    </Grid>
-                  </Column>
-                  <Column lg={16} md={8} sm={4}>
-                    <Grid fullWidth={true} className="gridBoundary">
+                <Column lg={16} md={8} sm={4}>
+                  <Checkbox
+                    checked={
+                      pathologySampleInfo.diagnosis
+                        ? pathologySampleInfo.diagnosis.negativeDiagnosis
+                        : true
+                    }
+                    labelText={intl.formatMessage({
+                      id: "cytology.label.negative",
+                    })}
+                    id="checked"
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setConfirmOpen(true);
+                      } else {
+                        var diagnosis = { ...pathologySampleInfo.diagnosis };
+                        diagnosis.negativeDiagnosis = e.target.checked;
+                        diagnosis.diagnosisResultsMaps = [];
+                        setPathologySampleInfo({
+                          ...pathologySampleInfo,
+                          diagnosis: diagnosis,
+                        });
+                      }
+                    }}
+                  />
+                </Column>
+                {pathologySampleInfo.diagnosis &&
+                  !pathologySampleInfo.diagnosis.negativeDiagnosis && (
+                    <>
                       <Column lg={16} md={8} sm={4}>
-                        <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-                        <FormattedMessage id="cytology.label.neoplastic" />
-                      </Column>
-                      <Column lg={4} md={8} sm={4}>
-                        <FilterableMultiSelect
-                          id="nonNeoPlastic"
-                          titleText={intl.formatMessage({
-                            id: "selectResult.title",
-                          })}
-                          items={diagnosisResultNonNeoPlasticCellular}
-                          itemToString={(item) => (item ? item.value : "")}
-                          initialSelectedItems={
-                            filterDiagnosisResultsByCategory(
-                              "NON_NEOPLASTIC_CELLULAR_VARIATIONS",
-                              "DICTIONARY",
-                            )?.results
-                          }
-                          onChange={(changes) => {
-                            var diagnosis = {
-                              ...pathologySampleInfo.diagnosis,
-                            };
-                            var diagnosisResultsMaps =
-                              diagnosis.diagnosisResultsMaps;
-                            var filteredMapIndex =
-                              diagnosisResultsMaps?.findIndex(
-                                (r) =>
-                                  r.category ===
-                                  "NON_NEOPLASTIC_CELLULAR_VARIATIONS",
-                              );
-                            var diagnosisResultMap = {};
-                            var newDiagnosisResultMaps = [];
-                            diagnosisResultMap.category =
-                              "NON_NEOPLASTIC_CELLULAR_VARIATIONS";
-                            diagnosisResultMap.resultType = "DICTIONARY";
-                            diagnosisResultMap.results = changes.selectedItems;
-
-                            if (filteredMapIndex != -1) {
-                              diagnosisResultsMaps[filteredMapIndex] =
-                                diagnosisResultMap;
-                              newDiagnosisResultMaps = diagnosisResultsMaps;
-                            } else {
-                              if (!diagnosisResultsMaps) {
-                                diagnosisResultsMaps = [];
+                        <Grid fullWidth={true} className="gridBoundary">
+                          <Column lg={16} md={8} sm={4}>
+                            <div>
+                              {" "}
+                              &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;
+                            </div>
+                            <FormattedMessage id="cytology.label.cellabnomality" />
+                          </Column>
+                          <Column lg={4} md={8} sm={4}>
+                            <FilterableMultiSelect
+                              id="cellAbnomality"
+                              titleText={
+                                <FormattedMessage id="label.button.select" />
                               }
-                              newDiagnosisResultMaps = [
-                                ...diagnosisResultsMaps,
-                                diagnosisResultMap,
-                              ];
-                            }
-                            diagnosis.diagnosisResultsMaps =
-                              newDiagnosisResultMaps;
-                            setPathologySampleInfo({
-                              ...pathologySampleInfo,
-                              diagnosis: diagnosis,
-                            });
-                          }}
-                          selectionFeedback="top-after-reopen"
-                        />
+                              items={combinedDiagnoses}
+                              itemToString={(item) => (item ? item.value : "")}
+                              initialSelectedItems={
+                                filterDiagnosisResultsByCategory(
+                                  "EPITHELIAL_CELL_ABNORMALITY",
+                                  "DICTIONARY",
+                                )?.results
+                              }
+                              onChange={(changes) => {
+                                var diagnosis = {
+                                  ...pathologySampleInfo.diagnosis,
+                                };
+                                var diagnosisResultsMaps =
+                                  diagnosis.diagnosisResultsMaps;
+                                var filteredMapIndex =
+                                  diagnosisResultsMaps?.findIndex(
+                                    (r) =>
+                                      r.category ===
+                                        "EPITHELIAL_CELL_ABNORMALITY" &&
+                                      r.resultType === "DICTIONARY",
+                                  );
+                                var diagnosisResultMap = {};
+                                var newDiagnosisResultMaps = [];
+                                diagnosisResultMap.category =
+                                  "EPITHELIAL_CELL_ABNORMALITY";
+                                diagnosisResultMap.resultType = "DICTIONARY";
+                                diagnosisResultMap.results =
+                                  changes.selectedItems;
+
+                                if (filteredMapIndex != -1) {
+                                  diagnosisResultsMaps[filteredMapIndex] =
+                                    diagnosisResultMap;
+                                  newDiagnosisResultMaps = diagnosisResultsMaps;
+                                } else {
+                                  if (!diagnosisResultsMaps) {
+                                    diagnosisResultsMaps = [];
+                                  }
+                                  newDiagnosisResultMaps = [
+                                    ...diagnosisResultsMaps,
+                                    diagnosisResultMap,
+                                  ];
+                                }
+                                diagnosis.diagnosisResultsMaps =
+                                  newDiagnosisResultMaps;
+                                setPathologySampleInfo({
+                                  ...pathologySampleInfo,
+                                  diagnosis: diagnosis,
+                                });
+                              }}
+                              selectionFeedback="top-after-reopen"
+                            />
+                          </Column>
+                          {diagnosisResultEpithelialCellSquamous &&
+                            pathologySampleInfo && (
+                              <>
+                                <Column lg={1} md={4} sm={2}>
+                                  <FormattedMessage id="cytology.label.squamous" />
+                                </Column>
+                                <Column lg={3} md={4} sm={2}>
+                                  {filterDiagnosisResultsByCategory(
+                                    "EPITHELIAL_CELL_ABNORMALITY",
+                                    "DICTIONARY",
+                                  )
+                                    ?.results.filter((result) =>
+                                      diagnosisResultEpithelialCellSquamous?.some(
+                                        (item) => item.id == result.id,
+                                      ),
+                                    )
+                                    ?.map((result, index) => (
+                                      <DismissibleTag
+                                        key={index}
+                                        onClose={() => {
+                                          var diagnosisResultsMap =
+                                            filterDiagnosisResultsByCategory(
+                                              "EPITHELIAL_CELL_ABNORMALITY",
+                                              "DICTIONARY",
+                                            );
+                                          var resultIndex =
+                                            diagnosisResultsMap.results.findIndex(
+                                              (r) => r.id == result.id,
+                                            );
+                                          diagnosisResultsMap["results"].splice(
+                                            resultIndex,
+                                            1,
+                                          );
+                                          var newDiagnosis = {
+                                            ...pathologySampleInfo.diagnosis,
+                                          };
+                                          var newDiagnosisResultsMaps =
+                                            newDiagnosis.diagnosisResultsMaps;
+                                          var filteredMapIndex =
+                                            newDiagnosisResultsMaps?.findIndex(
+                                              (r) =>
+                                                r.category ===
+                                                  "EPITHELIAL_CELL_ABNORMALITY" &&
+                                                r.resultType === "DICTIONARY",
+                                            );
+                                          newDiagnosisResultsMaps[
+                                            filteredMapIndex
+                                          ] = diagnosisResultsMap;
+                                          newDiagnosis.diagnosisResultsMaps =
+                                            newDiagnosisResultsMaps;
+                                          setPathologySampleInfo({
+                                            ...pathologySampleInfo,
+                                            diagnosis: newDiagnosis,
+                                          });
+                                        }}
+                                        text={result.value}
+                                        title={intl.formatMessage({
+                                          id: "label.button.remove",
+                                        })}
+                                        dismissTooltipLabel={intl.formatMessage(
+                                          {
+                                            id: "label.button.remove",
+                                          },
+                                        )}
+                                      />
+                                    ))}
+                                </Column>
+                              </>
+                            )}
+
+                          {diagnosisResultEpithelialCellGlandular &&
+                            pathologySampleInfo && (
+                              <>
+                                <Column lg={1} md={4} sm={2}>
+                                  <FormattedMessage id="cytology.label.glandular" />
+                                </Column>
+                                <Column lg={3} md={4} sm={2}>
+                                  {filterDiagnosisResultsByCategory(
+                                    "EPITHELIAL_CELL_ABNORMALITY",
+                                    "DICTIONARY",
+                                  )
+                                    ?.results.filter((result) =>
+                                      diagnosisResultEpithelialCellGlandular?.some(
+                                        (item) => item.id == result.id,
+                                      ),
+                                    )
+                                    ?.map((result, index) => (
+                                      <DismissibleTag
+                                        key={index}
+                                        onClose={() => {
+                                          var diagnosisResultsMap =
+                                            filterDiagnosisResultsByCategory(
+                                              "EPITHELIAL_CELL_ABNORMALITY",
+                                              "DICTIONARY",
+                                            );
+                                          var resultIndex =
+                                            diagnosisResultsMap.results.findIndex(
+                                              (r) => r.id == result.id,
+                                            );
+                                          diagnosisResultsMap["results"].splice(
+                                            resultIndex,
+                                            1,
+                                          );
+                                          var newDiagnosis = {
+                                            ...pathologySampleInfo.diagnosis,
+                                          };
+                                          var newDiagnosisResultsMaps =
+                                            newDiagnosis.diagnosisResultsMaps;
+                                          var filteredMapIndex =
+                                            newDiagnosisResultsMaps?.findIndex(
+                                              (r) =>
+                                                r.category ===
+                                                  "EPITHELIAL_CELL_ABNORMALITY" &&
+                                                r.resultType === "DICTIONARY",
+                                            );
+                                          newDiagnosisResultsMaps[
+                                            filteredMapIndex
+                                          ] = diagnosisResultsMap;
+                                          newDiagnosis.diagnosisResultsMaps =
+                                            newDiagnosisResultsMaps;
+                                          setPathologySampleInfo({
+                                            ...pathologySampleInfo,
+                                            diagnosis: newDiagnosis,
+                                          });
+                                        }}
+                                        text={result.value}
+                                        title={intl.formatMessage({
+                                          id: "label.button.remove",
+                                        })}
+                                        dismissTooltipLabel={intl.formatMessage(
+                                          {
+                                            id: "label.button.remove",
+                                          },
+                                        )}
+                                      />
+                                    ))}
+                                </Column>
+                              </>
+                            )}
+
+                          <Column lg={4} md={4} sm={2}>
+                            <FormattedMessage id="cytology.label.other" /> :
+                            <TextInput
+                              id="otherNeoPlasms"
+                              labelText={intl.formatMessage({
+                                id: "enterText.label",
+                              })}
+                              hideLabel={true}
+                              placeholder={intl.formatMessage({
+                                id: "otherMalignant.placeholder",
+                              })}
+                              value={
+                                filterDiagnosisResultsByCategory(
+                                  "EPITHELIAL_CELL_ABNORMALITY",
+                                  "TEXT",
+                                )?.results[0].value
+                              }
+                              onChange={(e) => {
+                                var diagnosis = {
+                                  ...pathologySampleInfo.diagnosis,
+                                };
+                                var diagnosisResultsMaps =
+                                  diagnosis.diagnosisResultsMaps;
+                                var filteredMapIndex =
+                                  diagnosisResultsMaps?.findIndex(
+                                    (r) =>
+                                      r.category ===
+                                        "EPITHELIAL_CELL_ABNORMALITY" &&
+                                      r.resultType === "TEXT",
+                                  );
+                                var diagnosisResultMap = {};
+                                var newDiagnosisResultMaps = [];
+                                diagnosisResultMap.category =
+                                  "EPITHELIAL_CELL_ABNORMALITY";
+                                diagnosisResultMap.resultType = "TEXT";
+                                diagnosisResultMap.results = [
+                                  { id: e.target.value, value: e.target.value },
+                                ];
+
+                                if (filteredMapIndex != -1) {
+                                  diagnosisResultsMaps[filteredMapIndex] =
+                                    diagnosisResultMap;
+                                  newDiagnosisResultMaps = diagnosisResultsMaps;
+                                } else {
+                                  if (!diagnosisResultsMaps) {
+                                    diagnosisResultsMaps = [];
+                                  }
+                                  newDiagnosisResultMaps = [
+                                    ...diagnosisResultsMaps,
+                                    diagnosisResultMap,
+                                  ];
+                                }
+                                diagnosis.diagnosisResultsMaps =
+                                  newDiagnosisResultMaps;
+                                setPathologySampleInfo({
+                                  ...pathologySampleInfo,
+                                  diagnosis: diagnosis,
+                                });
+                              }}
+                            />
+                          </Column>
+                        </Grid>
                       </Column>
-                      <Column lg={12} md={4} sm={2}>
-                        {filterDiagnosisResultsByCategory(
-                          "NON_NEOPLASTIC_CELLULAR_VARIATIONS",
-                          "DICTIONARY",
-                        )?.results.map((result, index) => (
-                          <DismissibleTag
-                            key={index}
-                            onClose={() => {
-                              var diagnosisResultsMap =
+                      <Column lg={16} md={8} sm={4}>
+                        <Grid fullWidth={true} className="gridBoundary">
+                          <Column lg={16} md={8} sm={4}>
+                            <div>
+                              {" "}
+                              &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;
+                            </div>
+                            <FormattedMessage id="cytology.label.neoplastic" />
+                          </Column>
+                          <Column lg={4} md={8} sm={4}>
+                            <FilterableMultiSelect
+                              id="nonNeoPlastic"
+                              titleText={intl.formatMessage({
+                                id: "selectResult.title",
+                              })}
+                              items={diagnosisResultNonNeoPlasticCellular}
+                              itemToString={(item) => (item ? item.value : "")}
+                              initialSelectedItems={
                                 filterDiagnosisResultsByCategory(
                                   "NON_NEOPLASTIC_CELLULAR_VARIATIONS",
                                   "DICTIONARY",
-                                );
-                              diagnosisResultsMap["results"].splice(index, 1);
-                              var newDiagnosis = {
-                                ...pathologySampleInfo.diagnosis,
-                              };
-                              var newDiagnosisResultsMaps =
-                                newDiagnosis.diagnosisResultsMaps;
-                              var filteredMapIndex =
-                                newDiagnosisResultsMaps?.findIndex(
-                                  (r) =>
-                                    r.category ===
-                                    "NON_NEOPLASTIC_CELLULAR_VARIATIONS",
-                                );
-                              newDiagnosisResultsMaps[filteredMapIndex] =
-                                diagnosisResultsMap;
-                              newDiagnosis.diagnosisResultsMaps =
-                                newDiagnosisResultsMaps;
-                              setPathologySampleInfo({
-                                ...pathologySampleInfo,
-                                diagnosis: newDiagnosis,
-                              });
-                            }}
-                            text={result.value}
-                            title={intl.formatMessage({
-                              id: "label.button.remove",
-                            })}
-                            dismissTooltipLabel={intl.formatMessage({
-                              id: "label.button.remove",
-                            })}
-                          />
-                        ))}
-                      </Column>
-                    </Grid>
-                  </Column>
-
-                  <Column lg={16} md={8} sm={4}>
-                    <Grid fullWidth={true} className="gridBoundary">
-                      <Column lg={16} md={8} sm={4}>
-                        <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-                        <FormattedMessage id="cytology.label.reactive" />
-                      </Column>
-                      <Column lg={4} md={8} sm={4}>
-                        <FilterableMultiSelect
-                          id="reactiveChanges"
-                          titleText={intl.formatMessage({
-                            id: "selectResult.title",
-                          })}
-                          items={diagnosisResultReactiveCellular}
-                          itemToString={(item) => (item ? item.value : "")}
-                          initialSelectedItems={
-                            filterDiagnosisResultsByCategory(
-                              "REACTIVE_CELLULAR_CHANGES",
-                              "DICTIONARY",
-                            )?.results
-                          }
-                          onChange={(changes) => {
-                            var diagnosis = {
-                              ...pathologySampleInfo.diagnosis,
-                            };
-                            var diagnosisResultsMaps =
-                              diagnosis.diagnosisResultsMaps;
-                            var filteredMapIndex =
-                              diagnosisResultsMaps?.findIndex(
-                                (r) =>
-                                  r.category === "REACTIVE_CELLULAR_CHANGES",
-                              );
-                            var diagnosisResultMap = {};
-                            var newDiagnosisResultMaps = [];
-                            diagnosisResultMap.category =
-                              "REACTIVE_CELLULAR_CHANGES";
-                            diagnosisResultMap.resultType = "DICTIONARY";
-                            diagnosisResultMap.results = changes.selectedItems;
-
-                            if (filteredMapIndex != -1) {
-                              diagnosisResultsMaps[filteredMapIndex] =
-                                diagnosisResultMap;
-                              newDiagnosisResultMaps = diagnosisResultsMaps;
-                            } else {
-                              if (!diagnosisResultsMaps) {
-                                diagnosisResultsMaps = [];
+                                )?.results
                               }
-                              newDiagnosisResultMaps = [
-                                ...diagnosisResultsMaps,
-                                diagnosisResultMap,
-                              ];
-                            }
-                            diagnosis.diagnosisResultsMaps =
-                              newDiagnosisResultMaps;
-                            setPathologySampleInfo({
-                              ...pathologySampleInfo,
-                              diagnosis: diagnosis,
-                            });
-                          }}
-                          selectionFeedback="top-after-reopen"
-                        />
+                              onChange={(changes) => {
+                                var diagnosis = {
+                                  ...pathologySampleInfo.diagnosis,
+                                };
+                                var diagnosisResultsMaps =
+                                  diagnosis.diagnosisResultsMaps;
+                                var filteredMapIndex =
+                                  diagnosisResultsMaps?.findIndex(
+                                    (r) =>
+                                      r.category ===
+                                      "NON_NEOPLASTIC_CELLULAR_VARIATIONS",
+                                  );
+                                var diagnosisResultMap = {};
+                                var newDiagnosisResultMaps = [];
+                                diagnosisResultMap.category =
+                                  "NON_NEOPLASTIC_CELLULAR_VARIATIONS";
+                                diagnosisResultMap.resultType = "DICTIONARY";
+                                diagnosisResultMap.results =
+                                  changes.selectedItems;
+
+                                if (filteredMapIndex != -1) {
+                                  diagnosisResultsMaps[filteredMapIndex] =
+                                    diagnosisResultMap;
+                                  newDiagnosisResultMaps = diagnosisResultsMaps;
+                                } else {
+                                  if (!diagnosisResultsMaps) {
+                                    diagnosisResultsMaps = [];
+                                  }
+                                  newDiagnosisResultMaps = [
+                                    ...diagnosisResultsMaps,
+                                    diagnosisResultMap,
+                                  ];
+                                }
+                                diagnosis.diagnosisResultsMaps =
+                                  newDiagnosisResultMaps;
+                                setPathologySampleInfo({
+                                  ...pathologySampleInfo,
+                                  diagnosis: diagnosis,
+                                });
+                              }}
+                              selectionFeedback="top-after-reopen"
+                            />
+                          </Column>
+                          <Column lg={12} md={4} sm={2}>
+                            {filterDiagnosisResultsByCategory(
+                              "NON_NEOPLASTIC_CELLULAR_VARIATIONS",
+                              "DICTIONARY",
+                            )?.results.map((result, index) => (
+                              <DismissibleTag
+                                key={index}
+                                onClose={() => {
+                                  var diagnosisResultsMap =
+                                    filterDiagnosisResultsByCategory(
+                                      "NON_NEOPLASTIC_CELLULAR_VARIATIONS",
+                                      "DICTIONARY",
+                                    );
+                                  diagnosisResultsMap["results"].splice(
+                                    index,
+                                    1,
+                                  );
+                                  var newDiagnosis = {
+                                    ...pathologySampleInfo.diagnosis,
+                                  };
+                                  var newDiagnosisResultsMaps =
+                                    newDiagnosis.diagnosisResultsMaps;
+                                  var filteredMapIndex =
+                                    newDiagnosisResultsMaps?.findIndex(
+                                      (r) =>
+                                        r.category ===
+                                        "NON_NEOPLASTIC_CELLULAR_VARIATIONS",
+                                    );
+                                  newDiagnosisResultsMaps[filteredMapIndex] =
+                                    diagnosisResultsMap;
+                                  newDiagnosis.diagnosisResultsMaps =
+                                    newDiagnosisResultsMaps;
+                                  setPathologySampleInfo({
+                                    ...pathologySampleInfo,
+                                    diagnosis: newDiagnosis,
+                                  });
+                                }}
+                                text={result.value}
+                                title={intl.formatMessage({
+                                  id: "label.button.remove",
+                                })}
+                                dismissTooltipLabel={intl.formatMessage({
+                                  id: "label.button.remove",
+                                })}
+                              />
+                            ))}
+                          </Column>
+                        </Grid>
                       </Column>
-                      <Column lg={12} md={4} sm={2}>
-                        {filterDiagnosisResultsByCategory(
-                          "REACTIVE_CELLULAR_CHANGES",
-                          "DICTIONARY",
-                        )?.results.map((result, index) => (
-                          <DismissibleTag
-                            key={index}
-                            onClose={() => {
-                              var diagnosisResultsMap =
+
+                      <Column lg={16} md={8} sm={4}>
+                        <Grid fullWidth={true} className="gridBoundary">
+                          <Column lg={16} md={8} sm={4}>
+                            <div>
+                              {" "}
+                              &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;
+                            </div>
+                            <FormattedMessage id="cytology.label.reactive" />
+                          </Column>
+                          <Column lg={4} md={8} sm={4}>
+                            <FilterableMultiSelect
+                              id="reactiveChanges"
+                              titleText={intl.formatMessage({
+                                id: "selectResult.title",
+                              })}
+                              items={diagnosisResultReactiveCellular}
+                              itemToString={(item) => (item ? item.value : "")}
+                              initialSelectedItems={
                                 filterDiagnosisResultsByCategory(
                                   "REACTIVE_CELLULAR_CHANGES",
                                   "DICTIONARY",
-                                );
-                              diagnosisResultsMap["results"].splice(index, 1);
-                              var newDiagnosis = {
-                                ...pathologySampleInfo.diagnosis,
-                              };
-                              var newDiagnosisResultsMaps =
-                                newDiagnosis.diagnosisResultsMaps;
-                              var filteredMapIndex =
-                                newDiagnosisResultsMaps?.findIndex(
-                                  (r) =>
-                                    r.category === "REACTIVE_CELLULAR_CHANGES",
-                                );
-                              newDiagnosisResultsMaps[filteredMapIndex] =
-                                diagnosisResultsMap;
-                              newDiagnosis.diagnosisResultsMaps =
-                                newDiagnosisResultsMaps;
-                              setPathologySampleInfo({
-                                ...pathologySampleInfo,
-                                diagnosis: newDiagnosis,
-                              });
-                            }}
-                            text={result.value}
-                            title={intl.formatMessage({
-                              id: "label.button.remove",
-                            })}
-                            dismissTooltipLabel={intl.formatMessage({
-                              id: "label.button.remove",
-                            })}
-                          />
-                        ))}
-                      </Column>
-                    </Grid>
-                  </Column>
-                  <Column lg={16} md={8} sm={4}>
-                    <Grid fullWidth={true} className="gridBoundary">
-                      <Column lg={16} md={8} sm={4}>
-                        <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-                        <FormattedMessage id="cytology.label.organisms" />
-                      </Column>
-                      <Column lg={4} md={8} sm={4}>
-                        <FilterableMultiSelect
-                          id="organisms"
-                          titleText={intl.formatMessage({
-                            id: "selectResult.title",
-                          })}
-                          items={diagnosisResultOrganisms}
-                          itemToString={(item) => (item ? item.value : "")}
-                          initialSelectedItems={
-                            filterDiagnosisResultsByCategory(
-                              "ORGANISMS",
-                              "DICTIONARY",
-                            )?.results
-                          }
-                          onChange={(changes) => {
-                            var diagnosis = {
-                              ...pathologySampleInfo.diagnosis,
-                            };
-                            var diagnosisResultsMaps =
-                              diagnosis.diagnosisResultsMaps;
-                            var filteredMapIndex =
-                              diagnosisResultsMaps?.findIndex(
-                                (r) => r.category === "ORGANISMS",
-                              );
-                            var diagnosisResultMap = {};
-                            var newDiagnosisResultMaps = [];
-                            diagnosisResultMap.category = "ORGANISMS";
-                            diagnosisResultMap.resultType = "DICTIONARY";
-                            diagnosisResultMap.results = changes.selectedItems;
-
-                            if (filteredMapIndex != -1) {
-                              diagnosisResultsMaps[filteredMapIndex] =
-                                diagnosisResultMap;
-                              newDiagnosisResultMaps = diagnosisResultsMaps;
-                            } else {
-                              if (!diagnosisResultsMaps) {
-                                diagnosisResultsMaps = [];
+                                )?.results
                               }
-                              newDiagnosisResultMaps = [
-                                ...diagnosisResultsMaps,
-                                diagnosisResultMap,
-                              ];
-                            }
-                            diagnosis.diagnosisResultsMaps =
-                              newDiagnosisResultMaps;
-                            setPathologySampleInfo({
-                              ...pathologySampleInfo,
-                              diagnosis: diagnosis,
-                            });
-                          }}
-                          selectionFeedback="top-after-reopen"
-                        />
+                              onChange={(changes) => {
+                                var diagnosis = {
+                                  ...pathologySampleInfo.diagnosis,
+                                };
+                                var diagnosisResultsMaps =
+                                  diagnosis.diagnosisResultsMaps;
+                                var filteredMapIndex =
+                                  diagnosisResultsMaps?.findIndex(
+                                    (r) =>
+                                      r.category ===
+                                      "REACTIVE_CELLULAR_CHANGES",
+                                  );
+                                var diagnosisResultMap = {};
+                                var newDiagnosisResultMaps = [];
+                                diagnosisResultMap.category =
+                                  "REACTIVE_CELLULAR_CHANGES";
+                                diagnosisResultMap.resultType = "DICTIONARY";
+                                diagnosisResultMap.results =
+                                  changes.selectedItems;
+
+                                if (filteredMapIndex != -1) {
+                                  diagnosisResultsMaps[filteredMapIndex] =
+                                    diagnosisResultMap;
+                                  newDiagnosisResultMaps = diagnosisResultsMaps;
+                                } else {
+                                  if (!diagnosisResultsMaps) {
+                                    diagnosisResultsMaps = [];
+                                  }
+                                  newDiagnosisResultMaps = [
+                                    ...diagnosisResultsMaps,
+                                    diagnosisResultMap,
+                                  ];
+                                }
+                                diagnosis.diagnosisResultsMaps =
+                                  newDiagnosisResultMaps;
+                                setPathologySampleInfo({
+                                  ...pathologySampleInfo,
+                                  diagnosis: diagnosis,
+                                });
+                              }}
+                              selectionFeedback="top-after-reopen"
+                            />
+                          </Column>
+                          <Column lg={12} md={4} sm={2}>
+                            {filterDiagnosisResultsByCategory(
+                              "REACTIVE_CELLULAR_CHANGES",
+                              "DICTIONARY",
+                            )?.results.map((result, index) => (
+                              <DismissibleTag
+                                key={index}
+                                onClose={() => {
+                                  var diagnosisResultsMap =
+                                    filterDiagnosisResultsByCategory(
+                                      "REACTIVE_CELLULAR_CHANGES",
+                                      "DICTIONARY",
+                                    );
+                                  diagnosisResultsMap["results"].splice(
+                                    index,
+                                    1,
+                                  );
+                                  var newDiagnosis = {
+                                    ...pathologySampleInfo.diagnosis,
+                                  };
+                                  var newDiagnosisResultsMaps =
+                                    newDiagnosis.diagnosisResultsMaps;
+                                  var filteredMapIndex =
+                                    newDiagnosisResultsMaps?.findIndex(
+                                      (r) =>
+                                        r.category ===
+                                        "REACTIVE_CELLULAR_CHANGES",
+                                    );
+                                  newDiagnosisResultsMaps[filteredMapIndex] =
+                                    diagnosisResultsMap;
+                                  newDiagnosis.diagnosisResultsMaps =
+                                    newDiagnosisResultsMaps;
+                                  setPathologySampleInfo({
+                                    ...pathologySampleInfo,
+                                    diagnosis: newDiagnosis,
+                                  });
+                                }}
+                                text={result.value}
+                                title={intl.formatMessage({
+                                  id: "label.button.remove",
+                                })}
+                                dismissTooltipLabel={intl.formatMessage({
+                                  id: "label.button.remove",
+                                })}
+                              />
+                            ))}
+                          </Column>
+                        </Grid>
                       </Column>
-                      <Column lg={12} md={4} sm={2}>
-                        {filterDiagnosisResultsByCategory(
-                          "ORGANISMS",
-                          "DICTIONARY",
-                        )?.results.map((result, index) => (
-                          <DismissibleTag
-                            key={index}
-                            onClose={() => {
-                              var diagnosisResultsMap =
+                      <Column lg={16} md={8} sm={4}>
+                        <Grid fullWidth={true} className="gridBoundary">
+                          <Column lg={16} md={8} sm={4}>
+                            <div>
+                              {" "}
+                              &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;
+                            </div>
+                            <FormattedMessage id="cytology.label.organisms" />
+                          </Column>
+                          <Column lg={4} md={8} sm={4}>
+                            <FilterableMultiSelect
+                              id="organisms"
+                              titleText={intl.formatMessage({
+                                id: "selectResult.title",
+                              })}
+                              items={diagnosisResultOrganisms}
+                              itemToString={(item) => (item ? item.value : "")}
+                              initialSelectedItems={
                                 filterDiagnosisResultsByCategory(
                                   "ORGANISMS",
                                   "DICTIONARY",
-                                );
-                              diagnosisResultsMap["results"].splice(index, 1);
-                              var newDiagnosis = {
-                                ...pathologySampleInfo.diagnosis,
-                              };
-                              var newDiagnosisResultsMaps =
-                                newDiagnosis.diagnosisResultsMaps;
-                              var filteredMapIndex =
-                                newDiagnosisResultsMaps?.findIndex(
-                                  (r) => r.category === "ORGANISMS",
-                                );
-                              newDiagnosisResultsMaps[filteredMapIndex] =
-                                diagnosisResultsMap;
-                              newDiagnosis.diagnosisResultsMaps =
-                                newDiagnosisResultsMaps;
-                              setPathologySampleInfo({
-                                ...pathologySampleInfo,
-                                diagnosis: newDiagnosis,
-                              });
-                            }}
-                            text={result.value}
-                            title={intl.formatMessage({
-                              id: "label.button.remove",
-                            })}
-                            dismissTooltipLabel={intl.formatMessage({
-                              id: "label.button.remove",
-                            })}
-                          />
-                        ))}
-                      </Column>
-                    </Grid>
-                  </Column>
-                  <Column lg={16} md={8} sm={4}>
-                    <Grid fullWidth={true} className="gridBoundary">
-                      <Column lg={16} md={8} sm={4}>
-                        <div> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;</div>
-                        <FormattedMessage id="cytology.label.otherResult" />
-                      </Column>
-                      <Column lg={4} md={8} sm={4}>
-                        <FilterableMultiSelect
-                          id="OTHER"
-                          titleText={intl.formatMessage({
-                            id: "selectResult.title",
-                          })}
-                          items={diagnosisResultOther}
-                          itemToString={(item) => (item ? item.value : "")}
-                          initialSelectedItems={
-                            filterDiagnosisResultsByCategory(
-                              "OTHER",
-                              "DICTIONARY",
-                            )?.results
-                          }
-                          onChange={(changes) => {
-                            var diagnosis = {
-                              ...pathologySampleInfo.diagnosis,
-                            };
-                            var diagnosisResultsMaps =
-                              diagnosis.diagnosisResultsMaps;
-                            var filteredMapIndex =
-                              diagnosisResultsMaps?.findIndex(
-                                (r) => r.category === "OTHER",
-                              );
-                            var diagnosisResultMap = {};
-                            var newDiagnosisResultMaps = [];
-                            diagnosisResultMap.category = "OTHER";
-                            diagnosisResultMap.resultType = "DICTIONARY";
-                            diagnosisResultMap.results = changes.selectedItems;
-
-                            if (filteredMapIndex != -1) {
-                              diagnosisResultsMaps[filteredMapIndex] =
-                                diagnosisResultMap;
-                              newDiagnosisResultMaps = diagnosisResultsMaps;
-                            } else {
-                              if (!diagnosisResultsMaps) {
-                                diagnosisResultsMaps = [];
+                                )?.results
                               }
-                              newDiagnosisResultMaps = [
-                                ...diagnosisResultsMaps,
-                                diagnosisResultMap,
-                              ];
-                            }
-                            diagnosis.diagnosisResultsMaps =
-                              newDiagnosisResultMaps;
-                            setPathologySampleInfo({
-                              ...pathologySampleInfo,
-                              diagnosis: diagnosis,
-                            });
-                          }}
-                          selectionFeedback="top-after-reopen"
-                        />
+                              onChange={(changes) => {
+                                var diagnosis = {
+                                  ...pathologySampleInfo.diagnosis,
+                                };
+                                var diagnosisResultsMaps =
+                                  diagnosis.diagnosisResultsMaps;
+                                var filteredMapIndex =
+                                  diagnosisResultsMaps?.findIndex(
+                                    (r) => r.category === "ORGANISMS",
+                                  );
+                                var diagnosisResultMap = {};
+                                var newDiagnosisResultMaps = [];
+                                diagnosisResultMap.category = "ORGANISMS";
+                                diagnosisResultMap.resultType = "DICTIONARY";
+                                diagnosisResultMap.results =
+                                  changes.selectedItems;
+
+                                if (filteredMapIndex != -1) {
+                                  diagnosisResultsMaps[filteredMapIndex] =
+                                    diagnosisResultMap;
+                                  newDiagnosisResultMaps = diagnosisResultsMaps;
+                                } else {
+                                  if (!diagnosisResultsMaps) {
+                                    diagnosisResultsMaps = [];
+                                  }
+                                  newDiagnosisResultMaps = [
+                                    ...diagnosisResultsMaps,
+                                    diagnosisResultMap,
+                                  ];
+                                }
+                                diagnosis.diagnosisResultsMaps =
+                                  newDiagnosisResultMaps;
+                                setPathologySampleInfo({
+                                  ...pathologySampleInfo,
+                                  diagnosis: diagnosis,
+                                });
+                              }}
+                              selectionFeedback="top-after-reopen"
+                            />
+                          </Column>
+                          <Column lg={12} md={4} sm={2}>
+                            {filterDiagnosisResultsByCategory(
+                              "ORGANISMS",
+                              "DICTIONARY",
+                            )?.results.map((result, index) => (
+                              <DismissibleTag
+                                key={index}
+                                onClose={() => {
+                                  var diagnosisResultsMap =
+                                    filterDiagnosisResultsByCategory(
+                                      "ORGANISMS",
+                                      "DICTIONARY",
+                                    );
+                                  diagnosisResultsMap["results"].splice(
+                                    index,
+                                    1,
+                                  );
+                                  var newDiagnosis = {
+                                    ...pathologySampleInfo.diagnosis,
+                                  };
+                                  var newDiagnosisResultsMaps =
+                                    newDiagnosis.diagnosisResultsMaps;
+                                  var filteredMapIndex =
+                                    newDiagnosisResultsMaps?.findIndex(
+                                      (r) => r.category === "ORGANISMS",
+                                    );
+                                  newDiagnosisResultsMaps[filteredMapIndex] =
+                                    diagnosisResultsMap;
+                                  newDiagnosis.diagnosisResultsMaps =
+                                    newDiagnosisResultsMaps;
+                                  setPathologySampleInfo({
+                                    ...pathologySampleInfo,
+                                    diagnosis: newDiagnosis,
+                                  });
+                                }}
+                                text={result.value}
+                                title={intl.formatMessage({
+                                  id: "label.button.remove",
+                                })}
+                                dismissTooltipLabel={intl.formatMessage({
+                                  id: "label.button.remove",
+                                })}
+                              />
+                            ))}
+                          </Column>
+                        </Grid>
                       </Column>
-                      <Column lg={12} md={4} sm={2}>
-                        {filterDiagnosisResultsByCategory(
-                          "OTHER",
-                          "DICTIONARY",
-                        )?.results.map((result, index) => (
-                          <DismissibleTag
-                            key={index}
-                            onClose={() => {
-                              var diagnosisResultsMap =
+                      <Column lg={16} md={8} sm={4}>
+                        <Grid fullWidth={true} className="gridBoundary">
+                          <Column lg={16} md={8} sm={4}>
+                            <div>
+                              {" "}
+                              &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;
+                            </div>
+                            <FormattedMessage id="cytology.label.otherResult" />
+                          </Column>
+                          <Column lg={4} md={8} sm={4}>
+                            <FilterableMultiSelect
+                              id="OTHER"
+                              titleText={intl.formatMessage({
+                                id: "selectResult.title",
+                              })}
+                              items={diagnosisResultOther}
+                              itemToString={(item) => (item ? item.value : "")}
+                              initialSelectedItems={
                                 filterDiagnosisResultsByCategory(
                                   "OTHER",
                                   "DICTIONARY",
-                                );
-                              diagnosisResultsMap["results"].splice(index, 1);
-                              var newDiagnosis = {
-                                ...pathologySampleInfo.diagnosis,
-                              };
-                              var newDiagnosisResultsMaps =
-                                newDiagnosis.diagnosisResultsMaps;
-                              var filteredMapIndex =
-                                newDiagnosisResultsMaps?.findIndex(
-                                  (r) => r.category === "OTHER",
-                                );
-                              newDiagnosisResultsMaps[filteredMapIndex] =
-                                diagnosisResultsMap;
-                              newDiagnosis.diagnosisResultsMaps =
-                                newDiagnosisResultsMaps;
-                              setPathologySampleInfo({
-                                ...pathologySampleInfo,
-                                diagnosis: newDiagnosis,
-                              });
-                            }}
-                            text={result.value}
-                            title={intl.formatMessage({
-                              id: "label.button.remove",
-                            })}
-                            dismissTooltipLabel={intl.formatMessage({
-                              id: "label.button.remove",
-                            })}
-                          />
-                        ))}
+                                )?.results
+                              }
+                              onChange={(changes) => {
+                                var diagnosis = {
+                                  ...pathologySampleInfo.diagnosis,
+                                };
+                                var diagnosisResultsMaps =
+                                  diagnosis.diagnosisResultsMaps;
+                                var filteredMapIndex =
+                                  diagnosisResultsMaps?.findIndex(
+                                    (r) => r.category === "OTHER",
+                                  );
+                                var diagnosisResultMap = {};
+                                var newDiagnosisResultMaps = [];
+                                diagnosisResultMap.category = "OTHER";
+                                diagnosisResultMap.resultType = "DICTIONARY";
+                                diagnosisResultMap.results =
+                                  changes.selectedItems;
+
+                                if (filteredMapIndex != -1) {
+                                  diagnosisResultsMaps[filteredMapIndex] =
+                                    diagnosisResultMap;
+                                  newDiagnosisResultMaps = diagnosisResultsMaps;
+                                } else {
+                                  if (!diagnosisResultsMaps) {
+                                    diagnosisResultsMaps = [];
+                                  }
+                                  newDiagnosisResultMaps = [
+                                    ...diagnosisResultsMaps,
+                                    diagnosisResultMap,
+                                  ];
+                                }
+                                diagnosis.diagnosisResultsMaps =
+                                  newDiagnosisResultMaps;
+                                setPathologySampleInfo({
+                                  ...pathologySampleInfo,
+                                  diagnosis: diagnosis,
+                                });
+                              }}
+                              selectionFeedback="top-after-reopen"
+                            />
+                          </Column>
+                          <Column lg={12} md={4} sm={2}>
+                            {filterDiagnosisResultsByCategory(
+                              "OTHER",
+                              "DICTIONARY",
+                            )?.results.map((result, index) => (
+                              <DismissibleTag
+                                key={index}
+                                onClose={() => {
+                                  var diagnosisResultsMap =
+                                    filterDiagnosisResultsByCategory(
+                                      "OTHER",
+                                      "DICTIONARY",
+                                    );
+                                  diagnosisResultsMap["results"].splice(
+                                    index,
+                                    1,
+                                  );
+                                  var newDiagnosis = {
+                                    ...pathologySampleInfo.diagnosis,
+                                  };
+                                  var newDiagnosisResultsMaps =
+                                    newDiagnosis.diagnosisResultsMaps;
+                                  var filteredMapIndex =
+                                    newDiagnosisResultsMaps?.findIndex(
+                                      (r) => r.category === "OTHER",
+                                    );
+                                  newDiagnosisResultsMaps[filteredMapIndex] =
+                                    diagnosisResultsMap;
+                                  newDiagnosis.diagnosisResultsMaps =
+                                    newDiagnosisResultsMaps;
+                                  setPathologySampleInfo({
+                                    ...pathologySampleInfo,
+                                    diagnosis: newDiagnosis,
+                                  });
+                                }}
+                                text={result.value}
+                                title={intl.formatMessage({
+                                  id: "label.button.remove",
+                                })}
+                                dismissTooltipLabel={intl.formatMessage({
+                                  id: "label.button.remove",
+                                })}
+                              />
+                            ))}
+                          </Column>
+                        </Grid>
                       </Column>
-                    </Grid>
-                  </Column>
-                </>
-              )}
-          </>
-        )}
-        {pathologySampleInfo.assignedPathologistId &&
-          pathologySampleInfo.assignedTechnicianId && (
-            <Column lg={16}>
-              <Checkbox
-                labelText={intl.formatMessage({
-                  id: "pathology.label.release",
-                })}
-                id="release"
-                onChange={() => {
-                  setPathologySampleInfo({
-                    ...pathologySampleInfo,
-                    release: !pathologySampleInfo.release,
-                  });
-                }}
-              />
-            </Column>
-          )}
-        <Column lg={16}>
-          <Button
-            id="pathology_save2"
-            disabled={isSubmitting}
-            onClick={(e) => {
-              e.preventDefault();
-              save(e);
-            }}
-          >
-            <FormattedMessage id="label.button.save" />
-          </Button>
-        </Column>
-      </Grid>
+                    </>
+                  )}
+              </fieldset>
+            )}
+          {caseUiPermissions.canRelease &&
+            pathologySampleInfo.assignedPathologistId &&
+            pathologySampleInfo.assignedTechnicianId && (
+              <Column lg={16}>
+                <Checkbox
+                  labelText={intl.formatMessage({
+                    id: "pathology.label.release",
+                  })}
+                  id="release"
+                  onChange={() => {
+                    setPathologySampleInfo({
+                      ...pathologySampleInfo,
+                      release: !pathologySampleInfo.release,
+                    });
+                  }}
+                />
+              </Column>
+            )}
+          <Column lg={16}>
+            <Button
+              id="pathology_save2"
+              disabled={isSubmitting || !caseUiPermissions.canSave}
+              onClick={(e) => {
+                e.preventDefault();
+                save(e);
+              }}
+            >
+              <FormattedMessage id="label.button.save" />
+            </Button>
+          </Column>
+        </Grid>
+      </fieldset>
     </>
   );
 }

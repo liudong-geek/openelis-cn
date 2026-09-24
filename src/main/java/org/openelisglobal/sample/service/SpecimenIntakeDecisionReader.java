@@ -11,6 +11,7 @@ import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.result.form.SpecimenResultAdmission;
 import org.openelisglobal.result.service.SpecimenResultAdmissionReader;
 import org.openelisglobal.sample.dao.SpecimenIntakeDecisionDAO;
+import org.openelisglobal.sample.form.SpecimenIntakeEvidence;
 import org.openelisglobal.sample.service.EntryCurrentStateReader.SpecimenView;
 import org.openelisglobal.sample.valueholder.SpecimenIntakeDecision;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -70,12 +71,12 @@ public class SpecimenIntakeDecisionReader {
                     throw new IllegalArgumentException();
                 }
                 var reason = new SpecimenIntakeDecision.Reason("DICTIONARY:resultRejectionReasons", row.getId(),
-                        row.getLastupdated().toInstant().toString(), row.getDictEntry());
+                        SpecimenIntakeEvidence.wallClockTime(row.getLastupdated()), row.getDictEntry());
                 org.openelisglobal.sample.form.SpecimenIntakeEvidence.requireId(row.getDictionaryCategory().getId());
                 var categoryTime = org.openelisglobal.sample.form.SpecimenIntakeEvidence
-                        .time(row.getDictionaryCategory().getLastupdated().toInstant().toString());
-                if (row.getLastupdated().toInstant().isAfter(java.time.Instant.now())
-                        || categoryTime.isAfter(java.time.Instant.now())) {
+                        .time(SpecimenIntakeEvidence.wallClockTime(row.getDictionaryCategory().getLastupdated()));
+                if (SpecimenIntakeEvidence.time(SpecimenIntakeEvidence.wallClockTime(row.getLastupdated()))
+                        .isAfter(java.time.Instant.now()) || categoryTime.isAfter(java.time.Instant.now())) {
                     throw new IllegalArgumentException();
                 }
                 values.add(reason);

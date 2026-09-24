@@ -15,6 +15,7 @@ import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.util.DefaultConfigurationProperties;
 import org.openelisglobal.patient.service.PatientService;
 import org.openelisglobal.sample.exception.EntrySubmissionException;
+import org.openelisglobal.sample.form.SpecimenIntakeEvidence;
 import org.openelisglobal.samplehuman.dao.SampleHumanDAO;
 import org.openelisglobal.sampleitem.dao.SampleItemDAO;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
@@ -200,8 +201,8 @@ public class EntryCurrentStateReader {
             var view = new RequestView(row.getId().toString(), row.getSortOrder(), typeId,
                     quantity(row.getRequestedQuantity(), false),
                     row.getUnitOfMeasure() == null ? null : requiredId(row.getUnitOfMeasure().getId()), tests,
-                    ids(row.getRequestedPanels(), false), row.getStatus().name(), itemId, time(row.getCreatedDate()),
-                    time(row.getLastupdated()));
+                    ids(row.getRequestedPanels(), false), row.getStatus().name(), itemId,
+                    wallClockTime(row.getCreatedDate()), wallClockTime(row.getLastupdated()));
             if (logical.putIfAbsent(view.id(), view) != null) {
                 throw conflict();
             }
@@ -244,7 +245,7 @@ public class EntryCurrentStateReader {
                 allTests.add(testId);
                 qaAnalyses.add(analysis);
                 itemAnalyses.add(new AnalysisView(analysis.getId(), testId, status(analysis.getStatusId(), "ANALYSIS"),
-                        time(analysis.getLastupdated())));
+                        wallClockTime(analysis.getLastupdated())));
             }
             if (!physicalTests.containsAll(logical.get(requestId).testIds())) {
                 throw conflict();
@@ -254,8 +255,8 @@ public class EntryCurrentStateReader {
                     requiredId(item.getTypeOfSample().getId()), quantity(item.getQuantity(), true),
                     item.getUnitOfMeasure() == null ? null : requiredId(item.getUnitOfMeasure().getId()),
                     status(item.getStatusId(), "SAMPLE"), item.isVoided(), item.isRejected(),
-                    time(item.getCollectionDate()), time(item.getReceivedDate()), item.getCollector(),
-                    time(item.getLastupdated()), List.copyOf(itemAnalyses)));
+                    instantTime(item.getCollectionDate()), instantTime(item.getReceivedDate()), item.getCollector(),
+                    wallClockTime(item.getLastupdated()), List.copyOf(itemAnalyses)));
         }
         Set<String> allowed = new HashSet<>();
         var grants = users.getAllDisplayUserTestsByLabUnit(actorId, Constants.ROLE_RECEPTION);
@@ -273,7 +274,7 @@ public class EntryCurrentStateReader {
                 .sorted(Comparator.comparingInt(RequestView::sortOrder).thenComparing(RequestView::id)).toList();
         specimens.sort(Comparator.comparing(SpecimenView::requestId));
         return new Snapshot(1, true, sampleId, sample.getAccessionNumber(), workflow, orderStatus,
-                time(sample.getLastupdated()), patient, ordered, List.copyOf(specimens),
+                wallClockTime(sample.getLastupdated()), patient, ordered, List.copyOf(specimens),
                 collectionContext(sample, ordered, specimens),
                 qaReviews.read(sample, patient == null ? null : patient.id(), rows, physicalRows, qaAnalyses),
                 intakeDecisions.read(sampleId, sample.getAccessionNumber(), patient == null ? null : patient.id(),
@@ -309,10 +310,11 @@ public class EntryCurrentStateReader {
                         .getDateFormatForLocale(java.util.Locale.forLanguageTag(locale.replace('_', '-')));
         var zone = java.util.TimeZone.getDefault().toZoneId();
         return new CollectionContext(1, format, zone.getId(),
-                java.time.ZonedDateTime.now(zone)
-                        .format(java.time.format.DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm")),
-                sample.getConsentGiven(), sample.getConsentFormReference(), time(sample.getConsentRecordedAt()),
-                sample.getConsentRecordedBy(), List.copyOf(data.values()));
+                java.time.ZonedDateTime.now(zone).format(
+                        java.time.format.DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm")),
+                sample.getConsentGiven(), sample.getConsentFormReference(),
+                wallClockTime(sample.getConsentRecordedAt()), sample.getConsentRecordedBy(),
+                List.copyOf(data.values()));
     }
 
     private void master(Map<String, MasterDataView> data, String kind, String id) {
@@ -455,8 +457,12 @@ public class EntryCurrentStateReader {
         return unique.stream().sorted().toList();
     }
 
-    private static String time(Timestamp value) {
-        return value == null ? null : value.toInstant().toString();
+    private static String wallClockTime(Timestamp value) {
+        return value == null ? null : SpecimenIntakeEvidence.wallClockTime(value);
+    }
+
+    private static String instantTime(Timestamp value) {
+        return value == null ? null : SpecimenIntakeEvidence.instantTime(value);
     }
 
     private static EntrySubmissionException conflict() {

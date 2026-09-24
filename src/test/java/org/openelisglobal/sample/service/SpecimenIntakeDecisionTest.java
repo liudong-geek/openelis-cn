@@ -2,16 +2,19 @@ package org.openelisglobal.sample.service;
 
 import static org.junit.Assert.*;
 
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TimeZone;
 import org.junit.Test;
 import org.openelisglobal.sample.form.SpecimenIntakeEvidence;
+import org.openelisglobal.sample.valueholder.SpecimenIntakeDecision;
 import org.openelisglobal.sample.valueholder.SpecimenIntakeDecision.Decision;
 import org.openelisglobal.sample.valueholder.SpecimenIntakeDecision.Reason;
-import org.openelisglobal.sample.valueholder.SpecimenIntakeDecision;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
@@ -25,6 +28,22 @@ public class SpecimenIntakeDecisionTest {
     public static SpecimenIntakeEvidence evidence() {
         return new SpecimenIntakeEvidence(1, TIME, TIME, TIME, "31", TIME, TIME,
                 List.of(new SpecimenIntakeEvidence.Analysis("901", "41", TIME)));
+    }
+
+    @Test
+    public void wallClockAndInstantColumnsDoNotGainASecondShanghaiOffset() {
+        TimeZone original = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            String instant = "2026-09-14T04:00:00.123456Z";
+            Timestamp wallClock = Timestamp.valueOf(LocalDateTime.parse("2026-09-14T12:00:00.123456"));
+            assertEquals(instant, SpecimenIntakeEvidence.wallClockTime(wallClock));
+            assertEquals(instant,
+                    SpecimenIntakeEvidence.wallClockTime(SpecimenIntakeEvidence.wallClockTimestamp(instant)));
+            assertEquals(instant, SpecimenIntakeEvidence.instantTime(Timestamp.from(Instant.parse(instant))));
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     public static SpecimenIntakeDecision row(String item, Decision decision) {

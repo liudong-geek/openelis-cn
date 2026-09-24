@@ -120,3 +120,22 @@
     font-size: 0.9rem;
   }
 }
+
+.specialty-case-editing-boundary {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.specialty-case-assignment-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-block: 1rem;
+}
+
+.specialty-case-field-boundary {
+  display: contents;
+}

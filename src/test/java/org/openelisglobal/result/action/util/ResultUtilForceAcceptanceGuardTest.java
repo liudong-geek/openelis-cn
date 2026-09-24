@@ -4,12 +4,17 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Arrays;
 import java.util.Collections;
 import org.junit.Test;
+import org.openelisglobal.analysis.valueholder.Analysis;
+import org.openelisglobal.note.service.NoteService;
+import org.openelisglobal.note.service.NoteServiceImpl.NoteType;
+import org.openelisglobal.note.valueholder.Note;
 import org.openelisglobal.test.beanItems.TestResultItem;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -64,5 +69,23 @@ public class ResultUtilForceAcceptanceGuardTest {
         } catch (ResponseStatusException e) {
             assertEquals(HttpStatus.BAD_REQUEST, e.getStatusCode());
         }
+    }
+
+    @Test
+    public void forceAcceptWithReasonAddsDedicatedAuditNote() {
+        ResultsUpdateDataSet dataSet = mock(ResultsUpdateDataSet.class);
+        TestResultItem item = new TestResultItem();
+        item.setForceTechApproval("true");
+        item.setForceTechApprovalNote("delta check reviewed");
+        Analysis analysis = new Analysis();
+        analysis.setId("42");
+        NoteService notes = mock(NoteService.class);
+        Note note = new Note();
+        when(notes.createSavableNote(analysis, NoteType.UNCONDITIONAL_ACCEPTANCE_REASON, "delta check reviewed",
+                "Result Note", "11")).thenReturn(note);
+
+        ResultUtil.addForceAcceptanceAuditNote(dataSet, item, analysis, "11", notes);
+
+        verify(dataSet).addToNoteList(note);
     }
 }

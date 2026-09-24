@@ -1,13 +1,18 @@
 package org.openelisglobal.program.service;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -19,8 +24,12 @@ import org.openelisglobal.barcode.form.PostSavePrintDialogForm;
 import org.openelisglobal.barcode.service.BarcodeInfoService;
 import org.openelisglobal.barcode.service.BarcodeWorkflowPrintService;
 import org.openelisglobal.program.controller.pathology.PathologySampleForm;
+import org.openelisglobal.program.service.SpecialtyCaseWriteGuard.Assignment;
+import org.openelisglobal.program.service.SpecialtyCaseWriteGuard.Authorization;
 import org.openelisglobal.program.valueholder.pathology.PathologySample;
 import org.openelisglobal.sample.valueholder.Sample;
+import org.openelisglobal.systemuser.valueholder.SystemUser;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -34,6 +43,7 @@ public class PathologySampleServiceImplTest {
 
     private PathologySampleServiceImpl pathologySampleService;
     private PathologySample existingPathologySample;
+    private SpecialtyCaseWriteGuard writeGuard;
 
     @Before
     public void setUp() {
@@ -41,6 +51,10 @@ public class PathologySampleServiceImplTest {
         ReflectionTestUtils.setField(pathologySampleService, "barcodeInfoService", barcodeInfoService);
         ReflectionTestUtils.setField(pathologySampleService, "barcodeWorkflowPrintService",
                 barcodeWorkflowPrintService);
+        writeGuard = org.mockito.Mockito.mock(SpecialtyCaseWriteGuard.class);
+        when(writeGuard.require(eq("2"), any(PathologySample.class), anyList()))
+                .thenReturn(new Authorization("2", Set.of(), List.of(), List.of()));
+        ReflectionTestUtils.setField(pathologySampleService, "specialtyCaseWriteGuard", writeGuard);
 
         existingPathologySample = new PathologySample();
         existingPathologySample.setId(2);
@@ -123,6 +137,185 @@ public class PathologySampleServiceImplTest {
         org.junit.Assert.assertEquals(Integer.valueOf(1), labelsSection.getOrderRow().getQuantities().get("freezer"));
     }
 
+    @Test
+    public void draftSaveRequestsResultsOrPathologistScope() {
+        PathologySampleForm form = baseForm();
+        LabelsSectionForm labelsSection = createLabelsSectionForm();
+        when(barcodeWorkflowPrintService.buildLabelsSection(1, java.util.List.of(1))).thenReturn(labelsSection);
+        when(barcodeWorkflowPrintService.buildPostSavePrintDialog(any(), eq(labelsSection)))
+                .thenReturn(new PostSavePrintDialogForm());
+
+        pathologySampleService.updateWithFormValues(2, form);
+
+        verify(writeGuard).require("2", existingPathologySample,
+                List.of(org.openelisglobal.common.constants.Constants.ROLE_RESULTS,
+                        org.openelisglobal.common.constants.Constants.ROLE_PATHOLOGIST));
+    }
+
+    @Test
+    public void technicianAndPathologistAssignmentsUseDifferentRolesAndSelfAssignmentGuard() {
+        SystemUser actor = new SystemUser();
+        actor.setId("2");
+        Authorization technicianAuthorization = new Authorization("2", Set.of(), List.of(), List.of());
+        Authorization pathologistAuthorization = new Authorization("2", Set.of(), List.of(), List.of());
+        when(writeGuard.require("2", existingPathologySample,
+                org.openelisglobal.common.constants.Constants.ROLE_RESULTS)).thenReturn(technicianAuthorization);
+        when(writeGuard.require("2", existingPathologySample,
+                org.openelisglobal.common.constants.Constants.ROLE_PATHOLOGIST)).thenReturn(pathologistAuthorization);
+
+        pathologySampleService.assignTechnician(2, actor, "2");
+        pathologySampleService.assignPathologist(2, actor, "2");
+
+        verify(writeGuard).require("2", existingPathologySample,
+                org.openelisglobal.common.constants.Constants.ROLE_RESULTS);
+        verify(writeGuard).require("2", existingPathologySample,
+                org.openelisglobal.common.constants.Constants.ROLE_PATHOLOGIST);
+        verify(writeGuard, times(2)).requireSelfAssignment(technicianAuthorization, actor, null);
+    }
+
+    @Test
+    public void draftCannotPersistCompletedStatus() {
+        PathologySampleForm form = baseForm();
+        form.setStatus(PathologySample.PathologyStatus.COMPLETED);
+        doThrow(new AccessDeniedException("error.notauthorized")).when(writeGuard).requireDraftStatus(false,
+                PathologySample.PathologyStatus.COMPLETED);
+
+        org.junit.Assert.assertThrows(AccessDeniedException.class,
+                () -> pathologySampleService.updateWithFormValues(2, form));
+
+        verify(pathologySampleService, never()).update(any(PathologySample.class));
+    }
+
+    @Test
+    public void resultsOnlyDraftCannotCreateIhcReferralBeforeSpecialistAuthorization() {
+        PathologySampleForm form = baseForm();
+        form.setReferToImmunoHistoChemistry(true);
+        doThrow(new AccessDeniedException("error.notauthorized")).when(writeGuard).requireRead(existingPathologySample,
+                List.of(org.openelisglobal.common.constants.Constants.ROLE_PATHOLOGIST));
+
+        org.junit.Assert.assertThrows(AccessDeniedException.class,
+                () -> pathologySampleService.updateWithFormValues(2, form));
+
+        verify(pathologySampleService, never()).update(any(PathologySample.class));
+    }
+
+    @Test
+    public void occupiedAssignmentCannotBeOverwritten() {
+        SystemUser actor = new SystemUser();
+        actor.setId("2");
+        SystemUser owner = new SystemUser();
+        owner.setId("3");
+        existingPathologySample.setTechnician(owner);
+        Authorization authorization = new Authorization("2", Set.of(), List.of(), List.of());
+        when(writeGuard.require("2", existingPathologySample,
+                org.openelisglobal.common.constants.Constants.ROLE_RESULTS)).thenReturn(authorization);
+        doThrow(new AccessDeniedException("error.notauthorized")).when(writeGuard)
+                .requireSelfAssignment(authorization, actor, owner);
+
+        org.junit.Assert.assertThrows(AccessDeniedException.class,
+                () -> pathologySampleService.assignTechnician(2, actor, "2"));
+
+        verify(pathologySampleService, never()).update(any(PathologySample.class));
+    }
+
+    @Test
+    public void caseSaveCannotTransferThePersistedTechnician() {
+        SystemUser actor = user("2");
+        existingPathologySample.setTechnician(actor);
+        PathologySampleForm form = baseForm();
+        form.setAssignedTechnicianId("3");
+        doThrow(new AccessDeniedException("error.notauthorized")).when(writeGuard)
+                .requireUnchangedAssignment(actor, "3");
+
+        org.junit.Assert.assertThrows(AccessDeniedException.class,
+                () -> pathologySampleService.updateWithFormValues(2, form));
+
+        verify(pathologySampleService, never()).update(any(PathologySample.class));
+    }
+
+    @Test
+    public void resultsTechnicianCannotChangePathologistDiagnosisFields() {
+        SystemUser technician = user("2");
+        SystemUser pathologist = user("3");
+        existingPathologySample.setTechnician(technician);
+        existingPathologySample.setPathologist(pathologist);
+        PathologySampleForm form = baseForm();
+        form.setGrossExam("forged specialist finding");
+        Authorization authorization = new Authorization("2", Set.of(), List.of(), List.of());
+        when(writeGuard.require(eq("2"), eq(existingPathologySample), anyList())).thenReturn(authorization);
+        List<Assignment> specialistOwner = List
+                .of(new Assignment(org.openelisglobal.common.constants.Constants.ROLE_PATHOLOGIST, pathologist));
+        doThrow(new AccessDeniedException("error.notauthorized")).when(writeGuard)
+                .requireCurrentAssignment(authorization, specialistOwner);
+
+        org.junit.Assert.assertThrows(AccessDeniedException.class,
+                () -> pathologySampleService.updateWithFormValues(2, form));
+
+        verify(pathologySampleService, never()).update(any(PathologySample.class));
+    }
+
+    @Test
+    public void assignedPathologistCanSaveDiagnosisFieldsAsDraft() {
+        SystemUser pathologist = user("2");
+        existingPathologySample.setPathologist(pathologist);
+        PathologySampleForm form = baseForm();
+        form.setGrossExam("specialist finding");
+        Authorization authorization = new Authorization("2", Set.of(), List.of(), List.of());
+        when(writeGuard.require(eq("2"), eq(existingPathologySample), anyList())).thenReturn(authorization);
+        LabelsSectionForm labelsSection = createLabelsSectionForm();
+        when(barcodeWorkflowPrintService.buildLabelsSection(1, java.util.List.of(1))).thenReturn(labelsSection);
+        when(barcodeWorkflowPrintService.buildPostSavePrintDialog(any(), eq(labelsSection)))
+                .thenReturn(new PostSavePrintDialogForm());
+
+        pathologySampleService.updateWithFormValues(2, form);
+
+        verify(writeGuard).requireCurrentAssignment(authorization,
+                List.of(new Assignment(org.openelisglobal.common.constants.Constants.ROLE_PATHOLOGIST, pathologist)));
+        verify(pathologySampleService).update(any(PathologySample.class));
+    }
+
+    @Test
+    public void anotherPathologistCannotReleaseAnOwnedCase() {
+        SystemUser owner = user("3");
+        SystemUser technician = user("4");
+        existingPathologySample.setPathologist(owner);
+        existingPathologySample.setTechnician(technician);
+        PathologySampleForm form = baseForm();
+        form.setRelease(true);
+        Authorization authorization = new Authorization("2", Set.of(), List.of(), List.of());
+        when(writeGuard.require("2", existingPathologySample,
+                List.of(org.openelisglobal.common.constants.Constants.ROLE_PATHOLOGIST))).thenReturn(authorization);
+        Assignment specialistOwner = new Assignment(
+                org.openelisglobal.common.constants.Constants.ROLE_PATHOLOGIST, owner);
+        doThrow(new AccessDeniedException("error.notauthorized")).when(writeGuard)
+                .requireReleaseAssignments(authorization, specialistOwner, technician);
+
+        org.junit.Assert.assertThrows(AccessDeniedException.class,
+                () -> pathologySampleService.updateWithFormValues(2, form));
+
+        verify(pathologySampleService, never()).update(any(PathologySample.class));
+    }
+
+    @Test
+    public void releaseWithoutAPersistedTechnicianIsRejectedBeforeUpdate() {
+        SystemUser pathologist = user("2");
+        existingPathologySample.setPathologist(pathologist);
+        PathologySampleForm form = baseForm();
+        form.setRelease(true);
+        Authorization authorization = new Authorization("2", Set.of(), List.of(), List.of());
+        when(writeGuard.require("2", existingPathologySample,
+                List.of(org.openelisglobal.common.constants.Constants.ROLE_PATHOLOGIST))).thenReturn(authorization);
+        Assignment specialistOwner = new Assignment(
+                org.openelisglobal.common.constants.Constants.ROLE_PATHOLOGIST, pathologist);
+        doThrow(new AccessDeniedException("error.notauthorized")).when(writeGuard)
+                .requireReleaseAssignments(authorization, specialistOwner, null);
+
+        org.junit.Assert.assertThrows(AccessDeniedException.class,
+                () -> pathologySampleService.updateWithFormValues(2, form));
+
+        verify(pathologySampleService, never()).update(any(PathologySample.class));
+    }
+
     private PathologySampleForm baseForm() {
         PathologySampleForm form = new PathologySampleForm();
         form.setSystemUserId("2");
@@ -140,5 +333,11 @@ public class PathologySampleServiceImplTest {
         labelsSection.setOrderRow(orderRow);
         labelsSection.setSampleRows(new ArrayList<>());
         return labelsSection;
+    }
+
+    private SystemUser user(String id) {
+        SystemUser user = new SystemUser();
+        user.setId(id);
+        return user;
     }
 }

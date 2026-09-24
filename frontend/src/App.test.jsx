@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react";
-import App, { AUDIT_TRAIL_ROUTE_ROLES } from "./App";
+import App, { AUDIT_TRAIL_ROUTE_ROLES, SPECIALTY_ROUTE_ACCESS } from "./App";
 import { Roles } from "./components/utils/Utils";
 
 test("renders App component without errors", () => {
@@ -19,5 +19,22 @@ describe("China delivery route role contracts", () => {
       Roles.AUDIT_TRAIL,
     ]);
     expect(AUDIT_TRAIL_ROUTE_ROLES).not.toContain(Roles.REPORTS);
+  });
+
+  test("allows each specialty dashboard and case view to its technician and specialist", () => {
+    expect(SPECIALTY_ROUTE_ACCESS).toEqual({
+      pathology: {
+        role: [Roles.RESULTS, Roles.PATHOLOGIST],
+        labUnitRole: { Pathology: [Roles.RESULTS] },
+      },
+      immunohistochemistry: {
+        role: [Roles.RESULTS, Roles.PATHOLOGIST],
+        labUnitRole: { Immunohistochemistry: [Roles.RESULTS] },
+      },
+      cytology: {
+        role: [Roles.RESULTS, Roles.CYTOPATHOLOGIST],
+        labUnitRole: { Cytology: [Roles.RESULTS] },
+      },
+    });
   });
 });

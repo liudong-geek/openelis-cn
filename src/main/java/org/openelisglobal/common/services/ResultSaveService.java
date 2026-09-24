@@ -49,19 +49,20 @@ import org.springframework.stereotype.Service;
 @Scope("prototype")
 @DependsOn({ "springContext" })
 public class ResultSaveService {
-    private static ResultService resultService = SpringContext.getBean(ResultService.class);
-    private static TestResultService testResultService = SpringContext.getBean(TestResultService.class);
-    private static ResultSignatureService resultSigService = SpringContext.getBean(ResultSignatureService.class);
-    private static ReferralResultService referralResultService = SpringContext.getBean(ReferralResultService.class);
+    private final ResultService resultService;
+    private final TestResultService testResultService;
 
     private Analysis analysis;
     private String currentUserId;
     private boolean updatedResult = false;
 
     public ResultSaveService() {
+        resultService = SpringContext.getBean(ResultService.class);
+        testResultService = SpringContext.getBean(TestResultService.class);
     }
 
     public ResultSaveService(Analysis analysis, String currentUserId) {
+        this();
         this.analysis = analysis;
         this.currentUserId = currentUserId;
     }
@@ -378,23 +379,30 @@ public class ResultSaveService {
     }
 
     public static void removeDeletedResultsInTransaction(List<Result> deletableResults, String currentUserId) {
+        // Test and migration tools can create more than one Spring context in the
+        // same JVM. Resolve the transactional collaborators from the active
+        // context instead of retaining proxies from the context that first loaded
+        // this class. Production still resolves the same singleton beans.
+        ResultSignatureService currentResultSigService = SpringContext.getBean(ResultSignatureService.class);
+        ReferralResultService currentReferralResultService = SpringContext.getBean(ReferralResultService.class);
+        ResultService currentResultService = SpringContext.getBean(ResultService.class);
         for (Result result : deletableResults) {
-            List<ResultSignature> signatures = resultSigService.getResultSignaturesByResult(result);
-            List<ReferralResult> referrals = referralResultService.getReferralsByResultId(result.getId());
+            List<ResultSignature> signatures = currentResultSigService.getResultSignaturesByResult(result);
+            List<ReferralResult> referrals = currentReferralResultService.getReferralsByResultId(result.getId());
 
             for (ResultSignature signature : signatures) {
                 signature.setSysUserId(currentUserId);
             }
 
-            resultSigService.deleteAll(signatures);
+            currentResultSigService.deleteAll(signatures);
 
             for (ReferralResult referral : referrals) {
                 referral.setSysUserId(currentUserId);
-                referralResultService.delete(referral);
+                currentReferralResultService.delete(referral);
             }
 
             result.setSysUserId(currentUserId);
-            resultService.delete(result);
+            currentResultService.delete(result);
         }
     }
 }

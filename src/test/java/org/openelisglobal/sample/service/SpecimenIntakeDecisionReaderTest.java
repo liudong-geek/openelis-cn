@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import java.sql.Connection;
 import java.util.List;
+import java.util.TimeZone;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -160,6 +161,20 @@ public class SpecimenIntakeDecisionReaderTest {
         assertEquals("DICTIONARY:resultRejectionReasons", catalog.items().get(0).namespace());
         assertEquals("2026-09-13T06:00:00.123456Z", catalog.items().get(0).version());
         assertEquals("模拟：容器不符", catalog.items().get(0).label());
+    }
+
+    @Test
+    public void reasonVersionDoesNotGainASecondShanghaiOffset() {
+        TimeZone original = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
+            when(dao.activeRejectionReasons()).thenReturn(List.of(reason()));
+            var catalog = reader.reasons();
+            assertEquals("READY", catalog.state());
+            assertEquals("2026-09-13T06:00:00.123456Z", catalog.items().get(0).version());
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @Test public void absentDuplicateInactiveAndWrongCategoryAreNotUsableReasons() {

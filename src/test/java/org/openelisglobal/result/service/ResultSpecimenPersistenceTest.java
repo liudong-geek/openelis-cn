@@ -19,8 +19,8 @@ import org.openelisglobal.common.services.registration.interfaces.IResultUpdate;
 import org.openelisglobal.note.service.NoteService;
 import org.openelisglobal.note.valueholder.Note;
 import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
-import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO.SpecimenState;
 import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO;
+import org.openelisglobal.result.dao.OrdinaryResultSaveStateDAO.SpecimenState;
 import org.openelisglobal.result.exception.ResultSaveValidationException;
 import org.openelisglobal.spring.util.SpringContext;
 import org.springframework.aop.framework.ProxyFactory;
@@ -41,6 +41,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  */
 public class ResultSpecimenPersistenceTest {
     private Object previousFactory;
+    private Object previousAnalysisTableId;
     private final List<String> effects = new ArrayList<>();
     private final AtomicReference<SpecimenState> persisted = new AtomicReference<>();
     private ResultsUpdateDataSet data;
@@ -91,6 +92,10 @@ public class ResultSpecimenPersistenceTest {
     @Before
     public void setup() {
         previousFactory = ReflectionTestUtils.getField(SpringContext.class, "factory");
+        previousAnalysisTableId = ReflectionTestUtils
+                .getField(org.openelisglobal.analysis.service.AnalysisServiceImpl.class, "TABLE_REFERENCE_ID");
+        ReflectionTestUtils.setField(org.openelisglobal.analysis.service.AnalysisServiceImpl.class,
+                "TABLE_REFERENCE_ID", "77");
         Map<Class<?>, Object> beans = new HashMap<>();
         IStatusService statuses = mock(IStatusService.class);
         org.openelisglobal.result.action.util.ResultReviewTransitionTest.configure(statuses);
@@ -117,6 +122,8 @@ public class ResultSpecimenPersistenceTest {
         notes = mock(NoteService.class);
         Note note = new Note();
         note.setText("SIM-RESULT-NOTE");
+        note.setReferenceTableId("77");
+        note.setReferenceId("101");
         when(notes.insert(note)).thenAnswer(invocation -> {
             effects.add("SIM-note");
             return "501";
@@ -145,6 +152,8 @@ public class ResultSpecimenPersistenceTest {
     @After
     public void restore() {
         ReflectionTestUtils.setField(SpringContext.class, "factory", previousFactory);
+        ReflectionTestUtils.setField(org.openelisglobal.analysis.service.AnalysisServiceImpl.class,
+                "TABLE_REFERENCE_ID", previousAnalysisTableId);
     }
 
     private SpecimenState state(boolean rejected) {
@@ -199,7 +208,11 @@ public class ResultSpecimenPersistenceTest {
                     TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                         @Override
                         public void beforeCommit(boolean readOnly) {
-                            analysis.setReleasedDate(java.sql.Timestamp.valueOf("2026-09-14 08:00:00"));
+                            // Simulate the database-backed release transition without invoking
+                            // the entity's display-date conversion, which requires a fully booted
+                            // Spring configuration context.
+                            ReflectionTestUtils.setField(analysis, "releasedDate",
+                                    java.sql.Timestamp.valueOf("2026-09-14 08:00:00"));
                         }
                     });
                     target.persistDataSet(data, List.of(updater), "701");
@@ -318,6 +331,8 @@ public class ResultSpecimenPersistenceTest {
         var set = new org.openelisglobal.result.action.util.ResultSet(result, null, null, null,
                 analysis.getSampleItem().getSample(), Map.of(), false);
         when(data.getModifiedResults()).thenReturn(List.of(set));
+        when(dao.findResultOwnerState("801")).thenReturn(
+                new OrdinaryResultSaveStateDAO.ResultOwnerState("801", "101", "401", "201", "301"));
         when(results.update(result)).thenAnswer(invocation -> { effects.add("SIM-result"); return result; });
         service.persistDataSet(data, List.of(updater), "701");
         verify(results).update(result);
