@@ -16,12 +16,28 @@ import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
 import org.openelisglobal.result.form.LogbookResultsForm;
 import org.openelisglobal.result.service.LegacyResultEntryWriteService;
 import org.openelisglobal.test.beanItems.TestResultItem;
+import org.springframework.aop.framework.ProxyFactory;
+import org.springframework.aop.support.AopUtils;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.authorization.method.AuthorizationManagerBeforeMethodInterceptor;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 public class LogbookResultsControllerWriteGuardTest {
+
+    @Test
+    public void controllerCanBeCglibProxiedForMethodSecurity() {
+        var controller = new LogbookResultsController(org.mockito.Mockito.mock(ReferralTypeService.class));
+        ProxyFactory proxyFactory = new ProxyFactory(controller);
+        proxyFactory.setProxyTargetClass(true);
+        proxyFactory.addAdvisor(AuthorizationManagerBeforeMethodInterceptor.preAuthorize());
+
+        Object proxy = proxyFactory.getProxy();
+
+        assertTrue(proxy instanceof LogbookResultsController);
+        assertTrue(AopUtils.isCglibProxy(proxy));
+    }
 
     @Test
     public void retainedJspWriteUsesTheTransactionalLegacyGuard() throws Exception {

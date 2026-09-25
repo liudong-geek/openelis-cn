@@ -167,7 +167,7 @@ public class LogbookResultsController extends LogbookResultsBaseController {
     private final String REFERRAL_CONFORMATION_ID;
     private static final String REFLEX_ACCESSIONS = "reflex_accessions";
 
-    private LogbookResultsController(ReferralTypeService referralTypeService) {
+    public LogbookResultsController(ReferralTypeService referralTypeService) {
         ReferralType referralType = referralTypeService.getReferralTypeByName("Confirmation");
         if (referralType != null) {
             REFERRAL_CONFORMATION_ID = referralType.getId();
