@@ -21,6 +21,34 @@ it("仅一次专用POST，冻结CSRF并禁止缓存、重定向", async () => {
     }),
   ]);
 });
+it("完整读到响应结尾后不取消浏览器响应流", async () => {
+  const response = new Response('{"success":true}', {
+    headers: { "content-type": "application/json" },
+  });
+  const reader = response.body!.getReader();
+  const cancel = vi.spyOn(reader, "cancel");
+  vi.spyOn(response.body!, "getReader").mockReturnValue(reader);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+
+  await expect(
+    postSpecimenReceipt("SIM body", new AbortController().signal, "SIM-CSRF"),
+  ).resolves.toEqual({ success: true });
+  expect(cancel).not.toHaveBeenCalled();
+});
+it("超出回执上限时取消尚未读完的流", async () => {
+  const response = new Response("x".repeat(65537), {
+    headers: { "content-type": "application/json" },
+  });
+  const reader = response.body!.getReader();
+  const cancel = vi.spyOn(reader, "cancel");
+  vi.spyOn(response.body!, "getReader").mockReturnValue(reader);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+
+  await expect(
+    postSpecimenReceipt("SIM body", new AbortController().signal, "SIM-CSRF"),
+  ).rejects.toThrow();
+  expect(cancel).toHaveBeenCalledTimes(1);
+});
 it.each([
   "redirect",
   "html",

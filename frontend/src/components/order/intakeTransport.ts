@@ -40,11 +40,15 @@ export async function postIntakeDecision(
   const reader = response.body.getReader(),
     decoder = new TextDecoder("utf-8", { fatal: true });
   let size = 0,
-    text = "";
+    text = "",
+    complete = false;
   try {
     for (;;) {
       const chunk = await reader.read();
-      if (chunk.done) break;
+      if (chunk.done) {
+        complete = true;
+        break;
+      }
       size += chunk.value.byteLength;
       if (signal.aborted || size > 65536) throw intakeFailure();
       text += decoder.decode(chunk.value, { stream: true });
@@ -53,7 +57,7 @@ export async function postIntakeDecision(
     if (signal.aborted) throw intakeFailure();
     return JSON.parse(text);
   } finally {
-    void reader.cancel().catch(() => {});
+    if (!complete) void reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }

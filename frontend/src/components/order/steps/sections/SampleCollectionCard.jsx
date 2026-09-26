@@ -5,7 +5,6 @@ import {
   Grid,
   Column,
   Tag,
-  Button,
   Select,
   SelectItem,
   NumberInput,
@@ -15,7 +14,6 @@ import {
   TimePicker,
   Link,
 } from "@carbon/react";
-import { Printer } from "@carbon/icons-react";
 import { ConfigurationContext } from "../../../layout/Layout";
 import {
   formatIsoDateForPicker,
@@ -43,9 +41,9 @@ const SampleCollectionCard = ({
   sampleTypes,
   unitOfMeasures,
   serverClock,
+  receiptMode = "now",
   onUpdate,
   onRemove,
-  onPrintLabels,
   isReadOnly,
   canRemove,
 }) => {
@@ -58,7 +56,7 @@ const SampleCollectionCard = ({
   // Never replace entered or persisted values with the workstation's time.
   useEffect(() => {
     if (!sample.sampleItemId && !isReadOnly) {
-      const updates = collectionDefaultsFor(sample, serverClock);
+      const updates = collectionDefaultsFor(sample, serverClock, receiptMode);
       if (Object.keys(updates).length > 0) {
         onUpdate(sampleIndex, updates);
       }
@@ -74,6 +72,7 @@ const SampleCollectionCard = ({
     sample.receivedDateUserEdited,
     sample.receivedTimeUserEdited,
     serverClock,
+    receiptMode,
     sampleIndex,
     onUpdate,
     isReadOnly,
@@ -111,20 +110,8 @@ const SampleCollectionCard = ({
             }}
           />
         </h5>
-        <div className="sample-card-actions">
-          <Button
-            kind="ghost"
-            size="sm"
-            renderIcon={Printer}
-            onClick={() => onPrintLabels(sampleIndex)}
-            disabled={isReadOnly}
-          >
-            <FormattedMessage
-              id="collect.sample.printLabels"
-              defaultMessage="Print Labels"
-            />
-          </Button>
-          {canRemove && (
+        {canRemove && (
+          <div className="sample-card-actions">
             <Link
               className="remove-link"
               onClick={() => onRemove(sampleIndex)}
@@ -135,8 +122,8 @@ const SampleCollectionCard = ({
                 defaultMessage="Remove"
               />
             </Link>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Assigned Tests */}
@@ -343,7 +330,7 @@ const SampleCollectionCard = ({
             defaultMessage="Received at Lab"
           />
           {/* Only show auto-populated hint for new samples */}
-          {!sample.sampleItemId && (
+          {!sample.sampleItemId && receiptMode === "now" && (
             <span className="helper-inline">
               {" "}
               <FormattedMessage
@@ -360,8 +347,12 @@ const SampleCollectionCard = ({
               dateFormat={getDatePickerFormat(dateLocale)}
               value={formatIsoDateForPicker(
                 // Keep the persisted or manually entered value when present.
-                sample.receivedDate ||
-                  (sample.sampleItemId || sample.receivedDateUserEdited
+                (receiptMode === "later" && !sample.sampleItemId
+                  ? ""
+                  : sample.receivedDate) ||
+                  (sample.sampleItemId ||
+                  sample.receivedDateUserEdited ||
+                  receiptMode === "later"
                     ? ""
                     : serverClock?.date),
                 dateLocale,
@@ -389,11 +380,14 @@ const SampleCollectionCard = ({
                 placeholder={intl.formatMessage(
                   getDatePickerPlaceholderMessage(dateLocale),
                 )}
-                disabled={isReadOnly}
+                disabled={
+                  isReadOnly ||
+                  (receiptMode === "later" && !sample.sampleItemId)
+                }
               />
             </DatePicker>
             {/* Only show auto-filled hint for new samples without sampleItemId */}
-            {!sample.sampleItemId && (
+            {!sample.sampleItemId && receiptMode === "now" && (
               <span className="auto-filled-hint">
                 <FormattedMessage
                   id="label.autoFilledFromServer"
@@ -412,8 +406,12 @@ const SampleCollectionCard = ({
               })}
               value={
                 // Keep the persisted or manually entered value when present.
-                sample.receivedTime ||
-                (sample.sampleItemId || sample.receivedTimeUserEdited
+                (receiptMode === "later" && !sample.sampleItemId
+                  ? ""
+                  : sample.receivedTime) ||
+                (sample.sampleItemId ||
+                sample.receivedTimeUserEdited ||
+                receiptMode === "later"
                   ? ""
                   : serverClock?.time) ||
                 ""
@@ -421,10 +419,12 @@ const SampleCollectionCard = ({
               onChange={(e) =>
                 handleFieldChange("receivedTime", e.target.value)
               }
-              disabled={isReadOnly}
+              disabled={
+                isReadOnly || (receiptMode === "later" && !sample.sampleItemId)
+              }
             />
             {/* Only show auto-filled hint for new samples without sampleItemId */}
-            {!sample.sampleItemId && (
+            {!sample.sampleItemId && receiptMode === "now" && (
               <span className="auto-filled-hint">
                 <FormattedMessage
                   id="label.autoFilledFromServer"

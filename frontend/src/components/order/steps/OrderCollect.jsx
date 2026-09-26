@@ -8,7 +8,7 @@ import React, {
 } from "react";
 import { useHistory } from "react-router-dom";
 import { useIntl } from "react-intl";
-import { Stack, Button } from "@carbon/react";
+import { Stack, Button, RadioButton, RadioButtonGroup } from "@carbon/react";
 import { ArrowLeft, WarningAlt } from "@carbon/icons-react";
 import OrderWorkflowLayout from "../OrderWorkflowLayout";
 import SpecimenLookupPanel from "../SpecimenLookupPanel";
@@ -29,6 +29,7 @@ import SamplesCollectionSection from "./sections/SamplesCollectionSection";
 import ConsentAccordionSection from "./sections/ConsentAccordionSection";
 import {
   hasPendingClockDefaults,
+  hasInvalidReceiptPair,
   isFutureCollectionTimestamp,
   mergePendingCollectionSamples,
   refreshUntouchedCollectionClock,
@@ -52,6 +53,7 @@ const OrderCollect = () => {
   const history = useHistory();
   const componentMounted = useRef(true);
   const [lookupView, setLookupView] = useState(null);
+  const [receiptMode, setReceiptMode] = useState("now");
   const [clockSnapshot, setClockSnapshot] = useState(null);
   const [clockLoading, setClockLoading] = useState(true);
   const clockRequest = useRef(0);
@@ -237,7 +239,8 @@ const OrderCollect = () => {
     (s) => (s.tests && s.tests.length > 0) || (s.panels && s.panels.length > 0),
   );
 
-  const pendingClockDefaults = hasPendingClockDefaults(samples);
+  const pendingClockDefaults = hasPendingClockDefaults(samples, receiptMode);
+  const invalidReceiptPair = hasInvalidReceiptPair(samples, receiptMode);
 
   // A collection cannot move forward without both an ordered test and a typed
   // specimen. Informed consent remains advisory (FRS FR-5-001/FR-5-002).
@@ -248,6 +251,7 @@ const OrderCollect = () => {
     Boolean(serverClock) &&
     !clockLoading &&
     !pendingClockDefaults &&
+    !invalidReceiptPair &&
     requestMappingReady;
 
   const hasLoadedOrder = Boolean(orderId);
@@ -323,13 +327,17 @@ const OrderCollect = () => {
     const frozenSamples = refreshUntouchedCollectionClock(
       latestSamples.current,
       clock,
+      receiptMode,
     );
-    if (hasPendingClockDefaults(frozenSamples)) {
+    if (
+      hasPendingClockDefaults(frozenSamples, receiptMode) ||
+      hasInvalidReceiptPair(frozenSamples, receiptMode)
+    ) {
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
         message: intl.formatMessage({
-          id: "collect.sample.timeDefaultsPending",
+          id: "collect.sample.receiptPairRequired",
         }),
       });
       setNotificationVisible(true);
@@ -420,6 +428,7 @@ const OrderCollect = () => {
         !serverClock ||
         clockLoading ||
         pendingClockDefaults ||
+        invalidReceiptPair ||
         !requestMappingReady
       }
       showBarcodeScanner={false}
@@ -440,6 +449,7 @@ const OrderCollect = () => {
         ...(serverClock && pendingClockDefaults
           ? ["collect.sample.timeDefaultsPending"]
           : []),
+        ...(invalidReceiptPair ? ["collect.sample.receiptPairRequired"] : []),
         ...(!requestMappingReady
           ? [
               requestMappingFailed
@@ -528,6 +538,51 @@ const OrderCollect = () => {
                 isReadOnly={(isReadOnly && !isEditMode) || !requestMappingReady}
               />
 
+              <RadioButtonGroup
+                name="collection-receipt-mode"
+                legendText={intl.formatMessage({
+                  id: "collect.sample.receiptMode",
+                })}
+                valueSelected={receiptMode}
+                onChange={(value) => {
+                  if (value !== "now" && value !== "later") return;
+                  setReceiptMode(value);
+                  if (value === "later")
+                    setSamples((current) =>
+                      current.map((sample) =>
+                        sample.sampleItemId
+                          ? sample
+                          : { ...sample, receivedDate: "", receivedTime: "" },
+                      ),
+                    );
+                }}
+                disabled={(isReadOnly && !isEditMode) || !requestMappingReady}
+              >
+                <RadioButton
+                  id="collection-receipt-now"
+                  value="now"
+                  labelText={intl.formatMessage({
+                    id: "collect.sample.receiptNow",
+                  })}
+                />
+                <RadioButton
+                  id="collection-receipt-later"
+                  value="later"
+                  labelText={intl.formatMessage({
+                    id: "collect.sample.receiptLater",
+                  })}
+                />
+              </RadioButtonGroup>
+              {requestMappingReady &&
+                !pendingClockDefaults &&
+                invalidReceiptPair && (
+                  <p role="alert">
+                    {intl.formatMessage({
+                      id: "collect.sample.receiptPairRequired",
+                    })}
+                  </p>
+                )}
+
               <SamplesCollectionSection
                 samples={samples}
                 setSamples={setSamples}
@@ -537,6 +592,7 @@ const OrderCollect = () => {
                 serverClock={serverClock}
                 refreshServerClock={refreshServerClock}
                 clockLoading={clockLoading}
+                receiptMode={receiptMode}
                 isReadOnly={(isReadOnly && !isEditMode) || !requestMappingReady}
               />
             </Stack>

@@ -23,7 +23,7 @@ import {
 import { Printer, Checkmark } from "@carbon/icons-react";
 import OrderWorkflowLayout from "../OrderWorkflowLayout";
 import OrderTaskStartState from "../OrderTaskStartState";
-import { useOrderContext } from "../OrderContext";
+import { hasUncollectedTypedSample, useOrderContext } from "../OrderContext";
 import { NotificationContext } from "../../layout/Layout";
 import {
   AlertDialog,
@@ -62,7 +62,6 @@ const OrderLabel = () => {
     orderData,
     samples,
     setSamples,
-    saveOrder,
     setCurrentStep,
     labNumber: contextLabNumber,
     stepProgress,
@@ -79,6 +78,17 @@ const OrderLabel = () => {
   // Get labNumber from context or orderData
   const labNumber =
     contextLabNumber || orderData?.sampleOrderItems?.labNo || null;
+  const collectionPending = hasUncollectedTypedSample(samples);
+  const requireCollectedSamples = () => {
+    if (!collectionPending) return true;
+    addNotification({
+      kind: NotificationKinds.error,
+      title: intl.formatMessage({ id: "notification.title" }),
+      message: intl.formatMessage({ id: "order.label.collectionRequired" }),
+    });
+    setNotificationVisible(true);
+    return false;
+  };
 
   // Deep-link support: if the URL carries ?labNumber and no order is loaded,
   // fetch it before falling back to the Step 1 redirect. Lets external links
@@ -213,7 +223,10 @@ const OrderLabel = () => {
         localizeSampleType(intl, sample.sampleTypeName) ||
         intl.formatMessage({ id: "sample.type", defaultMessage: "Sample" })
       } | ${sample.collectionDate || "---"}`,
-      barcode: sample.sampleItemId || `${labNumber}-${index + 1}`,
+      barcode:
+        sample.sampleItemId && sample.sortOrder
+          ? `${labNumber}.${sample.sortOrder}`
+          : intl.formatMessage({ id: "order.specimenLookup.noPhysical" }),
     })),
   ];
 
@@ -225,6 +238,7 @@ const OrderLabel = () => {
   };
 
   const handlePrintLabel = (labelType) => {
+    if (!requireCollectedSamples()) return;
     const quantity = labelQuantities[labelType];
     if (quantity <= 0) return;
 
@@ -239,11 +253,25 @@ const OrderLabel = () => {
         quantity,
       });
     } else if (labelType.startsWith("sample-")) {
-      // Specimen URL uses labNo.<sortOrder> (1-based) so the servlet targets
-      // a single sample item rather than every item on the order.
+      // Specimen URL uses the persisted labNo.<sortOrder> identity so the
+      // servlet targets one real sample item.
       const sampleIndex = parseInt(labelType.replace("sample-", ""), 10);
       const sample = samples[sampleIndex];
-      const sortOrder = sample?.sortOrder || sampleIndex + 1;
+      const sortOrder = String(sample?.sortOrder ?? "");
+      if (
+        !sample?.sampleItemId ||
+        !/^[1-9]\d{0,4}$/.test(sortOrder) ||
+        samples.filter((row) => String(row.sortOrder) === sortOrder).length !==
+          1
+      ) {
+        addNotification({
+          kind: NotificationKinds.error,
+          title: intl.formatMessage({ id: "notification.title" }),
+          message: intl.formatMessage({ id: "order.labels.invalid" }),
+        });
+        setNotificationVisible(true);
+        return;
+      }
       const specimenLabNo = `${labNumber}.${sortOrder}`;
 
       url = buildLabelMakerUrl({
@@ -302,6 +330,7 @@ const OrderLabel = () => {
   };
 
   const handlePrintAllLabels = () => {
+    if (!requireCollectedSamples()) return;
     // type=default prints the order label and one specimen label per sample
     // item in one PDF. Honors the same numPrinted cap as the per-row buttons.
     const totalQuantity = Math.max(labelQuantities.order || 1, 1);
@@ -362,17 +391,12 @@ const OrderLabel = () => {
    * Save pending storage assignments via API
    * Uses /assign for new assignments, /move for reassignments
    *
-   * Accepts an optional `samplesOverride` argument so callers can pass the
-   * freshly-saved samples returned from saveOrder — the closure-captured
-   * `samples` is stale immediately after a save (state hasn't re-rendered yet),
-   * so without an override new samples have no sampleItemId and the assign
-   * loop silently skips them.
+   * Only Step 2 may create physical tubes. This page receives persisted
+   * sampleItemIds and writes storage assignments through their own API.
    */
-  const savePendingStorageAssignments = async (samplesOverride) => {
-    const samplesForLookup = samplesOverride || samples;
-    // Read assignedStorage from the ref so we have the latest pending entries
-    // even if the save-order→reload→savePending cascade caused intervening
-    // re-renders that the closure wouldn't see.
+  const savePendingStorageAssignments = async () => {
+    // Read assignedStorage from the ref so a quick save after location selection
+    // uses the latest pending choice.
     const latestAssignedStorage = assignedStorageRef.current || assignedStorage;
     const pendingAssignments = Object.entries(latestAssignedStorage).filter(
       ([, storage]) => storage.pending,
@@ -380,15 +404,13 @@ const OrderLabel = () => {
 
     for (const [sampleIndexStr, storage] of pendingAssignments) {
       const sampleIndex = parseInt(sampleIndexStr, 10);
-      const currentSampleItem = samplesForLookup[sampleIndex];
-      const sampleItemId =
-        currentSampleItem?.sampleItemId || currentSampleItem?.id;
+      const currentSampleItem = samples[sampleIndex];
+      const sampleItemId = currentSampleItem?.sampleItemId;
 
       if (!sampleItemId) {
-        console.warn(
-          `Skipping storage assignment for sample ${sampleIndex} - no sampleItemId`,
+        throw new Error(
+          intl.formatMessage({ id: "order.label.collectionRequired" }),
         );
-        continue;
       }
 
       // Check if sample already has a storage assignment (use move instead of assign)
@@ -449,7 +471,7 @@ const OrderLabel = () => {
   const updateStorageNotes = async () => {
     for (let sampleIndex = 0; sampleIndex < samples.length; sampleIndex++) {
       const sample = samples[sampleIndex];
-      const sampleItemId = sample?.sampleItemId || sample?.id;
+      const sampleItemId = sample?.sampleItemId;
       const storage = assignedStorage[sampleIndex];
 
       // Skip if no storage assignment or if pending (will be handled by savePendingStorageAssignments)
@@ -494,16 +516,10 @@ const OrderLabel = () => {
   };
 
   const handleSave = async () => {
+    if (!requireCollectedSamples()) return;
     try {
-      // Save the order first so new samples get sampleItemIds. Use the
-      // returned samples (not the stale closure value) for the storage
-      // assignment loop.
-      const saveResult = await saveOrder();
-      const updatedSamples =
-        saveResult?.samples?.length > 0 ? saveResult.samples : samples;
-
-      // Persist any pending storage assignments against the now-real sampleItemIds
-      await savePendingStorageAssignments(updatedSamples);
+      // Step 2 owns physical collection. This page writes only its storage data.
+      await savePendingStorageAssignments();
 
       // Update notes for existing assignments (if notes changed)
       await updateStorageNotes();
@@ -528,16 +544,9 @@ const OrderLabel = () => {
   };
 
   const handleSaveAndNext = async () => {
+    if (!requireCollectedSamples()) return;
     try {
-      // Save the order first so new samples get sampleItemIds. Use the
-      // returned samples (not the stale closure value) for the storage
-      // assignment loop.
-      const saveResult = await saveOrder();
-      const updatedSamples =
-        saveResult?.samples?.length > 0 ? saveResult.samples : samples;
-
-      // Persist any pending storage assignments against the now-real sampleItemIds
-      await savePendingStorageAssignments(updatedSamples);
+      await savePendingStorageAssignments();
 
       // Update notes for existing assignments (if notes changed)
       await updateStorageNotes();
@@ -565,6 +574,7 @@ const OrderLabel = () => {
   // - At least one label printed AND
   // - Either all samples have storage OR user has checked "skip storage"
   const canProceed =
+    !collectionPending &&
     (printedLabels.has("order") || printedLabels.has("sample")) &&
     (allSamplesHaveStorage || storageSkipped);
 
@@ -588,10 +598,21 @@ const OrderLabel = () => {
       currentStep={2}
       title="order.step.label"
       canProceed={canProceed}
+      saveDisabled={collectionPending}
+      blockingReasons={
+        collectionPending ? ["order.label.collectionRequired"] : []
+      }
       onSave={handleSave}
       onSaveAndNext={handleSaveAndNext}
     >
       {notificationVisible && <AlertDialog />}
+      {collectionPending && (
+        <InlineNotification
+          kind="warning"
+          hideCloseButton
+          title={intl.formatMessage({ id: "order.label.collectionRequired" })}
+        />
+      )}
 
       {/* Print Labels Section */}
       <Tile className="order-section print-labels-section">
@@ -707,7 +728,10 @@ const OrderLabel = () => {
                             printedLabels.has(labelId) ? Checkmark : Printer
                           }
                           onClick={() => handlePrintLabel(labelId)}
-                          disabled={(labelQuantities[labelId] || 1) <= 0}
+                          disabled={
+                            collectionPending ||
+                            (labelQuantities[labelId] || 1) <= 0
+                          }
                         >
                           <FormattedMessage
                             id="label.print"
@@ -734,6 +758,7 @@ const OrderLabel = () => {
             kind="secondary"
             renderIcon={Printer}
             onClick={handlePrintAllLabels}
+            disabled={collectionPending}
           >
             <FormattedMessage
               id="label.printAll"

@@ -362,6 +362,8 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
         } catch (org.springframework.security.access.AccessDeniedException e) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("success", false, "message",
                     org.openelisglobal.sample.service.OrderEntryActorGuard.DENIED_MESSAGE));
+        } catch (org.openelisglobal.sample.exception.EntrySubmissionException e) {
+            return submissionFailure(e);
         } catch (LIMSRuntimeException e) {
             LogEvent.logError("persistData failed with LIMSRuntimeException", e);
             if (e.getCause() instanceof StaleObjectStateException) {

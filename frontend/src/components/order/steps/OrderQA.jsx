@@ -18,7 +18,7 @@ import {
 import { Checkmark } from "@carbon/icons-react";
 import OrderWorkflowLayout from "../OrderWorkflowLayout";
 import OrderTaskStartState from "../OrderTaskStartState";
-import { useOrderContext } from "../OrderContext";
+import { hasUncollectedTypedSample, useOrderContext } from "../OrderContext";
 import { localizeSampleType } from "../sampleTypeIntl";
 import { NotificationContext } from "../../layout/Layout";
 import {
@@ -48,7 +48,6 @@ const OrderQA = () => {
   const {
     orderData,
     samples,
-    saveOrder,
     resetOrder,
     labNumber,
     markStepComplete,
@@ -67,6 +66,17 @@ const OrderQA = () => {
 
   const displayLabNumber =
     labNumber || orderData?.sampleOrderItems?.labNo || "";
+  const collectionPending = hasUncollectedTypedSample(samples);
+  const requireCollectedSamples = () => {
+    if (!collectionPending) return true;
+    addNotification({
+      kind: NotificationKinds.error,
+      title: intl.formatMessage({ id: "notification.title" }),
+      message: intl.formatMessage({ id: "order.qa.collectionRequired" }),
+    });
+    setNotificationVisible(true);
+    return false;
+  };
 
   // Load QA checklist config and status from backend on mount
   const loadChecklist = useCallback(() => {
@@ -120,6 +130,11 @@ const OrderQA = () => {
 
   // Save checklist to backend
   const saveChecklist = async () => {
+    if (collectionPending) {
+      throw new Error(
+        intl.formatMessage({ id: "order.qa.collectionRequired" }),
+      );
+    }
     if (!displayLabNumber) {
       return Promise.resolve();
     }
@@ -145,11 +160,10 @@ const OrderQA = () => {
   };
 
   const handleSave = async () => {
+    if (!requireCollectedSamples()) return;
     setIsSaving(true);
     try {
-      // Save order data first
-      await saveOrder();
-      // Then save checklist
+      // Collection is saved in Step 2. QA writes only its checklist.
       const checklistResponse = await saveChecklist();
       // Mark QA step complete if all checks are done
       if (allItemsComplete && checklistResponse?.allRequiredVerified === true) {
@@ -175,6 +189,7 @@ const OrderQA = () => {
   };
 
   const handleSubmit = async () => {
+    if (!requireCollectedSamples()) return;
     setIsSaving(true);
     try {
       if (!isChecklistConfigured) {
@@ -183,7 +198,6 @@ const OrderQA = () => {
       if (!allItemsComplete) {
         throw new Error("QA_CHECKLIST_INCOMPLETE");
       }
-      await saveOrder();
       const checklistResponse = await saveChecklist();
       if (checklistResponse?.allRequiredVerified !== true) {
         throw new Error("QA_CHECKLIST_INCOMPLETE");
@@ -305,11 +319,20 @@ const OrderQA = () => {
     <OrderWorkflowLayout
       currentStep={3}
       title="order.step.qa"
-      canProceed={allItemsComplete}
+      canProceed={!collectionPending && allItemsComplete}
+      saveDisabled={collectionPending}
+      blockingReasons={collectionPending ? ["order.qa.collectionRequired"] : []}
       onSave={handleSave}
       onSaveAndNext={handleSubmit}
     >
       {notificationVisible && <AlertDialog />}
+      {collectionPending && (
+        <InlineNotification
+          kind="warning"
+          hideCloseButton
+          title={intl.formatMessage({ id: "order.qa.collectionRequired" })}
+        />
+      )}
       {isSaving && (
         <Loading
           withOverlay

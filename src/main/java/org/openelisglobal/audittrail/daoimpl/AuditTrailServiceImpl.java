@@ -20,6 +20,7 @@ import java.lang.reflect.Modifier;
 import java.sql.Timestamp;
 import java.util.Set;
 import java.util.Vector;
+import org.hibernate.proxy.HibernateProxy;
 import org.openelisglobal.audittrail.dao.AuditTrailService;
 import org.openelisglobal.audittrail.util.AuditFieldStringifier;
 import org.openelisglobal.audittrail.valueholder.History;
@@ -278,6 +279,13 @@ public class AuditTrailServiceImpl implements AuditTrailService {
      */
     private String getChanges(BaseObject newObject, BaseObject existingObject, String tableName) {
 
+        // DAO reads can return an initialized Hibernate proxy for the old row.
+        // Reflecting over that generated subclass includes interceptor fields which
+        // do not exist on the concrete update object; reading the proxy's inherited
+        // fields also bypasses its interceptor and can miss the old values.
+        newObject = auditImplementation(newObject);
+        existingObject = auditImplementation(existingObject);
+
         // bugzilla 1857
         Vector<Object> optionList = new Vector<>();
         Class objectClass = existingObject.getClass();
@@ -512,6 +520,17 @@ public class AuditTrailServiceImpl implements AuditTrailService {
         }
 
         return xml;
+    }
+
+    private BaseObject auditImplementation(BaseObject object) {
+        if (!(object instanceof HibernateProxy proxy)) {
+            return object;
+        }
+        Object implementation = proxy.getHibernateLazyInitializer().getImplementation();
+        if (!(implementation instanceof BaseObject baseObject)) {
+            throw new LIMSRuntimeException("Cannot audit an unresolved Hibernate proxy");
+        }
+        return baseObject;
     }
 
     /**

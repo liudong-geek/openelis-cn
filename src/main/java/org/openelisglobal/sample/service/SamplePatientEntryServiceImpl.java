@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -78,8 +79,12 @@ import org.openelisglobal.requester.service.SampleRequesterService;
 import org.openelisglobal.requester.valueholder.SampleRequester;
 import org.openelisglobal.sample.action.util.SamplePatientUpdateData;
 import org.openelisglobal.sample.bean.SampleOrderItem;
+import org.openelisglobal.sample.dao.SpecimenIntakeDecisionDAO;
+import org.openelisglobal.sample.dao.SpecimenReceiptDAO;
+import org.openelisglobal.sample.exception.EntrySubmissionException;
 import org.openelisglobal.sample.exception.SampleCollectionValidationException;
 import org.openelisglobal.sample.form.SamplePatientEntryForm;
+import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.sample.valueholder.SampleAdditionalField.AdditionalFieldName;
 import org.openelisglobal.sample.valueholder.SampleAdditionalField;
 import org.openelisglobal.samplehuman.service.SampleHumanService;
@@ -167,6 +172,10 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
     private OrderEntryActorGuard orderEntryActorGuard;
     @Autowired
     private SampleTypeRequestService sampleTypeRequestService;
+    @Autowired
+    private SpecimenIntakeDecisionDAO specimenIntakeDecisionDAO;
+    @Autowired
+    private SpecimenReceiptDAO specimenReceiptDAO;
 
     @Autowired
     private IStatusService statusService;
@@ -327,6 +336,13 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
     public void persistData(SamplePatientUpdateData updateData, PatientManagementUpdate patientUpdate,
             PatientManagementInfo patientInfo, SamplePatientEntryForm form, HttpServletRequest request) {
 
+        // The legacy and JSON entry controllers both reach this method. Lock the
+        // same order graph, in the same order, as the dedicated receipt/decision
+        // actions. A receipt cannot commit between this preflight and the later
+        // item update; these locks remain held through the enclosing transaction.
+        lockExistingOrderGraph(updateData);
+        Set<String> protectedTubeIds = preflightExistingTubes(updateData);
+
         boolean useInitialSampleCondition = FormFields.getInstance().useField(Field.InitialSampleCondition);
         boolean useSampleNature = FormFields.getInstance().useField(Field.SampleNature);
 
@@ -339,7 +355,7 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
         updateData.setPatientId(patientUpdate.getPatientId(form));
 
         persistProviderData(updateData);
-        persistSampleData(updateData);
+        persistSampleData(updateData, protectedTubeIds);
 
         // Only persist requester data and observations if sample was successfully
         // created
@@ -805,7 +821,129 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
         }
     }
 
-    private void persistSampleData(SamplePatientUpdateData updateData) {
+    private void lockExistingOrderGraph(SamplePatientUpdateData updateData) {
+        Sample incoming = updateData.getSample();
+        if (incoming == null || GenericValidator.isBlankOrNull(incoming.getId())) {
+            return;
+        }
+        String sampleId = incoming.getId();
+        Sample locked = specimenReceiptDAO.lockOrder(sampleId);
+        if (locked == null || !sampleId.equals(locked.getId())
+                || !Objects.equals(incoming.getAccessionNumber(), locked.getAccessionNumber())) {
+            throw ordinaryTubeConflict();
+        }
+        specimenReceiptDAO.lockRequests(sampleId);
+        specimenReceiptDAO.lockItems(sampleId);
+        specimenReceiptDAO.lockAnalyses(sampleId);
+    }
+
+    Set<String> preflightExistingTubes(SamplePatientUpdateData updateData) {
+        List<SampleTestCollection> collections = updateData.getSampleItemsTests();
+        if (collections == null || collections.isEmpty()) {
+            return Set.of();
+        }
+        String sampleId = updateData.getSample() == null ? null : updateData.getSample().getId();
+        Map<String, SampleItem> existingItems = new LinkedHashMap<>();
+        for (SampleTestCollection collection : collections) {
+            if (collection == null || collection.item == null) {
+                throw ordinaryTubeConflict();
+            }
+            String id = collection.existingSampleItemId;
+            if (GenericValidator.isBlankOrNull(id)) {
+                continue;
+            }
+            SampleItem existing = sampleItemService.get(id);
+            if (existing == null || existing.getSample() == null || sampleId == null
+                    || !sampleId.equals(existing.getSample().getId())
+                    || existingItems.putIfAbsent(id, existing) != null) {
+                throw ordinaryTubeConflict();
+            }
+        }
+        if (existingItems.isEmpty()) {
+            return Set.of();
+        }
+
+        Set<String> decidedIds = new HashSet<>();
+        specimenIntakeDecisionDAO.findForTubes(List.copyOf(existingItems.keySet()))
+                .forEach(decision -> decidedIds.add(decision.getSampleItemId()));
+        Set<String> protectedIds = new HashSet<>();
+        for (SampleTestCollection collection : collections) {
+            SampleItem existing = existingItems.get(collection.existingSampleItemId);
+            if (existing == null) {
+                continue;
+            }
+            SampleItem incoming = collection.item;
+            if (existing.getReceivedDate() == null && incoming.getReceivedDate() != null) {
+                // Receipt is its own audited action, never a side effect of a generic save.
+                throw ordinaryTubeConflict();
+            }
+            if (existing.getReceivedDate() == null && !decidedIds.contains(existing.getId())
+                    && !existing.isRejected() && !existing.isVoided()) {
+                continue;
+            }
+            protectedIds.add(existing.getId());
+            if (!sameMinute(existing.getCollectionDate(), incoming.getCollectionDate())
+                    || !sameMinute(existing.getReceivedDate(), incoming.getReceivedDate())
+                    || !Objects.equals(typeId(existing), typeId(incoming))
+                    || !Objects.equals(blankAsNull(existing.getCollector()), blankAsNull(incoming.getCollector()))
+                    || !Objects.equals(existing.getQuantity(), incoming.getQuantity())
+                    || !Objects.equals(unitId(existing), unitId(incoming))
+                    || !Objects.equals(blankAsNull(existing.getCollectionConditions()),
+                            blankAsNull(incoming.getCollectionConditions()))
+                    || (blankAsNull(incoming.getCollectionMethod()) != null
+                            && !Objects.equals(existing.getCollectionMethod(), incoming.getCollectionMethod()))
+                    || (blankAsNull(incoming.getSampleTemperature()) != null
+                            && !Objects.equals(existing.getSampleTemperature(), incoming.getSampleTemperature()))
+                    || (blankAsNull(incoming.getSpecimenOrigin()) != null
+                            && !Objects.equals(existing.getSpecimenOrigin(), incoming.getSpecimenOrigin()))
+                    || existing.isRejected() != incoming.isRejected()
+                    || !Objects.equals(blankAsNull(existing.getRejectReasonId()),
+                            blankAsNull(incoming.getRejectReasonId()))) {
+                throw ordinaryTubeConflict();
+            }
+            Set<String> recordedTests = new HashSet<>();
+            List<Analysis> analyses = analysisService.getAnalysesBySampleItem(existing);
+            if (analyses != null) {
+                for (Analysis analysis : analyses) {
+                    if (analysis != null && analysis.getTest() != null) {
+                        recordedTests.add(analysis.getTest().getId());
+                    }
+                }
+            }
+            if (collection.tests != null) {
+                for (Test test : collection.tests) {
+                    if (test == null || !recordedTests.contains(test.getId())) {
+                        throw ordinaryTubeConflict();
+                    }
+                }
+            }
+        }
+        return Set.copyOf(protectedIds);
+    }
+
+    private static String blankAsNull(String value) {
+        return GenericValidator.isBlankOrNull(value) ? null : value;
+    }
+
+    private static String typeId(SampleItem item) {
+        return item.getTypeOfSample() == null ? null : item.getTypeOfSample().getId();
+    }
+
+    private static String unitId(SampleItem item) {
+        return item.getUnitOfMeasure() == null ? null : item.getUnitOfMeasure().getId();
+    }
+
+    private static boolean sameMinute(Timestamp existing, Timestamp incoming) {
+        return existing == null ? incoming == null
+                : incoming != null && existing.getTime() / 60000 == incoming.getTime() / 60000;
+    }
+
+    private static EntrySubmissionException ordinaryTubeConflict() {
+        return new EntrySubmissionException(409, "ORDER_SPECIMEN_WRITE_CONFLICT",
+                "该标本的采集、签收或验收状态已变化，请重新查询；签收与验收须使用对应操作。");
+    }
+
+    private void persistSampleData(SamplePatientUpdateData updateData, Set<String> protectedTubeIds) {
         String analysisRevision = ConfigurationProperties.getInstance().getPropertyValue("analysis.default.revision");
 
         if (updateData.getSample() == null) {
@@ -878,7 +1016,7 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
 
         // Process sample items and tests (may be empty in decoupled workflow)
         Map<SampleItem, Integer> specimenLabelQuantities = new LinkedHashMap<>();
-        List<SampleItem> persistedSampleItems = new ArrayList<>();
+        List<SampleItem> fulfillmentCandidates = new ArrayList<>();
         Integer orderLabelQuantity = null;
         for (SampleTestCollection sampleTestCollection : updateData.getSampleItemsTests()) {
             SampleItem savedItem = null;
@@ -890,23 +1028,21 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
                 savedItem = sampleItemService.get(sampleTestCollection.existingSampleItemId);
                 if (savedItem != null) {
                     sampleItemId = savedItem.getId();
-                    // Update existing sample item with new collection data
-                    savedItem.setSysUserId(sampleTestCollection.item.getSysUserId());
-                    // Copy collection details from the incoming item
-                    savedItem.setCollectionDate(sampleTestCollection.item.getCollectionDate());
-                    savedItem.setCollector(sampleTestCollection.item.getCollector());
-                    savedItem.setQuantity(sampleTestCollection.item.getQuantity());
-                    savedItem.setUnitOfMeasure(sampleTestCollection.item.getUnitOfMeasure());
-                    savedItem.setCollectionConditions(sampleTestCollection.item.getCollectionConditions());
-                    savedItem.setReceivedDate(sampleTestCollection.item.getReceivedDate());
-                    // Keep existing typeOfSample if incoming is null (don't change sample type
-                    // during collection)
-                    if (sampleTestCollection.item.getTypeOfSample() != null) {
-                        savedItem.setTypeOfSample(sampleTestCollection.item.getTypeOfSample());
+                    if (!protectedTubeIds.contains(sampleItemId)) {
+                        // Unsigned collection details still follow the ordinary entry path.
+                        savedItem.setSysUserId(sampleTestCollection.item.getSysUserId());
+                        savedItem.setCollectionDate(sampleTestCollection.item.getCollectionDate());
+                        savedItem.setCollector(sampleTestCollection.item.getCollector());
+                        savedItem.setQuantity(sampleTestCollection.item.getQuantity());
+                        savedItem.setUnitOfMeasure(sampleTestCollection.item.getUnitOfMeasure());
+                        savedItem.setCollectionConditions(sampleTestCollection.item.getCollectionConditions());
+                        savedItem.setReceivedDate(sampleTestCollection.item.getReceivedDate());
+                        if (sampleTestCollection.item.getTypeOfSample() != null) {
+                            savedItem.setTypeOfSample(sampleTestCollection.item.getTypeOfSample());
+                        }
+                        // Use DAO directly to avoid the service audit evict/merge path.
+                        savedItem = sampleItemDAO.update(savedItem);
                     }
-                    // Use DAO directly to bypass the service layer's audit trail evict/merge
-                    // which can cause state loss when the same entity instance is fetched twice
-                    savedItem = sampleItemDAO.update(savedItem);
                 } else {
                     LogEvent.logWarn(this.getClass().getName(), "persistSampleData",
                             "Could not find existing sample item with ID: "
@@ -924,8 +1060,10 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
             }
 
             // Track label quantities
-            specimenLabelQuantities.put(savedItem, sampleTestCollection.numSpecimenLabels);
-            if (orderLabelQuantity == null) {
+            if (!protectedTubeIds.contains(savedItem.getId())) {
+                specimenLabelQuantities.put(savedItem, sampleTestCollection.numSpecimenLabels);
+            }
+            if (orderLabelQuantity == null && !protectedTubeIds.contains(savedItem.getId())) {
                 orderLabelQuantity = sampleTestCollection.numOrderLabels;
             }
 
@@ -933,9 +1071,11 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
             // entity
             // This prevents "transient instance" errors when creating Analysis objects
             sampleTestCollection.item = savedItem;
-            persistedSampleItems.add(savedItem);
+            if (!protectedTubeIds.contains(savedItem.getId())) {
+                fulfillmentCandidates.add(savedItem);
+            }
 
-            if (savedItem.isRejected()) {
+            if (savedItem.isRejected() && !protectedTubeIds.contains(savedItem.getId())) {
                 String rejectReasonId = savedItem.getRejectReasonId();
                 String currentUserId = savedItem.getSysUserId();
                 for (IdValuePair rejectReason : DisplayListService.getInstance().getList(ListType.REJECTION_REASONS)) {
@@ -974,9 +1114,11 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
         // Decoupled order workflow: collecting a specimen fulfills its original
         // request in the same transaction.  This prevents a saved sample and a
         // still-pending request from diverging when a second client call fails.
-        sampleTypeRequestService.fulfillMatchingRequests(updateData.getSample().getId(), persistedSampleItems);
+        sampleTypeRequestService.fulfillMatchingRequests(updateData.getSample().getId(), fulfillmentCandidates);
 
-        persistOrderSpecimenBarcodeCounts(updateData.getSample(), orderLabelQuantity, specimenLabelQuantities);
+        if (!specimenLabelQuantities.isEmpty()) {
+            persistOrderSpecimenBarcodeCounts(updateData.getSample(), orderLabelQuantity, specimenLabelQuantities);
+        }
         updateData.buildSampleHuman();
 
         // Check if SampleHuman already exists for this sample (edit case)

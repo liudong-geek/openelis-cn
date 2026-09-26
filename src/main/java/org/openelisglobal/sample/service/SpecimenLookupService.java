@@ -9,6 +9,7 @@ import org.openelisglobal.sample.dao.OrderDashboardDAO;
 import org.openelisglobal.sample.dao.SpecimenLookupCandidateDAO;
 import org.openelisglobal.sample.exception.EntrySubmissionException;
 import org.openelisglobal.sample.form.OrderDashboardCriteria;
+import org.openelisglobal.sample.form.SpecimenIntakeEvidence;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -45,7 +46,7 @@ public class SpecimenLookupService {
 
     public record PhysicalSpecimen(String id, String requestId, String sortOrder, String typeOfSampleId,
             String statusId, boolean voided, boolean rejected, String collectionDate, String receivedDate,
-            String decisionState, String recordedDecision) {
+            String decisionState, String recordedDecision, String expectedEvidenceDigest, String operationId) {
     }
 
     public record Current(String sampleId, String labNo, String orderStatusId, boolean patientMasked, Patient patient,
@@ -169,12 +170,46 @@ public class SpecimenLookupService {
             var matches = decisions.stream().filter(row -> item.id().equals(row.sampleItemId())).toList();
             String state = matches.size() == 1 ? matches.get(0).state() : "REVIEW_REQUIRED";
             String decision = matches.size() == 1 ? matches.get(0).recordedDecision() : null;
+            String operation = "RECORDED".equals(state) ? matches.get(0).operationId() : null;
+            String expectedEvidenceDigest = null;
+            if (!masked && snapshot.patient() != null && "NOT_RECORDED".equals(state)
+                    && item.collectionDate() != null && item.receivedDate() != null && !item.voided()
+                    && !item.rejected()) {
+                var linked = snapshot.requestedSpecimens().stream()
+                        .filter(row -> row.id().equals(item.requestId()) && item.id().equals(row.sampleItemId())
+                                && "COLLECTED".equals(row.status())
+                                && item.typeOfSampleId().equals(row.typeOfSampleId()))
+                        .toList();
+                if (linked.size() == 1) {
+                    expectedEvidenceDigest = evidenceDigest(snapshot, linked.get(0), item);
+                }
+            }
             return new PhysicalSpecimen(item.id(), item.requestId(), item.sortOrder(), item.typeOfSampleId(),
                     item.statusId(), item.voided(), item.rejected(), item.collectionDate(), item.receivedDate(),
-                    state, decision);
+                    state, decision, expectedEvidenceDigest, operation);
         }).toList();
         return new Current(snapshot.sampleId(), snapshot.labNo(), snapshot.orderStatusId(), masked, patient, requested,
                 physical);
+    }
+
+    private static String evidenceDigest(EntryCurrentStateReader.Snapshot snapshot,
+            EntryCurrentStateReader.RequestView request, EntryCurrentStateReader.SpecimenView item) {
+        if (item.analyses() == null || item.analyses().stream().anyMatch(java.util.Objects::isNull)) {
+            return null;
+        }
+        try {
+            var evidence = new SpecimenIntakeEvidence(1, snapshot.lastUpdated(), request.lastUpdated(),
+                    item.lastUpdated(), item.typeOfSampleId(), item.collectionDate(), item.receivedDate(),
+                    item.analyses().stream()
+                            .map(analysis -> new SpecimenIntakeEvidence.Analysis(analysis.id(), analysis.testId(),
+                                    analysis.lastUpdated()))
+                            .toList());
+            return SpecimenIntakeEvidence.digest(evidence.encode());
+        } catch (IllegalArgumentException invalidEvidence) {
+            // A legacy or incomplete row remains visible for review, without an
+            // actionable decision digest.
+            return null;
+        }
     }
 
     private static boolean validIdentity(SpecimenLookupCandidateDAO.Candidate candidate) {

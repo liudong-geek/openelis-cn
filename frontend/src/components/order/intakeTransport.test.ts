@@ -32,6 +32,32 @@ it("单次固定POST携凭据和CSRF，不允许重定向", async () => {
     headers: { "X-CSRF-Token": "SIM-CSRF" },
   });
 });
+it("完整读到响应结尾后不取消浏览器响应流", async () => {
+  const response = json();
+  const reader = response.body!.getReader();
+  const cancel = vi.spyOn(reader, "cancel");
+  vi.spyOn(response.body!, "getReader").mockReturnValue(reader);
+  fetch.mockResolvedValue(response);
+
+  await expect(
+    postIntakeDecision("{}", new AbortController().signal, "SIM-CSRF"),
+  ).resolves.toEqual({ success: true });
+  expect(cancel).not.toHaveBeenCalled();
+});
+it("超出回执上限时取消尚未读完的流", async () => {
+  const response = new Response("x".repeat(65537), {
+    headers: { "content-type": "application/json" },
+  });
+  const reader = response.body!.getReader();
+  const cancel = vi.spyOn(reader, "cancel");
+  vi.spyOn(response.body!, "getReader").mockReturnValue(reader);
+  fetch.mockResolvedValue(response);
+
+  await expect(
+    postIntakeDecision("{}", new AbortController().signal, "SIM-CSRF"),
+  ).rejects.toThrow();
+  expect(cancel).toHaveBeenCalledTimes(1);
+});
 it.each([401, 403])(
   "即使已超时，迟到%i也通知固定凭证拒权回调",
   async (status) => {

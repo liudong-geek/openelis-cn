@@ -4,6 +4,7 @@ import { allowsImplicitOrderSave } from "../OrderContext";
 import {
   collectionDefaultsFor,
   hasPendingClockDefaults,
+  hasInvalidReceiptPair,
   mergePendingCollectionSamples,
   normalizeServerClock,
   refreshUntouchedCollectionClock,
@@ -87,6 +88,51 @@ describe("sample collection product rules", () => {
     expect(
       collectionDefaultsFor({ sampleItemId: "42", collectionDate: "" }, clock),
     ).toEqual({});
+  });
+
+  it("keeps collection-only receipt fields empty and rejects a half-entered receipt", () => {
+    const sample = { sampleTypeId: "blood", sampleItemId: "" };
+    expect(collectionDefaultsFor(sample, clock, "later")).toEqual({
+      collectionDate: clock.date,
+      collectionTime: clock.time,
+    });
+    expect(
+      refreshUntouchedCollectionClock(
+        [{ ...sample, receivedDate: clock.date, receivedTime: clock.time }],
+        clock,
+        "later",
+      )[0],
+    ).toMatchObject({ receivedDate: "", receivedTime: "" });
+    expect(
+      hasPendingClockDefaults(
+        [{ ...sample, collectionDate: clock.date, collectionTime: clock.time }],
+        "later",
+      ),
+    ).toBe(false);
+    expect(
+      hasInvalidReceiptPair(
+        [{ ...sample, receivedDate: clock.date, receivedTime: "" }],
+        "now",
+      ),
+    ).toBe(true);
+    expect(
+      hasInvalidReceiptPair(
+        [{ ...sample, receivedDate: "", receivedTime: "" }],
+        "later",
+      ),
+    ).toBe(false);
+    expect(
+      hasInvalidReceiptPair(
+        [{ ...sample, receivedDate: clock.date, receivedTime: "" }],
+        "later",
+      ),
+    ).toBe(true);
+    expect(
+      hasInvalidReceiptPair(
+        [{ ...sample, sampleItemId: "7", receivedDate: clock.date }],
+        "now",
+      ),
+    ).toBe(true);
   });
 
   it("retains a user's edits when pending requests arrive later", () => {
@@ -255,6 +301,6 @@ describe("sample collection product rules", () => {
     expect(allowsImplicitOrderSave("/order/enter")).toBe(false);
     expect(allowsImplicitOrderSave("/order/collect")).toBe(false);
     expect(allowsImplicitOrderSave("/order/collect/")).toBe(false);
-    expect(allowsImplicitOrderSave("/order/label")).toBe(true);
+    expect(allowsImplicitOrderSave("/order/label")).toBe(false);
   });
 });

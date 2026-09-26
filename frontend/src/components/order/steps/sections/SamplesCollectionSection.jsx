@@ -1,7 +1,7 @@
 import React from "react";
 import { FormattedMessage } from "react-intl";
 import { Tile, Button, Stack } from "@carbon/react";
-import { Add, Printer } from "@carbon/icons-react";
+import { Add } from "@carbon/icons-react";
 import SampleCollectionCard from "./SampleCollectionCard";
 import { sampleObject } from "../../OrderContext";
 
@@ -24,6 +24,7 @@ const SamplesCollectionSection = ({
   serverClock,
   refreshServerClock,
   clockLoading,
+  receiptMode = "now",
   isReadOnly,
 }) => {
   // Handle sample update
@@ -40,11 +41,6 @@ const SamplesCollectionSection = ({
     setSamples(reindexed);
   };
 
-  // Handle print labels for a specific sample
-  const handlePrintLabels = (sampleIndex) => {
-    // TODO: Implement label printing
-  };
-
   // Handle add new sample
   const handleAddSample = async () => {
     const currentClock = await refreshServerClock();
@@ -53,19 +49,14 @@ const SamplesCollectionSection = ({
         ...sampleObject,
         collectionDate: currentClock.date,
         collectionTime: currentClock.time,
-        receivedDate: currentClock.date,
-        receivedTime: currentClock.time,
+        receivedDate: receiptMode === "now" ? currentClock.date : "",
+        receivedTime: receiptMode === "now" ? currentClock.time : "",
       };
       setSamples((currentSamples) => [
         ...currentSamples,
         { ...newSample, index: currentSamples.length },
       ]);
     }
-  };
-
-  // Handle print more sample labels
-  const handlePrintMoreLabels = () => {
-    // TODO: Implement printing additional labels
   };
 
   return (
@@ -84,9 +75,9 @@ const SamplesCollectionSection = ({
             sampleTypes={sampleTypes}
             unitOfMeasures={unitOfMeasures}
             serverClock={serverClock}
+            receiptMode={receiptMode}
             onUpdate={handleSampleUpdate}
             onRemove={handleSampleRemove}
-            onPrintLabels={handlePrintLabels}
             isReadOnly={isReadOnly}
             canRemove={samples.length > 1}
           />
@@ -106,25 +97,12 @@ const SamplesCollectionSection = ({
               defaultMessage="+ Add Another Sample"
             />
           </Button>
-
-          <Button
-            kind="tertiary"
-            size="md"
-            renderIcon={Printer}
-            onClick={handlePrintMoreLabels}
-            disabled={isReadOnly}
-          >
-            <FormattedMessage
-              id="collect.printMoreLabels.button"
-              defaultMessage="Print More Sample Labels"
-            />
-          </Button>
         </div>
 
         <p className="helper-text">
           <FormattedMessage
-            id="collect.printMoreLabels.helper"
-            defaultMessage="Use 'Print More Sample Labels' if you draw more than expected or need labels for a different sample type."
+            id="collect.sample.labelsAfterSave"
+            defaultMessage="Save collection first, then print the physical tube label on the next page."
           />
         </p>
       </Stack>

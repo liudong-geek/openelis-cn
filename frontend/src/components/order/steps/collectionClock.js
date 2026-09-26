@@ -20,7 +20,21 @@ export const normalizeServerClock = (response) => {
   )
     return null;
 
-  return { date, time, timezone };
+  const normalized = { date, time, timezone };
+  if (response.instant !== undefined) {
+    const instant = response.instant;
+    if (
+      typeof instant !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?Z$/.test(
+        instant,
+      ) ||
+      !Number.isFinite(Date.parse(instant)) ||
+      new Date(instant).toISOString().slice(0, 10) !== instant.slice(0, 10)
+    )
+      return null;
+    normalized.instant = instant;
+  }
+  return normalized;
 };
 
 export const isFutureCollectionTimestamp = (sample, serverClock) => {
@@ -39,21 +53,37 @@ export const isFutureCollectionTimestamp = (sample, serverClock) => {
   );
 };
 
-export const collectionDefaultsFor = (sample, serverClock) => {
+export const collectionDefaultsFor = (
+  sample,
+  serverClock,
+  receiptMode = "now",
+) => {
   if (sample.sampleItemId || !serverClock) return {};
   const updates = {};
   if (!sample.collectionDate && !sample.collectionDateUserEdited)
     updates.collectionDate = serverClock.date;
   if (!sample.collectionTime && !sample.collectionTimeUserEdited)
     updates.collectionTime = serverClock.time;
-  if (!sample.receivedDate && !sample.receivedDateUserEdited)
+  if (
+    receiptMode === "now" &&
+    !sample.receivedDate &&
+    !sample.receivedDateUserEdited
+  )
     updates.receivedDate = serverClock.date;
-  if (!sample.receivedTime && !sample.receivedTimeUserEdited)
+  if (
+    receiptMode === "now" &&
+    !sample.receivedTime &&
+    !sample.receivedTimeUserEdited
+  )
     updates.receivedTime = serverClock.time;
   return updates;
 };
 
-export const refreshUntouchedCollectionClock = (samples, serverClock) =>
+export const refreshUntouchedCollectionClock = (
+  samples,
+  serverClock,
+  receiptMode = "now",
+) =>
   samples.map((sample) => {
     if (sample.sampleItemId || !sample.sampleTypeId || !serverClock)
       return sample;
@@ -65,25 +95,41 @@ export const refreshUntouchedCollectionClock = (samples, serverClock) =>
       ...(!sample.collectionTimeUserEdited
         ? { collectionTime: serverClock.time }
         : {}),
-      ...(!sample.receivedDateUserEdited
+      ...(receiptMode === "now" && !sample.receivedDateUserEdited
         ? { receivedDate: serverClock.date }
         : {}),
-      ...(!sample.receivedTimeUserEdited
+      ...(receiptMode === "now" && !sample.receivedTimeUserEdited
         ? { receivedTime: serverClock.time }
+        : {}),
+      ...(receiptMode === "later"
+        ? { receivedDate: "", receivedTime: "" }
         : {}),
     };
   });
 
-export const hasPendingClockDefaults = (samples) =>
+export const hasPendingClockDefaults = (samples, receiptMode = "now") =>
   samples.some(
     (sample) =>
       !sample.sampleItemId &&
       sample.sampleTypeId &&
       ((!sample.collectionDate && !sample.collectionDateUserEdited) ||
         (!sample.collectionTime && !sample.collectionTimeUserEdited) ||
-        (!sample.receivedDate && !sample.receivedDateUserEdited) ||
-        (!sample.receivedTime && !sample.receivedTimeUserEdited)),
+        (receiptMode === "now" &&
+          !sample.receivedDate &&
+          !sample.receivedDateUserEdited) ||
+        (receiptMode === "now" &&
+          !sample.receivedTime &&
+          !sample.receivedTimeUserEdited)),
   );
+
+export const hasInvalidReceiptPair = (samples, receiptMode = "now") =>
+  samples.some((sample) => {
+    if (!sample.sampleTypeId) return false;
+    const hasDate = Boolean(sample.receivedDate);
+    const hasTime = Boolean(sample.receivedTime);
+    if (sample.sampleItemId) return hasDate !== hasTime;
+    return receiptMode === "now" ? !hasDate || !hasTime : hasDate || hasTime;
+  });
 
 export const mergePendingCollectionSamples = (
   requestedSamples,

@@ -35,11 +35,15 @@ export async function postSpecimenReceipt(
   const reader = response.body.getReader(),
     decoder = new TextDecoder("utf-8", { fatal: true });
   let size = 0,
-    text = "";
+    text = "",
+    complete = false;
   try {
     for (;;) {
       const chunk = await reader.read();
-      if (chunk.done) break;
+      if (chunk.done) {
+        complete = true;
+        break;
+      }
       size += chunk.value.byteLength;
       if (signal.aborted || size > 65536)
         throw new Error("order.receiving.unknown");
@@ -49,7 +53,7 @@ export async function postSpecimenReceipt(
     if (signal.aborted) throw new Error("order.receiving.unknown");
     return JSON.parse(text);
   } finally {
-    void reader.cancel().catch(() => {});
+    if (!complete) void reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }

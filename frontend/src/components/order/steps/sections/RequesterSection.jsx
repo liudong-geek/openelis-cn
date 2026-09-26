@@ -183,7 +183,7 @@ const RequesterSection = ({ orderData, setOrderData, isReadOnly }) => {
     setIsSearchingSites(false);
   };
 
-  // Autocomplete effect for site search - debounced
+  // Autocomplete also reruns when master data arrives after a fast query.
   useEffect(() => {
     if (selectedSite || isReadOnly) return; // Don't search if already selected
 
@@ -196,7 +196,7 @@ const RequesterSection = ({ orderData, setOrderData, isReadOnly }) => {
     }, 300); // 300ms debounce
 
     return () => clearTimeout(debounceTimer);
-  }, [siteSearchTerm, selectedSite, isReadOnly]);
+  }, [siteSearchTerm, selectedSite, isReadOnly, availableSites]);
 
   // Site selection
   const handleSelectSite = (site) => {

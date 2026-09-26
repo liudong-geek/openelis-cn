@@ -93,7 +93,23 @@ import { createIntakeOperation } from "./intakeOperation";
 const AUTO_SAVE_INTERVAL = 30000; // 30 seconds
 
 export const allowsImplicitOrderSave = (pathname) =>
-  !["/order/enter", "/order/collect"].includes(pathname?.replace(/\/+$/, ""));
+  !["/order/enter", "/order/collect", "/order/label", "/order/qa"].includes(
+    pathname?.replace(/\/+$/, ""),
+  );
+
+// A logical sample request is not a physical tube. Later workflow pages must
+// never turn a request into a tube through the general order save endpoint.
+export const hasUncollectedTypedSample = (rows) =>
+  Array.isArray(rows) &&
+  rows.some((sample) => {
+    if (
+      sample?.sampleTypeId == null ||
+      String(sample.sampleTypeId).trim() === ""
+    )
+      return false;
+    const itemId = String(sample.sampleItemId ?? "");
+    return !/^[1-9]\d{0,9}$/.test(itemId) || Number(itemId) > 2147483647;
+  });
 
 export const requiresEntryServerClock = (orderData, orderId) =>
   isFirstEntry({ sampleOrderItems: orderData?.sampleOrderItems }, orderId) &&
@@ -1579,6 +1595,17 @@ export const OrderProvider = ({ children }) => {
       // Pass environmentalFields for GPS fallback in environmental workflow
       const envFields = orderData?.sampleOrderItems?.environmentalFields || {};
       const effectiveSamples = samplesOverride ?? samples;
+      const page = location.pathname?.replace(/\/+$/, "");
+      if (
+        ["/order/label", "/order/qa"].includes(page) &&
+        hasUncollectedTypedSample(effectiveSamples)
+      ) {
+        throw entrySubmissionError(
+          page === "/order/label"
+            ? "order.label.collectionRequired"
+            : "order.qa.collectionRequired",
+        );
+      }
       const sampleXML = buildSampleXML(effectiveSamples, envFields);
       const referralItems = buildReferralItems(effectiveSamples);
       const useReferral = referralItems.length > 0;
@@ -1744,6 +1771,7 @@ export const OrderProvider = ({ children }) => {
       orderId,
       orderData,
       samples,
+      location.pathname,
       stepProgress,
       isReadOnly,
       isEditMode,

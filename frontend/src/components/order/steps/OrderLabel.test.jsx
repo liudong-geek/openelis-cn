@@ -53,6 +53,9 @@ vi.mock("react-router-dom", () => ({
 
 vi.mock("../OrderContext", () => ({
   useOrderContext: () => orderContextValue,
+  hasUncollectedTypedSample: (samples) =>
+    samples?.some((sample) => sample.sampleTypeId && !sample.sampleItemId) ||
+    false,
 }));
 
 vi.mock("../../layout/Layout", () => ({
@@ -80,7 +83,27 @@ vi.mock("../../utils/Utils", () => ({
 }));
 
 vi.mock("../OrderWorkflowLayout", () => ({
-  default: ({ children }) => <div>{children}</div>,
+  default: ({
+    children,
+    onSave,
+    onSaveAndNext,
+    saveDisabled,
+    showSaveButtons = true,
+  }) => (
+    <div>
+      {children}
+      {showSaveButtons && (
+        <>
+          <button onClick={onSave} disabled={saveDisabled}>
+            Save label step
+          </button>
+          <button onClick={onSaveAndNext} disabled={saveDisabled}>
+            Save label and next
+          </button>
+        </>
+      )}
+    </div>
+  ),
 }));
 
 import OrderLabel from "./OrderLabel";
@@ -115,6 +138,8 @@ describe("OrderLabel print URLs", () => {
       orderId: 1,
       isLoading: false,
       loadOrder: vi.fn(),
+      saveOrder: vi.fn().mockResolvedValue({ samples: [] }),
+      markStepComplete: vi.fn(),
     });
     openSpy = vi.spyOn(window, "open").mockImplementation(noop);
     addNotificationSpy = vi.fn();
@@ -189,6 +214,54 @@ describe("OrderLabel print URLs", () => {
     expect(url).toMatch(/[?&]labNo=LAB-100\.2(&|$)/);
     expect(url).toMatch(/[?&]type=specimen(&|$)/);
     expect(url).not.toContain("override=true");
+  });
+
+  test("an uncollected typed request cannot print or save from the label page", () => {
+    orderContextValue.samples = [
+      { sampleTypeId: "21", sampleTypeName: "Blood", sampleItemId: "" },
+    ];
+    renderWithIntl(<OrderLabel />);
+
+    expect(screen.getAllByText(/collect/i).length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("button", { name: "Save label step" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Save label and next" }),
+    ).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Print Label" })).toEqual(
+      expect.arrayContaining([expect.objectContaining({ disabled: true })]),
+    );
+    expect(
+      screen.getByRole("button", { name: "Print All Labels" }),
+    ).toBeDisabled();
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(orderContextValue.saveOrder).not.toHaveBeenCalled();
+  });
+
+  test("saved physical tubes use storage work without a generic order rewrite", async () => {
+    renderWithIntl(<OrderLabel />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save label step" }));
+
+    await vi.waitFor(() =>
+      expect(orderContextValue.markStepComplete).toHaveBeenCalledWith("label"),
+    );
+    expect(orderContextValue.saveOrder).not.toHaveBeenCalled();
+  });
+
+  test("a missing physical sort order stops specimen printing with an error", () => {
+    orderContextValue.samples = [
+      { sampleTypeId: "21", sampleItemId: "1", sampleTypeName: "Blood" },
+    ];
+    renderWithIntl(<OrderLabel />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Print Label" })[1]);
+
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(addNotificationSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "error" }),
+    );
   });
 
   test("Print All carries quantity and respects the safety cap (no override flag)", () => {

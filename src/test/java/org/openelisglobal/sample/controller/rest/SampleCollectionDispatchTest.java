@@ -9,6 +9,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.openelisglobal.sample.bean.SampleOrderItem;
 import org.openelisglobal.sample.exception.SampleCollectionValidationException;
+import org.openelisglobal.sample.exception.EntrySubmissionException;
 import org.openelisglobal.sample.form.SamplePatientEntryForm;
 import org.openelisglobal.sample.service.SamplePatientEntryService;
 import org.openelisglobal.sample.validator.SamplePatientEntryFormValidator;
@@ -77,6 +78,19 @@ public class SampleCollectionDispatchTest {
     @Test public void collectionCannotAlsoCreateRequestedSpecimens() throws Exception {
         form.setRequestedSpecimens(java.util.List.of());
         assertEquals(400, invoke().getStatusCode().value()); verifyZeroInteractions(service, validator);
+    }
+
+    @Test public void ordinarySaveReturnsConflictForSignedTubeGuard() throws Exception {
+        form.setCollectionOnly(false);
+        doThrow(new EntrySubmissionException(409, "ORDER_SPECIMEN_WRITE_CONFLICT", "请重新查询标本状态。"))
+                .when(service).saveEntry(eq(form), eq(request), any());
+
+        var response = invoke();
+
+        assertEquals(409, response.getStatusCode().value());
+        assertEquals("ORDER_SPECIMEN_WRITE_CONFLICT", ((Map<?, ?>) response.getBody()).get("code"));
+        assertEquals("no-store", response.getHeaders().getCacheControl());
+        verify(service).saveEntry(eq(form), eq(request), any());
     }
 
     private ResponseEntity<?> invoke() throws Exception {
