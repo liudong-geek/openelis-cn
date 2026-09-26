@@ -32,7 +32,8 @@ const OrderStepper = ({ currentStep, onStepClick, className = "" }) => {
   const intl = useIntl();
   const history = useHistory();
   const location = useLocation();
-  const { samples, storageSkipped, stepProgress } = useOrderContext();
+  const { samples, storageSkipped, stepProgress, labNumber, orderData } =
+    useOrderContext();
 
   // Determine current step from URL if not provided
   const activeStep =
@@ -71,6 +72,22 @@ const OrderStepper = ({ currentStep, onStepClick, className = "" }) => {
   };
 
   const handleStepClick = (stepIndex) => {
+    if (ORDER_STEPS[stepIndex]?.key === "qa") {
+      const labNo = labNumber || orderData?.sampleOrderItems?.labNo || "";
+      const onlyTube = samples.length === 1 ? samples[0] : null;
+      const uniqueTube =
+        onlyTube?.sampleItemId &&
+        /^[1-9]\d{0,4}$/.test(String(onlyTube?.sortOrder));
+      history.push({
+        pathname: "/order/collect",
+        state: {
+          ...location.state,
+          specimenIntakeCode:
+            labNo && uniqueTube ? `${labNo}.${onlyTube.sortOrder}` : labNo,
+        },
+      });
+      return;
+    }
     if (onStepClick) {
       onStepClick(stepIndex);
     } else {

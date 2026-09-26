@@ -28,9 +28,17 @@
   "order.specimenLookup.action.confirmIdentity": "我已核对患者、申请与实管条码",
   "order.specimenLookup.action.receipt": "确认此管签收",
   "order.specimenLookup.action.accept": "确认此管验收",
+  "order.specimenLookup.action.decision": "验收结论",
+  "order.specimenLookup.action.acceptChoice": "接收",
+  "order.specimenLookup.action.rejectChoice": "拒收",
+  "order.specimenLookup.action.rejectionReason": "拒收原因",
+  "order.specimenLookup.action.chooseReason": "请选择原因",
+  "order.specimenLookup.action.noReasons": "当前拒收原因字典不可用，请稍后核对，暂不能记录拒收。",
+  "order.specimenLookup.action.reject": "确认此管拒收",
   "order.specimenLookup.action.acceptBoundary": "此处只记录单管首次验收决定；结果录入权限仍会另行核对。",
   "order.specimenLookup.action.receiptSaved": "实管 {code} 的签收已回查，当前状态见下表。",
   "order.specimenLookup.action.acceptSaved": "实管 {code} 的验收已回查，当前状态见下表。",
+  "order.specimenLookup.action.rejectSaved": "实管 {code} 的拒收已回查，可继续建立关联补采申请。",
   "order.specimenLookup.action.unknown": "写入结果尚未核实，已暂停重复提交。请核对当前实管记录或联系管理员处理。",
   "order.specimenLookup.action.changed": "实管记录或登录状态已变化，请核对新记录并重新确认身份。",
   "order.specimenLookup.patient": "患者",
@@ -10067,5 +10075,6 @@
   "results.workbench.sessionReadUnconfirmed": "暂无法核实当前登录信息，请重新查询。",
   "results.workbench.sessionReadPaused": "登录信息发生变化，结果已隐藏。请手动重新查询；本页未保存输入已暂停。",
   "results.workbench.sessionWritePaused": "当前结果仅供查看，保存状态尚未核实；本页未保存输入保持暂停。",
-  "results.workbench.drafts.scopeHeld": "部分未完成输入属于之前的检验权限范围，已保留并暂停；原权限范围恢复后，可重新查询核对。"
+  "results.workbench.drafts.scopeHeld": "部分未完成输入属于之前的检验权限范围，已保留并暂停；原权限范围恢复后，可重新查询核对。",
+  "validation.review.lastCompleted": "最近完成审核的申请："
 }

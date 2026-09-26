@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLookupAccept,
+  buildLookupReject,
   buildLookupReceipt,
   lookupActionKind,
+  lookupRecollectionResult,
   lookupWriteRecorded,
   sameLookupAction,
 } from "./specimenLookupAction";
@@ -198,5 +200,77 @@ describe("one-tube lookup write guard", () => {
         command,
       ),
     ).toBe(true);
+  });
+
+  it("rejects only the scanned tube with a current catalog reason and permits linked recollection after exact readback", () => {
+    const digest = "a".repeat(64);
+    const reason = {
+      namespace: "DICTIONARY:resultRejectionReasons",
+      id: "41",
+      version: "2026-09-26T01:00:00Z",
+      label: "容器不合格",
+    };
+    const ready = changeTube(base, {
+      receivedDate: "2026-09-26T05:03:00Z",
+      expectedEvidenceDigest: digest,
+    });
+    ready.current.intakeReasons = {
+      schema: 1,
+      state: "READY",
+      items: [reason],
+    };
+    const operationId = "12345678-1234-1234-1234-123456789abc";
+    expect(sameLookupAction(ready, ready, "DEV30.1", "reject", "41")).toBe(
+      true,
+    );
+    const command = buildLookupReject(ready, "DEV30.1", operationId, "41");
+    expect(command).toMatchObject({
+      sampleItemId: "22",
+      decision: "REJECTED",
+      reason,
+      expectedEvidenceDigest: digest,
+    });
+    expect(buildLookupReject(ready, "DEV30", operationId, "41")).toBeNull();
+    expect(buildLookupReject(ready, "DEV30.1", operationId, "99")).toBeNull();
+    const stale = structuredClone(ready);
+    stale.current.intakeReasons.items[0].version = "2026-09-26T02:00:00Z";
+    expect(sameLookupAction(ready, stale, "DEV30.1", "reject", "41")).toBe(
+      false,
+    );
+
+    const rejected = changeTube(ready, {
+      rejected: true,
+      decisionState: "RECORDED",
+      recordedDecision: "REJECTED",
+      operationId,
+      expectedEvidenceDigest: null,
+      recordedReason: reason,
+      recordedEvidenceDigest: digest,
+    });
+    expect(lookupWriteRecorded(rejected, "DEV30.1", "reject", command)).toBe(
+      true,
+    );
+    const recollection = lookupRecollectionResult(rejected, "DEV30.1");
+    expect(recollection.current.specimenDecisions[0]).toMatchObject({
+      sampleItemId: "22",
+      operationId,
+      evidenceDigest: digest,
+      reason,
+    });
+    expect(lookupRecollectionResult(rejected, "DEV30")).toBeNull();
+    expect(
+      lookupWriteRecorded(
+        changeTube(rejected, { recordedEvidenceDigest: "b".repeat(64) }),
+        "DEV30.1",
+        "reject",
+        command,
+      ),
+    ).toBe(false);
+    expect(
+      lookupRecollectionResult(
+        changeTube(rejected, { recordedEvidenceDigest: null }),
+        "DEV30.1",
+      ),
+    ).toBeNull();
   });
 });

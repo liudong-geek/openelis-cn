@@ -176,6 +176,9 @@ const RoutedResultsViewer: React.FC<ResultsViewerProps> = () => {
       {canManageReport && patient?.patientPK && (
         <PatientReportReleasePanel
           patientId={String(patient.patientPK)}
+          initialSampleId={
+            new URLSearchParams(location.search).get("sampleId") || undefined
+          }
           canManage={canManageReport}
         />
       )}

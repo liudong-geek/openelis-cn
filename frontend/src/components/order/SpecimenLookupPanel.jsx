@@ -4,6 +4,8 @@ import {
   Checkbox,
   InlineNotification,
   Search,
+  Select,
+  SelectItem,
   Stack,
   Table,
   TableBody,
@@ -23,10 +25,13 @@ import { postSpecimenReceipt } from "./receiptTransport";
 import { postIntakeDecision } from "./intakeTransport";
 import { verifyReceiptResponse } from "./specimenReceipt";
 import { verifyIntakeAck } from "./intakeDecision";
+import RecoveredSpecimenRecollection from "./RecoveredSpecimenRecollection";
 import {
   buildLookupAccept,
+  buildLookupReject,
   buildLookupReceipt,
   lookupActionKind,
+  lookupRecollectionResult,
   lookupWriteRecorded,
   sameLookupAction,
 } from "./specimenLookupAction";
@@ -81,6 +86,8 @@ const resultRows = (current) => {
 };
 
 export default function SpecimenLookupPanel({
+  initialCode = "",
+  onOpenResults,
   active = false,
   canReturn = false,
   originalLabNo = "",
@@ -91,13 +98,15 @@ export default function SpecimenLookupPanel({
   const latestSession = useRef(session);
   const t = (key, values) =>
     intl.formatMessage({ id: `order.specimenLookup.${key}` }, values);
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(initialCode);
   const [searchedCode, setSearchedCode] = useState("");
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [selectedRequestId, setSelectedRequestId] = useState(null);
   const [identityConfirmed, setIdentityConfirmed] = useState(false);
+  const [decisionChoice, setDecisionChoice] = useState("ACCEPTED");
+  const [reasonId, setReasonId] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
   const [actionNotice, setActionNotice] = useState(null);
   const [writeLocked, setWriteLocked] = useState(false);
@@ -135,6 +144,8 @@ export default function SpecimenLookupPanel({
     setSelectedRequestId(null);
     setError(null);
     setIdentityConfirmed(false);
+    setDecisionChoice("ACCEPTED");
+    setReasonId("");
     setActionNotice(null);
   };
 
@@ -236,13 +247,15 @@ export default function SpecimenLookupPanel({
     const initial = result;
     const barcode = searchedCode;
     const expected = credential();
+    const selectedReasonId = reasonId;
     if (
       activeWrite.current ||
       writeLocked ||
       !identityConfirmed ||
       !expected ||
       String(selectedRequestId) !== String(initial?.selection?.requestId) ||
-      lookupActionKind(initial, barcode) !== kind
+      lookupActionKind(initial, barcode) !==
+        (kind === "reject" ? "accept" : kind)
     )
       return;
     activeWrite.current = true;
@@ -254,7 +267,7 @@ export default function SpecimenLookupPanel({
       // specimen state invalidates the operator's earlier confirmation.
       const fresh = await lookupSpecimen(barcode);
       if (!sameCredential(expected)) throw new Error("session");
-      if (!sameLookupAction(initial, fresh, barcode, kind)) {
+      if (!sameLookupAction(initial, fresh, barcode, kind, selectedReasonId)) {
         setResult(fresh);
         setSelectedRequestId(fresh.selection.requestId || null);
         setIdentityConfirmed(false);
@@ -267,6 +280,13 @@ export default function SpecimenLookupPanel({
         command = clock?.instant
           ? buildLookupReceipt(fresh, barcode, clock.instant)
           : null;
+      } else if (kind === "reject") {
+        command = buildLookupReject(
+          fresh,
+          barcode,
+          crypto.randomUUID(),
+          selectedReasonId,
+        );
       } else {
         command = buildLookupAccept(fresh, barcode, crypto.randomUUID());
       }
@@ -348,6 +368,17 @@ export default function SpecimenLookupPanel({
     scannedRequestSelected && result
       ? lookupActionKind(result, searchedCode)
       : null;
+  const intendedAction =
+    actionKind === "accept" && decisionChoice === "REJECTED"
+      ? "reject"
+      : actionKind;
+  const rejectionReasons =
+    result?.current?.intakeReasons?.state === "READY"
+      ? result.current.intakeReasons.items
+      : [];
+  const recollectionResult = result
+    ? lookupRecollectionResult(result, searchedCode)
+    : null;
   const writeReady = Boolean(readCredential(session));
 
   return (
@@ -532,6 +563,16 @@ export default function SpecimenLookupPanel({
                 {t("selectFirst")}
               </p>
             )}
+            {selected?.stage === "accepted" &&
+              scannedRequestSelected &&
+              onOpenResults && (
+                <Button
+                  size="md"
+                  onClick={() => onOpenResults(result.current.labNo)}
+                >
+                  {intl.formatMessage({ id: "result.entry.label" })}
+                </Button>
+              )}
             {!scannedRequestSelected && result.matchedKind === "specimen" && (
               <p role="note">{t("action.scanSelectedToAct")}</p>
             )}
@@ -550,18 +591,77 @@ export default function SpecimenLookupPanel({
                   onChange={(_, { checked }) => setIdentityConfirmed(checked)}
                   disabled={actionBusy || !writeReady}
                 />
+                {actionKind === "accept" && (
+                  <>
+                    <Select
+                      id="specimen-lookup-decision"
+                      labelText={t("action.decision")}
+                      value={decisionChoice}
+                      disabled={actionBusy || !writeReady}
+                      onChange={(event) => {
+                        setDecisionChoice(event.target.value);
+                        setReasonId("");
+                        setIdentityConfirmed(false);
+                      }}
+                    >
+                      <SelectItem
+                        value="ACCEPTED"
+                        text={t("action.acceptChoice")}
+                      />
+                      <SelectItem
+                        value="REJECTED"
+                        text={t("action.rejectChoice")}
+                      />
+                    </Select>
+                    {decisionChoice === "REJECTED" && (
+                      <Select
+                        id="specimen-lookup-rejection-reason"
+                        labelText={t("action.rejectionReason")}
+                        value={reasonId}
+                        disabled={
+                          actionBusy || !writeReady || !rejectionReasons.length
+                        }
+                        onChange={(event) => {
+                          setReasonId(event.target.value);
+                          setIdentityConfirmed(false);
+                        }}
+                      >
+                        <SelectItem value="" text={t("action.chooseReason")} />
+                        {rejectionReasons.map((reason) => (
+                          <SelectItem
+                            key={reason.id}
+                            value={reason.id}
+                            text={reason.label}
+                          />
+                        ))}
+                      </Select>
+                    )}
+                    {decisionChoice === "REJECTED" &&
+                      !rejectionReasons.length && (
+                        <p role="alert">{t("action.noReasons")}</p>
+                      )}
+                  </>
+                )}
                 <Button
                   size="md"
-                  disabled={!identityConfirmed || actionBusy || !writeReady}
-                  onClick={() => performAction(actionKind)}
+                  disabled={
+                    !identityConfirmed ||
+                    actionBusy ||
+                    !writeReady ||
+                    (intendedAction === "reject" && !reasonId)
+                  }
+                  onClick={() => performAction(intendedAction)}
                 >
-                  {t(`action.${actionKind}`)}
+                  {t(`action.${intendedAction}`)}
                 </Button>
                 {actionKind === "accept" && <p>{t("action.acceptBoundary")}</p>}
               </div>
             )}
           </Stack>
         </Tile>
+      )}
+      {active && recollectionResult && (
+        <RecoveredSpecimenRecollection result={recollectionResult} />
       )}
     </section>
   );

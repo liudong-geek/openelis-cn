@@ -1,4 +1,5 @@
 import React from "react";
+import { vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
@@ -246,6 +247,23 @@ describe("OrderLabel print URLs", () => {
 
     await vi.waitFor(() =>
       expect(orderContextValue.markStepComplete).toHaveBeenCalledWith("label"),
+    );
+    expect(orderContextValue.saveOrder).not.toHaveBeenCalled();
+  });
+
+  test("label handoff opens the same physical tube for independent receipt and acceptance", async () => {
+    orderContextValue.samples = [
+      { sampleTypeName: "Blood", sortOrder: 1, sampleItemId: "1" },
+    ];
+    renderWithIntl(<OrderLabel />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save label and next" }),
+    );
+    await vi.waitFor(() =>
+      expect(historyMock.push).toHaveBeenCalledWith({
+        pathname: "/order/collect",
+        state: { specimenIntakeCode: "LAB-100.1" },
+      }),
     );
     expect(orderContextValue.saveOrder).not.toHaveBeenCalled();
   });

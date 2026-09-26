@@ -9964,5 +9964,6 @@
   "results.workbench.sessionReadUnconfirmed": "暂无法核实当前登录信息，请重新查询。",
   "results.workbench.sessionReadPaused": "登录信息发生变化，结果已隐藏。请手动重新查询；本页未保存输入已暂停。",
   "results.workbench.sessionWritePaused": "当前结果仅供查看，保存状态尚未核实；本页未保存输入保持暂停。",
-  "results.workbench.drafts.scopeHeld": "部分未完成输入属于之前的检验权限范围，已保留并暂停；原权限范围恢复后，可重新查询核对。"
+  "results.workbench.drafts.scopeHeld": "部分未完成输入属于之前的检验权限范围，已保留并暂停；原权限范围恢复后，可重新查询核对。",
+  "validation.review.lastCompleted": "最近完成审核的申请："
 }

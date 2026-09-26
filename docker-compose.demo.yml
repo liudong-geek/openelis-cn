@@ -1,0 +1,32 @@
+# Local demonstration: reuse the existing disposable E2E database and images.
+# Apply after build.docker-compose.yml and docker-compose.e2e.yml with the SAME
+# openelis-cn-e2e project. Only one public entry (HTTP 18080) is published.
+services:
+  db.openelis.org:
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
+  oe.openelis.org:
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2g
+  frontend.openelis.org:
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256m
+  proxy:
+    ports: !override
+      - "127.0.0.1:18080:80"
+    volumes: !override
+      - ./volume/nginx/nginx-cn.conf:/etc/nginx/nginx.conf:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128m

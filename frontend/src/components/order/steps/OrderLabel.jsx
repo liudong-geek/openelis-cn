@@ -1,4 +1,3 @@
-import { pushWithListContext } from "../../common/listWorkspace";
 import React, { useContext, useState, useEffect, useRef } from "react";
 import { useHistory, useLocation } from "react-router-dom";
 import { useIntl, FormattedMessage } from "react-intl";
@@ -62,7 +61,6 @@ const OrderLabel = () => {
     orderData,
     samples,
     setSamples,
-    setCurrentStep,
     labNumber: contextLabNumber,
     stepProgress,
     markStepComplete,
@@ -552,8 +550,15 @@ const OrderLabel = () => {
       await updateStorageNotes();
 
       markStepComplete("label");
-      setCurrentStep(3);
-      pushWithListContext(history, "/order/qa");
+      const onlyTube = samples.length === 1 ? samples[0] : null;
+      const intakeCode =
+        onlyTube?.sampleItemId && onlyTube?.sortOrder
+          ? `${labNumber}.${onlyTube.sortOrder}`
+          : labNumber;
+      history.push({
+        pathname: "/order/collect",
+        state: { ...history.location?.state, specimenIntakeCode: intakeCode },
+      });
     } catch (error) {
       addNotification({
         kind: NotificationKinds.error,

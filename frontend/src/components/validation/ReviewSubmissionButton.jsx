@@ -17,6 +17,7 @@ export default function ReviewSubmissionButton({
   disabled,
   onBusy,
   onOutcome,
+  onConfirmed,
   onError,
   children,
 }) {
@@ -88,6 +89,8 @@ export default function ReviewSubmissionButton({
         setBusy(false);
         base.dispose();
         controller.abort();
+        // postReviewResults accepts 200 only after matching the server queryId.
+        if (status === 200) onConfirmed?.(fixed.payload);
         onOutcome(status);
       };
       const submit = (credentials) => {

@@ -54,6 +54,7 @@ const batch = () => ({
 const start = (source = batch()) => {
   const onBusy = vi.fn(),
     onOutcome = vi.fn(),
+    onConfirmed = vi.fn(),
     onError = vi.fn();
   let current = source;
   const renderFor = (id = "7") => (
@@ -76,6 +77,7 @@ const start = (source = batch()) => {
           context={() => "SIM review"}
           onBusy={onBusy}
           onOutcome={onOutcome}
+          onConfirmed={onConfirmed}
           onError={onError}
         >
           SIM submit
@@ -88,6 +90,7 @@ const start = (source = batch()) => {
     ...view,
     onBusy,
     onOutcome,
+    onConfirmed,
     onError,
     change: (next, id) => {
       current = next;
@@ -128,6 +131,7 @@ test.each([true, false])(
       fireEvent.click(screen.getByText("SIM sign"));
     }
     await waitFor(() => expect(view.onOutcome).toHaveBeenCalledWith(200));
+    expect(view.onConfirmed).toHaveBeenCalledExactlyOnceWith(source);
     expect(posts()).toHaveLength(1);
     expect(posts()[0][0]).toMatch(/\/rest\/AccessionValidation$/);
     expect(JSON.parse(posts()[0][1].body)).toEqual({
@@ -191,6 +195,7 @@ test.each([400, 403, 409, 500])(
     const old = modal.props.signatureApi;
     fireEvent.click(screen.getByText("SIM sign"));
     await waitFor(() => expect(view.onOutcome).toHaveBeenCalledWith(status));
+    expect(view.onConfirmed).not.toHaveBeenCalled();
     expect(() =>
       old.executeSignature({ username: "SIM.operator", password: "SIM" }),
     ).toThrow();

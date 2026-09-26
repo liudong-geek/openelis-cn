@@ -124,11 +124,19 @@ function server() {
   vi.stubGlobal("fetch", fetcher);
   return { state, fetcher };
 }
-function view(patientId = "42", value: any = session) {
+function view(
+  patientId = "42",
+  value: any = session,
+  initialSampleId?: string,
+) {
   return (
     <IntlProvider locale="en" messages={en}>
       <UserSessionDetailsContext.Provider value={value}>
-        <PatientReportReleasePanel patientId={patientId} canManage />
+        <PatientReportReleasePanel
+          patientId={patientId}
+          canManage
+          initialSampleId={initialSampleId}
+        />
       </UserSessionDetailsContext.Provider>
     </IntlProvider>
   );
@@ -181,6 +189,22 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 describe("formal report workflow with real transport and server fixtures", () => {
+  it("preselects only an accessible application and resets when the patient changes", async () => {
+    server();
+    const rendered = render(view("42", session, "51"));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Application")).toHaveValue("51"),
+    );
+    rendered.rerender(view("43", session, "51"));
+    await screen.findByText("No applications are available to this account.");
+    expect(
+      screen.queryByRole("option", { name: application.accessionNumber }),
+    ).not.toBeInTheDocument();
+    rendered.rerender(view("42", session, "999"));
+    await screen.findByRole("option", { name: application.accessionNumber });
+    expect(screen.getByLabelText("Application")).toHaveValue("");
+  });
+
   it("creates application/group document and draft, reviews frozen contents, then issues in one transaction", async () => {
     const { fetcher } = server();
     render(view());

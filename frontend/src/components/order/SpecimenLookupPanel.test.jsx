@@ -5,10 +5,20 @@ import userEvent from "@testing-library/user-event";
 import { IntlProvider } from "react-intl";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import messages from "../../languages/en.json";
+import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import SpecimenLookupPanel from "./SpecimenLookupPanel";
 
 const lookup = vi.hoisted(() => vi.fn());
+const postDecision = vi.hoisted(() => vi.fn());
 vi.mock("./api/specimenLookupApi", () => ({ lookupSpecimen: lookup }));
+vi.mock("./intakeTransport", () => ({ postIntakeDecision: postDecision }));
+vi.mock("./RecoveredSpecimenRecollection", () => ({
+  default: ({ result }) => (
+    <div data-testid="linked-recollection">
+      {result.current.specimenDecisions[0].sampleItemId}
+    </div>
+  ),
+}));
 
 const current = {
   sampleId: "30",
@@ -59,23 +69,147 @@ const response = {
   current,
 };
 
-const renderPanel = () => {
+const renderPanel = (session = null) => {
   const onViewChange = vi.fn();
   const view = render(
     <IntlProvider locale="en" messages={messages}>
-      <SpecimenLookupPanel
-        active
-        canReturn
-        originalLabNo="A-100"
-        onViewChange={onViewChange}
-      />
+      <UserSessionDetailsContext.Provider value={session}>
+        <SpecimenLookupPanel
+          active
+          canReturn
+          originalLabNo="A-100"
+          onViewChange={onViewChange}
+        />
+      </UserSessionDetailsContext.Provider>
     </IntlProvider>,
   );
   return { ...view, onViewChange };
 };
 
 describe("daily specimen lookup panel", () => {
-  beforeEach(() => lookup.mockReset());
+  beforeEach(() => {
+    lookup.mockReset();
+    postDecision.mockReset();
+  });
+
+  test("scanned received tube can reject with a current reason and then exposes only that tube's linked recollection", async () => {
+    const reason = {
+      namespace: "DICTIONARY:resultRejectionReasons",
+      id: "41",
+      version: "2026-09-26T01:00:00Z",
+      label: "Container unsuitable",
+    };
+    const digest = "a".repeat(64);
+    const ready = {
+      ...response,
+      current: {
+        ...current,
+        patientMasked: false,
+        patient: { ...current.patient, id: "9" },
+        intakeReasons: { schema: 1, state: "READY", items: [reason] },
+        physicalSpecimens: [
+          current.physicalSpecimens[0],
+          {
+            ...current.physicalSpecimens[1],
+            typeOfSampleId: "7",
+            rejected: false,
+            voided: false,
+            collectionDate: "2026-09-26T05:00:00Z",
+            receivedDate: "2026-09-26T05:03:00Z",
+            expectedEvidenceDigest: digest,
+            operationId: null,
+          },
+        ],
+      },
+    };
+    let posted;
+    lookup.mockImplementation(async () =>
+      posted
+        ? {
+            ...ready,
+            current: {
+              ...ready.current,
+              physicalSpecimens: [
+                ready.current.physicalSpecimens[0],
+                {
+                  ...ready.current.physicalSpecimens[1],
+                  rejected: true,
+                  decisionState: "RECORDED",
+                  recordedDecision: "REJECTED",
+                  expectedEvidenceDigest: null,
+                  operationId: posted.operationId,
+                  recordedReason: reason,
+                  recordedEvidenceDigest: digest,
+                },
+              ],
+            },
+          }
+        : ready,
+    );
+    postDecision.mockImplementation(async (body) => {
+      posted = JSON.parse(body);
+      return {
+        success: true,
+        replayed: false,
+        currentAcceptanceVerified: false,
+        ...Object.fromEntries(
+          [
+            "sampleId",
+            "labNo",
+            "patientId",
+            "requestId",
+            "sampleItemId",
+            "operationId",
+          ].map((key) => [key, posted[key]]),
+        ),
+        recordedDecision: posted.decision,
+        reason: posted.reason,
+        decidedBy: "7",
+        decidedAt: "2026-09-26T05:04:00Z",
+      };
+    });
+    const session = {
+      userSessionDetails: {
+        authenticated: true,
+        csrf: "SIM-CSRF",
+        userId: "7",
+      },
+      getSessionIdentity: () => "SIM-SESSION",
+      getSessionCheckGeneration: () => 1,
+      isSessionWriteAllowed: () => true,
+      sessionPhase: "authenticated",
+    };
+    const user = userEvent.setup();
+    renderPanel(session);
+    await user.type(screen.getByRole("searchbox"), "A-300.2");
+    await user.click(
+      screen.getByRole("button", { name: "Check current status" }),
+    );
+    await user.selectOptions(
+      screen.getByLabelText("Intake decision"),
+      "REJECTED",
+    );
+    await user.selectOptions(screen.getByLabelText("Rejection reason"), "41");
+    await user.click(
+      screen.getByText("I have checked the patient, order, and tube barcode"),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Confirm rejection of this tube" }),
+    );
+    await waitFor(() => expect(postDecision).toHaveBeenCalledTimes(1));
+    expect(posted).toMatchObject({
+      sampleItemId: "22",
+      decision: "REJECTED",
+      reason,
+      expectedEvidenceDigest: digest,
+    });
+    expect(await screen.findByTestId("linked-recollection")).toHaveTextContent(
+      "22",
+    );
+    expect(
+      screen.getByText(/Rejection of tube A-300.2 was verified/),
+    ).toBeVisible();
+  });
 
   test("finds the real selected tube and shows distinct next tasks without writing", async () => {
     lookup.mockResolvedValue(response);

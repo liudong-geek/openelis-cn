@@ -76,7 +76,7 @@ const received = tube(collected, {
   expectedEvidenceDigest: "a".repeat(64),
 });
 
-const renderPanel = () =>
+const renderPanel = (props = {}) =>
   render(
     <UserSessionDetailsContext.Provider
       value={{
@@ -93,7 +93,7 @@ const renderPanel = () =>
       }}
     >
       <IntlProvider locale="zh" messages={messages}>
-        <SpecimenLookupPanel active />
+        <SpecimenLookupPanel active {...props} />
       </IntlProvider>
     </UserSessionDetailsContext.Provider>,
   );
@@ -184,13 +184,16 @@ describe("scanned physical tube actions", () => {
         };
       });
       const user = userEvent.setup();
-      renderPanel();
+      const onOpenResults = vi.fn();
+      renderPanel({ onOpenResults });
       await scan(user);
       await user.click(screen.getByText("我已核对患者、申请与实管条码"));
       await user.click(screen.getByRole("button", { name: "确认此管验收" }));
       expect(
         await screen.findByText(/实管 DEV30\.1 的验收已回查/),
       ).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "结果录入" }));
+      expect(onOpenResults).toHaveBeenCalledWith("DEV30");
       expect(mocks.decision).toHaveBeenCalledTimes(1);
       expect(JSON.parse(mocks.decision.mock.calls[0][0])).toMatchObject({
         operationId,

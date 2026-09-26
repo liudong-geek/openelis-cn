@@ -6,6 +6,10 @@ import React, {
   useState,
 } from "react";
 import SearchForm from "./SearchForm";
+import { Button } from "@carbon/react";
+import { Link } from "react-router-dom";
+import { hasRole, Roles } from "../utils/Utils";
+import { getReviewResults } from "./reviewTransport";
 import Validation from "./Validation";
 import { AlertDialog, NotificationKinds } from "../common/CustomNotification";
 import { NotificationContext } from "../layout/Layout";
@@ -39,6 +43,34 @@ const Index = () => {
     userSessionDetails?.csrf,
     [...(userSessionDetails?.roles || [])].sort(),
   ]);
+  const [reportEntry, setReportEntry] = useState(null);
+  const reportRead = useRef(null);
+  useEffect(() => () => reportRead.current?.abort(), [sessionKey]);
+  const reviewedApplication = ({ sampleId, labNumber }) => {
+    reportRead.current?.abort();
+    setReportEntry(null);
+    if (!sessionAvailable || !hasRole(userSessionDetails, Roles.REPORTS))
+      return;
+    const controller = new AbortController();
+    reportRead.current = controller;
+    getReviewResults(
+      `/rest/order/search?labNumber=${encodeURIComponent(labNumber)}`,
+      (order, status) => {
+        if (
+          controller.signal.aborted ||
+          reportRead.current !== controller ||
+          status !== 200 ||
+          String(order?.id) !== sampleId ||
+          order?.labNumber !== labNumber
+        )
+          return;
+        const patientId = String(order.patientProperties?.patientPK || "");
+        if (!/^[1-9]\d*$/.test(patientId)) return;
+        setReportEntry({ sessionKey, patientId, sampleId, labNumber });
+      },
+      controller.signal,
+    );
+  };
   const resultsSession = useRef(sessionKey);
   const lastSession = useRef(sessionKey);
   const [results, setResults] = useState({ resultList: [] });
@@ -72,6 +104,7 @@ const Index = () => {
   useEffect(() => {
     if (lastSession.current === sessionKey) return;
     lastSession.current = sessionKey;
+    setReportEntry(null);
     submissionPending.current = false;
     setQueryState({ phase: "error", scope: "filtered" });
     replaceResults({ resultList: [] });
@@ -139,6 +172,20 @@ const Index = () => {
       />
       <div className="orderLegendBody">
         <ReviewReportWorkspaceSwitcher activeView="review" />
+        {sessionAvailable &&
+          reportEntry?.sessionKey === sessionKey &&
+          hasRole(userSessionDetails, Roles.REPORTS) && (
+            <p>
+              <FormattedMessage id="validation.review.lastCompleted" />{" "}
+              <Button
+                as={Link}
+                to={`/PatientResults/${reportEntry.patientId}?sampleId=${encodeURIComponent(reportEntry.sampleId)}`}
+              >
+                <FormattedMessage id="report.release.title" /> ·{" "}
+                {reportEntry.labNumber}
+              </Button>
+            </p>
+          )}
         {notificationVisible === true ? <AlertDialog /> : ""}
         <SearchForm
           key={sessionKey}
@@ -157,12 +204,17 @@ const Index = () => {
               ? results
               : { resultList: [] }
           }
+          onReviewedApplication={reviewedApplication}
           onContextInvalid={() => {
             replaceResults({ resultList: [] });
             setQueryState({ phase: "unqueried", scope: "filtered" });
           }}
           onSubmissionChange={(pending) => {
             submissionPending.current = pending;
+            if (pending) {
+              reportRead.current?.abort();
+              setReportEntry(null);
+            }
           }}
         />
       </div>

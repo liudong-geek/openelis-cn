@@ -203,7 +203,7 @@ const Validation = (props) => {
     if (status == 200) {
       message = intl.formatMessage({ id: "validation.save.success" });
       kind = NotificationKinds.success;
-      history.replace(`/validation${props.params || ""}`);
+      history.replace({ ...history.location, search: props.params || "" });
     }
     addNotification({
       kind: kind,
@@ -676,6 +676,29 @@ const Validation = (props) => {
                 }
                 context={buildSignContext}
                 onBusy={handleBusy}
+                onConfirmed={(submitted) => {
+                  const rows = submitted.resultList.filter(
+                    (row) => row.isAccepted || row.isRejected,
+                  );
+                  const first = rows[0];
+                  if (
+                    !first ||
+                    rows.some(
+                      (row) =>
+                        !row.isAccepted ||
+                        row.isRejected ||
+                        row.sampleId !== first.sampleId ||
+                        row.accessionNumber !== first.accessionNumber,
+                    ) ||
+                    !/^[1-9]\d*$/.test(String(first.sampleId)) ||
+                    !first.accessionNumber
+                  )
+                    return;
+                  props.onReviewedApplication?.({
+                    sampleId: String(first.sampleId),
+                    labNumber: first.accessionNumber,
+                  });
+                }}
                 onOutcome={handleResponse}
                 onError={showError}
                 disabled={

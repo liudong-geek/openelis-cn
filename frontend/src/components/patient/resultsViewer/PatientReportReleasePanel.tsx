@@ -42,6 +42,7 @@ import type { PendingReportOperation } from "./reportWorkspaceState";
 
 interface Props {
   patientId: string;
+  initialSampleId?: string;
   canManage: boolean;
 }
 export default function PatientReportReleasePanel(props: Props) {
@@ -58,7 +59,13 @@ export default function PatientReportReleasePanel(props: Props) {
     );
   return (
     <ReportWorkspace
-      key={session.key + ":" + props.patientId}
+      key={
+        session.key +
+        ":" +
+        props.patientId +
+        ":" +
+        (props.initialSampleId || "")
+      }
       {...props}
       request={{ stamp: session.stamp, current: session.current }}
     />
@@ -66,6 +73,7 @@ export default function PatientReportReleasePanel(props: Props) {
 }
 function ReportWorkspace({
   patientId,
+  initialSampleId,
   canManage,
   request,
 }: Props & { request: ReportRequest }) {
@@ -165,6 +173,16 @@ function ReportWorkspace({
       if (c.current()) {
         setApplications(apps);
         setRules(groupRules);
+        // A URL hint can select only a server-listed application for this patient.
+        const preferred = apps.find(
+          (app) =>
+            app.sampleId === initialSampleId && app.patientId === patientId,
+        );
+        if (preferred) {
+          setApplication(preferred);
+          const rows = await api.getReportDocuments(preferred, c);
+          if (c.current()) setDocuments(rows);
+        }
       }
     });
     return () => {

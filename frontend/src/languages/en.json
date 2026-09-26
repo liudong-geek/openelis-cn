@@ -28,9 +28,17 @@
   "order.specimenLookup.action.confirmIdentity": "I have checked the patient, order, and tube barcode",
   "order.specimenLookup.action.receipt": "Confirm receipt of this tube",
   "order.specimenLookup.action.accept": "Confirm acceptance of this tube",
+  "order.specimenLookup.action.decision": "Intake decision",
+  "order.specimenLookup.action.acceptChoice": "Accept",
+  "order.specimenLookup.action.rejectChoice": "Reject",
+  "order.specimenLookup.action.rejectionReason": "Rejection reason",
+  "order.specimenLookup.action.chooseReason": "Choose a reason",
+  "order.specimenLookup.action.noReasons": "Rejection reasons are unavailable. Check again later before recording a rejection.",
+  "order.specimenLookup.action.reject": "Confirm rejection of this tube",
   "order.specimenLookup.action.acceptBoundary": "This records the first tube decision. Current permission to enter results is checked separately.",
   "order.specimenLookup.action.receiptSaved": "Receipt of tube {code} was verified. Its current state is shown below.",
   "order.specimenLookup.action.acceptSaved": "Acceptance of tube {code} was verified. Its current state is shown below.",
+  "order.specimenLookup.action.rejectSaved": "Rejection of tube {code} was verified. You can create a linked recollection request.",
   "order.specimenLookup.action.unknown": "The write outcome is not verified. Do not submit again; check the current tube record or ask an administrator to reconcile it.",
   "order.specimenLookup.action.changed": "The current tube or session changed. Check the fresh record and confirm identity again.",
   "order.specimenLookup.patient": "Patient",
@@ -9864,5 +9872,6 @@
   "results.workbench.sessionReadUnconfirmed": "The current sign-in could not be verified. Run the query again.",
   "results.workbench.sessionReadPaused": "Sign-in information changed. Results are hidden until you run the query again. Unsaved entries on this page are held.",
   "results.workbench.sessionWritePaused": "Results are available for viewing. Saving is not yet verified; unsaved entries on this page remain held.",
-  "results.workbench.drafts.scopeHeld": "Some unfinished entries belong to an earlier permission scope and remain held. If that scope is restored, run the query again to review them."
+  "results.workbench.drafts.scopeHeld": "Some unfinished entries belong to an earlier permission scope and remain held. If that scope is restored, run the query again to review them.",
+  "validation.review.lastCompleted": "Most recently reviewed application:"
 }

@@ -6,7 +6,7 @@ import React, {
   useEffect,
   useRef,
 } from "react";
-import { useHistory } from "react-router-dom";
+import { useHistory, useLocation } from "react-router-dom";
 import { useIntl } from "react-intl";
 import { Stack, Button, RadioButton, RadioButtonGroup } from "@carbon/react";
 import { ArrowLeft, WarningAlt } from "@carbon/icons-react";
@@ -51,8 +51,19 @@ export { isFutureCollectionTimestamp } from "./collectionClock";
 const OrderCollect = () => {
   const intl = useIntl();
   const history = useHistory();
+  const location = useLocation();
+  const initialIntakeCode = location.state?.specimenIntakeCode || "";
   const componentMounted = useRef(true);
-  const [lookupView, setLookupView] = useState(null);
+  const [lookupVisit, setLookupVisit] = useState({
+    key: location.key,
+    view: initialIntakeCode ? true : null,
+  });
+  const lookupView =
+    lookupVisit.key === location.key
+      ? lookupVisit.view
+      : initialIntakeCode
+        ? true
+        : null;
   const [receiptMode, setReceiptMode] = useState("now");
   const [clockSnapshot, setClockSnapshot] = useState(null);
   const [clockLoading, setClockLoading] = useState(true);
@@ -269,6 +280,15 @@ const OrderCollect = () => {
 
   const lookupPanel = (
     <SpecimenLookupPanel
+      key={location.key}
+      initialCode={initialIntakeCode}
+      onOpenResults={(accessionNumber) =>
+        history.push({
+          pathname: "/Results",
+          search: `?accessionNumber=${encodeURIComponent(accessionNumber)}`,
+          state: { listOrigin: location.state?.listOrigin },
+        })
+      }
       active={showLookup}
       canReturn={hasLoadedOrder}
       originalLabNo={labNumber || orderData?.sampleOrderItems?.labNo || ""}
@@ -278,7 +298,7 @@ const OrderCollect = () => {
           setClockSnapshot(null);
           setClockLoading(false);
         }
-        setLookupView(nextView);
+        setLookupVisit({ key: location.key, view: nextView });
       }}
     />
   );

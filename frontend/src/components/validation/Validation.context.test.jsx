@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { waitFor } from "@testing-library/dom";
 import { IntlProvider } from "react-intl";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import Validation from "./Validation";
 import messages from "../../languages/en.json";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
@@ -49,13 +49,20 @@ const form = (rows = [row()], queryId = "SIM-QUERY") => ({
   doRange: false,
   resultList: rows,
 });
+const CurrentPath = () => (
+  <output data-testid="review-path">{useLocation().pathname}</output>
+);
 const start = (initial = form()) => {
   const addNotification = vi.fn(),
     setNotificationVisible = vi.fn(),
     onContextInvalid = vi.fn(),
+    onReviewedApplication = vi.fn(),
     onSubmissionChange = vi.fn();
   const viewFor = (results) => (
-    <MemoryRouter>
+    <MemoryRouter
+      initialEntries={["/AccessionValidation?accessionNumber=SIM-ORDER"]}
+    >
+      <CurrentPath />
       <IntlProvider locale="en" messages={messages}>
         <UserSessionDetailsContext.Provider
           value={{
@@ -74,6 +81,7 @@ const start = (initial = form()) => {
               <Validation
                 results={results}
                 onContextInvalid={onContextInvalid}
+                onReviewedApplication={onReviewedApplication}
                 onSubmissionChange={onSubmissionChange}
               />
             </NotificationContext.Provider>
@@ -87,6 +95,7 @@ const start = (initial = form()) => {
     ...view,
     addNotification,
     onContextInvalid,
+    onReviewedApplication,
     onSubmissionChange,
     change: (next) => view.rerender(viewFor(next)),
   };
@@ -164,6 +173,7 @@ test.each([403, 409, 0])(
     act(() => postReviewResults.mock.calls[0][1](status));
     expect(view.onSubmissionChange).toHaveBeenLastCalledWith(false);
     expect(view.onContextInvalid).toHaveBeenCalledTimes(1);
+    expect(view.onReviewedApplication).not.toHaveBeenCalled();
     expect(view.addNotification).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "error" }),
     );
@@ -173,6 +183,40 @@ test.each([403, 409, 0])(
       }),
     );
     expect(postReviewResults).toHaveBeenCalledTimes(1);
+  },
+);
+
+test.each([false, true])(
+  "confirmed review offers a report only for one accepted application (multiple=%s)",
+  async (multiple) => {
+    const rows = [row({ sampleId: "51", isAccepted: true })];
+    if (multiple)
+      rows.push(
+        row({
+          id: 1,
+          analysisId: "102",
+          sampleId: "52",
+          accessionNumber: "SIM-OTHER",
+          isAccepted: true,
+        }),
+      );
+    const view = start(form(rows));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: messages["validation.review.submit"],
+      }),
+    );
+    await waitFor(() => expect(postReviewResults).toHaveBeenCalledTimes(1));
+    await act(async () => postReviewResults.mock.calls[0][1](200));
+    expect(screen.getByTestId("review-path")).toHaveTextContent(
+      "/AccessionValidation",
+    );
+    if (multiple) expect(view.onReviewedApplication).not.toHaveBeenCalled();
+    else
+      expect(view.onReviewedApplication).toHaveBeenCalledWith({
+        sampleId: "51",
+        labNumber: "SIM-ORDER",
+      });
   },
 );
 
