@@ -358,7 +358,7 @@ function OrganizationManagement() {
           values={{ count: selectedCount }}
         />
       </Modal>
-      <div className="adminPageContent admin-list-workspace organization-management-page">
+      <div className="adminPageContent admin-list-workspace admin-list-workspace--compact organization-management-page">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
         <ProductPageHeader
           title={<FormattedMessage id="organization.main.title" />}

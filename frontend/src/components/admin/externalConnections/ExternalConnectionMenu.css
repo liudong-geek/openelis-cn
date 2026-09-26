@@ -149,6 +149,11 @@
   margin-bottom: 1.25rem;
 }
 
+/* The list now shares the common admin workspace; keep only page-specific sizing. */
+.external-connections-page .admin-list-workspace__table {
+  min-width: 58rem;
+}
+
 @media (max-width: 42rem) {
   .external-connections-page .oe-page-header,
   .external-connections-page__section-heading,
@@ -158,13 +163,17 @@
   }
 
   .external-connections-page .oe-page-header__actions,
-  .external-connections-page__selection-actions {
+  .external-connections-page__selection-actions,
+  .external-connections-page .admin-list-workspace__selection-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
   }
 
   .external-connections-page .oe-page-header__actions .cds--btn,
-  .external-connections-page__selection-actions .cds--btn {
+  .external-connections-page__selection-actions .cds--btn,
+  .external-connections-page
+    .admin-list-workspace__selection-actions
+    .cds--btn {
     width: 100%;
     max-width: none;
   }

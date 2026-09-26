@@ -360,7 +360,7 @@ function UserManagement() {
           values={{ count: selectedCount }}
         />
       </Modal>
-      <div className="adminPageContent admin-list-workspace user-management-page">
+      <div className="adminPageContent admin-list-workspace admin-list-workspace--compact user-management-page">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
         <ProductPageHeader
           title={<FormattedMessage id="unifiedSystemUser.browser.title" />}

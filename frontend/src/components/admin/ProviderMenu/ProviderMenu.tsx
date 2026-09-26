@@ -536,7 +536,7 @@ function ProviderMenu() {
           values={{ count: selectedCount }}
         />
       </Modal>
-      <div className="adminPageContent admin-list-workspace provider-management-page">
+      <div className="adminPageContent admin-list-workspace admin-list-workspace--compact provider-management-page">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
         <ProductPageHeader
           title={<FormattedMessage id="provider.browse.title" />}

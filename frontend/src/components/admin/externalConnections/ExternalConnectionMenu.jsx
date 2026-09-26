@@ -32,6 +32,7 @@ import {
   refreshCurrentRoute,
 } from "../../utils/NavigationUtils";
 import ExternalConnectionSimulation from "./ExternalConnectionSimulation";
+import "../AdminListWorkspace.css";
 import "./ExternalConnectionMenu.css";
 
 let breadcrumbs = [
@@ -223,7 +224,7 @@ function ExternalConnectionMenu() {
   return (
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
-      <div className="adminPageContent external-connections-page">
+      <div className="adminPageContent admin-list-workspace admin-list-workspace--compact external-connections-page">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
         <ProductPageHeader
           title={<FormattedMessage id="externalconnections.browse.title" />}
@@ -247,7 +248,7 @@ function ExternalConnectionMenu() {
           }
         />
 
-        <section className="external-connections-page__overview">
+        <section className="admin-list-workspace__overview">
           <article>
             <span>
               <FormattedMessage id="externalconnections.metric.total" />
@@ -268,8 +269,8 @@ function ExternalConnectionMenu() {
           </article>
         </section>
 
-        <section className="external-connections-page__surface">
-          <div className="external-connections-page__section-heading">
+        <section className="admin-list-workspace__surface">
+          <div className="admin-list-workspace__section-heading">
             <div>
               <h2>
                 <FormattedMessage id="externalconnections.list.title" />
@@ -278,7 +279,7 @@ function ExternalConnectionMenu() {
                 <FormattedMessage id="externalconnections.list.subtitle" />
               </p>
             </div>
-            <div className="external-connections-page__selection-actions">
+            <div className="admin-list-workspace__selection-actions">
               <Button
                 kind="ghost"
                 size="sm"
@@ -298,7 +299,7 @@ function ExternalConnectionMenu() {
             </div>
           </div>
 
-          <div className="external-connections-page__toolbar">
+          <div className="admin-list-workspace__filters admin-list-workspace__filters--search-only">
             <Search
               size="lg"
               id="ext-conn-search-bar"
@@ -321,7 +322,7 @@ function ExternalConnectionMenu() {
           </div>
 
           {connectionListShow.length === 0 ? (
-            <div className="external-connections-page__empty" role="status">
+            <div className="admin-list-workspace__empty" role="status">
               <div aria-hidden="true">0</div>
               <h3>
                 <FormattedMessage
@@ -391,7 +392,7 @@ function ExternalConnectionMenu() {
                 ]}
               >
                 {({ rows, headers, getHeaderProps, getTableProps }) => (
-                  <TableContainer className="external-connections-page__table">
+                  <TableContainer className="admin-list-workspace__table">
                     <Table {...getTableProps()}>
                       <TableHead>
                         <TableRow>
@@ -432,7 +433,7 @@ function ExternalConnectionMenu() {
                 )}
               </DataTable>
               <Pagination
-                className="external-connections-page__pagination"
+                className="admin-list-workspace__pagination"
                 onChange={handlePageChange}
                 page={page}
                 pageSize={pageSize}
