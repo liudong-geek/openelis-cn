@@ -11,7 +11,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.List;
 import org.junit.Test;
-import org.openelisglobal.referral.service.ReferralTypeService;
 import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
 import org.openelisglobal.result.form.LogbookResultsForm;
 import org.openelisglobal.result.service.LegacyResultEntryWriteService;
@@ -28,7 +27,7 @@ public class LogbookResultsControllerWriteGuardTest {
 
     @Test
     public void controllerCanBeCglibProxiedForMethodSecurity() {
-        var controller = new LogbookResultsController(org.mockito.Mockito.mock(ReferralTypeService.class));
+        var controller = new LogbookResultsController();
         ProxyFactory proxyFactory = new ProxyFactory(controller);
         proxyFactory.setProxyTargetClass(true);
         proxyFactory.addAdvisor(AuthorizationManagerBeforeMethodInterceptor.preAuthorize());
@@ -82,9 +81,9 @@ public class LogbookResultsControllerWriteGuardTest {
                 ResultsUpdateDataSet.class, boolean.class, boolean.class, boolean.class, String.class);
         prepare.setAccessible(true);
 
-        var constructor = LogbookResultsController.class.getDeclaredConstructor(ReferralTypeService.class);
+        var constructor = LogbookResultsController.class.getDeclaredConstructor();
         constructor.setAccessible(true);
-        var controller = constructor.newInstance(org.mockito.Mockito.mock(ReferralTypeService.class));
+        var controller = constructor.newInstance();
         InvocationTargetException thrown = org.junit.Assert.assertThrows(InvocationTargetException.class,
                 () -> prepare.invoke(controller, data, false, false, false, "DEFAULT"));
 

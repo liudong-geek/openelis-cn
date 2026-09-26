@@ -2,24 +2,17 @@ package org.openelisglobal.result.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.InvocationTargetException;
-import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.validator.GenericValidator;
 import org.hibernate.StaleObjectStateException;
-import org.json.simple.JSONArray;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
-import org.json.simple.parser.ParseException;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.action.IActionConstants;
@@ -31,13 +24,8 @@ import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.provider.validation.AlphanumAccessionValidator;
 import org.openelisglobal.common.services.DisplayListService;
 import org.openelisglobal.common.services.DisplayListService.ListType;
-import org.openelisglobal.common.services.IStatusService;
-import org.openelisglobal.common.services.ResultSaveService;
-import org.openelisglobal.common.services.StatusService.AnalysisStatus;
-import org.openelisglobal.common.services.beanAdapters.ResultSaveBeanAdapter;
 import org.openelisglobal.common.services.registration.ResultUpdateRegister;
 import org.openelisglobal.common.services.registration.interfaces.IResultUpdate;
-import org.openelisglobal.common.services.serviceBeans.ResultSaveBean;
 import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.ConfigurationProperties.Property;
 import org.openelisglobal.common.util.DateUtil;
@@ -45,25 +33,11 @@ import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.dataexchange.fhir.exception.FhirPersistanceException;
 import org.openelisglobal.dataexchange.fhir.exception.FhirTransformationException;
 import org.openelisglobal.dataexchange.fhir.service.FhirTransformService;
-import org.openelisglobal.dictionary.service.DictionaryService;
-import org.openelisglobal.dictionary.valueholder.Dictionary;
 import org.openelisglobal.internationalization.MessageUtil;
 import org.openelisglobal.method.service.MethodService;
-import org.openelisglobal.note.service.NoteService;
-import org.openelisglobal.note.service.NoteServiceImpl.NoteType;
 import org.openelisglobal.note.valueholder.Note;
 import org.openelisglobal.notifications.dao.NotificationDAO;
 import org.openelisglobal.notifications.entity.Notification;
-import org.openelisglobal.organization.service.OrganizationService;
-import org.openelisglobal.patient.valueholder.Patient;
-import org.openelisglobal.referral.action.beanitems.ReferralItem;
-import org.openelisglobal.referral.service.ReferralTypeService;
-import org.openelisglobal.referral.valueholder.Referral;
-import org.openelisglobal.referral.valueholder.ReferralResult;
-import org.openelisglobal.referral.valueholder.ReferralSet;
-import org.openelisglobal.referral.valueholder.ReferralStatus;
-import org.openelisglobal.referral.valueholder.ReferralType;
-import org.openelisglobal.result.action.util.ResultSet;
 import org.openelisglobal.result.action.util.ResultUtil;
 import org.openelisglobal.result.action.util.ResultsLoadUtility;
 import org.openelisglobal.result.action.util.ResultsPaging;
@@ -72,17 +46,9 @@ import org.openelisglobal.result.exception.ResultSaveValidationException;
 import org.openelisglobal.result.form.LogbookResultsForm;
 import org.openelisglobal.result.form.LogbookResultsForm.LogbookResults;
 import org.openelisglobal.result.service.LegacyResultEntryWriteService;
-import org.openelisglobal.result.service.ResultInventoryService;
-import org.openelisglobal.result.service.ResultSignatureService;
 import org.openelisglobal.result.valueholder.Result;
-import org.openelisglobal.result.valueholder.ResultInventory;
-import org.openelisglobal.result.valueholder.ResultSignature;
-import org.openelisglobal.resultlimit.service.ResultLimitService;
-import org.openelisglobal.resultlimits.valueholder.ResultLimit;
 import org.openelisglobal.role.service.RoleService;
-import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.valueholder.OrderPriority;
-import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.statusofsample.util.StatusRules;
 import org.openelisglobal.systemuser.service.SystemUserService;
@@ -90,7 +56,6 @@ import org.openelisglobal.systemuser.service.UserService;
 import org.openelisglobal.test.beanItems.TestResultItem;
 import org.openelisglobal.test.service.TestSectionService;
 import org.openelisglobal.test.valueholder.TestSection;
-import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl;
 import org.openelisglobal.userrole.service.UserRoleService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.ConcurrencyFailureException;
@@ -131,23 +96,11 @@ public class LogbookResultsController extends LogbookResultsBaseController {
             "testResult*.referralItem.referredSendDate" };
 
     @Autowired
-    private DictionaryService dictionaryService;
-    @Autowired
-    private ResultSignatureService resultSigService;
-    @Autowired
-    private ResultInventoryService resultInventoryService;
-    @Autowired
-    private OrganizationService organizationService;
-    @Autowired
-    private ResultLimitService resultLimitService;
-    @Autowired
     private TestSectionService testSectionService;
     @Autowired
     private LegacyResultEntryWriteService legacyResultEntryWriteService;
     @Autowired
     private AnalysisService analysisService;
-    @Autowired
-    private NoteService noteService;
     @Autowired
     private FhirTransformService fhirTransformService;
     @Autowired
@@ -164,16 +117,9 @@ public class LogbookResultsController extends LogbookResultsBaseController {
     private UserRoleService userRoleService;
 
     private final String RESULT_SUBJECT = "Result Note";
-    private final String REFERRAL_CONFORMATION_ID;
     private static final String REFLEX_ACCESSIONS = "reflex_accessions";
 
-    public LogbookResultsController(ReferralTypeService referralTypeService) {
-        ReferralType referralType = referralTypeService.getReferralTypeByName("Confirmation");
-        if (referralType != null) {
-            REFERRAL_CONFORMATION_ID = referralType.getId();
-        } else {
-            REFERRAL_CONFORMATION_ID = null;
-        }
+    public LogbookResultsController() {
     }
 
     @InitBinder
@@ -565,314 +511,6 @@ public class LogbookResultsController extends LogbookResultsBaseController {
             boolean alwaysValidate, boolean useTechnicianName, String statusRuleSet) {
         ResultUtil.createResultsFromItems(actionDataSet, supportReferrals, alwaysValidate, useTechnicianName,
                 statusRuleSet, request);
-    }
-
-    /**
-     * Retained temporarily as a source-level comparison for the legacy JSP path.
-     * Writes no longer call this duplicate implementation; the shared ResultUtil
-     * path owns transition and audit-note rules for both REST and MVC entry.
-     */
-    @Deprecated
-    private void legacyCreateResultsFromItems(ResultsUpdateDataSet actionDataSet, boolean supportReferrals,
-            boolean alwaysValidate, boolean useTechnicianName, String statusRuleSet) {
-
-        Set<String> correctedFlagComputedIds = new HashSet<>();
-
-        for (TestResultItem testResultItem : actionDataSet.getModifiedItems()) {
-
-            Analysis analysis = ResultUtil.resolveModifiedAnalysis(actionDataSet, testResultItem.getAnalysisId());
-            analysis.setStatusId(getStatusForTestResult(testResultItem, alwaysValidate));
-            analysis.setSysUserId(getSysUserId(request));
-            if (!GenericValidator.isBlankOrNull(testResultItem.getTestMethod())) {
-                analysis.setMethod(methodService.get(testResultItem.getTestMethod()));
-            }
-
-            actionDataSet.addToNoteList(noteService.createSavableNote(analysis, NoteType.INTERNAL,
-                    testResultItem.getNote(), RESULT_SUBJECT, getSysUserId(request)));
-
-            if (testResultItem.isShadowRejected()) {
-                String rejectedReasonId = testResultItem.getRejectReasonId();
-                for (IdValuePair rejectReason : DisplayListService.getInstance().getList(ListType.REJECTION_REASONS)) {
-                    if (rejectedReasonId.equals(rejectReason.getId())) {
-                        actionDataSet.addToNoteList(noteService.createSavableNote(analysis, NoteType.REJECTION_REASON,
-                                rejectReason.getValue(), RESULT_SUBJECT, getSysUserId(request)));
-                        break;
-                    }
-                }
-            }
-
-            ResultSaveBean bean = ResultSaveBeanAdapter.fromTestResultItem(testResultItem);
-            ResultSaveService resultSaveService = new ResultSaveService(analysis, getSysUserId(request));
-            // deletable Results will be written to, not read
-            List<Result> results = resultSaveService.createResultsFromTestResultItem(bean,
-                    actionDataSet.getDeletableResults());
-
-            boolean correctedSinceReport = resultSaveService.isUpdatedResult()
-                    && analysisService.patientReportHasBeenDone(analysis);
-            if (correctedFlagComputedIds.add(analysis.getId())) {
-                analysis.setCorrectedSincePatientReport(correctedSinceReport);
-            } else if (correctedSinceReport) {
-                analysis.setCorrectedSincePatientReport(true);
-            }
-
-            if (analysisService.hasBeenCorrectedSinceLastPatientReport(analysis)) {
-                Note note = noteService.createSavableNote(analysis, NoteType.EXTERNAL,
-                        MessageUtil.getMessage("note.corrected.result"), RESULT_SUBJECT, getSysUserId(request));
-                if (!noteService.duplicateNoteExists(note)) {
-                    actionDataSet.addToNoteList(noteService.createSavableNote(analysis, NoteType.EXTERNAL,
-                            MessageUtil.getMessage("note.corrected.result"), RESULT_SUBJECT, getSysUserId(request)));
-                }
-            }
-
-            // If there is more than one result then each user selected reflex gets mapped
-            // to that result
-            for (Result result : results) {
-                addResult(result, testResultItem, analysis, results.size() > 1, actionDataSet, useTechnicianName);
-
-                if (analysisShouldBeUpdated(testResultItem, result, supportReferrals)) {
-                    updateAnalysis(testResultItem, testResultItem.getTestDate(), analysis, statusRuleSet);
-                }
-            }
-            if (supportReferrals && testResultItem.isRefer()) {
-                handleReferrals(testResultItem, testResultItem.getReferralItem(), results, analysis, actionDataSet);
-            }
-        }
-    }
-
-    private void handleReferrals(TestResultItem testResultItem, ReferralItem referralItem, List<Result> results,
-            Analysis analysis, ResultsUpdateDataSet actionDataSet) {
-        // List<Referral> referrals = new ArrayList<>();
-        Referral referral = new Referral();
-        referral.setFhirUuid(UUID.randomUUID());
-        referral.setStatus(ReferralStatus.SENT);
-        referral.setSysUserId(actionDataSet.getCurrentUserId());
-        referral.setReferralTypeId(REFERRAL_CONFORMATION_ID);
-        referral.setRequesterName(testResultItem.getTechnician());
-
-        referral.setRequestDate(new Timestamp(new Date().getTime()));
-        referral.setSentDate(DateUtil.convertStringDateToTruncatedTimestamp(referralItem.getReferredSendDate()));
-        referral.setRequesterName(referralItem.getReferrer());
-        referral.setOrganization(organizationService.get(referralItem.getReferredInstituteId()));
-        referral.setAnalysis(analysis);
-
-        referral.setReferralReasonId(referralItem.getReferralReasonId());
-
-        // referralService.insert(referral);
-        // referrals.add(referral);
-        ReferralResult referralResult = new ReferralResult();
-        referralResult.setReferralId(referral.getId());
-        referralResult.setSysUserId(actionDataSet.getCurrentUserId());
-        referralResult.setTestId(referralItem.getReferredTestId());
-        if (results.size() == 1) {
-            referralResult.setResult(results.get(0));
-        }
-        // referralResult.setResult(result);
-        // referralResultService.insert(referralResult);
-
-        ReferralSet referralSet = new ReferralSet();
-        referralSet.setReferral(referral);
-        referralSet.getExistingReferralResults().add(referralResult);
-        actionDataSet.getSavableReferralSets().add(referralSet);
-
-        String originalResultNote = MessageUtil.getMessage("referral.original.result") + ": ";
-        if (TypeOfTestResultServiceImpl.ResultType.isDictionaryVariant(testResultItem.getResultType())
-                || TypeOfTestResultServiceImpl.ResultType.isMultiSelectVariant(testResultItem.getResultType())) {
-            if ("0".equals(testResultItem.getResultValue())) {
-                originalResultNote = originalResultNote + "";
-            } else {
-                Dictionary dictionary = dictionaryService.get(testResultItem.getResultValue());
-                if (dictionary.getLocalizedDictionaryName() == null) {
-                    originalResultNote = originalResultNote + dictionary.getDictEntry();
-                } else {
-                    originalResultNote = originalResultNote
-                            + dictionary.getLocalizedDictionaryName().getLocalizedValue();
-                }
-            }
-        } else {
-            originalResultNote = originalResultNote + testResultItem.getResultValue();
-        }
-
-        actionDataSet.addToNoteList(noteService.createSavableNote(analysis, NoteType.INTERNAL, originalResultNote,
-                RESULT_SUBJECT, this.getSysUserId(request)));
-    }
-
-    protected boolean analysisShouldBeUpdated(TestResultItem testResultItem, Result result, boolean supportReferrals) {
-        return result != null && !GenericValidator.isBlankOrNull(result.getValue())
-                || (supportReferrals && ResultUtil.isReferred(testResultItem))
-                || ResultUtil.isForcedToAcceptance(testResultItem) || testResultItem.isShadowRejected();
-    }
-
-    private void addResult(Result result, TestResultItem testResultItem, Analysis analysis,
-            boolean multipleResultsForAnalysis, ResultsUpdateDataSet actionDataSet, boolean useTechnicianName) {
-        boolean newResult = result.getId() == null;
-        boolean newAnalysisInLoop = analysis != actionDataSet.getPreviousAnalysis();
-
-        ResultSignature technicianResultSignature = null;
-
-        if (useTechnicianName && newAnalysisInLoop) {
-            technicianResultSignature = createTechnicianSignatureFromResultItem(testResultItem);
-        }
-
-        ResultInventory testKit = createTestKitLinkIfNeeded(testResultItem, ResultsLoadUtility.TESTKIT);
-
-        analysis.setReferredOut(testResultItem.isReferredOut());
-        analysis.setEnteredDate(DateUtil.getNowAsTimestamp());
-
-        if (newResult) {
-            analysis.setEnteredDate(DateUtil.getNowAsTimestamp());
-            analysis.setRevision("1");
-        } else if (newAnalysisInLoop) {
-            analysis.setRevision(String.valueOf(Integer.parseInt(analysis.getRevision()) + 1));
-        }
-
-        SampleService sampleService = SpringContext.getBean(SampleService.class);
-        Sample sample = sampleService.getSampleByAccessionNumber(testResultItem.getAccessionNumber());
-        Patient patient = sampleService.getPatient(sample);
-
-        Map<String, List<String>> triggersToReflexesMap = new HashMap<>();
-
-        getSelectedReflexes(testResultItem.getReflexJSONResult(), triggersToReflexesMap);
-
-        if (newResult) {
-            actionDataSet.getNewResults().add(new ResultSet(result, technicianResultSignature, testKit, patient, sample,
-                    triggersToReflexesMap, multipleResultsForAnalysis));
-        } else {
-            actionDataSet.getModifiedResults().add(new ResultSet(result, technicianResultSignature, testKit, patient,
-                    sample, triggersToReflexesMap, multipleResultsForAnalysis));
-        }
-
-        actionDataSet.setPreviousAnalysis(analysis);
-    }
-
-    private void getSelectedReflexes(String reflexJSONResult, Map<String, List<String>> triggersToReflexesMap) {
-        if (!GenericValidator.isBlankOrNull(reflexJSONResult)) {
-            JSONParser parser = new JSONParser();
-            try {
-                JSONObject jsonResult = (JSONObject) parser.parse(reflexJSONResult.replaceAll("'", "\""));
-
-                for (Object compoundReflexes : jsonResult.values()) {
-                    if (compoundReflexes != null) {
-                        String triggerIds = (String) ((JSONObject) compoundReflexes).get("triggerIds");
-                        List<String> selectedReflexIds = new ArrayList<>();
-                        JSONArray selectedReflexes = (JSONArray) ((JSONObject) compoundReflexes).get("selected");
-                        for (Object selectedReflex : selectedReflexes) {
-                            selectedReflexIds.add(((String) selectedReflex));
-                        }
-                        triggersToReflexesMap.put(triggerIds.trim(), selectedReflexIds);
-                    }
-                }
-            } catch (ParseException e) {
-                LogEvent.logDebug(e);
-            }
-        }
-    }
-
-    private String getStatusForTestResult(TestResultItem testResult, boolean alwaysValidate) {
-        if (testResult.isShadowRejected() && ConfigurationProperties.getInstance()
-                .isPropertyValueEqual(Property.VALIDATE_REJECTED_TESTS, "true")) {
-            return SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.TechnicalRejected);
-        } else if (testResult.isShadowRejected()) {
-            return SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.Canceled);
-        } else if (alwaysValidate || !testResult.isValid() || ResultUtil.isForcedToAcceptance(testResult)) {
-            return SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.TechnicalAcceptance);
-        } else if (noResults(testResult.getShadowResultValue(), testResult.getMultiSelectResultValues(),
-                testResult.getResultType())) {
-            return SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.NotStarted);
-        } else {
-            if (!GenericValidator.isBlankOrNull(testResult.getResultLimitId())) {
-                ResultLimit resultLimit = resultLimitService.get(testResult.getResultLimitId());
-                if (resultLimit.isAlwaysValidate()) {
-                    return SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.TechnicalAcceptance);
-                }
-                if (TypeOfTestResultServiceImpl.ResultType.DICTIONARY.matches(testResult.getResultType())
-                        && !testResult.getResultValue().equals(resultLimit.getDictionaryNormalId())) {
-                    return SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.TechnicalAcceptance);
-                }
-            }
-
-            return SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.Finalized);
-        }
-    }
-
-    private boolean noResults(String value, String multiSelectValue, String type) {
-
-        return (GenericValidator.isBlankOrNull(value) && GenericValidator.isBlankOrNull(multiSelectValue))
-                || (TypeOfTestResultServiceImpl.ResultType.DICTIONARY.matches(type) && "0".equals(value));
-    }
-
-    private ResultInventory createTestKitLinkIfNeeded(TestResultItem testResult, String testKitName) {
-        ResultInventory testKit = null;
-
-        if ((TestResultItem.ResultDisplayType.SYPHILIS == testResult.getRawResultDisplayType()
-                || TestResultItem.ResultDisplayType.HIV == testResult.getRawResultDisplayType())
-                && ResultsLoadUtility.TESTKIT.equals(testKitName)) {
-
-            testKit = createTestKit(testResult, testKitName, testResult.getTestKitId());
-        }
-
-        return testKit;
-    }
-
-    private ResultInventory createTestKit(TestResultItem testResult, String testKitName, String testKitId)
-            throws LIMSRuntimeException {
-        ResultInventory testKit;
-        testKit = new ResultInventory();
-
-        if (!GenericValidator.isBlankOrNull(testKitId)) {
-            testKit.setId(testKitId);
-            testKit = resultInventoryService.get(testKitId);
-        }
-
-        testKit.setInventoryLocationId(testResult.getTestKitInventoryId());
-        testKit.setDescription(testKitName);
-        testKit.setSysUserId(getSysUserId(request));
-        return testKit;
-    }
-
-    private void updateAnalysis(TestResultItem testResultItem, String testDate, Analysis analysis,
-            String statusRuleSet) {
-        if (testResultItem.getAnalysisMethod() != null) {
-            analysis.setAnalysisType(testResultItem.getAnalysisMethod());
-        }
-        // analysis.setStartedDateForDisplay(testDate);
-
-        // This needs to be refactored -- part of the logic is in
-        // getStatusForTestResult. RetroCI over rides to whatever was set before
-        if (statusRuleSet.equals(STATUS_RULES_RETROCI)) {
-            if (!SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.Canceled)
-                    .equals(analysis.getStatusId())) {
-                analysis.setCompletedDate(DateUtil.convertStringDateToTimestampLenient(testDate));
-                analysis.setStatusId(
-                        SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.TechnicalAcceptance));
-            }
-        } else if (SpringContext.getBean(IStatusService.class).matches(analysis.getStatusId(), AnalysisStatus.Finalized)
-                || SpringContext.getBean(IStatusService.class).matches(analysis.getStatusId(),
-                        AnalysisStatus.TechnicalAcceptance)
-                || (analysis.isReferredOut()
-                        && !GenericValidator.isBlankOrNull(testResultItem.getShadowResultValue()))) {
-            analysis.setCompletedDate(DateUtil.convertStringDateToTimestampLenient(testDate));
-        }
-    }
-
-    private ResultSignature createTechnicianSignatureFromResultItem(TestResultItem testResult) {
-        ResultSignature sig = null;
-
-        // The technician signature may be blank if the user changed a
-        // conclusion and then changed it back. It will be dirty
-        // but will not need a signature
-        if (!GenericValidator.isBlankOrNull(testResult.getTechnician())) {
-            sig = new ResultSignature();
-
-            if (!GenericValidator.isBlankOrNull(testResult.getTechnicianSignatureId())) {
-                sig = resultSigService.get(testResult.getTechnicianSignatureId());
-            }
-
-            sig.setIsSupervisor(false);
-            sig.setNonUserName(testResult.getTechnician());
-
-            sig.setSysUserId(getSysUserId(request));
-        }
-        return sig;
     }
 
     private String extractMultiSelectJson(String input) {
