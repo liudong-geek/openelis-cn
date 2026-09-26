@@ -69,8 +69,19 @@
 }
 
 .patient-management-actions__options.cds--overflow-menu-options {
+  // Carbon mounts this menu outside the workspace, so carry its surface tokens.
+  --cds-layer: var(--oe-surface, #ffffff);
+  --cds-layer-hover: var(--oe-surface-subtle, #f9fafc);
+  --cds-text-primary: var(--oe-text, #203847);
+  --cds-text-secondary: var(--oe-text, #203847);
+  --cds-focus: #18827d;
   width: 20rem;
   max-width: calc(100vw - 2rem);
+  border: 1px solid var(--oe-border, #e2e9ed);
+
+  .cds--overflow-menu-options__option {
+    block-size: auto;
+  }
 
   .cds--overflow-menu-options__btn {
     height: auto;
