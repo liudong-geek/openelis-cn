@@ -52,7 +52,7 @@ export default function ReviewReportWorkspaceSwitcher({ activeView }) {
 
   return (
     <nav
-      className="review-report-workspace-switcher"
+      className="oe-workspace-switcher review-report-workspace-switcher"
       aria-label={intl.formatMessage({ id: "sidenav.workspace.reports" })}
     >
       <ContentSwitcher

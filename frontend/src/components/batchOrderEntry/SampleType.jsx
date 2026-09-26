@@ -151,14 +151,14 @@ const SampleType = ({ updateFormValues }) => {
 
   return (
     <>
-      <div className="orderLegendBody">
+      <div className="orderLegendBody batch-order-setup__card batch-order-setup__sample">
         <Grid>
           <Column lg={16} md={8} sm={4}>
             <h4>
               <FormattedMessage id="label.button.sample" />
             </h4>
           </Column>
-          <Column lg={16} md={8} sm={4}>
+          <Column lg={8} md={6} sm={4}>
             <Select
               id="selectSampleType"
               className="selectSampleType"
@@ -182,7 +182,7 @@ const SampleType = ({ updateFormValues }) => {
           </Column>
           {isSampleSelected && (
             <>
-              <Column lg={16} md={8} sm={4}>
+              <Column lg={8} md={4} sm={4}>
                 <h4>
                   <FormattedMessage id="sample.entry.panels" />
                 </h4>
@@ -214,7 +214,7 @@ const SampleType = ({ updateFormValues }) => {
                   />
                 ))}
               </Column>
-              <Column lg={16} md={8} sm={4}>
+              <Column lg={8} md={4} sm={4}>
                 <h4>
                   <FormattedMessage id="sample.entry.available.tests" />
                 </h4>

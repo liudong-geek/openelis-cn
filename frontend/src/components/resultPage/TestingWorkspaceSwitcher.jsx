@@ -41,7 +41,7 @@ export default function TestingWorkspaceSwitcher({ activeView }) {
 
   return (
     <nav
-      className="testing-workspace-switcher"
+      className="oe-workspace-switcher testing-workspace-switcher"
       aria-label={intl.formatMessage({ id: "banner.menu.results" })}
     >
       <ContentSwitcher

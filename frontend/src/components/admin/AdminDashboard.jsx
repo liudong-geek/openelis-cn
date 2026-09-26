@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { useHistory } from "react-router-dom";
-import { Column, Grid, Search } from "@carbon/react";
+import { Search } from "@carbon/react";
 import { ArrowRight } from "@carbon/icons-react";
 import { ADMIN_NAVIGATION_DOMAINS } from "./adminNavigation";
 
@@ -12,7 +12,7 @@ const normalizeSearchText = (value) =>
     .trim()
     .toLocaleLowerCase();
 
-export default function AdminDashboard({ basePath }) {
+export default function AdminDashboard({ basePath, workspaceNavigation }) {
   const history = useHistory();
   const intl = useIntl();
   const [searchText, setSearchText] = useState("");
@@ -44,69 +44,73 @@ export default function AdminDashboard({ basePath }) {
 
   return (
     <section className="admin-dashboard" data-testid="admin-dashboard">
-      <h2>
-        <FormattedMessage id="admin.dashboard.title" />
-      </h2>
-      <p className="admin-dashboard__subtitle">
-        <FormattedMessage id="admin.dashboard.subtitle" />
-      </p>
-      <Search
-        className="admin-dashboard__search"
-        id="admin-dashboard-search"
-        labelText={intl.formatMessage({ id: "admin.dashboard.search.label" })}
-        placeholder={intl.formatMessage({
-          id: "admin.dashboard.search.placeholder",
-        })}
-        value={searchText}
-        onChange={(event) => setSearchText(event.target.value)}
-        closeButtonLabelText={intl.formatMessage({
-          id: "admin.dashboard.search.clear",
-        })}
-      />
+      {workspaceNavigation}
+      <header className="admin-dashboard__header">
+        <div>
+          <h1>
+            <FormattedMessage id="admin.dashboard.title" />
+          </h1>
+          <p className="admin-dashboard__subtitle">
+            <FormattedMessage id="admin.dashboard.subtitle" />
+          </p>
+        </div>
+        <Search
+          className="admin-dashboard__search"
+          id="admin-dashboard-search"
+          labelText={intl.formatMessage({ id: "admin.dashboard.search.label" })}
+          placeholder={intl.formatMessage({
+            id: "admin.dashboard.search.placeholder",
+          })}
+          value={searchText}
+          onChange={(event) => setSearchText(event.target.value)}
+          closeButtonLabelText={intl.formatMessage({
+            id: "admin.dashboard.search.clear",
+          })}
+        />
+      </header>
 
       {visibleDomains.length === 0 ? (
         <p className="admin-dashboard__empty" role="status">
           <FormattedMessage id="admin.dashboard.search.empty" />
         </p>
       ) : (
-        <Grid className="admin-dashboard__grid">
+        <div className="admin-dashboard__grid">
           {visibleDomains.map((domain) => {
             const Icon = domain.icon;
             return (
-              <Column key={domain.id} lg={5} md={4} sm={4}>
-                <section
-                  className="admin-dashboard__domain"
-                  data-testid="admin-dashboard-domain"
-                >
-                  <header className="admin-dashboard__domain-header">
-                    <Icon className="admin-dashboard__tile-icon" size={24} />
-                    <span>
-                      <h3>
-                        <FormattedMessage id={domain.titleId} />
-                      </h3>
-                      <p>
-                        <FormattedMessage id={domain.descriptionId} />
-                      </p>
-                    </span>
-                  </header>
-                  <ul className="admin-dashboard__domain-links">
-                    {domain.links.map(([messageId, path]) => (
-                      <li key={path}>
-                        <a
-                          href={`${basePath}/${path}`}
-                          onClick={openConfiguration(path)}
-                        >
-                          <FormattedMessage id={messageId} />
-                          <ArrowRight size={16} aria-hidden="true" />
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              </Column>
+              <section
+                key={domain.id}
+                className="admin-dashboard__domain"
+                data-testid="admin-dashboard-domain"
+              >
+                <header className="admin-dashboard__domain-header">
+                  <Icon className="admin-dashboard__tile-icon" size={20} />
+                  <span>
+                    <h2>
+                      <FormattedMessage id={domain.titleId} />
+                    </h2>
+                    <p>
+                      <FormattedMessage id={domain.descriptionId} />
+                    </p>
+                  </span>
+                </header>
+                <ul className="admin-dashboard__domain-links">
+                  {domain.links.map(([messageId, path]) => (
+                    <li key={path}>
+                      <a
+                        href={`${basePath}/${path}`}
+                        onClick={openConfiguration(path)}
+                      >
+                        <FormattedMessage id={messageId} />
+                        <ArrowRight size={16} aria-hidden="true" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             );
           })}
-        </Grid>
+        </div>
       )}
     </section>
   );

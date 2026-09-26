@@ -45,7 +45,7 @@ export default function WorkplanModeSwitcher({ type }) {
 
   return (
     <section
-      className="oe-workplan-modes"
+      className="oe-workspace-switcher oe-workspace-switcher--secondary oe-workplan-modes"
       aria-label={intl.formatMessage({ id: "banner.menu.workplan" })}
     >
       <ContentSwitcher

@@ -1,0 +1,91 @@
+.batch-order-setup {
+  width: calc(100% - (2 * var(--oe-page-gutter, 1.5rem)));
+  max-width: var(--oe-content-max-width, 112.5rem);
+  margin: 0 auto;
+  padding-bottom: 2rem;
+}
+
+.batch-order-setup__heading.cds--grid {
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.batch-order-setup__heading h1,
+.batch-order-setup__heading h2 {
+  margin: 0;
+  font-size: 1.75rem;
+  line-height: 1.25;
+}
+
+.batch-order-setup .orderLegendBody.batch-order-setup__card {
+  margin: 0 0 1rem;
+  padding: 1.25rem;
+  border: 1px solid var(--oe-border, #e2e9ed);
+  border-radius: var(--oe-surface-radius, 0.5rem);
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+}
+
+.batch-order-setup__card > .cds--grid {
+  margin-inline: 0;
+  padding-inline: 0;
+  row-gap: 1rem;
+}
+
+.batch-order-setup__card h3,
+.batch-order-setup__card h4 {
+  margin: 0;
+}
+
+.batch-order-setup__card .cds--form-item,
+.batch-order-setup__card .cds--select,
+.batch-order-setup__card .cds--select-input,
+.batch-order-setup__card .cds--time-picker,
+.batch-order-setup__card .cds--time-picker__input-field {
+  width: 100%;
+  max-width: none;
+}
+
+.batch-order-setup .batch-application-type {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--oe-border, #e2e9ed);
+}
+
+.batch-order-setup .batch-application-type span {
+  margin: 0;
+}
+
+.batch-order-setup__sample .cds--search {
+  margin-block: 0.75rem;
+}
+
+.batch-order-setup__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--oe-border, #e2e9ed);
+}
+
+.batch-order-setup__actions .cds--btn {
+  min-width: 8rem;
+  justify-content: center;
+}
+
+@media (max-width: 671px) {
+  .batch-order-setup {
+    width: calc(100% - 2rem);
+  }
+
+  .batch-order-setup .orderLegendBody.batch-order-setup__card {
+    padding: 1rem;
+  }
+
+  .batch-order-setup__actions .cds--btn {
+    flex: 1 1 8rem;
+  }
+}

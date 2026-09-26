@@ -63,7 +63,7 @@ export default function QualityWorkspaceSwitcher({ activeView }) {
 
   return (
     <nav
-      className="quality-workspace-switcher"
+      className="oe-workspace-switcher quality-workspace-switcher"
       aria-label={intl.formatMessage({ id: "sidenav.workspace.quality" })}
     >
       <ContentSwitcher

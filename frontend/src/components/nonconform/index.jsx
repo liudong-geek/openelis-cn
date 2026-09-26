@@ -34,16 +34,18 @@ const NonConformIndex = ({ form }) => {
   }
 
   return (
-    <div>
-      <br />
+    <div className="nce-workspace">
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
-      <div className="orderLegendBody">
-        <QualityWorkspaceSwitcher activeView="nonconformity" />
-        {form == "NceDashboard" && <NceDashboard />}
-        {form == "ReportNonConformingEvent" && <ReportNonConformingEvent />}
-        {form == "ViewNonConformingEvent" && <ViewNonConformingEvent />}
-        {form == "NCECorrectiveAction" && <NCECorrectiveAction />}
-      </div>
+      <QualityWorkspaceSwitcher activeView="nonconformity" />
+      {form == "NceDashboard" ? (
+        <NceDashboard />
+      ) : (
+        <div className="orderLegendBody nce-workspace__legacy-form">
+          {form == "ReportNonConformingEvent" && <ReportNonConformingEvent />}
+          {form == "ViewNonConformingEvent" && <ViewNonConformingEvent />}
+          {form == "NCECorrectiveAction" && <NCECorrectiveAction />}
+        </div>
+      )}
     </div>
   );
 };

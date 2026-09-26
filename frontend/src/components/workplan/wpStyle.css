@@ -11,11 +11,6 @@
 
 .oe-workplan-modes {
   max-width: 44rem;
-  margin: 0 0 1.25rem;
-}
-
-.oe-workplan-modes .cds--content-switcher-btn {
-  min-height: 2.75rem;
 }
 
 .oe-workplan-filter__heading {

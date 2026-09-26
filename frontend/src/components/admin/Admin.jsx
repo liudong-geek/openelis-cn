@@ -89,7 +89,6 @@ function Admin() {
 
   return (
     <>
-      <ManagementWorkspaceSwitcher activeView="configuration" />
       <Switch>
         <Route path={`${path}/rulesWorkspace`} component={RulesWorkspace} />
         <Route
@@ -378,7 +377,14 @@ function Admin() {
         <Route
           path={path}
           exact
-          render={() => <AdminDashboard basePath={path} />}
+          render={() => (
+            <AdminDashboard
+              basePath={path}
+              workspaceNavigation={
+                <ManagementWorkspaceSwitcher activeView="configuration" />
+              }
+            />
+          )}
         />
       </Switch>
     </>

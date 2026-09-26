@@ -73,7 +73,7 @@ export default function ManagementWorkspaceSwitcher({ activeView }) {
 
   return (
     <nav
-      className="management-workspace-switcher"
+      className="oe-workspace-switcher management-workspace-switcher"
       aria-label={intl.formatMessage({ id: "sidenav.workspace.configuration" })}
     >
       <ContentSwitcher
