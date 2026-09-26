@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import java.util.List;
+import org.openelisglobal.analysis.valueholder.Analysis;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -61,6 +62,7 @@ public class ReviewSubmissionServiceTest {
                         String.valueOf(fixture.analysis.getLastupdated().getTime()),
                         fixture.analysis.getReleasedDate() != null, fixture.analysis.getPrintedDate() != null));
         analyses = mock(AnalysisService.class);
+        when(analyses.update(any())).thenAnswer(call -> call.getArgument(0));
         signatures = mock(ElectronicSignatureService.class);
         notes = mock(NoteService.class);
         fhir = mock(FhirTransformService.class);
@@ -127,6 +129,47 @@ public class ReviewSubmissionServiceTest {
         assertEquals("20", fixture.analysis.getStatusId());
         assertEquals("5.2000", fixture.result.getValue());
         verify(qcReleaseGate, atLeast(2)).requireReleasable(anyMap(), anyMap());
+    }
+
+    @Test
+    public void persistedReadbackUsesMergedAnalysisReturnedByAuditedUpdate() {
+        Analysis detached = fixture.analysis;
+        Analysis managed = new Analysis();
+        managed.setId(detached.getId());
+        managed.setTest(detached.getTest());
+        managed.setSampleItem(detached.getSampleItem());
+        managed.setTestSection(detached.getTestSection());
+        managed.setLastupdated(new java.sql.Timestamp(ReviewWriteGuardTest.TIME.getTime() + 1000));
+        when(analyses.update(same(detached))).thenAnswer(call -> {
+            managed.setStatusId(detached.getStatusId());
+            managed.setReleasedDate(detached.getReleasedDate());
+            return managed;
+        });
+        when(fixture.states.analysis("101")).thenAnswer(call -> {
+            Analysis persisted = managed.getStatusId() == null ? detached : managed;
+            return new org.openelisglobal.resultvalidation.dao.ReviewSaveStateDAO.AnalysisState("101", "401", "201",
+                    "301", "SIM-RESULT-301", "501", persisted.getStatusId(),
+                    String.valueOf(persisted.getLastupdated().getTime()), persisted.getReleasedDate() != null, false);
+        });
+
+        save();
+        for (var synchronization : TransactionSynchronizationManager.getSynchronizations())
+            synchronization.beforeCommit(false);
+
+        assertNotSame(detached, managed);
+        assertEquals("20", managed.getStatusId());
+        assertEquals("15", fixture.row.getStatusId());
+        verify(fixture.states, atLeast(2)).analysis("101");
+    }
+
+    @Test
+    public void auditedUpdateReturningAnotherAnalysisIsRejectedBeforeNotes() {
+        Analysis wrong = new Analysis();
+        wrong.setId("999");
+        when(analyses.update(any())).thenReturn(wrong);
+
+        assertEquals(409, assertThrows(ResponseStatusException.class, this::save).getStatusCode().value());
+        verify(notes, never()).insert(any());
     }
 
     @Test

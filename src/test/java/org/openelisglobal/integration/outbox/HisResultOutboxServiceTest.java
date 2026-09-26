@@ -88,6 +88,19 @@ public class HisResultOutboxServiceTest {
   }
 
   @Test
+  public void enqueueRejectsSamePayloadUnderAnotherBusinessOrEvent() {
+    HisResultOutbox existing = message(HisResultOutboxStatus.PENDING, 0, 3);
+    when(repository.findByIdempotencyKey("KEY")).thenReturn(Optional.of(existing));
+
+    assertThrows(
+        IllegalStateException.class,
+        () -> service.enqueue("HIS", "2", HisResultEventType.RESULT, "KEY", "payload", 3, "9", NOW));
+    assertThrows(
+        IllegalStateException.class,
+        () -> service.enqueue("HIS", "1", HisResultEventType.AMENDMENT, "KEY", "payload", 3, "9", NOW));
+  }
+
+  @Test
   public void acknowledgedReceiptCompletesOnceAndDuplicateAckIsIdempotent() {
     HisResultOutbox message = message(HisResultOutboxStatus.PENDING, 0, 3);
     when(repository.findForUpdate(17L)).thenReturn(Optional.of(message));
@@ -158,6 +171,9 @@ public class HisResultOutboxServiceTest {
   private HisResultOutbox message(HisResultOutboxStatus status, int attempts, int maxAttempts) {
     HisResultOutbox message = new HisResultOutbox();
     message.setId(17L);
+    message.setSourceSystem("HIS");
+    message.setBusinessId("1");
+    message.setEventType(HisResultEventType.RESULT);
     message.setStatus(status);
     message.setAttemptCount(attempts);
     message.setMaxAttempts(maxAttempts);

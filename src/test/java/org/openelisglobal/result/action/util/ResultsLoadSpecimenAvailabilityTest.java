@@ -33,6 +33,7 @@ import org.openelisglobal.sampleitem.valueholder.SampleItem;
 import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.test.beanItems.TestResultItem;
 import org.openelisglobal.test.service.TestService;
+import org.openelisglobal.testresult.valueholder.TestResult;
 import org.openelisglobal.testresultcomponent.service.TestResultComponentService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -121,7 +122,11 @@ public class ResultsLoadSpecimenAvailabilityTest {
         when(analyses.getTestDisplayName(analysis)).thenReturn("SIM-血常规");
         when(analyses.getStatusId(analysis)).thenReturn("4");
         when(analyses.getCompletedDateForDisplay(analysis)).thenReturn("09/14/2026");
-        when(tests.getPossibleTestResults(test)).thenReturn(List.of());
+        TestResult definition = new TestResult();
+        definition.setId("801");
+        definition.setTest(test);
+        definition.setTestResultType("N");
+        when(tests.getPossibleTestResults(test)).thenReturn(List.of(definition));
         when(tests.getResultType(test)).thenReturn("N");
         when(results.getResultsByAnalysis(analysis)).thenAnswer(call -> new ArrayList<>());
         when(factory.getBean(TestResultComponentService.class).getActiveComponentsByTestId("401"))
@@ -180,5 +185,16 @@ public class ResultsLoadSpecimenAvailabilityTest {
         assertEquals(1, rows.size());
         assertFalse(rows.get(0).isReadOnly());
         assertNull(rows.get(0).getResultEntryBlockedReason());
+    }
+
+    @Test public void acceptedTubeWithoutActiveResultDefinitionIsBlockedBeforeEntry() {
+        when(dao.findSpecimenState("101")).thenReturn(new SpecimenState("101", "401", "201", "301", "10", false, false));
+        when(tests.getPossibleTestResults(test)).thenReturn(List.of());
+        ObjectProvider<ResultsLoadUtility> provider = mock(ObjectProvider.class);
+        when(provider.getObject()).thenReturn(loader);
+
+        List<TestResultItem> rows = new ResultEntryWorklistLoaderImpl(provider).load(List.of(analysis), "701");
+        assertBlocked(rows, "error.results.resultDefinitionMissing");
+        assertEquals("N", rows.get(0).getResultType());
     }
 }

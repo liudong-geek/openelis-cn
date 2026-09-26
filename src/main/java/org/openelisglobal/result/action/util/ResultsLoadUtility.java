@@ -39,6 +39,7 @@ import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.QAService.QAObservationType;
 import org.openelisglobal.common.services.QAService;
+import org.openelisglobal.common.services.ResultEntryDefinition;
 import org.openelisglobal.common.services.ResultSaveComponentScope;
 import org.openelisglobal.common.services.StatusService.AnalysisStatus;
 import org.openelisglobal.common.services.StatusService.OrderStatus;
@@ -975,6 +976,10 @@ public class ResultsLoadUtility {
             ResultSaveComponentScope scope = new ResultSaveComponentScope(test.getId(),
                     component == null ? null : component.getId(),
                     testResultComponentService.getActiveComponentsByTestId(test.getId()));
+            // Display fallbacks are not writable master data. Use the same
+            // component-scoped definition/type check as result persistence so the
+            // worklist explains an invalid row before the user enters a value.
+            ResultEntryDefinition.requireType(scope, testResults, testItem.getResultType());
             setRowSelectionValues(testItem, result, analysis, scope);
         } catch (ResultSaveValidationException invalidScope) {
             testItem.setReadOnly(true);

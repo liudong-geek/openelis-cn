@@ -5,10 +5,16 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Objects;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.openelisglobal.common.service.AuditableBaseObjectServiceImpl;
+import org.openelisglobal.integration.outbox.HisResultEventType;
+import org.openelisglobal.integration.outbox.HisResultOutbox;
+import org.openelisglobal.integration.outbox.HisResultOutboxService;
+import org.openelisglobal.integration.outbox.HisResultOutboxStatus;
 import org.openelisglobal.report.PatientReportReleaseSummary;
 import org.openelisglobal.report.dao.PatientReportReleaseDAO;
 import org.openelisglobal.report.form.ReportDocumentSummary;
@@ -45,6 +51,8 @@ public class PatientReportReleaseServiceImpl extends AuditableBaseObjectServiceI
     private ChinesePatientReportPdfRenderer renderer;
     @Autowired
     private org.openelisglobal.esig.service.ElectronicSignatureService signatures;
+    @Autowired
+    private HisResultOutboxService hisResultOutboxService;
 
     public PatientReportReleaseServiceImpl() {
         super(PatientReportRelease.class);
@@ -181,7 +189,41 @@ public class PatientReportReleaseServiceImpl extends AuditableBaseObjectServiceI
                 .distinct().collect(java.util.stream.Collectors.joining(",")));
         release.setSysUserId(actor);
         update(release);
+        enqueueIssuedReport(release, actor);
         return toSummary(release);
+    }
+
+    /** Persist delivery intent with the signed original in the same transaction. */
+    private void enqueueIssuedReport(PatientReportRelease release, String actor) {
+        if (release.getId() == null || release.getReportVersion() == null || release.getReportVersion() < 1
+                || release.getReportDocumentId() == null || release.getReportNumber() == null
+                || release.getPdfSha256() == null || release.getFrozenContentSha256() == null) {
+            throw new IllegalStateException("Issued report delivery evidence is incomplete");
+        }
+        String payload;
+        try {
+            payload = mapper.writeValueAsString(new IssuedReportOutboxPayload(1, release.getId(),
+                    release.getReportDocumentId(), release.getReportNumber(), release.getReportVersion(),
+                    release.getSupersedesReleaseId(), release.getFrozenContentSha256(), release.getPdfSha256()));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException error) {
+            throw new IllegalStateException("Cannot serialize issued report delivery intent", error);
+        }
+        String businessId = release.getId().toString();
+        String idempotencyKey = "LIS-CN:REPORT:" + release.getId() + ":V" + release.getReportVersion();
+        HisResultEventType eventType = release.getSupersedesReleaseId() == null ? HisResultEventType.REPORT
+                : HisResultEventType.AMENDMENT;
+        HisResultOutbox queued = hisResultOutboxService.enqueue("LIS-CN", businessId, eventType, idempotencyKey,
+                payload, 3, actor, OffsetDateTime.now(ZoneOffset.UTC));
+        if (queued == null || queued.getId() == null || queued.getStatus() != HisResultOutboxStatus.PENDING
+                || !"LIS-CN".equals(queued.getSourceSystem()) || !businessId.equals(queued.getBusinessId())
+                || queued.getEventType() != eventType || !idempotencyKey.equals(queued.getIdempotencyKey())
+                || !DigestUtils.sha256Hex(payload).equals(queued.getPayloadHash())) {
+            throw new IllegalStateException("Issued report delivery intent was not persisted as pending");
+        }
+    }
+
+    private record IssuedReportOutboxPayload(int schemaVersion, Long releaseId, String documentId,
+            String reportNumber, int reportVersion, Long supersedesReleaseId, String snapshotSha256, String pdfSha256) {
     }
 
     @Override

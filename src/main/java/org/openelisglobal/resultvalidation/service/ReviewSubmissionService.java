@@ -182,7 +182,14 @@ public class ReviewSubmissionService {
                 analysis.setReleasedDate(released);
                 targets.put(id, target);
                 releaseDates.put(id, released);
-                analyses.update(analysis);
+                // Audited updates may detach the locked instance before merging it.
+                // Continue every review readback with the returned managed instance,
+                // whose @Version timestamp advances on flush.
+                Analysis updated = analyses.update(analysis);
+                if (updated == null || !Objects.equals(id, updated.getId()))
+                    throw ReviewWriteGuard.conflict();
+                locked.analyses().put(id, updated);
+                analysis = updated;
                 changedAnalyses.add(analysis);
                 String text = StringUtils.trimToEmpty(decision.getNote());
                 if (!text.isEmpty())

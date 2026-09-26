@@ -17,6 +17,7 @@ import org.openelisglobal.sample.dao.SpecimenLookupCandidateDAO.Candidate;
 import org.openelisglobal.sample.form.OrderDashboardCriteria;
 import org.openelisglobal.sample.form.SpecimenIntakeFacts;
 import org.openelisglobal.sample.form.SpecimenIntakeEvidence;
+import org.openelisglobal.sample.valueholder.SpecimenIntakeDecision;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.access.AccessDeniedException;
 
@@ -151,6 +152,40 @@ public class SpecimenLookupServiceTest {
         assertEquals(operation, tube.operationId());
         assertEquals("ACCEPTED", tube.recordedDecision());
         assertNull(tube.expectedEvidenceDigest());
+    }
+
+    @Test
+    public void rejectedTubeExposesOnlyItsRecordedEvidenceAndAuthorizedReasonCatalog() throws Exception {
+        found(new Candidate("301", "SIM.1", "H", "801", "1"));
+        var original = snapshot();
+        var reason = new SpecimenIntakeDecision.Reason("DICTIONARY:resultRejectionReasons", "41",
+                "2026-09-26T01:00:00Z", "容器不合格");
+        var reasons = new SpecimenIntakeDecisionReader.Reasons(1, "READY", List.of(reason));
+        var decision = new SpecimenIntakeDecisionReader.Tube("801", "RECORDED", "REJECTED",
+                "11111111-2222-4333-8444-555555555555", reason, "7", "2026-09-26T02:00:00Z", false,
+                "a".repeat(64));
+        var rejected = new EntryCurrentStateReader.SpecimenView("801", "701", "1", "31", 1.0, null,
+                "12", false, true, "2026-09-26T01:00:00Z", "2026-09-26T02:00:00Z", "collector", null,
+                original.physicalSpecimens().get(0).analyses());
+        var current = new EntryCurrentStateReader.Snapshot(1, true, "301", "SIM.1", "clinical", "11", null,
+                original.patient(), original.requestedSpecimens(), List.of(rejected), null, null,
+                List.of(decision), reasons);
+        when(currentStates.readCurrentClinical("301", "7")).thenReturn(current);
+
+        var result = service.lookup("SIM.1.1", request).current();
+        assertEquals(reasons, result.intakeReasons());
+        assertEquals(reason, result.physicalSpecimens().get(0).recordedReason());
+        assertEquals("a".repeat(64), result.physicalSpecimens().get(0).recordedEvidenceDigest());
+        assertNull(result.physicalSpecimens().get(0).expectedEvidenceDigest());
+
+        scope = scope(true);
+        when(access.bind(request)).thenReturn(scope);
+        var masked = service.lookup("SIM.1.1", request).current();
+        assertNull(masked.intakeReasons());
+        assertNull(masked.physicalSpecimens().get(0).recordedReason());
+        assertNull(masked.physicalSpecimens().get(0).recordedEvidenceDigest());
+        assertFalse(masked.toString().contains("容器不合格"));
+        assertFalse(masked.toString().contains("a".repeat(64)));
     }
 
     @Test

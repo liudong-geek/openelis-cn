@@ -15,6 +15,10 @@ import org.mockito.*;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.openelisglobal.esig.service.ElectronicSignatureService;
 import org.openelisglobal.esig.valueholder.*;
+import org.openelisglobal.integration.outbox.HisResultEventType;
+import org.openelisglobal.integration.outbox.HisResultOutbox;
+import org.openelisglobal.integration.outbox.HisResultOutboxService;
+import org.openelisglobal.integration.outbox.HisResultOutboxStatus;
 import org.openelisglobal.report.*;
 import org.openelisglobal.report.dao.PatientReportReleaseDAO;
 import org.openelisglobal.report.form.*;
@@ -35,6 +39,8 @@ public class ReportFrozenReleaseServiceTest {
     private ChinesePatientReportPdfRenderer renderer;
     @Mock
     private ElectronicSignatureService signatures;
+    @Mock
+    private HisResultOutboxService hisResultOutboxService;
     @Spy
     private ReportFrozenContentService frozenContent = new ReportFrozenContentService();
     @InjectMocks
@@ -99,6 +105,17 @@ public class ReportFrozenReleaseServiceTest {
                 });
         when(renderer.renderFrozenOfficial(any(), any(), any()))
                 .thenReturn("SIM-PDF-ORIGINAL".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        doAnswer(call -> {
+            HisResultOutbox queued = new HisResultOutbox();
+            queued.setId(17L);
+            queued.setSourceSystem(call.getArgument(0));
+            queued.setBusinessId(call.getArgument(1));
+            queued.setEventType(call.getArgument(2));
+            queued.setIdempotencyKey(call.getArgument(3));
+            queued.setPayloadHash(DigestUtils.sha256Hex((String) call.getArgument(4)));
+            queued.setStatus(HisResultOutboxStatus.PENDING);
+            return queued;
+        }).when(hisResultOutboxService).enqueue(any(), any(), any(), any(), any(), anyInt(), any(), any());
     }
 
     @Test
@@ -128,7 +145,7 @@ public class ReportFrozenReleaseServiceTest {
     }
 
     @Test
-    public void issueBindsExactContentToCurrentActorAndStoresSameSnapshotPdf() {
+    public void issueBindsExactContentToCurrentActorAndStoresSameSnapshotPdf() throws Exception {
         String content = release.getFrozenContentJson();
         String hash = release.getFrozenContentSha256();
         var summary = issue(hash);
@@ -140,6 +157,20 @@ public class ReportFrozenReleaseServiceTest {
         assertEquals(hash, signature.getContentSha256());
         assertEquals(content, release.getFrozenContentJson());
         assertEquals(DigestUtils.sha256Hex(release.getPdfContent()), release.getPdfSha256());
+        var payload = ArgumentCaptor.forClass(String.class);
+        verify(hisResultOutboxService).enqueue(eq("LIS-CN"), eq("10"), eq(HisResultEventType.REPORT),
+                eq("LIS-CN:REPORT:10:V1"), payload.capture(), eq(3), eq("7"), any());
+        var delivery = mapper.readTree(payload.getValue());
+        assertEquals(1, delivery.get("schemaVersion").asInt());
+        assertEquals(10L, delivery.get("releaseId").asLong());
+        assertEquals("201", delivery.get("documentId").asText());
+        assertEquals("BG-SIM", delivery.get("reportNumber").asText());
+        assertEquals(1, delivery.get("reportVersion").asInt());
+        assertTrue(delivery.get("supersedesReleaseId").isNull());
+        assertEquals(release.getFrozenContentSha256(), delivery.get("snapshotSha256").asText());
+        assertEquals(release.getPdfSha256(), delivery.get("pdfSha256").asText());
+        assertFalse(delivery.has("patientId"));
+        assertFalse(delivery.has("pdfContent"));
         verify(signatures).executeSignatureForSnapshot(eq("sim-signer"), eq("SIM-SECRET"),
                 eq(SignatureMeaning.VALIDATED_AND_RELEASED), eq("REPORT"), eq(10L), isNull(), eq("127.0.0.1"),
                 eq("SIM-UA"), eq(content));
@@ -237,6 +268,13 @@ public class ReportFrozenReleaseServiceTest {
         writes.verify(patientReportReleaseDAO).update(release);
         assertEquals(PatientReportReleaseStatus.SUPERSEDED, prior.getStatus());
         assertEquals(PatientReportReleaseStatus.ISSUED, release.getStatus());
+        var payload = ArgumentCaptor.forClass(String.class);
+        verify(hisResultOutboxService).enqueue(eq("LIS-CN"), eq("10"), eq(HisResultEventType.AMENDMENT),
+                eq("LIS-CN:REPORT:10:V2"), payload.capture(), eq(3), eq("7"), any());
+        var delivery = mapper.readTree(payload.getValue());
+        assertEquals(2, delivery.get("reportVersion").asInt());
+        assertEquals(9L, delivery.get("supersedesReleaseId").asLong());
+        assertEquals(release.getPdfSha256(), delivery.get("pdfSha256").asText());
     }
 
     @Test
@@ -331,6 +369,50 @@ public class ReportFrozenReleaseServiceTest {
                 Long.class, String.class, String.class, String.class, String.class);
         assertEquals(org.springframework.transaction.annotation.Propagation.REQUIRED, signingMethod
                 .getAnnotation(org.springframework.transaction.annotation.Transactional.class).propagation());
+    }
+
+    @Test
+    public void outboxFailureRollsBackReportSignatureAndIssueTransaction() throws Exception {
+        var rolledBack = new java.util.concurrent.atomic.AtomicBoolean();
+        var committed = new java.util.concurrent.atomic.AtomicBoolean();
+        var tx = new org.springframework.transaction.support.AbstractPlatformTransactionManager() {
+            protected Object doGetTransaction() {
+                return new Object();
+            }
+
+            protected void doBegin(Object transaction,
+                    org.springframework.transaction.TransactionDefinition definition) {
+            }
+
+            protected void doCommit(org.springframework.transaction.support.DefaultTransactionStatus status) {
+                committed.set(true);
+            }
+
+            protected void doRollback(org.springframework.transaction.support.DefaultTransactionStatus status) {
+                rolledBack.set(true);
+            }
+        };
+        doAnswer(call -> {
+                    assertTrue(org.springframework.transaction.support.TransactionSynchronizationManager
+                            .isActualTransactionActive());
+                    throw new IllegalStateException("SIM outbox unavailable");
+                }).when(hisResultOutboxService).enqueue(any(), any(), any(), any(), any(), anyInt(), any(), any());
+        var proxy = new org.springframework.aop.framework.ProxyFactory(service);
+        proxy.addAdvice(new org.springframework.transaction.interceptor.TransactionInterceptor(tx,
+                new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource()));
+        var transactional = (org.openelisglobal.report.service.PatientReportReleaseService) proxy.getProxy();
+
+        assertThrows(IllegalStateException.class, () -> transactional.issueDocument("201", 10L,
+                release.getFrozenContentSha256(), "SIM-SECRET", "7", "ip", "ua"));
+        assertTrue(rolledBack.get());
+        assertFalse(committed.get());
+        verify(patientReportReleaseDAO).update(release);
+        verify(hisResultOutboxService).enqueue(any(), any(), any(), any(), any(), anyInt(), any(), any());
+        var enqueueMethod = org.openelisglobal.integration.outbox.HisResultOutboxServiceImpl.class.getMethod(
+                "enqueue", String.class, String.class, HisResultEventType.class, String.class, String.class,
+                int.class, String.class, java.time.OffsetDateTime.class);
+        assertEquals(org.springframework.transaction.annotation.Propagation.REQUIRED,
+                enqueueMethod.getAnnotation(org.springframework.transaction.annotation.Transactional.class).propagation());
     }
 
     private PatientReportReleaseSummary issue(String hash) {

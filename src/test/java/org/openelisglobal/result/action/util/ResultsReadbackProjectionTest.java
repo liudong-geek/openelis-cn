@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -19,6 +20,7 @@ import org.openelisglobal.common.services.ITestIdentityService;
 import org.openelisglobal.common.services.TestIdentityService;
 import org.openelisglobal.common.util.ConfigurationProperties.Property;
 import org.openelisglobal.common.util.DefaultConfigurationProperties;
+import org.openelisglobal.dictionary.service.DictionaryService;
 import org.openelisglobal.eqa.service.SampleEQAService;
 import org.openelisglobal.internationalization.MessageUtil;
 import org.openelisglobal.referral.service.ReferralService;
@@ -83,6 +85,7 @@ public class ResultsReadbackProjectionTest {
         loader = new ResultsLoadUtility();
         ReflectionTestUtils.setField(loader, "analysisService", analyses);
         ReflectionTestUtils.setField(loader, "resultService", results);
+        ReflectionTestUtils.setField(loader, "dictionaryService", mock(DictionaryService.class));
         ReflectionTestUtils.setField(loader, "referralService", mock(ReferralService.class));
         components = mock(TestResultComponentService.class);
         ReflectionTestUtils.setField(loader, "testResultComponentService", components);
@@ -387,6 +390,15 @@ public class ResultsReadbackProjectionTest {
     }
 
     private TestResultItem row(Result result, TestResultComponent component) {
+        // Readback fixtures need a real active result definition. A display
+        // fallback alone is deliberately no longer an editable row.
+        TestResult definition = new TestResult();
+        definition.setId("801");
+        definition.setTest(analysis.getTest());
+        definition.setComponentId(component.getId());
+        definition.setTestResultType(component.getResultType());
+        definition.setValue("10");
+        when(tests.getPossibleTestResults(analysis.getTest())).thenReturn(new ArrayList<>(List.of(definition)));
         return ReflectionTestUtils.invokeMethod(loader, "createTestResultItem", analysis, null, "", "1", result,
                 "SIM-READBACK-301", "", "", "", "", "", "", component);
     }

@@ -32,19 +32,25 @@ public class HisResultOutboxServiceImpl implements HisResultOutboxService {
       OffsetDateTime now) {
     String normalizedKey = required(idempotencyKey, "idempotencyKey");
     String normalizedPayload = required(payload, "payload");
+    String normalizedSource = required(sourceSystem, "sourceSystem");
+    String normalizedBusinessId = required(businessId, "businessId");
+    HisResultEventType normalizedEventType = eventType == null ? HisResultEventType.RESULT : eventType;
     String payloadHash = sha256(normalizedPayload);
     var existing = repository.findByIdempotencyKey(normalizedKey);
     if (existing.isPresent()) {
-      if (!payloadHash.equals(existing.get().getPayloadHash())) {
-        throw new IllegalStateException("Idempotency key already belongs to a different payload");
+      if (!payloadHash.equals(existing.get().getPayloadHash())
+          || !normalizedSource.equals(existing.get().getSourceSystem())
+          || !normalizedBusinessId.equals(existing.get().getBusinessId())
+          || normalizedEventType != existing.get().getEventType()) {
+        throw new IllegalStateException("Idempotency key already belongs to a different event");
       }
       return existing.get();
     }
 
     HisResultOutbox message = new HisResultOutbox();
-    message.setSourceSystem(required(sourceSystem, "sourceSystem"));
-    message.setBusinessId(required(businessId, "businessId"));
-    message.setEventType(eventType == null ? HisResultEventType.RESULT : eventType);
+    message.setSourceSystem(normalizedSource);
+    message.setBusinessId(normalizedBusinessId);
+    message.setEventType(normalizedEventType);
     message.setIdempotencyKey(normalizedKey);
     message.setPayload(normalizedPayload);
     message.setPayloadHash(payloadHash);

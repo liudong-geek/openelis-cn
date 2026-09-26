@@ -15,6 +15,7 @@
 # Loads:
 #   src/test/resources/e2e-foundational-data.sql
 #   src/test/resources/e2e-patient-entry-pagination.sql
+#   src/test/resources/e2e-china-clinical-workflow.sql
 #
 # Prerequisites:
 #   - Compose stack is up and db.openelis.org is healthy
@@ -118,4 +119,5 @@ PSQL_OPTS=(-U clinlims -d clinlims --set=ON_ERROR_STOP=on)
 echo "Loading CI fixtures into the verified disposable database..."
 docker exec -i "$E2E_DB_CONTAINER" psql "${PSQL_OPTS[@]}" < src/test/resources/e2e-foundational-data.sql
 docker exec -i "$E2E_DB_CONTAINER" psql "${PSQL_OPTS[@]}" < src/test/resources/e2e-patient-entry-pagination.sql
+docker exec -i "$E2E_DB_CONTAINER" psql "${PSQL_OPTS[@]}" < src/test/resources/e2e-china-clinical-workflow.sql
 echo "CI fixtures loaded."

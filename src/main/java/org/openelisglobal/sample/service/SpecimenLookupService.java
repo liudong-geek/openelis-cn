@@ -10,6 +10,7 @@ import org.openelisglobal.sample.dao.SpecimenLookupCandidateDAO;
 import org.openelisglobal.sample.exception.EntrySubmissionException;
 import org.openelisglobal.sample.form.OrderDashboardCriteria;
 import org.openelisglobal.sample.form.SpecimenIntakeEvidence;
+import org.openelisglobal.sample.valueholder.SpecimenIntakeDecision;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -46,11 +47,13 @@ public class SpecimenLookupService {
 
     public record PhysicalSpecimen(String id, String requestId, String sortOrder, String typeOfSampleId,
             String statusId, boolean voided, boolean rejected, String collectionDate, String receivedDate,
-            String decisionState, String recordedDecision, String expectedEvidenceDigest, String operationId) {
+            String decisionState, String recordedDecision, String expectedEvidenceDigest, String operationId,
+            SpecimenIntakeDecision.Reason recordedReason, String recordedEvidenceDigest) {
     }
 
     public record Current(String sampleId, String labNo, String orderStatusId, boolean patientMasked, Patient patient,
-            List<RequestedSpecimen> requestedSpecimens, List<PhysicalSpecimen> physicalSpecimens) {
+            List<RequestedSpecimen> requestedSpecimens, List<PhysicalSpecimen> physicalSpecimens,
+            SpecimenIntakeDecisionReader.Reasons intakeReasons) {
     }
 
     public record Result(int version, String source, boolean readOnly, String matchedKind, Selection selection,
@@ -171,6 +174,12 @@ public class SpecimenLookupService {
             String state = matches.size() == 1 ? matches.get(0).state() : "REVIEW_REQUIRED";
             String decision = matches.size() == 1 ? matches.get(0).recordedDecision() : null;
             String operation = "RECORDED".equals(state) ? matches.get(0).operationId() : null;
+            boolean recordedRejection = !masked && "RECORDED".equals(state) && "REJECTED".equals(decision)
+                    && item.rejected();
+            SpecimenIntakeDecision.Reason recordedReason = recordedRejection
+                    ? matches.get(0).reason() : null;
+            String recordedEvidenceDigest = recordedRejection
+                    ? matches.get(0).evidenceDigest() : null;
             String expectedEvidenceDigest = null;
             if (!masked && snapshot.patient() != null && "NOT_RECORDED".equals(state)
                     && item.collectionDate() != null && item.receivedDate() != null && !item.voided()
@@ -186,10 +195,10 @@ public class SpecimenLookupService {
             }
             return new PhysicalSpecimen(item.id(), item.requestId(), item.sortOrder(), item.typeOfSampleId(),
                     item.statusId(), item.voided(), item.rejected(), item.collectionDate(), item.receivedDate(),
-                    state, decision, expectedEvidenceDigest, operation);
+                    state, decision, expectedEvidenceDigest, operation, recordedReason, recordedEvidenceDigest);
         }).toList();
         return new Current(snapshot.sampleId(), snapshot.labNo(), snapshot.orderStatusId(), masked, patient, requested,
-                physical);
+                physical, masked ? null : snapshot.intakeReasons());
     }
 
     private static String evidenceDigest(EntryCurrentStateReader.Snapshot snapshot,
