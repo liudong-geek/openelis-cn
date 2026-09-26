@@ -2,8 +2,10 @@ import { React, useRef, useState } from "react";
 import EOrderSearch from "./EOrderSearch";
 import EOrder from "./EOrder";
 import PageBreadCrumb from "../common/PageBreadCrumb";
-import { Column, Grid, Section, Heading } from "@carbon/react";
+import ProductPageHeader from "../common/ProductPageHeader";
+import { Grid } from "@carbon/react";
 import { FormattedMessage } from "react-intl";
+import "./EOrderSearch.scss";
 let breadcrumbs = [{ label: "home.label", link: "/" }];
 
 export { default as EOrderSearch } from "./EOrderSearch";
@@ -15,18 +17,12 @@ const EOrderPage = () => {
   return (
     <>
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          <Section>
-            <Section>
-              <Heading>
-                <FormattedMessage id="eorder.header" />
-              </Heading>
-            </Section>
-          </Section>
-        </Column>
-      </Grid>
-      <div className="orderLegendBody">
+      <ProductPageHeader
+        titleId="eorder-page-title"
+        title={<FormattedMessage id="eorder.header" />}
+        subtitle={<FormattedMessage id="eorder.page.subtitle" />}
+      />
+      <div className="orderLegendBody eorder-workspace">
         <Grid fullWidth={true}>
           <EOrderSearch setEOrders={setEOrders} eOrderRef={eOrderRef} />
         </Grid>

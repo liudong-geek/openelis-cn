@@ -3,10 +3,9 @@ import {
   Button,
   Column,
   Form,
-  Stack,
   SelectItem,
   Select,
-  Loading,
+  InlineLoading,
   Grid,
   Link,
 } from "@carbon/react";
@@ -524,142 +523,107 @@ const SearchForm = (props) => {
             ))}
           </div>
         </div>
-      </section>
-      {isLoading && <Loading></Loading>}
-      <Formik
-        initialValues={searchFormValues}
-        enableReinitialize={true}
-        //validationSchema={}
-        onSubmit={(values) => handleSubmit(values)}
-        onChange
-      >
-        {({
-          values,
-          errors,
-          touched,
-          setFieldValue,
-          handleChange,
-          //handleBlur,
-          handleSubmit,
-        }) => (
-          <Form
-            onSubmit={handleSubmit}
-            onChange={handleChange}
-            //onBlur={handleBlur}
-          >
-            <Stack gap={2}>
-              <Grid>
-                <Column lg={16}>
-                  <h4>
-                    <FormattedMessage id="label.button.search" />
-                  </h4>
-                </Column>
 
+        <Formik
+          initialValues={searchFormValues}
+          enableReinitialize={true}
+          onSubmit={(values) => handleSubmit(values)}
+          onChange
+        >
+          {({ values, setFieldValue, handleChange, handleSubmit }) => (
+            <Form
+              className="validation-search-form"
+              onSubmit={handleSubmit}
+              onChange={handleChange}
+            >
+              <div className="validation-search-controls">
                 {(searchBy === "order" || searchBy === "range") && (
-                  <>
-                    <Column lg={6} md={8} sm={4}>
-                      <Field name="accessionNumber">
-                        {({ field }) => (
-                          <CustomLabNumberInput
-                            placeholder={intl.formatMessage({
-                              id: "placeholder.accession.number",
-                            })}
-                            name={field.name}
-                            id={field.name}
-                            value={values[field.name]}
-                            onChange={(e, rawValue) => {
-                              exactAccessionFromLink.current = null;
-                              setFieldValue(
-                                field.name,
-                                rawValue ?? e.target.value,
-                              );
-                            }}
-                            labelText={
-                              searchBy == "order" ? (
-                                <FormattedMessage id="search.label.accession" />
-                              ) : (
-                                <FormattedMessage id="search.label.loadnext" />
-                              )
-                            }
-                          />
-                        )}
-                      </Field>
-                    </Column>
-                    <Column lg={10} />
-                  </>
+                  <Field name="accessionNumber">
+                    {({ field }) => (
+                      <CustomLabNumberInput
+                        placeholder={intl.formatMessage({
+                          id: "placeholder.accession.number",
+                        })}
+                        name={field.name}
+                        id={field.name}
+                        value={values[field.name]}
+                        onChange={(e, rawValue) => {
+                          exactAccessionFromLink.current = null;
+                          setFieldValue(field.name, rawValue ?? e.target.value);
+                        }}
+                        labelText={
+                          searchBy == "order" ? (
+                            <FormattedMessage id="search.label.accession" />
+                          ) : (
+                            <FormattedMessage id="search.label.loadnext" />
+                          )
+                        }
+                      />
+                    )}
+                  </Field>
                 )}
 
                 {searchBy === "testDate" && (
-                  <>
-                    <Column lg={6} md={8} sm={4}>
-                      <Field name="date">
-                        {({ field }) => (
-                          <CustomDatePicker
-                            id={field.id}
-                            labelText={intl.formatMessage({
-                              id: "search.label.testdate",
-                            })}
-                            value={testDate}
-                            onChange={(date) => handleDatePickerChange(date)}
-                            name={field.name}
-                          />
-                        )}
-                      </Field>
-                    </Column>
-                    <Column lg={10} />
-                  </>
-                )}
-                {searchBy !== "routine" && (
-                  <Column lg={16} md={8} sm={4}>
-                    <Button
-                      type="submit"
-                      disabled={props.disabled}
-                      id="submit"
-                      style={{ marginTop: "16px" }}
-                      data-testid="Search-btn"
-                    >
-                      <FormattedMessage id="label.button.search" />
-                    </Button>
-                  </Column>
-                )}
-              </Grid>
-            </Stack>
-          </Form>
-        )}
-      </Formik>
-
-      {searchBy === "routine" && (
-        <>
-          <Grid>
-            <Column lg={6} md={8} sm={4}>
-              <Select
-                labelText={intl.formatMessage({ id: "search.label.testunit" })}
-                name="unitType"
-                disabled={props.disabled}
-                id="unitType"
-                onChange={submitOnSelect}
-              >
-                <SelectItem
-                  text={defaultTestSectionLabel}
-                  value={defaultTestSectionId}
-                />
-                {testSections
-                  .filter((item) => item.id !== defaultTestSectionId)
-                  .map((test, index) => {
-                    return (
-                      <SelectItem
-                        key={index}
-                        text={test.value}
-                        value={test.id}
+                  <Field name="date">
+                    {({ field }) => (
+                      <CustomDatePicker
+                        id={field.id}
+                        labelText={intl.formatMessage({
+                          id: "search.label.testdate",
+                        })}
+                        value={testDate}
+                        onChange={(date) => handleDatePickerChange(date)}
+                        name={field.name}
                       />
-                    );
-                  })}
-              </Select>
-            </Column>
-            <Column lg={10} />
-          </Grid>
-        </>
-      )}
+                    )}
+                  </Field>
+                )}
+
+                {searchBy !== "routine" && searchBy !== "pending" && (
+                  <Button
+                    type="submit"
+                    disabled={props.disabled}
+                    id="submit"
+                    data-testid="Search-btn"
+                  >
+                    <FormattedMessage id="label.button.search" />
+                  </Button>
+                )}
+              </div>
+            </Form>
+          )}
+        </Formik>
+
+        {searchBy === "routine" && (
+          <div className="validation-search-controls">
+            <Select
+              labelText={intl.formatMessage({ id: "search.label.testunit" })}
+              name="unitType"
+              disabled={props.disabled}
+              id="unitType"
+              onChange={submitOnSelect}
+            >
+              <SelectItem
+                text={defaultTestSectionLabel}
+                value={defaultTestSectionId}
+              />
+              {testSections
+                .filter((item) => item.id !== defaultTestSectionId)
+                .map((test, index) => (
+                  <SelectItem key={index} text={test.value} value={test.id} />
+                ))}
+            </Select>
+          </div>
+        )}
+
+        {isLoading && (
+          <div className="validation-search-loading">
+            <InlineLoading
+              description={intl.formatMessage({ id: "loading.description" })}
+            />
+          </div>
+        )}
+      </section>
 
       <>
         {pagination && (

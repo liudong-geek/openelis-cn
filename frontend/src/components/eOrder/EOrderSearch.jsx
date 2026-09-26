@@ -2,15 +2,15 @@ import {
   Button,
   Checkbox,
   Column,
+  InlineLoading,
   Link,
   Select,
   SelectItem,
   TextInput,
-  Loading,
 } from "@carbon/react";
 import { React, useEffect, useState, useContext } from "react";
 import CustomDatePicker from "../common/CustomDatePicker";
-import { ArrowLeft, ArrowRight } from "@carbon/react/icons";
+import { ArrowLeft, ArrowRight, Filter } from "@carbon/react/icons";
 import { FormattedMessage, useIntl } from "react-intl";
 import { getFromOpenElisServer } from "../utils/Utils";
 import { NotificationContext } from "../layout/Layout";
@@ -42,6 +42,7 @@ const EOrderSearch = ({
   const intl = useIntl();
 
   const [hasEOrders, setHasEOrders] = useState(false);
+  const [searchMode, setSearchMode] = useState("identifier");
   const [searchValue, setSearchValue] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -179,164 +180,141 @@ const EOrderSearch = ({
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
       <Column lg={16} md={8} sm={4}>
-        <FormattedMessage id="eorder.search1.text" />
-      </Column>
-      <Column lg={16} md={8} sm={4}>
-        <br></br>
-      </Column>
-      <Column lg={9} md={4} sm={4}>
-        <TextInput
-          id="searchValue"
-          labelText={intl.formatMessage({ id: "eorder.searchValue" })}
-          value={searchValue}
-          onChange={(e) => {
-            setSearchValue(e.target.value);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              searchByIdentifier();
-            }
-          }}
-        />
-      </Column>
-      <Column lg={3} md={4} sm={4}>
-        <div className="bottomAlign">
-          <Checkbox
-            id="allInfo1"
-            labelText={
-              <span style={{ whiteSpace: "nowrap" }}>
-                {intl.formatMessage({ id: "eorder.allInfo" })}
-              </span>
-            }
-            checked={allInfo}
-            onChange={(e) => {
-              setAllInfo(e.currentTarget.checked);
-            }}
-          />
-        </div>
-      </Column>
-
-      <Column lg={16} md={8} sm={4}>
-        <br></br>
-      </Column>
-
-      <Column lg={4} md={4} sm={4}>
-        <Button onClick={searchByIdentifier}>
-          <FormattedMessage id="label.button.search" />
-        </Button>
-      </Column>
-
-      <Column lg={16} md={8} sm={4}>
-        <hr></hr>
-      </Column>
-      <Column lg={16} md={8} sm={4}>
-        <FormattedMessage id="eorder.search2.text" />
-      </Column>
-      <Column lg={16} md={8} sm={4}>
-        <br></br>
-      </Column>
-
-      <Column lg={4} md={4} sm={4}>
-        <CustomDatePicker
-          id={"eOrder_startDate"}
-          labelText={intl.formatMessage({ id: "eorder.date.start" })}
-          value={startDate}
-          className="inputDate"
-          onChange={(date) => setStartDate(date)}
-        />
-      </Column>
-      <Column lg={4} md={4} sm={4}>
-        <CustomDatePicker
-          id={"eOrder_endDate"}
-          labelText={intl.formatMessage({ id: "eorder.date.end" })}
-          value={endDate}
-          className="inputDate"
-          onChange={(date) => setEndDate(date)}
-        />
-      </Column>
-      <Column lg={4} md={4} sm={4}>
-        <Select
-          id="statusId"
-          labelText={intl.formatMessage({ id: "eorder.status" })}
-          value={statusId}
-          onChange={(e) => {
-            setStatusId(e.target.value);
-          }}
+        <section
+          className="eorder-search-panel"
+          aria-labelledby="eorder-search-title"
         >
-          <SelectItem
-            value=""
-            text={intl.formatMessage({ id: "order.status.all" })}
-          />
-          {statusOptions.map((statusOption, index) => {
-            return (
-              <SelectItem
-                key={index}
-                value={statusOption.id}
-                text={mapOrderStatusLabel(statusOption.value)}
+          <div className="eorder-search-panel__heading">
+            <div>
+              <h2 id="eorder-search-title">
+                <FormattedMessage id="eorder.search.title" />
+              </h2>
+              <p>
+                <FormattedMessage
+                  id={
+                    searchMode === "identifier"
+                      ? "eorder.search1.text"
+                      : "eorder.search2.text"
+                  }
+                />
+              </p>
+            </div>
+            <div
+              className="eorder-search-modes"
+              role="group"
+              aria-label={intl.formatMessage({ id: "eorder.search.mode" })}
+            >
+              <Button
+                type="button"
+                size="sm"
+                kind={searchMode === "identifier" ? "primary" : "ghost"}
+                onClick={() => setSearchMode("identifier")}
+              >
+                <FormattedMessage id="eorder.search.mode.identifier" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                kind={searchMode === "dateStatus" ? "primary" : "ghost"}
+                renderIcon={Filter}
+                onClick={() => setSearchMode("dateStatus")}
+              >
+                <FormattedMessage id="eorder.search.mode.dateStatus" />
+              </Button>
+            </div>
+          </div>
+
+          {searchMode === "identifier" ? (
+            <div className="eorder-search-controls eorder-search-controls--identifier">
+              <TextInput
+                id="searchValue"
+                labelText={intl.formatMessage({ id: "eorder.searchValue" })}
+                value={searchValue}
+                onChange={(e) => setSearchValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") searchByIdentifier();
+                }}
               />
-            );
-          })}
-        </Select>
-      </Column>
-      <Column lg={4} md={4} sm={4}>
-        <div className="bottomAlign">
-          <Checkbox
-            id="allInfo2"
-            labelText={
-              <span style={{ whiteSpace: "nowrap" }}>
-                {intl.formatMessage({ id: "eorder.allInfo" })}
+              <Checkbox
+                id="allInfo1"
+                labelText={intl.formatMessage({ id: "eorder.allInfo" })}
+                checked={allInfo}
+                onChange={(e) => setAllInfo(e.currentTarget.checked)}
+              />
+              <Button onClick={searchByIdentifier}>
+                <FormattedMessage id="label.button.search" />
+              </Button>
+            </div>
+          ) : (
+            <div className="eorder-search-controls eorder-search-controls--date-status">
+              <CustomDatePicker
+                id="eOrder_startDate"
+                labelText={intl.formatMessage({ id: "eorder.date.start" })}
+                value={startDate}
+                className="inputDate"
+                onChange={(date) => setStartDate(date)}
+              />
+              <CustomDatePicker
+                id="eOrder_endDate"
+                labelText={intl.formatMessage({ id: "eorder.date.end" })}
+                value={endDate}
+                className="inputDate"
+                onChange={(date) => setEndDate(date)}
+              />
+              <Select
+                id="statusId"
+                labelText={intl.formatMessage({ id: "eorder.status" })}
+                value={statusId}
+                onChange={(e) => setStatusId(e.target.value)}
+              >
+                <SelectItem
+                  value=""
+                  text={intl.formatMessage({ id: "order.status.all" })}
+                />
+                {statusOptions.map((statusOption, index) => (
+                  <SelectItem
+                    key={index}
+                    value={statusOption.id}
+                    text={mapOrderStatusLabel(statusOption.value)}
+                  />
+                ))}
+              </Select>
+              <Checkbox
+                id="allInfo2"
+                labelText={intl.formatMessage({ id: "eorder.allInfo" })}
+                checked={allInfo2}
+                onChange={(e) => setAllInfo2(e.currentTarget.checked)}
+              />
+              <Button onClick={searchByDateAndStatus}>
+                <FormattedMessage id="label.button.search" />
+              </Button>
+            </div>
+          )}
+
+          <div className="eorder-search-feedback" aria-live="polite">
+            {loading && (
+              <InlineLoading
+                description={intl.formatMessage({ id: "loading.description" })}
+              />
+            )}
+            {searchCompleted && !hasEOrders && !loading && (
+              <span>
+                <FormattedMessage id="eorder.search.noresults" />
               </span>
-            }
-            checked={allInfo2}
-            onChange={(e) => {
-              setAllInfo2(e.currentTarget.checked);
-            }}
-          />
-        </div>
-      </Column>
+            )}
+          </div>
 
-      <Column lg={16} md={8} sm={4}>
-        <br></br>
-      </Column>
-
-      <Column lg={4} md={4} sm={4}>
-        <Button onClick={searchByDateAndStatus}>
-          <FormattedMessage id="label.button.search" />
-        </Button>
-      </Column>
-
-      {searchCompleted && !hasEOrders && (
-        <Column lg={16} md={8} sm={4}>
-          <FormattedMessage id="eorder.search.noresults" />
-        </Column>
-      )}
-      <Column lg={16} md={8} sm={4}>
-        {loading && (
-          <Loading
-            description={intl.formatMessage({ id: "loading.description" })}
-            small={true}
-          />
-        )}
-      </Column>
-
-      <>
-        <Column lg={14} />
-        <Column
-          lg={2}
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: "10px",
-            width: "100%",
-          }}
-        >
           {pagination && (
-            <>
-              <Link>
+            <div className="eorder-search-pagination">
+              <Link
+                aria-label={intl.formatMessage(
+                  { id: "pagination.page" },
+                  { page: currentApiPage },
+                )}
+              >
                 {currentApiPage} / {totalApiPages}
               </Link>
-              <div style={{ display: "flex", gap: "10px" }}>
+              <div>
                 <Button
                   hasIconOnly
                   id="loadpreviousresults"
@@ -358,10 +336,10 @@ const EOrderSearch = ({
                   })}
                 ></Button>
               </div>
-            </>
+            </div>
           )}
-        </Column>
-      </>
+        </section>
+      </Column>
     </>
   );
 };
