@@ -111,3 +111,15 @@
     }
   }
 }
+
+.oe-page-header[aria-labelledby="patient-management-title"]
+  .oe-page-header__actions
+  > .cds--btn {
+  width: auto;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.oe-main-content .patient-management-list-surface .patient-master-list__table {
+  overflow-x: auto;
+}
