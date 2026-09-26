@@ -153,8 +153,10 @@ describe("taskFocusedMenu", () => {
       "04",
       "05",
       "06",
+      "07",
     ]);
     expect(full.map((entry) => entry.menu.workspaceSection)).toEqual([
+      "core",
       "core",
       "core",
       "core",
@@ -289,6 +291,7 @@ describe("taskFocusedMenu", () => {
       "menu_testing_workspace",
       "menu_review_report_workspace",
       "menu_quality_workspace",
+      "menu_configuration_workspace",
       "menu_management_workspace",
     ]);
     expect(result.map((menuItem) => menuItem.menu.displayKey)).toEqual([
@@ -298,6 +301,7 @@ describe("taskFocusedMenu", () => {
       "sidenav.workspace.reports",
       "sidenav.workspace.quality",
       "sidenav.workspace.configuration",
+      "banner.menu.administration",
     ]);
 
     expect(findById(result, "menu_order_enter")).toBeNull();
@@ -529,7 +533,7 @@ describe("taskFocusedMenu", () => {
     });
   });
 
-  test("keeps management destinations under the management side-navigation group", () => {
+  test("separates daily configuration from system operations", () => {
     const result = buildTaskFocusedMenu(chinaMenuFixture(), {
       roles: [
         ROLE_NAMES.REPORTS,
@@ -538,9 +542,9 @@ describe("taskFocusedMenu", () => {
         ROLE_NAMES.ANALYSER_IMPORT,
       ],
     });
-    const management = findById(result, "menu_management_workspace");
+    const configuration = findById(result, "menu_configuration_workspace");
     expect(
-      management.childMenus.map(({ menu }) => [
+      configuration.childMenus.map(({ menu }) => [
         menu.actionURL,
         menu.displayKey,
       ]),
@@ -559,11 +563,18 @@ describe("taskFocusedMenu", () => {
         "workspace.workflowReport.title",
       ],
       ["/MasterListsPage/interfaceWorkspace", "workspace.interface.title"],
-      ["/MasterListsPage/systemOperations", "workspace.system.title"],
       ["/MasterListsPage/masterDataIdentity", "masterData.title"],
       ["/MasterListsPage/program", "sidenav.label.admin.program"],
+    ]);
+    const management = findById(result, "menu_management_workspace");
+    expect(
+      management.childMenus.map(({ menu }) => [
+        menu.actionURL,
+        menu.displayKey,
+      ]),
+    ).toEqual([
+      ["/MasterListsPage/systemOperations", "workspace.system.title"],
       ["/MasterListsPage/deliveryReadiness", "workspace.delivery.title"],
-      ["/TATReport", "reports.tat.title"],
       ["/AuditTrailReport?type=system", "sideNav.title.audittrail"],
       ["/analyzers", "analyzer.page.title"],
     ]);
@@ -593,9 +604,16 @@ describe("taskFocusedMenu", () => {
       const result = buildTaskFocusedMenu(chinaMenuFixture(), {
         roles: [role],
       });
-      const management = findById(result, "menu_management_workspace");
+      const workspace = findById(
+        result,
+        expectedPath.startsWith("/MasterListsPage/testManagement")
+          ? "menu_configuration_workspace"
+          : expectedPath === "/TATReport"
+            ? "menu_review_report_workspace"
+            : "menu_management_workspace",
+      );
 
-      const destination = management.childMenus.find(
+      const destination = workspace.childMenus.find(
         ({ menu }) => menu.actionURL === expectedPath,
       );
       expect(destination).toBeDefined();
@@ -1006,6 +1024,7 @@ describe("taskFocusedMenu", () => {
       role: ROLE_NAMES.GLOBAL_ADMIN,
       visible: [
         "menu_home",
+        "menu_configuration_workspace",
         "menu_management_workspace",
         "menu_administration_testManagementConfigMenu",
       ],
@@ -1021,6 +1040,7 @@ describe("taskFocusedMenu", () => {
       role: ROLE_NAMES.USER_ACCOUNT_ADMIN,
       visible: [
         "menu_home",
+        "menu_configuration_workspace",
         "menu_management_workspace",
         "menu_administration_testManagementConfigMenu",
       ],
@@ -1073,7 +1093,7 @@ describe("taskFocusedMenu", () => {
     },
   );
 
-  test("treats admin aliases as one direct configuration task list", () => {
+  test("treats admin aliases as separate configuration and system task lists", () => {
     const result = buildTaskFocusedMenu(
       [
         item("menu_home", "/Dashboard"),
@@ -1089,10 +1109,16 @@ describe("taskFocusedMenu", () => {
 
     expect(findById(result, "menu_admin")).toBeNull();
     expect(findById(result, "menu_administration")).toBeNull();
-    expect(result.at(-1).menu.elementId).toBe("menu_management_workspace");
-    expect(allIds(result.at(-1).childMenus)).toEqual(
-      ADMIN_NAVIGATION_DOMAINS.flatMap(({ links }) =>
-        links.map(([, path]) => `menu_administration_${path}`),
+    const configuration = findById(result, "menu_configuration_workspace");
+    const management = findById(result, "menu_management_workspace");
+    expect([
+      ...allIds(configuration.childMenus),
+      ...allIds(management.childMenus),
+    ]).toEqual(
+      expect.arrayContaining(
+        ADMIN_NAVIGATION_DOMAINS.flatMap(({ links }) =>
+          links.map(([, path]) => `menu_administration_${path}`),
+        ),
       ),
     );
   });
@@ -1108,6 +1134,7 @@ describe("taskFocusedMenu", () => {
       "menu_testing_workspace",
       "menu_review_report_workspace",
       "menu_quality_workspace",
+      "menu_configuration_workspace",
       "menu_management_workspace",
     ]);
   });

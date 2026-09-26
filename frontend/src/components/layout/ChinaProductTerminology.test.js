@@ -9,7 +9,7 @@ const expectedBusinessTerms = {
   "sidenav.workspace.quality": "质量管理",
   "sidenav.workspace.reports": "审核与报告",
   "sidenav.workspace.interfaces": "接口中心",
-  "sidenav.workspace.configuration": "管理中心",
+  "sidenav.workspace.configuration": "基础配置",
   "banner.menu.home": "工作台",
   "home.label": "工作台",
   "banner.menu.sample": "检验申请",

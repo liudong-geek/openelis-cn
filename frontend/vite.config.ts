@@ -32,6 +32,11 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
+    // Keep the China delivery bundle on a distinct URL namespace. The current
+    // Rolldown build can retain a chunk filename when a module inside that
+    // chunk changes, so a previously immutable /assets response may otherwise
+    // leave a browser on the old interface after deployment.
+    assetsDir: "assets-cn",
     sourcemap: true,
   },
   test: {

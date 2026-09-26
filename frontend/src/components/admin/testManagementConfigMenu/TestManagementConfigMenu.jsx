@@ -178,12 +178,13 @@ export default function TestManagementConfigMenu() {
           </Button>
         </section>
       ) : (
-        <div className="master-data-workspace__grid">
+        <div className="master-data-workspace__list" role="list">
           {visibleAreas.map((area) => (
             <section
-              className="master-data-workspace__card"
+              className="master-data-workspace__row"
               data-testid="master-data-area"
               key={area.path}
+              role="listitem"
             >
               <Tag type="cool-gray" size="sm">
                 <FormattedMessage
@@ -193,19 +194,19 @@ export default function TestManagementConfigMenu() {
                   }
                 />
               </Tag>
-              <h2>
-                <Link to={`${base}/${area.path}`}>
+              <div className="master-data-workspace__row-copy">
+                <h2>
                   <FormattedMessage id={area.title} />
-                </Link>
-              </h2>
-              <p>
-                <FormattedMessage id={area.description} />
-              </p>
+                </h2>
+                <p>
+                  <FormattedMessage id={area.description} />
+                </p>
+              </div>
               <div className="master-data-workspace__actions">
                 <Button
                   as={Link}
                   to={`${base}/${area.path}`}
-                  kind="primary"
+                  kind="ghost"
                   size="sm"
                   renderIcon={ArrowRight}
                 >
@@ -216,7 +217,7 @@ export default function TestManagementConfigMenu() {
                     as={Link}
                     key={route}
                     to={`${base}/${route}`}
-                    kind="ghost"
+                    kind="tertiary"
                     size="sm"
                   >
                     <FormattedMessage id={label} />

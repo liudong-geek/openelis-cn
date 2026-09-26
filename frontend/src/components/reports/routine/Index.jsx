@@ -1,7 +1,7 @@
 import React, { useContext, useState, useEffect } from "react";
 import { AlertDialog } from "../../common/CustomNotification";
 import { NotificationContext } from "../../layout/Layout";
-import { Loading } from "@carbon/react";
+import { Dropdown, Loading } from "@carbon/react";
 import { injectIntl, useIntl } from "react-intl";
 import PatientStatusReport from "../common/PatientStatusReport";
 import StatisticsReport from "./StatisticsReport";
@@ -9,7 +9,13 @@ import ReferredOut from "./ReferredOut";
 import ReportByDate from "../common/ReportByDate";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import { useHistory, useLocation } from "react-router-dom";
-import { DEFAULT_ROUTINE_REPORT_PATH } from "../routineReportNavigation";
+import {
+  AGGREGATE_REPORT_OPTIONS,
+  DEFAULT_ROUTINE_REPORT_PATH,
+  isAggregateReport,
+} from "../routineReportNavigation";
+import ValidationBacklogReport from "./ValidationBacklogReport";
+import "./routine-report-workspace.scss";
 
 export const RoutineReports = (props) => {
   const { type, report } = props;
@@ -66,9 +72,13 @@ export const RoutineReports = (props) => {
 
       {type === "indicator" && report === "indicatorCDILNSPHIV" && (
         <ReportByDate
-          report={"indicatorHaitiLNSPAllTests"}
-          id={"openreports.all.test.summary.title"}
+          report={"indicatorCDILNSPHIV"}
+          id={"sideNav.label.hivtestsummary"}
         />
+      )}
+
+      {type === "indicator" && report === "validationBacklog" && (
+        <ValidationBacklogReport />
       )}
 
       {type === "indicator" && report === "sampleRejectionReport" && (
@@ -97,6 +107,9 @@ const RoutineIndex = () => {
   const [type, setType] = useState("");
   const [report, setReport] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const selectedAggregateReport = AGGREGATE_REPORT_OPTIONS.find(
+    (option) => option.report === report,
+  );
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -128,7 +141,34 @@ const RoutineIndex = () => {
             description={intl.formatMessage({ id: "loading.description" })}
           />
         )}
-        {!isLoading && <RoutineReports type={type} report={report} />}
+        {!isLoading && (
+          <div className="routine-report-workspace">
+            {isAggregateReport(report) && (
+              <section
+                className="routine-report-workspace__selector"
+                aria-label={intl.formatMessage({ id: "reports.type" })}
+              >
+                <Dropdown
+                  id="aggregate-report-type"
+                  titleText={intl.formatMessage({ id: "reports.type" })}
+                  label={intl.formatMessage({ id: "reports.type.select" })}
+                  items={AGGREGATE_REPORT_OPTIONS}
+                  selectedItem={selectedAggregateReport}
+                  itemToString={(item) =>
+                    item ? intl.formatMessage({ id: item.displayKey }) : ""
+                  }
+                  onChange={({ selectedItem }) => {
+                    if (!selectedItem) return;
+                    history.push(
+                      `/RoutineReport?type=${selectedItem.type}&report=${selectedItem.report}`,
+                    );
+                  }}
+                />
+              </section>
+            )}
+            <RoutineReports type={type} report={report} />
+          </div>
+        )}
       </div>
     </>
   );

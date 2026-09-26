@@ -1496,11 +1496,6 @@ body {
   padding-inline: 0.5rem;
   white-space: nowrap;
 }
-.master-data-workspace__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-}
 .master-data-workspace__filters {
   display: grid;
   grid-template-columns: minmax(16rem, 2fr) minmax(13rem, 1fr);
@@ -1513,32 +1508,50 @@ body {
   color: #525252;
   font-size: 0.875rem;
 }
-.master-data-workspace__card {
-  padding: 1.25rem;
-  background: #fff;
-  border: 1px solid #e0e6ee;
-  border-radius: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+.master-data-workspace__list {
+  overflow: hidden;
+  border: 1px solid var(--oe-border, #e0e6ee);
+  border-radius: var(--oe-surface-radius, 0.5rem);
+  background: var(--oe-surface, #fff);
 }
-.master-data-workspace__card > .cds--tag {
-  align-self: flex-start;
+.master-data-workspace__row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 10rem) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  min-height: 4.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--oe-border, #e0e6ee);
+}
+.master-data-workspace__row:last-child {
+  border-bottom: 0;
+}
+.master-data-workspace__row > .cds--tag {
   margin: 0;
 }
-.master-data-workspace__card h2 {
-  font-size: 1rem;
+.master-data-workspace__row-copy {
+  min-width: 0;
+}
+.master-data-workspace__row-copy h2 {
+  margin: 0;
+  color: var(--oe-text, #1f3442);
+  font-size: 0.9375rem;
   font-weight: 600;
 }
-.master-data-workspace__card p {
-  color: #64748b;
-  line-height: 1.6;
-  flex: 1;
+.master-data-workspace__row-copy p {
+  margin: 0.25rem 0 0;
+  color: var(--oe-text-muted, #64748b);
+  font-size: 0.8125rem;
+  line-height: 1.45;
 }
 .master-data-workspace__actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 0.5rem;
+}
+.master-data-workspace__actions .cds--btn {
+  white-space: nowrap;
 }
 .master-data-workspace__empty {
   padding: 2rem;
@@ -1558,8 +1571,12 @@ body {
   .master-data-workspace__filters {
     grid-template-columns: minmax(0, 1fr);
   }
-  .master-data-workspace__grid {
-    grid-template-columns: minmax(0, 1fr);
+  .master-data-workspace__row {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  .master-data-workspace__actions {
+    justify-content: flex-start;
   }
 }
 

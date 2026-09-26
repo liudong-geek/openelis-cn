@@ -1,4 +1,33 @@
-import config from "../../config.json";
+export const AGGREGATE_REPORT_OPTIONS = Object.freeze([
+  {
+    report: "statisticsReport",
+    type: "indicator",
+    displayKey: "sidenav.label.statisticsreport",
+  },
+  {
+    report: "indicatorHaitiLNSPAllTests",
+    type: "indicator",
+    displayKey: "sidenav.label.testsummary",
+  },
+  {
+    report: "indicatorCDILNSPHIV",
+    type: "indicator",
+    displayKey: "sideNav.label.hivtestsummary",
+  },
+  {
+    report: "haitiNonConformityBySectionReason",
+    type: "patient",
+    displayKey: "sideNav.label.noncomformityreportsbyunit",
+  },
+  {
+    report: "validationBacklog",
+    type: "indicator",
+    displayKey: "sideNav.label.delayedvalidation",
+  },
+]);
+
+export const isAggregateReport = (report) =>
+  AGGREGATE_REPORT_OPTIONS.some((option) => option.report === report);
 
 export const ROUTINE_REPORT_TASKS = Object.freeze([
   {
@@ -7,36 +36,14 @@ export const ROUTINE_REPORT_TASKS = Object.freeze([
     actionURL: "/RoutineReport?type=patient&report=patientCILNSP_vreduit",
   },
   {
-    elementId: "menu_reports_statistics",
-    displayKey: "sidenav.label.statisticsreport",
+    elementId: "menu_reports_aggregate",
+    displayKey: "sidenav.title.aggregatereport",
     actionURL: "/RoutineReport?type=indicator&report=statisticsReport",
-  },
-  {
-    elementId: "menu_reports_test_summary",
-    displayKey: "sidenav.label.testsummary",
-    actionURL:
-      "/RoutineReport?type=indicator&report=indicatorHaitiLNSPAllTests",
-  },
-  {
-    elementId: "menu_reports_hiv_summary",
-    displayKey: "sideNav.label.hivtestsummary",
-    actionURL: "/RoutineReport?type=indicator&report=indicatorCDILNSPHIV",
   },
   {
     elementId: "menu_reports_referred_out",
     displayKey: "sideNav.label.referredtestreport",
     actionURL: "/RoutineReport?type=patient&report=referredOut",
-  },
-  {
-    elementId: "menu_reports_nonconformity_section",
-    displayKey: "sideNav.label.noncomformityreportsbyunit",
-    actionURL:
-      "/RoutineReport?type=patient&report=haitiNonConformityBySectionReason",
-  },
-  {
-    elementId: "menu_reports_validation_backlog",
-    displayKey: "sideNav.label.delayedvalidation",
-    actionURL: `${config.serverBaseUrl}/ReportPrint?type=indicator&report=validationBacklog`,
   },
 ]);
 

@@ -9440,7 +9440,7 @@
   "sidenav.workspace.quality": "Quality management",
   "sidenav.workspace.reports": "Review & reports",
   "sidenav.workspace.interfaces": "Interface center",
-  "sidenav.workspace.configuration": "Management center",
+  "sidenav.workspace.configuration": "Basic configuration",
   "sidenav.workspace.section.clinical": "Clinical workspace",
   "sidenav.workspace.section.operations": "Operations",
   "results.workbench.queue.title": "Specimen queue",

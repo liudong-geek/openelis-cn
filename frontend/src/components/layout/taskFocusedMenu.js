@@ -739,7 +739,12 @@ const compactQualityDestinations = (destinations) => {
   return primaryEntries.length > 0 ? primaryEntries : compacted;
 };
 
-const compactManagementDestinations = (destinations) => {
+const SYSTEM_CONFIGURATION_PATHS = new Set([
+  "systemOperations",
+  "deliveryReadiness",
+]);
+
+const splitManagementDestinations = (destinations) => {
   const systemAudit = destinations.find(
     (entry) => getActionURL(entry) === "/AuditTrailReport?type=system",
   );
@@ -794,11 +799,19 @@ const compactManagementDestinations = (destinations) => {
       )
     : [];
 
+  const baseConfigurationEntries = configurationEntries.filter(
+    (entry) =>
+      !SYSTEM_CONFIGURATION_PATHS.has(
+        getActionURL(entry).replace("/MasterListsPage/", ""),
+      ),
+  );
+  const systemConfigurationEntries = configurationEntries.filter((entry) =>
+    SYSTEM_CONFIGURATION_PATHS.has(
+      getActionURL(entry).replace("/MasterListsPage/", ""),
+    ),
+  );
+
   const primaryEntries = [
-    [
-      compacted.find((entry) => getActionURL(entry) === "/TATReport"),
-      "reports.tat.title",
-    ],
     [
       compacted.find(
         (entry) => getActionURL(entry) === "/AuditTrailReport?type=system",
@@ -813,9 +826,14 @@ const compactManagementDestinations = (destinations) => {
     .filter(([entry]) => entry)
     .map(([entry, displayKey]) => withDisplayKey(entry, displayKey));
 
-  return configurationEntries.length > 0 || primaryEntries.length > 0
-    ? [...configurationEntries, ...primaryEntries]
-    : compacted;
+  return {
+    baseConfiguration:
+      baseConfigurationEntries.length > 0 ? baseConfigurationEntries : [],
+    systemManagement:
+      systemConfigurationEntries.length > 0 || primaryEntries.length > 0
+        ? [...systemConfigurationEntries, ...primaryEntries]
+        : compacted,
+  };
 };
 
 const compactTestingDestinations = (destinations) => {
@@ -889,9 +907,15 @@ const compactReviewReportDestinations = (destinations) => {
         createDestination(elementId, displayKey, actionURL),
       )
     : [];
+  const turnaroundEntry = destinations.find(
+    (entry) => getActionURL(entry) === "/TATReport",
+  );
   const primaryEntries = [
     reviewEntry ? withDisplayKey(reviewEntry, "review.workspace.queue") : null,
     ...reportTasks,
+    turnaroundEntry
+      ? withDisplayKey(turnaroundEntry, "reports.tat.title")
+      : null,
   ].filter(Boolean);
 
   return primaryEntries.length > 0 ? primaryEntries : destinations;
@@ -925,8 +949,13 @@ const organizeChinaWorkspaces = (items) => {
       const reportEntry = destinations.find(
         (entry) => getElementId(entry) === "menu_reports_routine",
       );
+      const turnaroundEntry = destinations.find(
+        (entry) => getActionURL(entry) === "/TATReport",
+      );
       if (reviewEntry && reportEntry) {
-        destinations = [reviewEntry, reportEntry];
+        destinations = [reviewEntry, reportEntry, turnaroundEntry].filter(
+          Boolean,
+        );
       }
       destinations = compactReviewReportDestinations(destinations);
     }
@@ -935,9 +964,6 @@ const organizeChinaWorkspaces = (items) => {
     }
     if (elementId === "menu_quality_workspace") {
       destinations = compactQualityDestinations(destinations);
-    }
-    if (elementId === "menu_management_workspace") {
-      destinations = compactManagementDestinations(destinations);
     }
     const workspace = directItem || createGroup(elementId, key, destinations);
     if (hasNavigableContent(workspace)) output.push(workspace);
@@ -966,15 +992,32 @@ const organizeChinaWorkspaces = (items) => {
   addWorkspace(
     "menu_review_report_workspace",
     CHINA_WORKSPACE_DISPLAY_KEYS.reports,
-    [byId.get("menu_resultvalidation"), byId.get("menu_reports")],
+    [
+      byId.get("menu_resultvalidation"),
+      byId.get("menu_reports"),
+      byId.get("menu_query_statistics"),
+    ],
   );
   addWorkspace("menu_quality_workspace", CHINA_WORKSPACE_DISPLAY_KEYS.quality, [
     byId.get("menu_quality_management"),
   ]);
+  const managementDestinations = uniqueByElementId(
+    [byId.get("menu_query_statistics"), administration].flatMap(
+      collectWorkspaceDestinations,
+    ),
+  );
+  const { baseConfiguration, systemManagement } = splitManagementDestinations(
+    managementDestinations,
+  );
+  addWorkspace(
+    "menu_configuration_workspace",
+    CHINA_WORKSPACE_DISPLAY_KEYS.configuration,
+    [createGroup("menu_configuration_tasks", "", baseConfiguration)],
+  );
   addWorkspace(
     "menu_management_workspace",
-    CHINA_WORKSPACE_DISPLAY_KEYS.configuration,
-    [byId.get("menu_query_statistics"), administration],
+    CHINA_TOP_LEVEL_DISPLAY_KEYS.administration,
+    [createGroup("menu_management_tasks", "", systemManagement)],
   );
 
   output.forEach((workspace, index) => {

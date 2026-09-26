@@ -2,12 +2,8 @@ import React, { useEffect, useState } from "react";
 import {
   Form,
   Checkbox,
-  Grid,
-  Column,
-  Section,
   Button,
   Dropdown,
-  Heading,
   InlineNotification,
 } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -16,6 +12,7 @@ import "../../Style.css";
 import config from "../../../config.json";
 import { openReportWindow } from "../common/reportLaunch";
 import { formatTatPriority } from "../tat/tatUtils";
+import "./statistics-report.scss";
 
 const timeFrames = [
   {
@@ -177,253 +174,220 @@ const StatisticsReport = () => {
   const optionsEmpty = labUnitsState === "empty" || prioritiesState === "empty";
 
   return (
-    <>
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          <Section>
-            <Section>
-              <Heading>
-                <FormattedMessage id="openreports.stat.aggregate" />
-              </Heading>
-            </Section>
-          </Section>
-        </Column>
-      </Grid>
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          <Form onSubmit={handleSubmit}>
-            {optionsLoading && (
-              <InlineNotification
-                kind="info"
-                lowContrast
-                hideCloseButton
-                title={intl.formatMessage({
-                  id: "reports.query.options.loading",
-                })}
-              />
-            )}
-            {optionsLoadError && (
-              <InlineNotification
-                kind="error"
-                lowContrast
-                hideCloseButton
-                title={intl.formatMessage({
-                  id: "reports.query.options.loadError.title",
-                })}
-                subtitle={intl.formatMessage({
-                  id: "reports.query.options.loadError.subtitle",
-                })}
-              />
-            )}
-            {optionsEmpty && (
-              <InlineNotification
-                kind="warning"
-                lowContrast
-                hideCloseButton
-                title={intl.formatMessage({
-                  id: "reports.query.options.empty",
-                })}
-              />
-            )}
-            {launchError && (
-              <InlineNotification
-                kind="error"
-                lowContrast
-                hideCloseButton
-                title={intl.formatMessage({ id: "reports.query.error.title" })}
-                subtitle={intl.formatMessage({
-                  id: "reports.query.popupBlocked",
-                })}
-              />
-            )}
+    <div className="statistics-report">
+      <header className="statistics-report__header">
+        <h1>
+          <FormattedMessage id="openreports.stat.aggregate" />
+        </h1>
+      </header>
+      <Form className="statistics-report__form" onSubmit={handleSubmit}>
+        <div className="statistics-report__notifications">
+          {optionsLoading && (
             <InlineNotification
               kind="info"
               lowContrast
               hideCloseButton
               title={intl.formatMessage({
-                id: "reports.statistics.scope.title",
-              })}
-              subtitle={intl.formatMessage({
-                id: "reports.statistics.scope.description",
+                id: "reports.query.options.loading",
               })}
             />
-            <Grid fullWidth={true}>
-              <Column lg={16} md={8} sm={4}>
-                <Section>
-                  <br />
-                  <br />
-                  <h5>
-                    <FormattedMessage id="select.labUnits" />
-                  </h5>
-                </Section>
-                <div>
-                  <Checkbox
-                    labelText={intl.formatMessage({ id: "all.label" })}
-                    id="select-all-lab-units"
-                    checked={
-                      labUnits.length > 0 &&
-                      selectedLabUnits.length === labUnits.length
-                    }
-                    onChange={(event) =>
-                      handleSelectAllLabUnits(event.target.checked)
-                    }
-                  />
-                  {labUnits.map((unit) => (
-                    <Checkbox
-                      key={unit.id}
-                      labelText={unit.value}
-                      id={`statistics-lab-unit-${unit.id}`}
-                      checked={selectedLabUnits.includes(unit.id)}
-                      onChange={() => {
-                        setSelectedLabUnits((prev) => {
-                          if (prev.includes(unit.id)) {
-                            return prev.filter((item) => item !== unit.id);
-                          } else {
-                            return [...prev, unit.id];
-                          }
-                        });
-                      }}
-                    />
-                  ))}
-                </div>
-              </Column>
-            </Grid>
-            <Grid fullWidth={true}>
-              <Column lg={16} md={8} sm={4}>
-                <Section>
-                  <br />
-                  <h5>
-                    <FormattedMessage id="select.priority.tests" />
-                  </h5>
-                </Section>
-                <div className="inlineDiv">
-                  <Checkbox
-                    labelText={intl.formatMessage({ id: "all.label" })}
-                    id="select-all-priorities"
-                    checked={
-                      priorities.length > 0 &&
-                      selectedPriorities.length === priorities.length
-                    }
-                    onChange={(event) =>
-                      handleSelectAllPriorities(event.target.checked)
-                    }
-                  />
-                  {priorities.map((priority) => (
-                    <Checkbox
-                      key={priority.id}
-                      labelText={formatTatPriority(priority.id, intl)}
-                      id={`statistics-priority-${priority.id}`}
-                      checked={selectedPriorities.includes(priority.id)}
-                      onChange={() => {
-                        setSelectedPriorities((prev) => {
-                          if (prev.includes(priority.id)) {
-                            return prev.filter((item) => item !== priority.id);
-                          } else {
-                            return [...prev, priority.id];
-                          }
-                        });
-                      }}
-                    />
-                  ))}
-                </div>
-              </Column>
-            </Grid>
-            <Grid fullWidth={true}>
-              <Column lg={16} md={8} sm={4}>
-                <Section>
-                  <br />
-                  <h5>
-                    <FormattedMessage id="select.timeFrame" />
-                  </h5>
-                  <br />
-                  <p>
-                    <FormattedMessage id="select.timeFrame.Note" />
-                  </p>
-                </Section>
-                <div>
-                  <Checkbox
-                    labelText={intl.formatMessage({ id: "all.label" })}
-                    id="select-all-time-frames"
-                    checked={selectedTimeFrames.length === timeFrames.length}
-                    onChange={(event) =>
-                      handleSelectAllTimeFrames(event.target.checked)
-                    }
-                  />
-                  {timeFrames.map((frame) => (
-                    <Checkbox
-                      key={frame.id}
-                      id={frame.id}
-                      labelText={intl.formatMessage({
-                        id: frame.labelId,
-                      })}
-                      checked={selectedTimeFrames.includes(frame.id)}
-                      onChange={() => {
-                        setSelectedTimeFrames((prev) => {
-                          if (prev.includes(frame.id)) {
-                            return prev.filter((item) => item !== frame.id);
-                          } else {
-                            return [...prev, frame.id];
-                          }
-                        });
-                      }}
-                    />
-                  ))}
-                </div>
-              </Column>
-            </Grid>
-            <Grid fullWidth={true}>
-              <Column lg={16} md={8} sm={4}>
-                <Section>
-                  <br />
-                  <h5>
-                    <FormattedMessage id="select.year.report" />
-                  </h5>
-                </Section>
-              </Column>
-              <Column lg={2} md={2} sm={2}>
-                <Dropdown
-                  id="year-picker"
-                  titleText={intl.formatMessage({
-                    id: "reports.statistics.year.label",
-                  })}
-                  label={intl.formatMessage({
-                    id: "reports.statistics.year.placeholder",
-                  })}
-                  selectedItem={selectedYear}
-                  onChange={({ selectedItem }) =>
-                    handleYearChange(selectedItem)
-                  }
-                  items={years.map((year) => ({
-                    value: year.value,
-                    label: year.label,
-                  }))}
-                  itemToString={(item) => item?.label || ""}
-                  invalid={yearError}
-                  invalidText={intl.formatMessage(
-                    { id: "reports.statistics.year.invalid" },
-                    {
-                      minimumYear: MINIMUM_REPORT_YEAR,
-                      maximumYear: currentYear,
-                    },
-                  )}
+          )}
+          {optionsLoadError && (
+            <InlineNotification
+              kind="error"
+              lowContrast
+              hideCloseButton
+              title={intl.formatMessage({
+                id: "reports.query.options.loadError.title",
+              })}
+              subtitle={intl.formatMessage({
+                id: "reports.query.options.loadError.subtitle",
+              })}
+            />
+          )}
+          {optionsEmpty && (
+            <InlineNotification
+              kind="warning"
+              lowContrast
+              hideCloseButton
+              title={intl.formatMessage({
+                id: "reports.query.options.empty",
+              })}
+            />
+          )}
+          {launchError && (
+            <InlineNotification
+              kind="error"
+              lowContrast
+              hideCloseButton
+              title={intl.formatMessage({ id: "reports.query.error.title" })}
+              subtitle={intl.formatMessage({
+                id: "reports.query.popupBlocked",
+              })}
+            />
+          )}
+        </div>
+        <InlineNotification
+          className="statistics-report__scope"
+          kind="info"
+          lowContrast
+          hideCloseButton
+          title={intl.formatMessage({
+            id: "reports.statistics.scope.title",
+          })}
+          subtitle={intl.formatMessage({
+            id: "reports.statistics.scope.description",
+          })}
+        />
+        <div className="statistics-report__filter-grid">
+          <fieldset className="statistics-report__group statistics-report__group--lab-units">
+            <legend>
+              <FormattedMessage id="select.labUnits" />
+            </legend>
+            <div className="statistics-report__options statistics-report__options--lab-units">
+              <Checkbox
+                labelText={intl.formatMessage({ id: "all.label" })}
+                id="select-all-lab-units"
+                checked={
+                  labUnits.length > 0 &&
+                  selectedLabUnits.length === labUnits.length
+                }
+                onChange={(event) =>
+                  handleSelectAllLabUnits(event.target.checked)
+                }
+              />
+              {labUnits.map((unit) => (
+                <Checkbox
+                  key={unit.id}
+                  labelText={unit.value}
+                  id={`statistics-lab-unit-${unit.id}`}
+                  checked={selectedLabUnits.includes(unit.id)}
+                  onChange={() => {
+                    setSelectedLabUnits((prev) => {
+                      if (prev.includes(unit.id)) {
+                        return prev.filter((item) => item !== unit.id);
+                      } else {
+                        return [...prev, unit.id];
+                      }
+                    });
+                  }}
                 />
-              </Column>{" "}
-            </Grid>
-            <br />
-            <Section>
-              <br />
-              <Button
-                data-cy="printableVersion"
-                type="submit"
-                disabled={optionsLoading || optionsLoadError || optionsEmpty}
-              >
-                <FormattedMessage id="label.button.generatePrintableVersion" />
-              </Button>
-            </Section>
-          </Form>
-        </Column>
-      </Grid>
-    </>
+              ))}
+            </div>
+          </fieldset>
+          <fieldset className="statistics-report__group">
+            <legend>
+              <FormattedMessage id="select.priority.tests" />
+            </legend>
+            <div className="statistics-report__options statistics-report__options--priorities">
+              <Checkbox
+                labelText={intl.formatMessage({ id: "all.label" })}
+                id="select-all-priorities"
+                checked={
+                  priorities.length > 0 &&
+                  selectedPriorities.length === priorities.length
+                }
+                onChange={(event) =>
+                  handleSelectAllPriorities(event.target.checked)
+                }
+              />
+              {priorities.map((priority) => (
+                <Checkbox
+                  key={priority.id}
+                  labelText={formatTatPriority(priority.id, intl)}
+                  id={`statistics-priority-${priority.id}`}
+                  checked={selectedPriorities.includes(priority.id)}
+                  onChange={() => {
+                    setSelectedPriorities((prev) => {
+                      if (prev.includes(priority.id)) {
+                        return prev.filter((item) => item !== priority.id);
+                      } else {
+                        return [...prev, priority.id];
+                      }
+                    });
+                  }}
+                />
+              ))}
+            </div>
+          </fieldset>
+          <fieldset className="statistics-report__group">
+            <legend>
+              <FormattedMessage id="select.timeFrame" />
+            </legend>
+            <p className="statistics-report__group-description">
+              <FormattedMessage id="select.timeFrame.Note" />
+            </p>
+            <div className="statistics-report__options statistics-report__options--time-frames">
+              <Checkbox
+                labelText={intl.formatMessage({ id: "all.label" })}
+                id="select-all-time-frames"
+                checked={selectedTimeFrames.length === timeFrames.length}
+                onChange={(event) =>
+                  handleSelectAllTimeFrames(event.target.checked)
+                }
+              />
+              {timeFrames.map((frame) => (
+                <Checkbox
+                  key={frame.id}
+                  id={frame.id}
+                  labelText={intl.formatMessage({
+                    id: frame.labelId,
+                  })}
+                  checked={selectedTimeFrames.includes(frame.id)}
+                  onChange={() => {
+                    setSelectedTimeFrames((prev) => {
+                      if (prev.includes(frame.id)) {
+                        return prev.filter((item) => item !== frame.id);
+                      } else {
+                        return [...prev, frame.id];
+                      }
+                    });
+                  }}
+                />
+              ))}
+            </div>
+          </fieldset>
+        </div>
+        <div className="statistics-report__actions">
+          <div className="statistics-report__year">
+            <h2>
+              <FormattedMessage id="select.year.report" />
+            </h2>
+            <Dropdown
+              id="year-picker"
+              titleText={intl.formatMessage({
+                id: "reports.statistics.year.label",
+              })}
+              label={intl.formatMessage({
+                id: "reports.statistics.year.placeholder",
+              })}
+              selectedItem={selectedYear}
+              onChange={({ selectedItem }) => handleYearChange(selectedItem)}
+              items={years.map((year) => ({
+                value: year.value,
+                label: year.label,
+              }))}
+              itemToString={(item) => item?.label || ""}
+              invalid={yearError}
+              invalidText={intl.formatMessage(
+                { id: "reports.statistics.year.invalid" },
+                {
+                  minimumYear: MINIMUM_REPORT_YEAR,
+                  maximumYear: currentYear,
+                },
+              )}
+            />
+          </div>
+          <Button
+            data-cy="printableVersion"
+            type="submit"
+            disabled={optionsLoading || optionsLoadError || optionsEmpty}
+          >
+            <FormattedMessage id="label.button.generatePrintableVersion" />
+          </Button>
+        </div>
+      </Form>
+    </div>
   );
 };
 
