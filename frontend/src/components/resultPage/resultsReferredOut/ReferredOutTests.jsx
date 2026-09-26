@@ -33,7 +33,6 @@ import PageBreadCrumb from "../../common/PageBreadCrumb";
 import { Formik, Field } from "formik";
 import ReferredOutTestsFormValues from "../../formModel/innitialValues/ReferredOutTestsFormValues";
 import SearchPatientForm from "../../patient/SearchPatientForm";
-import TestingWorkspaceSwitcher from "../TestingWorkspaceSwitcher";
 
 let breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -396,11 +395,6 @@ function ReferredOutTests() {
               </Heading>
             </Section>
           </Section>
-        </Column>
-      </Grid>
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          <TestingWorkspaceSwitcher activeView="referred" />
         </Column>
       </Grid>
       {loading && (

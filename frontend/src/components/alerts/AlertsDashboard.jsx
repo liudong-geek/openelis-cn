@@ -14,7 +14,6 @@ import AlertSummaryTiles from "./AlertSummaryTiles";
 import AlertsTable from "./AlertsTable";
 import AlertAcknowledgeModal from "./AlertAcknowledgeModal";
 import EQADeadlineSummary from "./EQADeadlineSummary";
-import QualityWorkspaceSwitcher from "../quality/QualityWorkspaceSwitcher";
 
 const AUTO_REFRESH_INTERVAL = 60000;
 
@@ -105,7 +104,6 @@ const AlertsDashboard = () => {
 
   return (
     <div className="alerts-dashboard pageContent">
-      <QualityWorkspaceSwitcher activeView="alerts" />
       <h2>{intl.formatMessage({ id: "alerts.dashboard.title" })}</h2>
 
       <AlertSummaryTiles summary={summary} />

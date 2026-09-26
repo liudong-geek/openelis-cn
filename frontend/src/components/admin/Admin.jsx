@@ -76,7 +76,6 @@ import ExternalConnectionAddModify from "./externalConnections/ExternalConnectio
 import DatabaseCleaning from "./databaseCleaning/DatabaseCleaning";
 import AdminDashboard from "./AdminDashboard";
 import MasterDataIdentityManagement from "./masterDataIdentity/MasterDataIdentityManagement";
-import ManagementWorkspaceSwitcher from "../management/ManagementWorkspaceSwitcher";
 import OrganizationPeopleWorkspace from "./organizationPeopleWorkspace/OrganizationPeopleWorkspace";
 import WorkflowReportWorkspace from "./workflowReportWorkspace/WorkflowReportWorkspace";
 import InterfaceWorkspace from "./interfaceWorkspace/InterfaceWorkspace";
@@ -377,14 +376,7 @@ function Admin() {
         <Route
           path={path}
           exact
-          render={() => (
-            <AdminDashboard
-              basePath={path}
-              workspaceNavigation={
-                <ManagementWorkspaceSwitcher activeView="configuration" />
-              }
-            />
-          )}
+          render={() => <AdminDashboard basePath={path} />}
         />
       </Switch>
     </>

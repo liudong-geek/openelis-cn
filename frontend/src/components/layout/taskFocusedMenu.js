@@ -639,8 +639,8 @@ const buildGlobalTaskFocusedMenu = (items) => {
 
 /**
  * Collect actual destinations so each product area has one flat task list.
- * Intermediate upstream group names belong inside pages as tabs or filters,
- * rather than becoming a third navigation level.
+ * Cross-workspace destinations stay in the side navigation; pages only keep
+ * tabs or filters that switch views within the same task.
  * This is an information-architecture adapter: it retains leaf ids, routes and
  * document handling.
  */
@@ -690,15 +690,28 @@ const compactQualityDestinations = (destinations) => {
     return true;
   });
 
-  const qualityEntry =
-    compacted.find((entry) => getActionURL(entry) === "/NceDashboard") ||
-    compacted.find((entry) => getActionURL(entry) === "/Alerts") ||
-    compacted.find(
-      (entry) => getElementId(entry) === "menu_analyzers_qc_dashboard",
-    );
-  return qualityEntry
-    ? [withDisplayKey(qualityEntry, CHINA_WORKSPACE_DISPLAY_KEYS.quality)]
-    : compacted;
+  const primaryEntries = [
+    [
+      compacted.find((entry) => getActionURL(entry) === "/NceDashboard"),
+      "banner.menu.nonconformity",
+    ],
+    [
+      compacted.find((entry) => getActionURL(entry) === "/Alerts"),
+      "alerts.dashboard.title",
+    ],
+    [
+      compacted.find(
+        (entry) =>
+          getElementId(entry) === "menu_analyzers_qc_dashboard" ||
+          getActionURL(entry) === "/analyzers/qc/db",
+      ),
+      "qc.dashboard.title",
+    ],
+  ]
+    .filter(([entry]) => entry)
+    .map(([entry, displayKey]) => withDisplayKey(entry, displayKey));
+
+  return primaryEntries.length > 0 ? primaryEntries : compacted;
 };
 
 const compactManagementDestinations = (destinations) => {
@@ -744,22 +757,30 @@ const compactManagementDestinations = (destinations) => {
     return true;
   });
 
-  const managementEntry =
-    compacted.find((entry) => getActionURL(entry) === "/MasterListsPage") ||
-    compacted.find((entry) => getActionURL(entry) === "/TATReport") ||
-    compacted.find(
-      (entry) => getActionURL(entry) === "/AuditTrailReport?type=system",
-    ) ||
-    compacted.find((entry) => getActionURL(entry) === "/analyzers");
+  const primaryEntries = [
+    [
+      compacted.find((entry) => getActionURL(entry) === "/MasterListsPage"),
+      "admin.dashboard.title",
+    ],
+    [
+      compacted.find((entry) => getActionURL(entry) === "/TATReport"),
+      "reports.tat.title",
+    ],
+    [
+      compacted.find(
+        (entry) => getActionURL(entry) === "/AuditTrailReport?type=system",
+      ),
+      "sideNav.title.audittrail",
+    ],
+    [
+      compacted.find((entry) => getActionURL(entry) === "/analyzers"),
+      "analyzer.page.title",
+    ],
+  ]
+    .filter(([entry]) => entry)
+    .map(([entry, displayKey]) => withDisplayKey(entry, displayKey));
 
-  return managementEntry
-    ? [
-        withDisplayKey(
-          managementEntry,
-          CHINA_WORKSPACE_DISPLAY_KEYS.configuration,
-        ),
-      ]
-    : compacted;
+  return primaryEntries.length > 0 ? primaryEntries : compacted;
 };
 
 const compactTestingDestinations = (destinations) => {
@@ -769,19 +790,36 @@ const compactTestingDestinations = (destinations) => {
       /^\/Results(?:[?#]|$)/i.test(getActionURL(entry)),
   );
   if (resultEntry) {
-    const workspaceEntry = withDisplayKey(resultEntry, "banner.menu.results");
-    let inserted = false;
-    return destinations.flatMap((entry) => {
+    const referredEntry = destinations.find((entry) =>
+      /^\/ReferredOutTests(?:[?#]|$)/i.test(getActionURL(entry)),
+    );
+    const workplanEntry =
+      destinations.find((entry) =>
+        /^\/WorkPlanByTest(?:[?#]|$)/i.test(getActionURL(entry)),
+      ) ||
+      destinations.find((entry) =>
+        WORKPLAN_PATH_PATTERN.test(getActionURL(entry)),
+      );
+
+    const primaryEntries = [
+      withDisplayKey(resultEntry, "banner.menu.results.unified"),
+      referredEntry
+        ? withDisplayKey(referredEntry, "referral.label.referredOutTests")
+        : null,
+      workplanEntry
+        ? withDisplayKey(workplanEntry, "banner.menu.workplan")
+        : null,
+    ].filter(Boolean);
+    const retainedEntries = destinations.filter((entry) => {
       const actionURL = getActionURL(entry);
-      const isDailyWorkspaceEntry =
-        entry === resultEntry ||
-        /^\/ReferredOutTests(?:[?#]|$)/i.test(actionURL) ||
-        WORKPLAN_PATH_PATTERN.test(actionURL);
-      if (!isDailyWorkspaceEntry) return [entry];
-      if (inserted) return [];
-      inserted = true;
-      return [workspaceEntry];
+      return (
+        entry !== resultEntry &&
+        entry !== referredEntry &&
+        !WORKPLAN_PATH_PATTERN.test(actionURL)
+      );
     });
+
+    return [...primaryEntries, ...retainedEntries];
   }
 
   const workplanEntries = destinations.filter((entry) =>
@@ -811,10 +849,14 @@ const compactReviewReportDestinations = (destinations) => {
   const reportEntry = destinations.find(
     (entry) => getElementId(entry) === "menu_reports_routine",
   );
-  const primary = reviewEntry || reportEntry;
-  if (!primary) return destinations;
+  const primaryEntries = [
+    reviewEntry ? withDisplayKey(reviewEntry, "review.workspace.queue") : null,
+    reportEntry
+      ? withDisplayKey(reportEntry, "review.workspace.reports")
+      : null,
+  ].filter(Boolean);
 
-  return [withDisplayKey(primary, CHINA_WORKSPACE_DISPLAY_KEYS.reports)];
+  return primaryEntries.length > 0 ? primaryEntries : destinations;
 };
 
 const organizeChinaWorkspaces = (items) => {

@@ -353,7 +353,7 @@ describe("taskFocusedMenu", () => {
     expect(ids).toHaveLength(new Set(ids).size);
   });
 
-  test("keeps one testing-workspace destination and moves daily views into the page", () => {
+  test("keeps testing workspaces in the testing side-navigation group", () => {
     const result = buildTaskFocusedMenu(
       [
         item("menu_results", "", [
@@ -373,21 +373,27 @@ describe("taskFocusedMenu", () => {
 
     expect(testing.childMenus.map((entry) => entry.menu.elementId)).toEqual([
       "menu_results_unified",
+      "menu_results_referred",
+      "menu_workplan_test",
     ]);
     expect(
       findById(testing.childMenus, "menu_results_unified").menu,
     ).toMatchObject({
-      displayKey: "banner.menu.results",
+      displayKey: "banner.menu.results.unified",
       actionURL: "/Results",
     });
-    expect(findById(testing.childMenus, "menu_results_referred")).toBeNull();
-    expect(findById(testing.childMenus, "menu_workplan_test")).toBeNull();
+    expect(
+      findById(testing.childMenus, "menu_results_referred").menu.displayKey,
+    ).toBe("referral.label.referredOutTests");
+    expect(
+      findById(testing.childMenus, "menu_workplan_test").menu.displayKey,
+    ).toBe("banner.menu.workplan");
     expect(findById(testing.childMenus, "menu_workplan_panel")).toBeNull();
     expect(findById(testing.childMenus, "menu_workplan_bench")).toBeNull();
     expect(findById(testing.childMenus, "menu_workplan_priority")).toBeNull();
   });
 
-  test("keeps review and report tasks inside one review workspace", () => {
+  test("keeps review and report tasks visible in the review side-navigation group", () => {
     const result = buildTaskFocusedMenu(
       [
         item("menu_resultvalidation", "/ResultValidation", [
@@ -414,10 +420,15 @@ describe("taskFocusedMenu", () => {
 
     expect(allIds(workspace.childMenus)).toEqual([
       "menu_resultvalidation_routine",
+      "menu_reports_routine",
     ]);
     expect(workspace.childMenus[0].menu).toMatchObject({
       actionURL: "/validation?type=routine",
-      displayKey: "sidenav.workspace.reports",
+      displayKey: "review.workspace.queue",
+    });
+    expect(workspace.childMenus[1].menu).toMatchObject({
+      actionURL: "/RoutineReports",
+      displayKey: "review.workspace.reports",
     });
   });
 
@@ -438,7 +449,7 @@ describe("taskFocusedMenu", () => {
     expect(allIds(workspace.childMenus)).toEqual(["menu_reports_routine"]);
     expect(workspace.childMenus[0].menu).toMatchObject({
       actionURL: "/RoutineReports",
-      displayKey: "sidenav.workspace.reports",
+      displayKey: "review.workspace.reports",
     });
   });
 
@@ -458,20 +469,29 @@ describe("taskFocusedMenu", () => {
     expect(findById(global, "menu_aliquot").menu.actionURL).toBe("/Aliquot");
   });
 
-  test("keeps daily quality workspaces compact and moves QC setup into the QC page", () => {
+  test("keeps daily quality workspaces in the quality side-navigation group", () => {
     const result = buildTaskFocusedMenu(chinaMenuFixture(), {
       roles: [ROLE_NAMES.RECEPTION, ROLE_NAMES.LAB_SUPERVISOR],
     });
     const qualityRoot = findById(result, "menu_quality_workspace");
 
     expect(qualityRoot.childMenus.map((entry) => entry.menu.elementId)).toEqual(
-      ["menu_nonconformity"],
+      [
+        "menu_nonconformity",
+        "menu_alerts_standalone",
+        "menu_analyzers_qc_dashboard",
+      ],
     );
     expect(qualityRoot.childMenus[0].menu).toMatchObject({
       actionURL: "/NceDashboard",
-      displayKey: "sidenav.workspace.quality",
+      displayKey: "banner.menu.nonconformity",
     });
-    expect(findById(result, "menu_alerts_standalone")).toBeNull();
+    expect(findById(result, "menu_alerts_standalone").menu.displayKey).toBe(
+      "alerts.dashboard.title",
+    );
+    expect(
+      findById(result, "menu_analyzers_qc_dashboard").menu.displayKey,
+    ).toBe("qc.dashboard.title");
     expect(findById(result, "menu_non_conforming_view")).toBeNull();
     expect(findById(result, "menu_non_conforming_corrective")).toBeNull();
     expect(findById(result, "menu_analyzers_qc_control_lots")).toBeNull();
@@ -494,11 +514,11 @@ describe("taskFocusedMenu", () => {
     expect(qualityRoot.childMenus[0].menu).toMatchObject({
       elementId: "menu_analyzers_qc_dashboard",
       actionURL: "/analyzers/qc/db",
-      displayKey: "sidenav.workspace.quality",
+      displayKey: "qc.dashboard.title",
     });
   });
 
-  test("keeps management navigation at workspace level and moves analyzer tools into the analyzer page", () => {
+  test("keeps management destinations under the management side-navigation group", () => {
     const result = buildTaskFocusedMenu(chinaMenuFixture(), {
       roles: [
         ROLE_NAMES.REPORTS,
@@ -508,11 +528,17 @@ describe("taskFocusedMenu", () => {
       ],
     });
     const management = findById(result, "menu_management_workspace");
-    expect(management.childMenus).toHaveLength(1);
-    expect(management.childMenus[0].menu).toMatchObject({
-      actionURL: "/MasterListsPage",
-      displayKey: "sidenav.workspace.configuration",
-    });
+    expect(
+      management.childMenus.map(({ menu }) => [
+        menu.actionURL,
+        menu.displayKey,
+      ]),
+    ).toEqual([
+      ["/MasterListsPage", "admin.dashboard.title"],
+      ["/TATReport", "reports.tat.title"],
+      ["/AuditTrailReport?type=system", "sideNav.title.audittrail"],
+      ["/analyzers", "analyzer.page.title"],
+    ]);
     expect(
       findById(management.childMenus, "menu_reports_order_audit"),
     ).toBeNull();
@@ -521,22 +547,29 @@ describe("taskFocusedMenu", () => {
   });
 
   test.each([
-    [ROLE_NAMES.REPORTS, "/TATReport"],
-    [ROLE_NAMES.AUDIT_TRAIL, "/AuditTrailReport?type=system"],
-    [ROLE_NAMES.GLOBAL_ADMIN, "/MasterListsPage"],
-    [ROLE_NAMES.ANALYSER_IMPORT, "/analyzers"],
+    [ROLE_NAMES.REPORTS, "/TATReport", "reports.tat.title"],
+    [
+      ROLE_NAMES.AUDIT_TRAIL,
+      "/AuditTrailReport?type=system",
+      "sideNav.title.audittrail",
+    ],
+    [ROLE_NAMES.GLOBAL_ADMIN, "/MasterListsPage", "admin.dashboard.title"],
+    [ROLE_NAMES.ANALYSER_IMPORT, "/analyzers", "analyzer.page.title"],
   ])(
     "uses the authorized management landing page for the %s role",
-    (role, expectedPath) => {
+    (role, expectedPath, expectedDisplayKey) => {
       const result = buildTaskFocusedMenu(chinaMenuFixture(), {
         roles: [role],
       });
       const management = findById(result, "menu_management_workspace");
 
-      expect(management.childMenus).toHaveLength(1);
-      expect(management.childMenus[0].menu).toMatchObject({
+      const destination = management.childMenus.find(
+        ({ menu }) => menu.actionURL === expectedPath,
+      );
+      expect(destination).toBeDefined();
+      expect(destination.menu).toMatchObject({
         actionURL: expectedPath,
-        displayKey: "sidenav.workspace.configuration",
+        displayKey: expectedDisplayKey,
       });
     },
   );
@@ -681,7 +714,7 @@ describe("taskFocusedMenu", () => {
     );
   });
 
-  test("keeps unadapted specialist work areas out of the routine China LIS menu", () => {
+  test("keeps the routine workplan in testing while hiding disabled specialist areas", () => {
     const source = [
       item("menu_home", "/Dashboard"),
       item("menu_results", "", [item("menu_results_unified", "/Results")]),
@@ -698,7 +731,7 @@ describe("taskFocusedMenu", () => {
       buildTaskFocusedMenu(source, { roles: [ROLE_NAMES.RESULTS] }),
     );
 
-    expect(chinaIds).not.toContain("menu_workplan_test");
+    expect(chinaIds).toContain("menu_workplan_test");
     expect(chinaIds).toContain("menu_results_unified");
     expect(chinaIds).not.toEqual(
       expect.arrayContaining([

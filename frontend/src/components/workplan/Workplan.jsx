@@ -28,7 +28,6 @@ import EQABadge from "../eqa/EQABadge";
 import ProductPageHeader from "../common/ProductPageHeader";
 import { useHistory } from "react-router-dom";
 import WorkplanModeSwitcher from "./WorkplanModeSwitcher";
-import TestingWorkspaceSwitcher from "../resultPage/TestingWorkspaceSwitcher";
 
 export const getWorkplanResultRoute = (accessionNumber) =>
   `/Results?accessionNumber=${encodeURIComponent(accessionNumber)}`;
@@ -162,7 +161,6 @@ export default function Workplan(props) {
         titleId="workplan-page-title"
       />
       <main className="oe-workplan-page" aria-labelledby="workplan-page-title">
-        <TestingWorkspaceSwitcher activeView="workplan" />
         <WorkplanModeSwitcher type={type} />
         <div className="orderLegendBody oe-workplan-surface">
           <Grid fullWidth={true}>

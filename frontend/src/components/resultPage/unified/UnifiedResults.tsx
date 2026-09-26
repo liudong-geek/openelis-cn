@@ -91,7 +91,6 @@ import ResultSpecimenQueue, {
 import "./result-specimen-workspace.scss";
 import { hasRole, Roles } from "../../utils/Utils";
 import { resultReviewHandoffPath } from "./resultReviewHandoff";
-import TestingWorkspaceSwitcher from "../TestingWorkspaceSwitcher";
 import ResultSpecimenBlockSummary from "./ResultSpecimenBlockSummary";
 import { resultSpecimenBlocks, SpecimenBlock } from "./resultSpecimenBlocks";
 import { resultReadSessionKey } from "./resultReadSession";
@@ -1522,8 +1521,6 @@ const UnifiedResults: React.FC = () => {
             </Tag>
           }
         />
-
-        <TestingWorkspaceSwitcher activeView="results" />
 
         <Tile className="results-workbench__filters">
           <div className="results-workbench__section-heading">

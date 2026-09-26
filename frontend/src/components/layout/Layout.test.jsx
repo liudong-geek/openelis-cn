@@ -480,7 +480,7 @@ describe("Layout", () => {
     });
 
     test.each(["/admin", "/MasterListsPage"])(
-      "testLayout_AdminLanding_UsesDomainDashboardWithoutLegacyNav_%s",
+      "testLayout_AdminLanding_UsesPrimaryManagementNavigation_%s",
       (route) => {
         const { container } = renderWithProviders(
           <Layout>
@@ -489,10 +489,12 @@ describe("Layout", () => {
           { route },
         );
 
-        expect(screen.getByTestId("content-wrapper")).not.toHaveClass(
+        expect(screen.getByTestId("content-wrapper")).toHaveClass(
           "content-nav-locked",
         );
-        expect(container.querySelector(".cds--side-nav")).toBeNull();
+        const sideNav = container.querySelector(".cds--side-nav");
+        expect(sideNav).toBeInTheDocument();
+        expect(sideNav).not.toHaveClass("admin-shell-side-nav");
       },
     );
 

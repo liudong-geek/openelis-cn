@@ -127,7 +127,10 @@ export default function Layout(props) {
   const isAnalyzerContext =
     location.pathname.startsWith("/analyzers") ||
     location.pathname.startsWith("/AnalyzerManagement");
-  const isAdminContext = isAdminNavRoute(location.pathname);
+  const isAdminLandingRoute =
+    location.pathname === "/admin" || location.pathname === "/MasterListsPage";
+  const isAdminContext =
+    isAdminNavRoute(location.pathname) && !isAdminLandingRoute;
   const navContext = isAdminContext ? "admin" : "main";
   const pageFamily = getPageFamily(location.pathname);
 
@@ -173,12 +176,9 @@ export default function Layout(props) {
   // Credential-change screens are login-adjacent and render focused (no sidenav),
   // matching /login regardless of auth state.
   const isFocusedAuthRoute = location.pathname === "/ChangePasswordLogin";
-  // The management landing page is the navigation for configuration work.
-  // Rendering the full legacy AdminSideNav beside its six domains duplicates
-  // every destination and recreates the long-menu problem this page solves.
-  const isAdminLandingRoute =
-    location.pathname === "/admin" || location.pathname === "/MasterListsPage";
-  const showAppSideNav = !isFocusedAuthRoute && !isAdminLandingRoute;
+  // Landing pages use the primary task navigation. Configuration detail pages
+  // switch to the contextual admin navigation for their active domain.
+  const showAppSideNav = !isFocusedAuthRoute;
 
   // Only push content when the persistent sidenav is actually present
   // (authenticated desktop UX with the nav pinned). Unauthenticated pages

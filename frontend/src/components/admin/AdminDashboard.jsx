@@ -12,7 +12,7 @@ const normalizeSearchText = (value) =>
     .trim()
     .toLocaleLowerCase();
 
-export default function AdminDashboard({ basePath, workspaceNavigation }) {
+export default function AdminDashboard({ basePath }) {
   const history = useHistory();
   const intl = useIntl();
   const [searchText, setSearchText] = useState("");
@@ -44,7 +44,6 @@ export default function AdminDashboard({ basePath, workspaceNavigation }) {
 
   return (
     <section className="admin-dashboard" data-testid="admin-dashboard">
-      {workspaceNavigation}
       <header className="admin-dashboard__header">
         <div>
           <h1>
@@ -74,7 +73,7 @@ export default function AdminDashboard({ basePath, workspaceNavigation }) {
           <FormattedMessage id="admin.dashboard.search.empty" />
         </p>
       ) : (
-        <div className="admin-dashboard__grid">
+        <div className="admin-dashboard__directory">
           {visibleDomains.map((domain) => {
             const Icon = domain.icon;
             return (

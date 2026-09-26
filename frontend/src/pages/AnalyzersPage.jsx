@@ -6,15 +6,9 @@
 
 import React from "react";
 import AnalyzersList from "../components/analyzers/AnalyzersList/AnalyzersList";
-import ManagementWorkspaceSwitcher from "../components/management/ManagementWorkspaceSwitcher";
 
 const AnalyzersPage = () => {
-  return (
-    <>
-      <ManagementWorkspaceSwitcher activeView="analyzers" />
-      <AnalyzersList />
-    </>
-  );
+  return <AnalyzersList />;
 };
 
 export default AnalyzersPage;
