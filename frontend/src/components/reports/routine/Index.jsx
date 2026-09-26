@@ -9,6 +9,7 @@ import ReferredOut from "./ReferredOut";
 import ReportByDate from "../common/ReportByDate";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import { useHistory, useLocation } from "react-router-dom";
+import { DEFAULT_ROUTINE_REPORT_PATH } from "../routineReportNavigation";
 
 export const RoutineReports = (props) => {
   const { type, report } = props;
@@ -107,7 +108,7 @@ const RoutineIndex = () => {
     if (paramType && paramReport) {
       setIsLoading(false);
     } else {
-      history.replace("/RoutineReports");
+      history.replace(DEFAULT_ROUTINE_REPORT_PATH);
     }
   }, [history, location.search]);
 
@@ -117,7 +118,7 @@ const RoutineIndex = () => {
       <PageBreadCrumb
         breadcrumbs={[
           { label: "home.label", link: "/" },
-          { label: "routine.reports", link: "/RoutineReports" },
+          { label: "routine.reports", link: DEFAULT_ROUTINE_REPORT_PATH },
         ]}
       />
       <div className="orderLegendBody">

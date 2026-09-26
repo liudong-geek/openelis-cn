@@ -10,7 +10,6 @@ import zhCN from "../../languages/zh_CN.json";
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const componentsDirectory = path.dirname(currentDirectory);
 const scopedPaths = [
-  path.join(currentDirectory, "AdminDashboard.jsx"),
   path.join(currentDirectory, "labelPresets"),
   path.join(currentDirectory, "analyzerTestName"),
   path.join(componentsDirectory, "analyzers"),

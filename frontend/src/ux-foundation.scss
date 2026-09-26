@@ -623,35 +623,6 @@ body {
   border-top: 0;
 }
 
-.admin-dashboard {
-  width: calc(100% - (2 * var(--oe-page-gutter)));
-  max-width: var(--oe-content-max-width);
-  margin: 0 auto;
-  padding: 1.25rem 0 2rem;
-}
-
-.oe-main-content .admin-dashboard .admin-dashboard__tile.cds--tile {
-  min-height: 7rem;
-  padding: 1.125rem !important;
-  border-color: var(--oe-border) !important;
-  border-radius: var(--oe-surface-radius) !important;
-  background: #ffffff !important;
-  box-shadow: var(--oe-surface-shadow);
-}
-
-.oe-main-content .admin-dashboard .admin-dashboard__tile.cds--tile:hover {
-  border-color: #b8cff4 !important;
-  background: #f8fbff !important;
-  box-shadow: 0 8px 22px rgb(15 23 42 / 7%);
-}
-
-.oe-main-content .admin-dashboard__tile-icon {
-  padding: 0.5rem;
-  border-radius: 0.5rem;
-  color: var(--oe-brand);
-  background: var(--oe-brand-soft);
-}
-
 /* Legacy section wrappers no longer look like cards nested inside cards. */
 .oe-main-content .gridBoundary,
 .oe-main-content .ruleBody,

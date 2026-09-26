@@ -9,6 +9,7 @@ import ProductPageHeader from "../common/ProductPageHeader";
 import { StudyReports } from "./study/index";
 import { RoutineReports } from "./routine/Index";
 import { isSecurityRestrictedReport } from "./reportAvailability";
+import { DEFAULT_ROUTINE_REPORT_PATH } from "./routineReportNavigation";
 
 const ReportIndex = () => {
   const intl = useIntl();
@@ -21,7 +22,7 @@ const ReportIndex = () => {
   // /Report is a report renderer, not a report picker. Old bookmarks and
   // dashboard links without a template should land in the report centre.
   if (!type || !report) {
-    return <Redirect to="/RoutineReports" />;
+    return <Redirect to={DEFAULT_ROUTINE_REPORT_PATH} />;
   }
 
   if (isSecurityRestrictedReport(report)) {

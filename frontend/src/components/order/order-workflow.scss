@@ -837,8 +837,8 @@
 
   > .lab-number-section,
   > .patient-search-section {
-    height: 100%;
     grid-column: auto;
+    align-self: start;
   }
 
   > .patient-search-section {
@@ -1177,6 +1177,54 @@
   }
 }
 
+.patient-search-section:has(.selected-entity-card) {
+  padding-bottom: 0.875rem !important;
+
+  .order-section-heading {
+    margin-bottom: 0.625rem;
+    padding-bottom: 0.625rem;
+  }
+
+  .search-content {
+    margin-top: 0;
+  }
+
+  .selected-entity-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0;
+    padding: 0.75rem 1rem;
+
+    .selected-card-header {
+      grid-column: 2;
+      grid-row: 1;
+      margin: 0;
+    }
+
+    .selected-card-content {
+      grid-column: 1;
+      grid-row: 1;
+      min-width: 0;
+    }
+  }
+}
+
+.lab-number-section {
+  padding-bottom: 0.875rem !important;
+
+  .order-section-heading {
+    margin-bottom: 0.625rem;
+    padding-bottom: 0.625rem;
+  }
+
+  .lab-number-master-data__status {
+    min-height: 2.5rem;
+    padding: 0.5rem 0.75rem;
+  }
+}
+
 .requester-master-data-card {
   display: grid;
   grid-template-columns: minmax(12rem, 1fr) minmax(10rem, 13rem) minmax(
@@ -1184,11 +1232,39 @@
       22rem
     );
   align-items: end;
-  gap: 0.75rem 1rem;
+  gap: 0.25rem 1rem;
   margin-top: 0;
+  padding: 0.75rem 1rem;
 
   .selected-card-header {
-    grid-column: 1 / -1;
+    grid-column: 1;
+    grid-row: 1;
+    margin: 0;
+  }
+
+  .selected-card-content {
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
+  }
+
+  .requester-priority-field {
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+
+  .requester-department-field {
+    grid-column: 3;
+    grid-row: 1 / 3;
+  }
+}
+
+.requester-section:has(.requester-master-data-card) {
+  padding-bottom: 0.875rem !important;
+
+  .order-section-heading {
+    margin-bottom: 0.625rem;
+    padding-bottom: 0.625rem;
   }
 }
 
@@ -1281,6 +1357,14 @@
 @media (max-width: 66rem) {
   .requester-master-data-card {
     grid-template-columns: 1fr;
+
+    .selected-card-header,
+    .selected-card-content,
+    .requester-priority-field,
+    .requester-department-field {
+      grid-column: 1;
+      grid-row: auto;
+    }
   }
 }
 

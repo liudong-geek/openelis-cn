@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import zh from "../../languages/zh.json";
 import zhCN from "../../languages/zh_CN.json";
 import { SECURITY_REVIEW_REPORTS } from "./reportAvailability";
-import { RoutineReportsMenu as RoutineMenu } from "./Routine";
+import { ROUTINE_REPORT_TASKS } from "./routineReportNavigation";
 import { RoutineReportsMenu as StudyMenu } from "./Study";
 
 const DELIVERY_REPORT_LABELS = {
@@ -63,7 +63,9 @@ describe("Chinese report navigation", () => {
 
   test("marks every restricted report that is visible in the report catalog", () => {
     const menuItems = [
-      ...RoutineMenu.sideNavMenuItems,
+      ...ROUTINE_REPORT_TASKS.map(({ actionURL }) => ({
+        SideNavMenuItem: [{ link: actionURL }],
+      })),
       ...StudyMenu.sideNavMenuItems,
     ]
       .flatMap((group) => group.SideNavMenuItem)
@@ -80,7 +82,8 @@ describe("Chinese report navigation", () => {
     );
     const wronglyDisabledItems = menuItems.filter(
       (item) =>
-        item.securityRestricted && !SECURITY_REVIEW_REPORTS.has(item.report),
+        item.securityRestricted === true &&
+        !SECURITY_REVIEW_REPORTS.has(item.report),
     );
 
     expect(unguardedRestrictedItems).toEqual([]);

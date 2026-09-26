@@ -1,6 +1,6 @@
 import React, { useContext } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { waitFor, within } from "@testing-library/dom";
+import { waitFor } from "@testing-library/dom";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import { MemoryRouter } from "react-router-dom";
@@ -498,7 +498,7 @@ describe("Layout", () => {
       },
     );
 
-    test("testLayout_AdminDetail_DefaultsToExpandedContextNav", () => {
+    test("testLayout_AdminDetail_UsesPrimaryManagementNavigation", () => {
       const route = "/MasterListsPage/userManagement";
       const { container } = renderWithProviders(
         <Layout>
@@ -513,37 +513,12 @@ describe("Layout", () => {
       const sideNavs = container.querySelectorAll(".cds--side-nav");
       expect(sideNavs).toHaveLength(1);
       expect(sideNavs[0]).toHaveClass("cds--side-nav--expanded");
-      expect(sideNavs[0]).toHaveClass("admin-shell-side-nav");
-      const contextNav = within(sideNavs[0]);
-      expect(
-        contextNav.getByRole("button", {
-          name: enMessages["admin.dashboard.domain.organization"],
-        }),
-      ).toHaveAttribute("aria-expanded", "true");
-      const workspaceLink = contextNav.getByRole("link", {
-        name: enMessages["workspace.organizationPeople.title"],
-      });
-      expect(workspaceLink).toHaveAttribute(
-        "href",
-        "/MasterListsPage/organizationPeopleWorkspace",
-      );
-      expect(workspaceLink).not.toHaveAttribute("aria-current");
-      expect(contextNav.getAllByRole("link")).toHaveLength(2);
-      expect(
-        contextNav.getByRole("link", {
-          name: enMessages["admin.navigation.backToCenter"],
-        }),
-      ).toHaveAttribute("href", "/MasterListsPage");
-      expect(
-        contextNav.queryByRole("button", {
-          name: enMessages["admin.dashboard.domain.catalog"],
-        }),
-      ).not.toBeInTheDocument();
+      expect(sideNavs[0]).not.toHaveClass("admin-shell-side-nav");
     });
 
     // Stale legacy "close" preference must not hide the desktop nav
     test("testLayout_AdminRoute_IgnoresStaleClosePreference", async () => {
-      window.localStorage.setItem("adminSideNavMode", "close");
+      window.localStorage.setItem("mainSideNavMode", "close");
 
       const { container } = renderWithProviders(
         <Layout>
@@ -555,10 +530,8 @@ describe("Layout", () => {
       await waitFor(() => {
         const sideNav = container.querySelector(".cds--side-nav");
         expect(sideNav).toHaveClass("cds--side-nav--expanded");
+        expect(sideNav).not.toHaveClass("admin-shell-side-nav");
       });
-      expect(
-        screen.getByText(enMessages["admin.dashboard.domain.workflow"]),
-      ).toBeInTheDocument();
     });
   });
 

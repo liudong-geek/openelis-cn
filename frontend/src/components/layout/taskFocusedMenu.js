@@ -1,4 +1,6 @@
 import { isSecurityRestrictedReport } from "../reports/reportAvailability";
+import { ROUTINE_REPORT_TASKS } from "../reports/routineReportNavigation";
+import { ADMIN_NAVIGATION_DOMAINS } from "../admin/adminNavigation";
 
 export const MENU_PROFILES = Object.freeze({
   CHINA: "china",
@@ -168,9 +170,15 @@ const CHINA_ITEM_ACTION_URLS = Object.freeze({
  * tested without embedding visible copy in JavaScript.
  */
 export const CHINA_MENU_MESSAGE_IDS = Object.freeze([
-  ...Object.values(CHINA_TOP_LEVEL_DISPLAY_KEYS),
-  ...Object.values(CHINA_WORKSPACE_DISPLAY_KEYS),
-  ...new Set(Object.values(CHINA_ITEM_DISPLAY_KEYS)),
+  ...new Set([
+    ...Object.values(CHINA_TOP_LEVEL_DISPLAY_KEYS),
+    ...Object.values(CHINA_WORKSPACE_DISPLAY_KEYS),
+    ...Object.values(CHINA_ITEM_DISPLAY_KEYS),
+    ...ROUTINE_REPORT_TASKS.map(({ displayKey }) => displayKey),
+    ...ADMIN_NAVIGATION_DOMAINS.flatMap(({ links }) =>
+      links.map(([displayKey]) => displayKey),
+    ),
+  ]),
 ]);
 
 const CHINA_HIDDEN_ELEMENT_ID_PATTERNS = [
@@ -327,6 +335,23 @@ const createGroup = (elementId, displayKey, childMenus) => ({
   childMenus,
   expanded: false,
 });
+
+const createDestination = (elementId, displayKey, actionURL) => {
+  const backendDocument = isBackendDocumentAction(actionURL);
+  return {
+    menu: {
+      elementId,
+      displayKey,
+      toolTipKey: displayKey,
+      actionURL,
+      isActive: true,
+      navigationMode: backendDocument ? "document" : undefined,
+      openInNewWindow: backendDocument,
+    },
+    childMenus: [],
+    expanded: false,
+  };
+};
 
 const uniqueByElementId = (items) => {
   const seen = new Set();
@@ -757,11 +782,19 @@ const compactManagementDestinations = (destinations) => {
     return true;
   });
 
+  const configurationEntries = configurationWorkspace
+    ? ADMIN_NAVIGATION_DOMAINS.flatMap(({ links }) =>
+        links.map(([displayKey, path]) =>
+          createDestination(
+            `menu_administration_${path}`,
+            displayKey,
+            `/MasterListsPage/${path}`,
+          ),
+        ),
+      )
+    : [];
+
   const primaryEntries = [
-    [
-      compacted.find((entry) => getActionURL(entry) === "/MasterListsPage"),
-      "admin.dashboard.title",
-    ],
     [
       compacted.find((entry) => getActionURL(entry) === "/TATReport"),
       "reports.tat.title",
@@ -780,7 +813,9 @@ const compactManagementDestinations = (destinations) => {
     .filter(([entry]) => entry)
     .map(([entry, displayKey]) => withDisplayKey(entry, displayKey));
 
-  return primaryEntries.length > 0 ? primaryEntries : compacted;
+  return configurationEntries.length > 0 || primaryEntries.length > 0
+    ? [...configurationEntries, ...primaryEntries]
+    : compacted;
 };
 
 const compactTestingDestinations = (destinations) => {
@@ -849,11 +884,14 @@ const compactReviewReportDestinations = (destinations) => {
   const reportEntry = destinations.find(
     (entry) => getElementId(entry) === "menu_reports_routine",
   );
+  const reportTasks = reportEntry
+    ? ROUTINE_REPORT_TASKS.map(({ elementId, displayKey, actionURL }) =>
+        createDestination(elementId, displayKey, actionURL),
+      )
+    : [];
   const primaryEntries = [
     reviewEntry ? withDisplayKey(reviewEntry, "review.workspace.queue") : null,
-    reportEntry
-      ? withDisplayKey(reportEntry, "review.workspace.reports")
-      : null,
+    ...reportTasks,
   ].filter(Boolean);
 
   return primaryEntries.length > 0 ? primaryEntries : destinations;

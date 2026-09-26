@@ -8,6 +8,7 @@ import { createMemoryHistory } from "history";
 import ReportIndex from "./Index";
 import messages from "../../languages/en.json";
 import { NotificationContext } from "../layout/Layout";
+import { DEFAULT_ROUTINE_REPORT_PATH } from "./routineReportNavigation";
 
 vi.mock("./routine/Index", () => ({
   RoutineReports: ({ type, report }) => (
@@ -37,7 +38,9 @@ describe("ReportIndex", () => {
     const history = renderReport("/Report");
 
     await waitFor(() => {
-      expect(history.location.pathname).toBe("/RoutineReports");
+      expect(`${history.location.pathname}${history.location.search}`).toBe(
+        DEFAULT_ROUTINE_REPORT_PATH,
+      );
     });
   });
 

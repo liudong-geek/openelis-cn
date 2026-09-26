@@ -44,12 +44,6 @@ export const NotificationContext = createContext(
   /** @type {LayoutNotificationValue | null} */ (null),
 );
 
-const isAdminNavRoute = (pathname) =>
-  pathname === "/admin" ||
-  pathname.startsWith("/admin/") ||
-  pathname === "/MasterListsPage" ||
-  pathname.startsWith("/MasterListsPage/");
-
 const getPageFamily = (pathname) => {
   const path = pathname.toLowerCase();
 
@@ -71,6 +65,13 @@ const getPageFamily = (pathname) => {
   }
   return "workspace";
 };
+
+// Test and sample-type editors use the side navigation as an in-task section
+// index. Other administration routes stay in the primary management menu.
+const isAdminEditorRoute = (pathname) =>
+  /^\/(?:admin|MasterListsPage)\/(?:TestCatalogEditor\/|SampleTypeManagement\/[^/?#]+)/.test(
+    pathname,
+  );
 
 // Must match the .content-nav-locked media query in Style.css
 const DESKTOP_MEDIA_QUERY = "(min-width: 1024px)";
@@ -127,21 +128,18 @@ export default function Layout(props) {
   const isAnalyzerContext =
     location.pathname.startsWith("/analyzers") ||
     location.pathname.startsWith("/AnalyzerManagement");
-  const isAdminLandingRoute =
-    location.pathname === "/admin" || location.pathname === "/MasterListsPage";
-  const isAdminContext =
-    isAdminNavRoute(location.pathname) && !isAdminLandingRoute;
-  const navContext = isAdminContext ? "admin" : "main";
+  const navContext = isAdminEditorRoute(location.pathname) ? "admin" : "main";
   const pageFamily = getPageFamily(location.pathname);
 
   // Used by Header to persist per-context menu expansion state
-  const storageKeyPrefix = isAdminContext
-    ? "admin"
-    : isStorageContext
-      ? "storage"
-      : isAnalyzerContext
-        ? "analyzer"
-        : "main";
+  const storageKeyPrefix =
+    navContext === "admin"
+      ? "admin-editor"
+      : isStorageContext
+        ? "storage"
+        : isAnalyzerContext
+          ? "analyzer"
+          : "main";
 
   // Nav on desktop: pinned (default) renders it persistently and pushes
   // content; unpinned turns it into the same hamburger-opened overlay drawer
@@ -325,9 +323,7 @@ export default function Layout(props) {
               tabIndex={-1}
               data-testid="content-wrapper"
               data-page-family={pageFamily}
-              className={`oe-main-content ${isLocked ? "content-nav-locked" : ""}${
-                isAdminContext ? " content-admin-context" : ""
-              }`.trim()}
+              className={`oe-main-content ${isLocked ? "content-nav-locked" : ""}`.trim()}
             >
               <RouteErrorBoundary>{children}</RouteErrorBoundary>
             </Content>

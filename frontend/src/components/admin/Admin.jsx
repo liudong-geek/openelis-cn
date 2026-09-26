@@ -74,7 +74,6 @@ import {
 import ExternalConnectionMenu from "./externalConnections/ExternalConnectionMenu";
 import ExternalConnectionAddModify from "./externalConnections/ExternalConnectionAddModify";
 import DatabaseCleaning from "./databaseCleaning/DatabaseCleaning";
-import AdminDashboard from "./AdminDashboard";
 import MasterDataIdentityManagement from "./masterDataIdentity/MasterDataIdentityManagement";
 import OrganizationPeopleWorkspace from "./organizationPeopleWorkspace/OrganizationPeopleWorkspace";
 import WorkflowReportWorkspace from "./workflowReportWorkspace/WorkflowReportWorkspace";
@@ -376,7 +375,7 @@ function Admin() {
         <Route
           path={path}
           exact
-          render={() => <AdminDashboard basePath={path} />}
+          render={() => <Redirect to={`${path}/testManagementConfigMenu`} />}
         />
       </Switch>
     </>

@@ -6,6 +6,8 @@ import {
   ROLE_NAMES,
 } from "./taskFocusedMenu";
 import { SECURITY_REVIEW_REPORTS } from "../reports/reportAvailability";
+import { ROUTINE_REPORT_TASKS } from "../reports/routineReportNavigation";
+import { ADMIN_NAVIGATION_DOMAINS } from "../admin/adminNavigation";
 
 const item = (elementId, actionURL = "", childMenus = []) => ({
   menu: {
@@ -314,9 +316,10 @@ describe("taskFocusedMenu", () => {
     expect(findById(result, "menu_results_unified").menu.actionURL).toBe(
       "/Results",
     );
-    expect(findById(result, "menu_administration").menu.actionURL).toBe(
-      "/MasterListsPage",
-    );
+    expect(
+      findById(result, "menu_administration_testManagementConfigMenu").menu
+        .actionURL,
+    ).toBe("/MasterListsPage/testManagementConfigMenu");
   });
 
   test("keeps one compact task list when the intake workbench is available", () => {
@@ -420,16 +423,23 @@ describe("taskFocusedMenu", () => {
 
     expect(allIds(workspace.childMenus)).toEqual([
       "menu_resultvalidation_routine",
-      "menu_reports_routine",
+      ...ROUTINE_REPORT_TASKS.map(({ elementId }) => elementId),
     ]);
     expect(workspace.childMenus[0].menu).toMatchObject({
       actionURL: "/validation?type=routine",
       displayKey: "review.workspace.queue",
     });
-    expect(workspace.childMenus[1].menu).toMatchObject({
-      actionURL: "/RoutineReports",
-      displayKey: "review.workspace.reports",
-    });
+    expect(
+      workspace.childMenus.slice(1).map(({ menu }) => ({
+        actionURL: menu.actionURL,
+        displayKey: menu.displayKey,
+      })),
+    ).toEqual(
+      ROUTINE_REPORT_TASKS.map(({ actionURL, displayKey }) => ({
+        actionURL,
+        displayKey,
+      })),
+    );
   });
 
   test("uses the report route when report access is the only review workspace permission", () => {
@@ -446,11 +456,12 @@ describe("taskFocusedMenu", () => {
     );
     const workspace = findById(result, "menu_review_report_workspace");
 
-    expect(allIds(workspace.childMenus)).toEqual(["menu_reports_routine"]);
-    expect(workspace.childMenus[0].menu).toMatchObject({
-      actionURL: "/RoutineReports",
-      displayKey: "review.workspace.reports",
-    });
+    expect(allIds(workspace.childMenus)).toEqual(
+      ROUTINE_REPORT_TASKS.map(({ elementId }) => elementId),
+    );
+    expect(workspace.childMenus.map(({ menu }) => menu.actionURL)).toEqual(
+      ROUTINE_REPORT_TASKS.map(({ actionURL }) => actionURL),
+    );
   });
 
   test("removes the legacy standalone aliquot page because aliquoting is available in specimen management", () => {
@@ -534,7 +545,24 @@ describe("taskFocusedMenu", () => {
         menu.displayKey,
       ]),
     ).toEqual([
-      ["/MasterListsPage", "admin.dashboard.title"],
+      [
+        "/MasterListsPage/testManagementConfigMenu",
+        "workspace.masterData.title",
+      ],
+      ["/MasterListsPage/rulesWorkspace", "workspace.rules.title"],
+      [
+        "/MasterListsPage/organizationPeopleWorkspace",
+        "workspace.organizationPeople.title",
+      ],
+      [
+        "/MasterListsPage/workflowReportWorkspace",
+        "workspace.workflowReport.title",
+      ],
+      ["/MasterListsPage/interfaceWorkspace", "workspace.interface.title"],
+      ["/MasterListsPage/systemOperations", "workspace.system.title"],
+      ["/MasterListsPage/masterDataIdentity", "masterData.title"],
+      ["/MasterListsPage/program", "sidenav.label.admin.program"],
+      ["/MasterListsPage/deliveryReadiness", "workspace.delivery.title"],
       ["/TATReport", "reports.tat.title"],
       ["/AuditTrailReport?type=system", "sideNav.title.audittrail"],
       ["/analyzers", "analyzer.page.title"],
@@ -553,7 +581,11 @@ describe("taskFocusedMenu", () => {
       "/AuditTrailReport?type=system",
       "sideNav.title.audittrail",
     ],
-    [ROLE_NAMES.GLOBAL_ADMIN, "/MasterListsPage", "admin.dashboard.title"],
+    [
+      ROLE_NAMES.GLOBAL_ADMIN,
+      "/MasterListsPage/testManagementConfigMenu",
+      "workspace.masterData.title",
+    ],
     [ROLE_NAMES.ANALYSER_IMPORT, "/analyzers", "analyzer.page.title"],
   ])(
     "uses the authorized management landing page for the %s role",
@@ -975,7 +1007,7 @@ describe("taskFocusedMenu", () => {
       visible: [
         "menu_home",
         "menu_management_workspace",
-        "menu_administration",
+        "menu_administration_testManagementConfigMenu",
       ],
       hidden: [
         "menu_sample",
@@ -987,7 +1019,11 @@ describe("taskFocusedMenu", () => {
     },
     {
       role: ROLE_NAMES.USER_ACCOUNT_ADMIN,
-      visible: ["menu_home", "menu_administration"],
+      visible: [
+        "menu_home",
+        "menu_management_workspace",
+        "menu_administration_testManagementConfigMenu",
+      ],
       hidden: [
         "menu_sample",
         "menu_patient",
@@ -1037,7 +1073,7 @@ describe("taskFocusedMenu", () => {
     },
   );
 
-  test("treats admin aliases as one configuration workspace without repeating its individual forms", () => {
+  test("treats admin aliases as one direct configuration task list", () => {
     const result = buildTaskFocusedMenu(
       [
         item("menu_home", "/Dashboard"),
@@ -1052,9 +1088,13 @@ describe("taskFocusedMenu", () => {
     );
 
     expect(findById(result, "menu_admin")).toBeNull();
-    expect(findById(result, "menu_administration")).not.toBeNull();
+    expect(findById(result, "menu_administration")).toBeNull();
     expect(result.at(-1).menu.elementId).toBe("menu_management_workspace");
-    expect(allIds(result.at(-1).childMenus)).toEqual(["menu_administration"]);
+    expect(allIds(result.at(-1).childMenus)).toEqual(
+      ADMIN_NAVIGATION_DOMAINS.flatMap(({ links }) =>
+        links.map(([, path]) => `menu_administration_${path}`),
+      ),
+    );
   });
 
   test("falls back to the server-authorized tree when no known session role is available", () => {
