@@ -389,12 +389,19 @@ function ReportWorkspace({
   const locked = busy || loading || !!pending || !canManage;
   const hasPrevious = releases.some((r) => r.status !== "DRAFT");
   return (
-    <Grid fullWidth className="orderLegendBody">
+    <Grid fullWidth className="orderLegendBody patient-report-release-section">
       <Column lg={16} md={8} sm={4}>
-        <Tile>
+        <Tile className="patient-report-release-panel">
           <Stack gap={5}>
-            <h3>{t("title")}</h3>
-            <p>{t("help")}</p>
+            <div className="patient-report-release-heading">
+              <div>
+                <h3>{t("title")}</h3>
+                <p>{t("help")}</p>
+              </div>
+              <Button kind="tertiary" disabled={busy} onClick={refresh}>
+                {t("refresh")}
+              </Button>
+            </div>
             {error && (
               <InlineNotification
                 kind="error"
@@ -421,26 +428,25 @@ function ReportWorkspace({
               />
             )}
             {loading && <InlineLoading description={t("loading")} />}
-            <Button kind="tertiary" disabled={busy} onClick={refresh}>
-              {t("refresh")}
-            </Button>
-            <Select
-              id="report-application"
-              labelText={t("application")}
-              value={application?.sampleId || ""}
-              disabled={busy || loading}
-              onChange={(e) => selectApplication(e.target.value)}
-            >
-              <SelectItem value="" text={t("chooseApplication")} />
-              {applications.map((a) => (
-                <SelectItem
-                  key={a.sampleId}
-                  value={a.sampleId}
-                  text={a.accessionNumber}
-                />
-              ))}
-            </Select>
-            {!loading && !applications.length && <p>{t("noApplications")}</p>}
+            <div className="patient-report-application">
+              <Select
+                id="report-application"
+                labelText={t("application")}
+                value={application?.sampleId || ""}
+                disabled={busy || loading}
+                onChange={(e) => selectApplication(e.target.value)}
+              >
+                <SelectItem value="" text={t("chooseApplication")} />
+                {applications.map((a) => (
+                  <SelectItem
+                    key={a.sampleId}
+                    value={a.sampleId}
+                    text={a.accessionNumber}
+                  />
+                ))}
+              </Select>
+              {!loading && !applications.length && <p>{t("noApplications")}</p>}
+            </div>
             {application && (
               <>
                 <Grid condensed>

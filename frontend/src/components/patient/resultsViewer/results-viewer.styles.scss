@@ -23,11 +23,17 @@
 }
 
 .patient-report-release-section {
-  margin-top: spacing.$spacing-05;
+  margin-top: spacing.$spacing-04;
 }
 
 .patient-report-release-panel {
   border: 1px solid var(--cds-border-subtle-01);
+  border-radius: var(--oe-surface-radius, 0.625rem);
+  background: #ffffff;
+
+  > .cds--stack-vertical {
+    gap: spacing.$spacing-04;
+  }
 }
 
 .patient-report-release-heading,
@@ -40,11 +46,43 @@
   gap: spacing.$spacing-05;
 }
 
+.patient-report-release-heading {
+  align-items: flex-start;
+  padding-bottom: spacing.$spacing-04;
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+
+  h3 {
+    margin: 0;
+    font-size: 1.125rem;
+    line-height: 1.4;
+  }
+
+  > div {
+    min-width: 0;
+  }
+
+  > .cds--btn {
+    flex: 0 0 auto;
+  }
+}
+
 .patient-report-release-heading p,
 .patient-report-current p,
 .patient-report-draft p {
   color: var(--cds-text-secondary);
   margin-top: spacing.$spacing-02;
+}
+
+.patient-report-application {
+  display: grid;
+  grid-template-columns: minmax(16rem, 42rem) minmax(0, 1fr);
+  align-items: end;
+  gap: spacing.$spacing-04;
+
+  p {
+    margin: 0 0 spacing.$spacing-03;
+    color: var(--cds-text-secondary);
+  }
 }
 
 .patient-report-actions {
@@ -104,6 +142,15 @@
   .patient-report-history-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .patient-report-release-heading > .cds--btn {
+    width: 100%;
+    max-width: none;
+  }
+
+  .patient-report-application {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .patient-report-actions,

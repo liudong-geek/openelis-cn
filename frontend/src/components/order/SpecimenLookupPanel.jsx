@@ -385,47 +385,49 @@ export default function SpecimenLookupPanel({
     <section className="specimen-lookup" aria-label={t("title")}>
       <Tile className="specimen-lookup__search">
         <Stack gap={4}>
-          <div>
+          <div className="specimen-lookup__intro">
             <h3>{t("title")}</h3>
             <p>{t("help")}</p>
           </div>
-          <div className="specimen-lookup__input">
-            <Search
-              id="specimen-intake-lookup"
-              labelText={t("code")}
-              placeholder={t("placeholder")}
-              value={code}
-              disabled={actionBusy}
-              onChange={(event) => {
-                invalidate();
-                setCode(event.target.value);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  search();
-                }
-              }}
-              size="lg"
-            />
-          </div>
-          <div className="specimen-lookup__actions">
-            <Button size="md" onClick={search} disabled={busy || actionBusy}>
-              {t("search")}
-            </Button>
-            {active && canReturn && (
-              <Button
-                kind="ghost"
-                size="md"
+          <div className="specimen-lookup__controls">
+            <div className="specimen-lookup__input">
+              <Search
+                id="specimen-intake-lookup"
+                labelText={t("code")}
+                placeholder={t("placeholder")}
+                value={code}
                 disabled={actionBusy}
-                onClick={() => {
+                onChange={(event) => {
                   invalidate();
-                  onViewChange(false);
+                  setCode(event.target.value);
                 }}
-              >
-                {t("returnToForm", { labNo: originalLabNo })}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    search();
+                  }
+                }}
+                size="lg"
+              />
+            </div>
+            <div className="specimen-lookup__actions">
+              <Button size="md" onClick={search} disabled={busy || actionBusy}>
+                {t("search")}
               </Button>
-            )}
+              {active && canReturn && (
+                <Button
+                  kind="ghost"
+                  size="md"
+                  disabled={actionBusy}
+                  onClick={() => {
+                    invalidate();
+                    onViewChange(false);
+                  }}
+                >
+                  {t("returnToForm", { labNo: originalLabNo })}
+                </Button>
+              )}
+            </div>
           </div>
           {busy && <p role="status">{t("loading")}</p>}
           {error && (
