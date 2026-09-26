@@ -115,8 +115,13 @@ public class OrderDashboardHibernateQueryTest {
                 dao.findPage(criteria);
             }
             dao.tubes(List.of("42"), List.of("1"));
+            // The specimen lookup's exact accession and physical-tube projections
+            // must compile against the same production Sample/SampleItem mappings.
+            SpecimenLookupCandidateDAO lookup = new SpecimenLookupCandidateDAO();
+            ReflectionTestUtils.setField(lookup, "entityManager", em);
+            lookup.exactMatches("SIM.1");
             verify(boundary, times(5)).createQuery(anyString(), eq(Long.class));
-            verify(boundary, times(6)).createQuery(anyString(), eq(Object[].class));
+            verify(boundary, times(8)).createQuery(anyString(), eq(Object[].class));
         }
     }
 

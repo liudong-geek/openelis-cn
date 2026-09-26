@@ -132,17 +132,31 @@ public class EntryCurrentStateReader {
 
     @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
     public Snapshot read(JsonNode original, String actorId) {
+        if (original == null || !original.isObject()) {
+            throw conflict();
+        }
+        return readInternal(requiredId(original.path("sampleId").asText()), original.path("labNo").asText(),
+                original.path("workflowType").asText(), original, actorId);
+    }
+
+    /** Current clinical facts for an independently authorized daily lookup, never a receipt. */
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+    public Snapshot readCurrentClinical(String sampleId, String actorId) {
+        return readInternal(requiredId(sampleId), null, "clinical", null, actorId);
+    }
+
+    private Snapshot readInternal(String sampleId, String expectedLabNo, String workflow, JsonNode original,
+            String actorId) {
         if (!TransactionSynchronizationManager.isActualTransactionActive()
                 || !TransactionSynchronizationManager.isCurrentTransactionReadOnly()
                 || !Integer.valueOf(java.sql.Connection.TRANSACTION_REPEATABLE_READ)
                         .equals(TransactionSynchronizationManager.getCurrentTransactionIsolationLevel())) {
             throw new IllegalStateException("Current entry state requires the recovery read boundary");
         }
-        // The caller has already validated and authorized this immutable receipt.
-        String sampleId = requiredId(original.path("sampleId").asText());
+        // Receipt reads retain their original identity checks. Daily reads use a
+        // server-selected sample and must still pass the complete current Test check.
         requiredId(actorId);
         var sample = samples.get(sampleId);
-        String workflow = original.path("workflowType").asText();
         if (!Set.of("clinical", "environmental").contains(workflow)) {
             throw conflict();
         }
@@ -150,14 +164,17 @@ public class EntryCurrentStateReader {
                 .getPropertyValue("environmental".equals(workflow) ? "domain.environmental" : "domain.human");
         if (sample == null || !sampleId.equals(sample.getId()) || domain == null || domain.isBlank()
                 || !domain.equals(sample.getDomain()) || sample.getAccessionNumber() == null
-                || !sample.getAccessionNumber().equals(original.path("labNo").asText())) {
+                || (expectedLabNo != null && !sample.getAccessionNumber().equals(expectedLabNo))) {
             throw conflict();
         }
         String orderStatus = status(sample.getStatusId(), "ORDER");
-        PatientView patient = patient(original, sampleId, workflow);
 
         var rows = requests.getRequestsBySampleId(sampleId);
         var physicalRows = items.getSampleItemsBySampleId(sampleId); // DAO intentionally includes voided items.
+        if (original == null && rows != null && rows.isEmpty()) {
+            throw new EntrySubmissionException(409, "SPECIMEN_LOOKUP_LEGACY_READONLY",
+                    "该旧申请没有完整的逻辑标本关系，暂不能在采收工作区操作。");
+        }
         if (rows == null || rows.isEmpty() || physicalRows == null) {
             throw conflict();
         }
@@ -175,8 +192,10 @@ public class EntryCurrentStateReader {
         Map<String, RequestView> logical = new LinkedHashMap<>();
         Map<String, String> itemToRequest = new HashMap<>();
         Set<String> allTests = new HashSet<>();
-        for (JsonNode row : original.path("requestedSpecimens")) {
-            allTests.addAll(ids(row.path("requestedTests").asText(), true));
+        if (original != null) {
+            for (JsonNode row : original.path("requestedSpecimens")) {
+                allTests.addAll(ids(row.path("requestedTests").asText(), true));
+            }
         }
         for (SampleTypeRequest row : rows) {
             if (row == null || row.getId() == null || row.getId() <= 0 || row.getSample() == null
@@ -207,15 +226,17 @@ public class EntryCurrentStateReader {
                 throw conflict();
             }
         }
-        Set<String> originalIds = new HashSet<>();
-        for (JsonNode row : original.path("requestedSpecimens")) {
-            String id = requiredId(row.path("id").asText());
-            if (!originalIds.add(id) || !logical.containsKey(id)) {
+        if (original != null) {
+            Set<String> originalIds = new HashSet<>();
+            for (JsonNode row : original.path("requestedSpecimens")) {
+                String id = requiredId(row.path("id").asText());
+                if (!originalIds.add(id) || !logical.containsKey(id)) {
+                    throw conflict();
+                }
+            }
+            if (originalIds.isEmpty()) {
                 throw conflict();
             }
-        }
-        if (originalIds.isEmpty()) {
-            throw conflict();
         }
         // An unlinked physical item may be legacy/extra work. Never silently omit it.
         if (!itemToRequest.keySet().equals(physical.keySet())) {
@@ -270,6 +291,7 @@ public class EntryCurrentStateReader {
         if (!allowed.containsAll(allTests)) {
             throw new AccessDeniedException("当前登记权限不足，无法查看该申请的完整标本状态。");
         }
+        PatientView patient = patient(original, sampleId, workflow);
         List<RequestView> ordered = logical.values().stream()
                 .sorted(Comparator.comparingInt(RequestView::sortOrder).thenComparing(RequestView::id)).toList();
         specimens.sort(Comparator.comparing(SpecimenView::requestId));
@@ -405,10 +427,11 @@ public class EntryCurrentStateReader {
             }
             return null;
         }
-        String expected = requiredId(original.path("patientId").asText());
-        if (links.size() != 1 || !expected.equals(links.get(0).getPatientId())) {
+        String expected = original == null ? null : requiredId(original.path("patientId").asText());
+        if (links.size() != 1 || (expected != null && !expected.equals(links.get(0).getPatientId()))) {
             throw conflict();
         }
+        expected = requiredId(links.get(0).getPatientId());
         var patient = patients.get(expected);
         if (patient == null || !expected.equals(patient.getId()) || patient.getPerson() == null) {
             throw conflict();

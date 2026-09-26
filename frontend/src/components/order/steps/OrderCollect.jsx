@@ -5,7 +5,7 @@ import { useIntl } from "react-intl";
 import { Stack, Button } from "@carbon/react";
 import { ArrowLeft, WarningAlt } from "@carbon/icons-react";
 import OrderWorkflowLayout from "../OrderWorkflowLayout";
-import OrderTaskStartState from "../OrderTaskStartState";
+import SpecimenLookupPanel from "../SpecimenLookupPanel";
 import { useOrderContext } from "../OrderContext";
 import { NotificationContext } from "../../layout/Layout";
 import {
@@ -44,9 +44,11 @@ const OrderCollect = () => {
   const intl = useIntl();
   const history = useHistory();
   const componentMounted = useRef(true);
+  const [lookupView, setLookupView] = useState(null);
 
   const {
     orderId,
+    labNumber,
     orderData,
     samples,
     setSamples,
@@ -224,6 +226,16 @@ const OrderCollect = () => {
     !hasFutureCollectionTime;
 
   const hasLoadedOrder = Boolean(orderId || orderData?.sampleOrderItems?.labNo);
+  const showLookup = lookupView === null ? !hasLoadedOrder : lookupView;
+
+  const lookupPanel = (
+    <SpecimenLookupPanel
+      active={showLookup}
+      canReturn={hasLoadedOrder}
+      originalLabNo={labNumber || orderData?.sampleOrderItems?.labNo || ""}
+      onViewChange={setLookupView}
+    />
+  );
 
   if (!hasLoadedOrder) {
     return (
@@ -232,8 +244,9 @@ const OrderCollect = () => {
         title="order.step.collect"
         showSaveButtons={false}
         showWorkflowProgress={false}
+        showBarcodeScanner={false}
       >
-        <OrderTaskStartState taskLabel="order.step.collect" />
+        {lookupPanel}
       </OrderWorkflowLayout>
     );
   }
@@ -323,6 +336,14 @@ const OrderCollect = () => {
       currentStep={1}
       title="order.step.collect"
       canProceed={canProceed}
+      showBarcodeScanner={false}
+      showWorkflowProgress={!showLookup}
+      showGuidance={!showLookup}
+      showOrderContextCard={!showLookup}
+      showEditAction={!showLookup}
+      showReadOnlyBanner={!showLookup}
+      showSaveStatus={!showLookup}
+      showSaveButtons={!showLookup}
       onSave={handleSave}
       onSaveAndNext={handleSaveAndNext}
       blockingReasons={[
@@ -330,56 +351,63 @@ const OrderCollect = () => {
         ...(hasFutureCollectionTime ? ["collect.sample.futureTime"] : []),
       ]}
     >
-      {notificationVisible && <AlertDialog />}
+      {lookupPanel}
+      {!showLookup && (
+        <>
+          {notificationVisible && <AlertDialog />}
 
-      {!hasOrderedTests ? (
-        <section className="order-blocked-state" role="status">
-          <span className="order-blocked-state__icon" aria-hidden="true">
-            <WarningAlt size={28} />
-          </span>
-          <div className="order-blocked-state__copy">
-            <h3>
-              {intl.formatMessage({ id: "collect.noTestsWarning.title" })}
-            </h3>
-            <p>
-              {intl.formatMessage({ id: "collect.noTestsWarning.subtitle" })}
-            </p>
-          </div>
-          <Button
-            kind="primary"
-            renderIcon={ArrowLeft}
-            onClick={() => pushWithListContext(history, "/order/enter")}
-          >
-            {intl.formatMessage({ id: "order.step.enter" })}
-          </Button>
-        </section>
-      ) : (
-        <Stack gap={6} className="order-collect-sections">
-          <RequestedTestsSection
-            samples={samples}
-            setSamples={setSamples}
-            testSampleAssignments={testSampleAssignments}
-            assignTestToSample={assignTestToSample}
-            removeTestFromSample={removeTestFromSample}
-            sampleTypes={sampleTypes}
-            isReadOnly={isReadOnly && !isEditMode}
-          />
+          {!hasOrderedTests ? (
+            <section className="order-blocked-state" role="status">
+              <span className="order-blocked-state__icon" aria-hidden="true">
+                <WarningAlt size={28} />
+              </span>
+              <div className="order-blocked-state__copy">
+                <h3>
+                  {intl.formatMessage({ id: "collect.noTestsWarning.title" })}
+                </h3>
+                <p>
+                  {intl.formatMessage({
+                    id: "collect.noTestsWarning.subtitle",
+                  })}
+                </p>
+              </div>
+              <Button
+                kind="primary"
+                renderIcon={ArrowLeft}
+                onClick={() => pushWithListContext(history, "/order/enter")}
+              >
+                {intl.formatMessage({ id: "order.step.enter" })}
+              </Button>
+            </section>
+          ) : (
+            <Stack gap={6} className="order-collect-sections">
+              <RequestedTestsSection
+                samples={samples}
+                setSamples={setSamples}
+                testSampleAssignments={testSampleAssignments}
+                assignTestToSample={assignTestToSample}
+                removeTestFromSample={removeTestFromSample}
+                sampleTypes={sampleTypes}
+                isReadOnly={isReadOnly && !isEditMode}
+              />
 
-          <ConsentAccordionSection
-            consentData={consentData}
-            onConsentChange={handleConsentChange}
-            isReadOnly={isReadOnly && !isEditMode}
-          />
+              <ConsentAccordionSection
+                consentData={consentData}
+                onConsentChange={handleConsentChange}
+                isReadOnly={isReadOnly && !isEditMode}
+              />
 
-          <SamplesCollectionSection
-            samples={samples}
-            setSamples={setSamples}
-            sampleTypes={sampleTypes}
-            unitOfMeasures={unitOfMeasures}
-            updateSampleCollectionDetails={updateSampleCollectionDetails}
-            isReadOnly={isReadOnly && !isEditMode}
-          />
-        </Stack>
+              <SamplesCollectionSection
+                samples={samples}
+                setSamples={setSamples}
+                sampleTypes={sampleTypes}
+                unitOfMeasures={unitOfMeasures}
+                updateSampleCollectionDetails={updateSampleCollectionDetails}
+                isReadOnly={isReadOnly && !isEditMode}
+              />
+            </Stack>
+          )}
+        </>
       )}
     </OrderWorkflowLayout>
   );

@@ -688,4 +688,21 @@ public class EntryCurrentStateReaderTest {
             java.util.TimeZone.setDefault(zone);
         }
     }
+
+    @Test
+    public void dailyReadUsesCurrentClinicalIdentityWithoutAnOriginalSubmissionReceipt() {
+        var tube = collect(0, "801");
+        tube.setSortOrder("1");
+        var current = reader.readCurrentClinical("301", "7");
+        assertEquals("601", current.patient().id());
+        assertEquals("701", current.physicalSpecimens().get(0).requestId());
+        assertTrue(current.readOnly());
+    }
+
+    @Test
+    public void dailyReadRejectsRevokedWholeOrderTestsBeforeLoadingPatientDetails() {
+        logical.get(2).setRequestedTests("99");
+        assertThrows(AccessDeniedException.class, () -> reader.readCurrentClinical("301", "7"));
+        verifyZeroInteractions(patients);
+    }
 }

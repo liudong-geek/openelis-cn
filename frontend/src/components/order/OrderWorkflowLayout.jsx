@@ -96,6 +96,9 @@ const OrderWorkflowLayout = ({
   showWorkflowProgress = true,
   showGuidance = true,
   showBarcodeScanner = true,
+  showOrderContextCard = true,
+  showEditAction = true,
+  showReadOnlyBanner = true,
 }) => {
   const intl = useIntl();
   const location = useLocation();
@@ -168,7 +171,7 @@ const OrderWorkflowLayout = ({
                 fallback="/order"
                 confirmLeave={isDirty && (!isReadOnly || isEditMode)}
               />
-              {canEdit && (
+              {canEdit && showEditAction && (
                 <Button
                   kind="tertiary"
                   size="sm"
@@ -182,7 +185,7 @@ const OrderWorkflowLayout = ({
           </div>
 
           {/* Read-only indicator banner */}
-          {isReadOnly && !isEditMode && (
+          {showReadOnlyBanner && isReadOnly && !isEditMode && (
             <div className="readonly-banner">
               <FormattedMessage
                 id="order.readonly.message"
@@ -280,9 +283,10 @@ const OrderWorkflowLayout = ({
           )}
 
           {/* Persistent Order Context Card */}
-          {(labNumber || orderData?.sampleOrderItems?.labNo) && (
-            <OrderContextCard className="order-context-section" />
-          )}
+          {showOrderContextCard &&
+            (labNumber || orderData?.sampleOrderItems?.labNo) && (
+              <OrderContextCard className="order-context-section" />
+            )}
 
           {/* Main Content Area */}
           <div

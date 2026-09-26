@@ -1,0 +1,148 @@
+package org.openelisglobal.sample.service;
+
+import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+import java.lang.reflect.Constructor;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import org.junit.Before;
+import org.junit.Test;
+import org.openelisglobal.common.util.DefaultConfigurationProperties;
+import org.openelisglobal.sample.dao.OrderDashboardDAO;
+import org.openelisglobal.sample.dao.SpecimenLookupCandidateDAO;
+import org.openelisglobal.sample.dao.SpecimenLookupCandidateDAO.Candidate;
+import org.openelisglobal.sample.form.OrderDashboardCriteria;
+import org.openelisglobal.sample.form.SpecimenIntakeFacts;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.access.AccessDeniedException;
+
+public class SpecimenLookupServiceTest {
+    private SpecimenLookupCandidateDAO candidates;
+    private EntryCurrentStateReader currentStates;
+    private OrderDashboardDAO dashboard;
+    private OrderDashboardAccess access;
+    private SpecimenLookupService service;
+    private MockHttpServletRequest request;
+    private OrderDashboardAccess.Scope scope;
+
+    @Before
+    public void setUp() throws Exception {
+        candidates = mock(SpecimenLookupCandidateDAO.class);
+        currentStates = mock(EntryCurrentStateReader.class);
+        dashboard = mock(OrderDashboardDAO.class);
+        access = mock(OrderDashboardAccess.class);
+        var configuration = mock(DefaultConfigurationProperties.class);
+        when(configuration.getPropertyValue("domain.human")).thenReturn("H");
+        request = new MockHttpServletRequest();
+        scope = scope(false);
+        when(access.bind(request)).thenReturn(scope);
+        when(dashboard.findIntakeFacts(anyString(), any())).thenReturn(Optional.of(
+                new SpecimenIntakeFacts(true, false, false, false, false, false, false, false)));
+        service = new SpecimenLookupService(candidates, currentStates, dashboard, access, configuration);
+    }
+
+    private OrderDashboardAccess.Scope scope(boolean masked) throws Exception {
+        Constructor<OrderEntryActorGuard.BoundActor> constructor = OrderEntryActorGuard.BoundActor.class
+                .getDeclaredConstructor(org.springframework.security.core.Authentication.class, Object.class,
+                        String.class, String.class, jakarta.servlet.http.HttpSession.class, int.class, Set.class);
+        constructor.setAccessible(true);
+        var actor = constructor.newInstance(null, null, "operator", "7", null, 1, Set.of());
+        return new OrderDashboardAccess.Scope(actor, List.of("41"), List.of("3"), masked);
+    }
+
+    private EntryCurrentStateReader.Snapshot snapshot() {
+        var patient = new EntryCurrentStateReader.PatientView("601", "SECRET-NATIONAL-ID", "小明", "王", "M",
+                "1990-01-02");
+        var requested = List.of(new EntryCurrentStateReader.RequestView("701", 0, "31", 1.0, null,
+                List.of("41"), List.of(), "COLLECTED", "801", null, null));
+        var physical = List.of(new EntryCurrentStateReader.SpecimenView("801", "701", "1", "31", 1.0, null,
+                "12", false, false, "2026-09-26T01:00:00Z", "2026-09-26T02:00:00Z", "collector", null,
+                List.of(new EntryCurrentStateReader.AnalysisView("901", "41", "13", null))));
+        return new EntryCurrentStateReader.Snapshot(1, true, "301", "SIM.1", "clinical", "11", null, patient,
+                requested, physical);
+    }
+
+    private void found(Candidate... matches) {
+        when(candidates.exactMatches(anyString()))
+                .thenReturn(new SpecimenLookupCandidateDAO.Candidates(List.of(matches), false));
+        when(currentStates.readCurrentClinical("301", "7")).thenReturn(snapshot());
+    }
+
+    @Test
+    public void otherOperatorCanReadOnlyLookupOrderAfterWholeOrderScopeAndTestChecks() {
+        found(new Candidate("301", "SIM.1", "H", null, null));
+        var result = service.lookup("SIM.1", request);
+        assertEquals("order", result.matchedKind());
+        assertTrue(result.readOnly());
+        assertNull(result.selection().sampleItemId());
+        assertEquals("王", result.current().patient().lastName());
+        assertEquals("COLLECTED", result.current().requestedSpecimens().get(0).status());
+        var criteria = org.mockito.ArgumentCaptor.forClass(OrderDashboardCriteria.class);
+        verify(dashboard).findIntakeFacts(eq("301"), criteria.capture());
+        assertEquals(List.of("41"), criteria.getValue().testIds());
+        assertEquals(List.of("3"), criteria.getValue().sectionIds());
+        verify(currentStates).readCurrentClinical("301", "7");
+        verify(access).requireUnchanged(request, scope);
+        assertFalse(result.toString().contains("SECRET-NATIONAL-ID"));
+    }
+
+    @Test
+    public void exactRealTubeSelectsItsLinkedRequestNotATypeOrArrayPosition() {
+        found(new Candidate("301", "SIM.1", "H", "801", "1"));
+        var result = service.lookup("SIM.1.1", request);
+        assertEquals("specimen", result.matchedKind());
+        assertEquals("801", result.selection().sampleItemId());
+        assertEquals("701", result.selection().requestId());
+        assertEquals("12", result.current().physicalSpecimens().get(0).statusId());
+    }
+
+    @Test
+    public void orderAndTubeCodeCollisionIsAmbiguousBeforePatientRead() {
+        found(new Candidate("301", "SIM.1", "H", null, null),
+                new Candidate("302", "SIM", "H", "802", "1"));
+        var failure = assertThrows(SpecimenLookupService.Failure.class, () -> service.lookup("SIM.1", request));
+        assertEquals("SPECIMEN_LOOKUP_AMBIGUOUS", failure.code());
+        verifyZeroInteractions(currentStates);
+    }
+
+    @Test
+    public void incompleteWholeOrderGrantReturnsNoPatientOrTubeDetails() {
+        found(new Candidate("301", "SIM.1", "H", null, null));
+        when(dashboard.findIntakeFacts(eq("301"), any())).thenReturn(Optional.empty());
+        assertThrows(AccessDeniedException.class, () -> service.lookup("SIM.1", request));
+        verifyZeroInteractions(currentStates);
+    }
+
+    @Test
+    public void privacyMaskRemovesPatientIdentityFromPublicProjection() throws Exception {
+        scope = scope(true);
+        when(access.bind(request)).thenReturn(scope);
+        found(new Candidate("301", "SIM.1", "H", null, null));
+        var result = service.lookup("SIM.1", request);
+        assertTrue(result.current().patientMasked());
+        assertNull(result.current().patient());
+        assertFalse(result.toString().contains("小明"));
+    }
+
+    @Test
+    public void invalidCodeAndNoMatchRemainDistinctAndDoNotReadPatient() {
+        var invalid = assertThrows(SpecimenLookupService.Failure.class, () -> service.lookup("SIM/1", request));
+        assertEquals(400, invalid.status());
+        verifyZeroInteractions(access, candidates, currentStates);
+        when(candidates.exactMatches("UNKNOWN"))
+                .thenReturn(new SpecimenLookupCandidateDAO.Candidates(List.of(), false));
+        var missing = assertThrows(SpecimenLookupService.Failure.class, () -> service.lookup("UNKNOWN", request));
+        assertEquals(404, missing.status());
+        verifyZeroInteractions(currentStates);
+    }
+
+    @Test
+    public void staleTubeIdentityFailsInsteadOfSelectingAnUnrelatedTube() {
+        found(new Candidate("301", "SIM.1", "H", "999", "1"));
+        var failure = assertThrows(SpecimenLookupService.Failure.class, () -> service.lookup("SIM.1.1", request));
+        assertEquals("SPECIMEN_LOOKUP_STATE_CONFLICT", failure.code());
+    }
+}
