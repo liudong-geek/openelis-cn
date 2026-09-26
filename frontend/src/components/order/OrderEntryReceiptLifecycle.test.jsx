@@ -10,6 +10,11 @@ import { OrderProvider, useOrderContext } from "./OrderContext";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 
 let context;
+const serverClock = {
+  date: "2026-09-26",
+  time: "13:37",
+  timezone: "Asia/Shanghai",
+};
 function Probe() {
   context = useOrderContext();
   return <output aria-label="保存状态">{context.saveStatus}</output>;
@@ -78,7 +83,7 @@ test.each(["missing", "wrong-order", "valid"])(
     let result, error;
     await act(async () => {
       try {
-        result = await context.saveOrderEntry();
+        result = await context.saveOrderEntry(false, null, serverClock);
       } catch (caught) {
         error = caught;
       }
@@ -88,7 +93,12 @@ test.each(["missing", "wrong-order", "valid"])(
     expect(JSON.parse(write.options.body)).toMatchObject({
       orderEntryOnly: true,
       sampleXML: "",
-      sampleOrderItems: { labNo: "SIM-RECEIPT-001", modified: false },
+      sampleOrderItems: {
+        labNo: "SIM-RECEIPT-001",
+        modified: false,
+        receivedDateForDisplay: "09/26/2026",
+        receivedTime: "13:37",
+      },
       requestedSpecimens: [
         { typeOfSampleId: "2", sortOrder: 0, requestedTests: "11" },
         { typeOfSampleId: "3", sortOrder: 1, requestedTests: "12" },
@@ -99,11 +109,14 @@ test.each(["missing", "wrong-order", "valid"])(
       expect(error).toBeUndefined();
       expect(result).toEqual({ success: true, sampleId: "701" });
       expect(context.orderId).toBe("701");
+      expect(context.orderData.sampleOrderItems.receivedTime).toBe("13:37");
       expect(context.isSaveUnconfirmed).toBe(false);
       expect(sessionStorage.getItem("lis.entry.pending.v1")).toBeNull();
       // Continuing an unchanged confirmed draft must not duplicate its tubes.
       await act(async () => {
-        expect(await context.saveOrderEntry()).toEqual(result);
+        expect(await context.saveOrderEntry(false, null, serverClock)).toEqual(
+          result,
+        );
       });
     } else {
       expect(error).toMatchObject({
@@ -124,7 +137,9 @@ test.each(["missing", "wrong-order", "valid"])(
       });
       view.rerender(<View child={1} />);
       await act(async () => {
-        await expect(context.saveOrderEntry()).rejects.toMatchObject({
+        await expect(
+          context.saveOrderEntry(false, null, serverClock),
+        ).rejects.toMatchObject({
           errorKey: "order.save.readbackUnconfirmed",
         });
       });

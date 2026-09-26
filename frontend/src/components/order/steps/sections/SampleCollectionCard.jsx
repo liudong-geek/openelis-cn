@@ -21,9 +21,9 @@ import {
   formatIsoDateForPicker,
   getDatePickerFormat,
   getDatePickerPlaceholderMessage,
-  toLocalIsoDate,
 } from "../../orderDateUtils";
 import { localizeSampleType } from "../../sampleTypeIntl";
+import { collectionDefaultsFor } from "../collectionClock";
 
 /**
  * SampleCollectionCard - Card for a single sample with collection details
@@ -42,8 +42,7 @@ const SampleCollectionCard = ({
   sampleIndex,
   sampleTypes,
   unitOfMeasures,
-  serverReceivedDate,
-  serverReceivedTime,
+  serverClock,
   onUpdate,
   onRemove,
   onPrintLabels,
@@ -55,32 +54,11 @@ const SampleCollectionCard = ({
     useContext(ConfigurationContext) || {};
   const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "en-US";
 
-  // Auto-populate dates/times for new samples that don't have values yet
-  // collectionDate/Time default to now; receivedDate/Time default to server values
+  // Default both collection and receipt from the same verified server clock.
+  // Never replace entered or persisted values with the workstation's time.
   useEffect(() => {
     if (!sample.sampleItemId && !isReadOnly) {
-      const updates = {};
-
-      if (!sample.collectionDate) {
-        const now = new Date();
-        const yyyy = now.getFullYear();
-        const mm = String(now.getMonth() + 1).padStart(2, "0");
-        const dd = String(now.getDate()).padStart(2, "0");
-        updates.collectionDate = `${yyyy}-${mm}-${dd}`;
-      }
-      if (!sample.collectionTime) {
-        const now = new Date();
-        const hh = String(now.getHours()).padStart(2, "0");
-        const min = String(now.getMinutes()).padStart(2, "0");
-        updates.collectionTime = `${hh}:${min}`;
-      }
-      if (!sample.receivedDate && serverReceivedDate) {
-        updates.receivedDate = serverReceivedDate;
-      }
-      if (!sample.receivedTime && serverReceivedTime) {
-        updates.receivedTime = serverReceivedTime;
-      }
-
+      const updates = collectionDefaultsFor(sample, serverClock);
       if (Object.keys(updates).length > 0) {
         onUpdate(sampleIndex, updates);
       }
@@ -89,10 +67,13 @@ const SampleCollectionCard = ({
     sample.sampleItemId,
     sample.collectionDate,
     sample.collectionTime,
+    sample.collectionDateUserEdited,
+    sample.collectionTimeUserEdited,
     sample.receivedDate,
     sample.receivedTime,
-    serverReceivedDate,
-    serverReceivedTime,
+    sample.receivedDateUserEdited,
+    sample.receivedTimeUserEdited,
+    serverClock,
     sampleIndex,
     onUpdate,
     isReadOnly,
@@ -105,7 +86,15 @@ const SampleCollectionCard = ({
   const localizedSampleTypeName = localizeSampleType(intl, sampleTypeName);
 
   const handleFieldChange = (field, value) => {
-    onUpdate(sampleIndex, { [field]: value });
+    const editedFlag = [
+      "collectionDate",
+      "collectionTime",
+      "receivedDate",
+      "receivedTime",
+    ].includes(field)
+      ? { [`${field}UserEdited`]: true }
+      : {};
+    onUpdate(sampleIndex, { [field]: value, ...editedFlag });
   };
 
   return (
@@ -277,7 +266,6 @@ const SampleCollectionCard = ({
           <DatePicker
             datePickerType="single"
             dateFormat={getDatePickerFormat(dateLocale)}
-            maxDate={formatIsoDateForPicker(toLocalIsoDate(), dateLocale)}
             value={formatIsoDateForPicker(sample.collectionDate, dateLocale)}
             onChange={(dates) => {
               if (dates && dates[0]) {
@@ -285,6 +273,8 @@ const SampleCollectionCard = ({
                 const day = String(dates[0].getDate()).padStart(2, "0");
                 const year = dates[0].getFullYear();
                 handleFieldChange("collectionDate", `${year}-${month}-${day}`);
+              } else {
+                handleFieldChange("collectionDate", "");
               }
             }}
           >
@@ -368,11 +358,12 @@ const SampleCollectionCard = ({
             <DatePicker
               datePickerType="single"
               dateFormat={getDatePickerFormat(dateLocale)}
-              maxDate={formatIsoDateForPicker(toLocalIsoDate(), dateLocale)}
               value={formatIsoDateForPicker(
-                // Use stored value if editing existing sample, otherwise use server time for new samples
+                // Keep the persisted or manually entered value when present.
                 sample.receivedDate ||
-                  (sample.sampleItemId ? "" : serverReceivedDate),
+                  (sample.sampleItemId || sample.receivedDateUserEdited
+                    ? ""
+                    : serverClock?.date),
                 dateLocale,
               )}
               onChange={(dates) => {
@@ -384,6 +375,8 @@ const SampleCollectionCard = ({
                   const day = String(dates[0].getDate()).padStart(2, "0");
                   const year = dates[0].getFullYear();
                   handleFieldChange("receivedDate", `${year}-${month}-${day}`);
+                } else {
+                  handleFieldChange("receivedDate", "");
                 }
               }}
             >
@@ -418,9 +411,11 @@ const SampleCollectionCard = ({
                 defaultMessage: "Received Time",
               })}
               value={
-                // Use stored value if editing existing sample, otherwise use server time for new samples
+                // Keep the persisted or manually entered value when present.
                 sample.receivedTime ||
-                (sample.sampleItemId ? "" : serverReceivedTime) ||
+                (sample.sampleItemId || sample.receivedTimeUserEdited
+                  ? ""
+                  : serverClock?.time) ||
                 ""
               }
               onChange={(e) =>

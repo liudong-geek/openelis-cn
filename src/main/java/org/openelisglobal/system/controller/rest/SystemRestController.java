@@ -1,8 +1,7 @@
 package org.openelisglobal.system.controller.rest;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Map;
@@ -23,11 +22,10 @@ public class SystemRestController {
             Map<String, Object> response = new HashMap<>();
 
             ZoneId zoneId = ZoneId.systemDefault();
-            LocalDate now = LocalDate.now(zoneId);
-            LocalTime time = LocalTime.now(zoneId);
+            ZonedDateTime now = ZonedDateTime.now(zoneId);
 
             response.put("date", now.format(DateTimeFormatter.ISO_LOCAL_DATE));
-            response.put("time", time.format(DateTimeFormatter.ofPattern("HH:mm")));
+            response.put("time", now.format(DateTimeFormatter.ofPattern("HH:mm")));
             response.put("timezone", zoneId.getId());
 
             return ResponseEntity.ok(response);

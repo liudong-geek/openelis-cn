@@ -5,11 +5,27 @@ const PATIENT_NUMBER = "E2E-PAGING-1-001";
 const FACILITY_NAME = "CAMES MAN";
 const API_ROOT = "/api/OpenELIS-Global";
 
+// Reproduce the laboratory server (UTC) and collector workstation (China)
+// using different wall clocks in the isolated E2E stack.
+test.use({ timezoneId: "Asia/Shanghai" });
+
 test("采收页按申请和真实管码只读核对当前身份与下一任务", async ({
   page,
 }, testInfo) => {
   test.setTimeout(180_000);
   let labNumber = "";
+  let defaultCollectionTime = "";
+  let defaultReceivedTime = "";
+  let orderReceivedDate = "";
+  let orderReceivedTime = "";
+  const minutes = (time: string) => {
+    const match = /^(\d{2}):(\d{2})(?:\s+(AM|PM))?$/i.exec(time);
+    expect(match, `有效的时分值：${time}`).toBeTruthy();
+    let hour = Number(match![1]);
+    if (match![3])
+      hour = (hour % 12) + (match![3].toUpperCase() === "PM" ? 12 : 0);
+    return hour * 60 + Number(match![2]);
+  };
 
   await test.step("原申请页建立送检机构、全血 WBC 临床申请", async () => {
     await page.goto("/order/enter", { waitUntil: "domcontentloaded" });
@@ -56,7 +72,7 @@ test("采收页按申请和真实管码只读核对当前身份与下一任务",
       .locator("option")
       .filter({ hasText: "全血" })
       .first()
-      .getAttribute("value");
+      .evaluate((option) => option.getAttribute("value"));
     expect(wholeBlood, "全血主数据应已装载").toBeTruthy();
     await type.selectOption(wholeBlood!);
 
@@ -64,7 +80,9 @@ test("采收页按申请和真实管码只读核对当前身份与下一任务",
       .locator('.sample-test-section label[for^="test-0-"]')
       .filter({ hasText: /白细胞|WBC/i })
       .first();
-    const testId = await wbcLabel.getAttribute("for");
+    const testId = await wbcLabel.evaluate((label) =>
+      label.getAttribute("for"),
+    );
     expect(testId, "WBC 检验项目应已装载").toBeTruthy();
     await page.locator(`label[for="${testId}"]`).click();
 
@@ -79,6 +97,24 @@ test("采收页按申请和真实管码只读核对当前身份与下一任务",
     labNumber =
       (await page.locator(".context-lab-number").textContent())?.trim() || "";
     expect(labNumber, "应生成申请编号").toBeTruthy();
+    const savedApplication = await page.request.get(
+      `${API_ROOT}/rest/order/search?labNumber=${encodeURIComponent(labNumber)}`,
+    );
+    expect(savedApplication.status()).toBe(200);
+    const applicationData = await savedApplication.json();
+    orderReceivedDate = applicationData.sampleOrderItems.receivedDateForDisplay;
+    orderReceivedTime = applicationData.sampleOrderItems.receivedTime;
+    expect(orderReceivedDate).toBeTruthy();
+    expect(orderReceivedTime).toMatch(/^\d{2}:\d{2}(?:\s+(?:AM|PM))?$/i);
+    const laboratoryClock = await page.request.get(
+      `${API_ROOT}/rest/server-time`,
+    );
+    expect(laboratoryClock.status()).toBe(200);
+    const serverTime = await laboratoryClock.json();
+    expect(serverTime.timezone).not.toBe("Asia/Shanghai");
+    expect(
+      (minutes(serverTime.time) - minutes(orderReceivedTime) + 1440) % 1440,
+    ).toBeLessThanOrEqual(2);
   });
 
   await test.step("按申请编号核对患者和待采集请求，不写入", async () => {
@@ -125,19 +161,56 @@ test("采收页按申请和真实管码只读核对当前身份与下一任务",
     await expect(page.locator("#collectionDate-0")).toBeVisible({
       timeout: LONG_TIMEOUT,
     });
-    // The fixture browser and laboratory server use different time zones.
-    // Enter an explicit synthetic collection time no later than the server's
-    // displayed receipt time; the UI's default local time may be in the future.
-    const receiptTime = await page.locator("#receivedTime-0").inputValue();
-    expect(receiptTime).toMatch(/^\d{2}:\d{2}$/);
-    await page.locator("#collectionTime-0").fill(receiptTime);
+    // A collector in China must be able to save untouched defaults even when
+    // the laboratory server uses UTC. Both fields come from its clock.
+    const collectionDate = page.locator("#collectionDate-0");
+    const collectionTime = page.locator("#collectionTime-0");
+    const receivedDate = page.locator("#receivedDate-0");
+    const receivedTime = page.locator("#receivedTime-0");
+    await expect(collectionDate).not.toHaveValue("");
+    await expect(receivedDate).not.toHaveValue("");
+    await expect(collectionTime).toHaveValue(/^\d{2}:\d{2}$/);
+    await expect(receivedTime).toHaveValue(/^\d{2}:\d{2}$/);
+    const defaultReceivedDate = await receivedDate.inputValue();
+    await expect(collectionDate).toHaveValue(defaultReceivedDate);
+    defaultCollectionTime = await collectionTime.inputValue();
+    defaultReceivedTime = await receivedTime.inputValue();
+    await expect(collectionTime).toHaveValue(defaultReceivedTime);
+    expect(
+      await page.evaluate(
+        () => Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ),
+    ).toBe("Asia/Shanghai");
+    const laboratoryClock = await page.request.get(
+      `${API_ROOT}/rest/server-time`,
+    );
+    expect(laboratoryClock.status()).toBe(200);
+    const serverTime = await laboratoryClock.json();
+    expect(serverTime.timezone).not.toBe("Asia/Shanghai");
+    expect(
+      (minutes(serverTime.time) - minutes(defaultCollectionTime) + 1440) % 1440,
+    ).toBeLessThanOrEqual(2);
+    await testInfo.attach("default-collection-time", {
+      body: JSON.stringify({
+        labNumber,
+        collectionDate: await collectionDate.inputValue(),
+        collectionTime: await collectionTime.inputValue(),
+        receivedDate: await receivedDate.inputValue(),
+        receivedTime: await receivedTime.inputValue(),
+      }),
+      contentType: "application/json",
+    });
+    await page.screenshot({
+      path: testInfo.outputPath("collection-defaults-server-clock.png"),
+      fullPage: true,
+    });
     await page.locator("#collector-0").fill("E2E-COL-01");
     const unit = page.locator("#quantityUnit-0");
     const millilitre = await unit
       .locator("option")
       .filter({ hasText: "mL" })
       .first()
-      .getAttribute("value");
+      .evaluate((option) => option.getAttribute("value"));
     expect(millilitre, "采集量单位应可选择").toBeTruthy();
     await unit.selectOption(millilitre!);
     const saveAndLabel = page.locator(
@@ -148,6 +221,35 @@ test("采收页按申请和真实管码只读核对当前身份与下一任务",
     await expect(page).toHaveURL(/\/order\/label$/, {
       timeout: LONG_TIMEOUT,
     });
+    const persisted = await page.request.get(
+      `${API_ROOT}/rest/order/search?labNumber=${encodeURIComponent(labNumber)}`,
+    );
+    expect(persisted.status()).toBe(200);
+    const persistedOrder = await persisted.json();
+    expect(persistedOrder.sampleOrderItems.receivedDateForDisplay).toBe(
+      orderReceivedDate,
+    );
+    expect(persistedOrder.sampleOrderItems.receivedTime).toBe(
+      orderReceivedTime,
+    );
+    expect(persistedOrder.samples).toHaveLength(1);
+    expect(persistedOrder.samples[0].sampleItemId).toBeTruthy();
+    const savedSpecimen = persistedOrder.samples[0];
+    expect(savedSpecimen.collectionDate).toBeTruthy();
+    expect(savedSpecimen.receivedDate).toBe(savedSpecimen.collectionDate);
+    expect(savedSpecimen.collectionTime).toMatch(/^\d{2}:\d{2}$/);
+    expect(savedSpecimen.receivedTime).toBe(savedSpecimen.collectionTime);
+    const savedClockResponse = await page.request.get(
+      `${API_ROOT}/rest/server-time`,
+    );
+    expect(savedClockResponse.status()).toBe(200);
+    const savedClock = await savedClockResponse.json();
+    expect(
+      (minutes(savedClock.time) -
+        minutes(savedSpecimen.collectionTime) +
+        1440) %
+        1440,
+    ).toBeLessThanOrEqual(2);
   });
 
   await test.step("真实管码定位同一申请，并显示下一任务", async () => {

@@ -94,7 +94,13 @@ const draft = (labNo = "", patient = "SIM患者A") => ({
   orderData: {
     patientUpdateStatus: "ADD",
     patientProperties: { lastName: patient, patientUpdateStatus: "ADD" },
-    sampleOrderItems: { labNo, referringSiteId: "SIM-SITE" },
+    // Existing-entry fixture: the separate test below covers new blank defaults.
+    sampleOrderItems: {
+      labNo,
+      referringSiteId: "SIM-SITE",
+      receivedDateForDisplay: "09/01/2026",
+      receivedTime: "09:00",
+    },
   },
   samples: [{ id: "SIM-TUBE", sampleTypeId: "11", tests: [{ id: "31" }] }],
 });
@@ -181,6 +187,37 @@ afterEach(() => {
 });
 
 describe("申请首次保存与采集入口：SIM父级交互", () => {
+  it("新申请先取服务端时间，失败时不分配编号也不提交", async () => {
+    const user = userEvent.setup();
+    const initial = draft();
+    initial.orderData.sampleOrderItems.receivedDateForDisplay = "";
+    initial.orderData.sampleOrderItems.receivedTime = "";
+    mount(initial);
+    await user.click(button());
+    expect(requests[0].url).toBe("/rest/server-time");
+    await reply(requests[0], null);
+    expect(save).not.toHaveBeenCalled();
+    expect(requests).toHaveLength(1);
+    expect(api.notify).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        kind: "error",
+        message: messages["order.entry.serverTimeUnavailable"],
+      }),
+    );
+    await user.click(button());
+    await reply(requests[1], {
+      date: "2026-09-26",
+      time: "13:37",
+      timezone: "Asia/Shanghai",
+    });
+    expect(requests[2].url).toContain("/rest/SampleEntryGenerateScanProvider");
+    await reply(requests[2], { body: "SIM-TIMED" });
+    expect(save).toHaveBeenCalledWith(false, "SIM-TIMED", {
+      date: "2026-09-26",
+      time: "13:37",
+      timezone: "Asia/Shanghai",
+    });
+  });
   it.each(["patient", "eqa"])(
     "%s已关联时不能静默切成环境标本，说明原因并保留临床输入",
     async (kind) => {
@@ -234,7 +271,7 @@ describe("申请首次保存与采集入口：SIM父级交互", () => {
     ).not.toBeInTheDocument();
     await reply(requests[0], { body: "SIM-GENERATED" });
     expect(save).toHaveBeenCalledTimes(1);
-    expect(save).toHaveBeenCalledWith(false, "SIM-GENERATED");
+    expect(save).toHaveBeenCalledWith(false, "SIM-GENERATED", null);
     expect(button("next")).toBeDisabled();
     expect(history.location.pathname).toBe("/order/enter");
     await act(async () => pending.resolve({ success: true, sampleId: "701" }));
@@ -267,7 +304,7 @@ describe("申请首次保存与采集入口：SIM父级交互", () => {
     expect(requests).toHaveLength(1);
     expect(save).not.toHaveBeenCalled();
     await reply(requests[0], { body: "SIM-NEW" });
-    expect(save).toHaveBeenCalledWith(false, "SIM-NEW");
+    expect(save).toHaveBeenCalledWith(false, "SIM-NEW", null);
     expect(currentState.orderData.patientProperties.lastName).toBe("SIM患者B");
   });
   it("同路由换申请后旧编号回调不能写进新申请或触发提交", async () => {
@@ -310,7 +347,7 @@ describe("申请首次保存与采集入口：SIM父级交互", () => {
     await reply(requests[0], { body: "SIM-EXPIRED" });
     expect(save).not.toHaveBeenCalled();
     await reply(requests[1], { body: "SIM-RETRY" });
-    expect(save).toHaveBeenCalledWith(false, "SIM-RETRY");
+    expect(save).toHaveBeenCalledWith(false, "SIM-RETRY", null);
     expect(currentState.orderData.sampleOrderItems.labNo).toBe("SIM-RETRY");
   });
   it.each([
@@ -412,7 +449,7 @@ describe("申请首次保存与采集入口：SIM父级交互", () => {
       mount();
       await user.click(button(mode));
       await reply(requests[0], { body: "SIM-SAVED" });
-      expect(save).toHaveBeenCalledWith(mode === "draft", "SIM-SAVED");
+      expect(save).toHaveBeenCalledWith(mode === "draft", "SIM-SAVED", null);
       expect(api.notify).toHaveBeenLastCalledWith(
         expect.objectContaining({ kind: "success" }),
       );
@@ -455,7 +492,7 @@ describe("申请首次保存与采集入口：SIM父级交互", () => {
     expect(save).not.toHaveBeenCalled();
     await user.type(input, "SIM-EXTERNAL");
     await user.click(button());
-    expect(save).toHaveBeenCalledWith(false, "SIM-EXTERNAL");
+    expect(save).toHaveBeenCalledWith(false, "SIM-EXTERNAL", null);
     expect(requests).toHaveLength(0);
   });
   it("自身保存回填编号及患者/申请主键仍能进入采集", async () => {

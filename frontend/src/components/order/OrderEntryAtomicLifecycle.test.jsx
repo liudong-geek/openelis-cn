@@ -86,14 +86,20 @@ const mount = () => {
 const begin = () => {
   const outcome = {};
   act(() => {
-    context.saveOrderEntry().then(
-      (value) => {
-        outcome.value = value;
-      },
-      (error) => {
-        outcome.error = error;
-      },
-    );
+    context
+      .saveOrderEntry(false, null, {
+        date: "2026-09-26",
+        time: "13:37",
+        timezone: "Asia/Shanghai",
+      })
+      .then(
+        (value) => {
+          outcome.value = value;
+        },
+        (error) => {
+          outcome.error = error;
+        },
+      );
   });
   return outcome;
 };
@@ -508,7 +514,11 @@ it("自动编号仅回填编号，保留的首单处理函数仍发送完整原�
   );
   let result;
   await act(async () => {
-    result = retained(false, "SIM-ATOMIC-701");
+    result = retained(false, "SIM-ATOMIC-701", {
+      date: "2026-09-26",
+      time: "13:37",
+      timezone: "Asia/Shanghai",
+    });
   });
   await waitFor(() => expect(writes).toHaveLength(1));
   await act(async () => {

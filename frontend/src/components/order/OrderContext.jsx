@@ -21,6 +21,7 @@ import {
 } from "./api/sampleTypeRequestApi";
 import { SampleOrderFormValues } from "../formModel/innitialValues/OrderEntryFormValues";
 import { convertIsoToBackendDate } from "./orderDateUtils";
+import { normalizeServerClock } from "./steps/collectionClock";
 import { entrySubmissionError, submitOrderEntry } from "./orderEntrySubmission";
 import { isFirstEntry } from "./orderEntryReceipt";
 import { readOpenElisResponse } from "../utils/readOpenElisResponse";
@@ -90,6 +91,14 @@ import { createIntakeOperation } from "./intakeOperation";
  */
 
 const AUTO_SAVE_INTERVAL = 30000; // 30 seconds
+
+export const allowsImplicitOrderSave = (pathname) =>
+  !["/order/enter", "/order/collect"].includes(pathname?.replace(/\/+$/, ""));
+
+export const requiresEntryServerClock = (orderData, orderId) =>
+  isFirstEntry({ sampleOrderItems: orderData?.sampleOrderItems }, orderId) &&
+  !orderData?.sampleOrderItems?.receivedDateForDisplay &&
+  !orderData?.sampleOrderItems?.receivedTime;
 
 const nonemptyString = (value) =>
   typeof value === "string" && value.trim().length > 0;
@@ -239,16 +248,6 @@ export const sampleObject = {
 };
 
 /**
- * Get current time formatted as HH:MM
- */
-const getCurrentTime = () => {
-  const now = new Date();
-  const hours = String(now.getHours()).padStart(2, "0");
-  const minutes = String(now.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
-};
-
-/**
  * Initialize order data with minimal defaults.
  * Date fields will be populated from API response.
  */
@@ -265,7 +264,7 @@ const getInitialOrderData = () => {
       // Date fields will be set from API
       requestDate: "",
       receivedDateForDisplay: "",
-      receivedTime: getCurrentTime(),
+      receivedTime: "",
       // paymentOptionSelection should be empty or a valid numeric string
       paymentOptionSelection: "",
     },
@@ -675,9 +674,6 @@ export const OrderProvider = ({ children }) => {
               reject(entrySubmissionError("order.progress.requestChanged"));
               return;
             }
-            activeLoad.current = null;
-            setIsLoading(false);
-
             if (response && response.labNumber) {
               setOrderId(response.id);
               setLabNumber(response.labNumber);
@@ -713,25 +709,34 @@ export const OrderProvider = ({ children }) => {
                 response.samples.length > 0 &&
                 response.samples.some((s) => s.sampleItemId);
 
+              const finishLoadedSamples = (loadedSamples) => {
+                if (!isCurrent()) {
+                  reject(entrySubmissionError("order.progress.requestChanged"));
+                  return;
+                }
+                setSamplesState(loadedSamples);
+                activeLoad.current = null;
+                setIsLoading(false);
+                resolve(response);
+              };
+
               if (!hasSampleItems && response.id) {
                 // Try to load sample type requests
                 getRequestsBySample(response.id)
                   .then((requests) => {
-                    if (!isCurrent()) return;
                     if (requests && requests.length > 0) {
                       const samplesFromRequests =
                         convertRequestsToSamples(requests);
-                      setSamplesState(samplesFromRequests);
+                      finishLoadedSamples(samplesFromRequests);
                     } else {
-                      setSamplesState(response.samples || [sampleObject]);
+                      finishLoadedSamples(response.samples || [sampleObject]);
                     }
                   })
                   .catch(() => {
-                    if (!isCurrent()) return;
-                    setSamplesState(response.samples || [sampleObject]);
+                    finishLoadedSamples(response.samples || [sampleObject]);
                   });
               } else {
-                setSamplesState(response.samples || [sampleObject]);
+                finishLoadedSamples(response.samples || [sampleObject]);
               }
 
               setIsReadOnly(readOnly);
@@ -757,9 +762,10 @@ export const OrderProvider = ({ children }) => {
                 orderData: loadedOrderData,
                 samples: response.samples,
               });
-              resolve(response);
             } else {
               const errorMsg = "Order not found";
+              activeLoad.current = null;
+              setIsLoading(false);
               setError(errorMsg);
               reject(new Error(errorMsg));
             }
@@ -1559,7 +1565,7 @@ export const OrderProvider = ({ children }) => {
    * @param {boolean} orderEntryOnly - If true, samples are not required (decoupled workflow)
    */
   const saveOrder = useCallback(
-    async (silent = false, orderEntryOnly = false) => {
+    async (silent = false, orderEntryOnly = false, samplesOverride = null) => {
       assertQaIdle();
       if (activeRecoveredReceipt.current) throw receiptFailure("busy");
       if (readReceiptCheckpoint()) throw receiptFailure();
@@ -1572,8 +1578,9 @@ export const OrderProvider = ({ children }) => {
       // Build sample XML and referral items
       // Pass environmentalFields for GPS fallback in environmental workflow
       const envFields = orderData?.sampleOrderItems?.environmentalFields || {};
-      const sampleXML = buildSampleXML(samples, envFields);
-      const referralItems = buildReferralItems(samples);
+      const effectiveSamples = samplesOverride ?? samples;
+      const sampleXML = buildSampleXML(effectiveSamples, envFields);
+      const referralItems = buildReferralItems(effectiveSamples);
       const useReferral = referralItems.length > 0;
 
       // Prepare order data for submission in the format expected by SamplePatientEntry
@@ -1653,7 +1660,7 @@ export const OrderProvider = ({ children }) => {
               setError(null);
               lastSavedDataRef.current = JSON.stringify({
                 orderData,
-                samples,
+                samples: effectiveSamples,
               });
 
               // Reload order to get created sampleItemIds and orderId for subsequent saves
@@ -1759,7 +1766,7 @@ export const OrderProvider = ({ children }) => {
    * @param {boolean} silent - If true, no loading indicator is shown
    */
   const saveOrderEntry = useCallback(
-    async (silent = false, labNumberOverride = null) => {
+    async (silent = false, labNumberOverride = null, entryClock = null) => {
       assertQaIdle();
       if (activeRecoveredReceipt.current) throw receiptFailure("busy");
       if (readReceiptCheckpoint()) throw receiptFailure();
@@ -1772,6 +1779,21 @@ export const OrderProvider = ({ children }) => {
 
       const effectiveLabNumber =
         labNumberOverride || orderData?.sampleOrderItems?.labNo || "";
+      const needsServerReceivedTime = requiresEntryServerClock(
+        orderData,
+        orderId,
+      );
+      const verifiedEntryClock = needsServerReceivedTime
+        ? normalizeServerClock(entryClock)
+        : null;
+      if (needsServerReceivedTime && !verifiedEntryClock)
+        throw entrySubmissionError("order.entry.serverTimeUnavailable");
+      const receivedDateForDisplay = verifiedEntryClock
+        ? convertIsoToBackendDate(verifiedEntryClock.date, backendDateLocale)
+        : orderData.sampleOrderItems.receivedDateForDisplay;
+      const receivedTime = verifiedEntryClock
+        ? verifiedEntryClock.time
+        : orderData.sampleOrderItems.receivedTime;
 
       // Prepare order data WITHOUT sample items
       const submitData = {
@@ -1782,6 +1804,8 @@ export const OrderProvider = ({ children }) => {
         orderEntryOnly: true, // Flag for backend to skip sample validation
         sampleOrderItems: {
           ...orderData.sampleOrderItems,
+          receivedDateForDisplay,
+          receivedTime,
           labNo: effectiveLabNumber,
           priorityList: [],
           programList: [],
@@ -1875,6 +1899,9 @@ export const OrderProvider = ({ children }) => {
             sampleOrderItems: {
               ...previous.sampleOrderItems,
               labNo: effectiveLabNumber,
+              ...(verifiedEntryClock
+                ? { receivedDateForDisplay, receivedTime }
+                : {}),
             },
             patientProperties: {
               ...previous.patientProperties,
@@ -1932,6 +1959,7 @@ export const OrderProvider = ({ children }) => {
     [
       orderId,
       orderData,
+      backendDateLocale,
       samples,
       isReadOnly,
       isEditMode,
@@ -2123,8 +2151,8 @@ export const OrderProvider = ({ children }) => {
           sampleOrderItems: {
             ...prev.sampleOrderItems,
             requestDate: response.currentDate,
-            receivedDateForDisplay: response.currentDate,
-            receivedTime: getCurrentTime(),
+            receivedDateForDisplay: "",
+            receivedTime: "",
             paymentOptions: response.sampleOrderItems?.paymentOptions || [],
             paymentOptionSelection: "",
             referringSiteList:
@@ -2174,9 +2202,9 @@ export const OrderProvider = ({ children }) => {
           sampleOrderItems: {
             ...prev.sampleOrderItems,
             requestDate: response.currentDate,
-            receivedDateForDisplay: response.currentDate,
-            receivedTime:
-              prev.sampleOrderItems?.receivedTime || getCurrentTime(),
+            receivedDateForDisplay:
+              prev.sampleOrderItems?.receivedDateForDisplay || "",
+            receivedTime: prev.sampleOrderItems?.receivedTime || "",
             // Use payment options from API if available
             paymentOptions: response.sampleOrderItems?.paymentOptions || [],
             // Keep paymentOptionSelection empty (not "free")
@@ -2206,13 +2234,12 @@ export const OrderProvider = ({ children }) => {
    * A lab number alone is not sufficient — patient (clinical) or site (environmental) plus
    * at least one sample type must be present before we persist.
    *
-   * Step 1 is deliberately excluded. Its decoupled save creates sample type
-   * requests, while saveOrder creates physical sample items. Running the latter
-   * in the background used to advance an order past collection before the user
-   * clicked Save. Step 1 already provides explicit Save and Save draft actions.
+   * Order entry and collection require an explicit save. In particular,
+   * background saving on collection can create a physical sample item before
+   * the server clock and collection fields have been verified.
    */
   useEffect(() => {
-    if (location.pathname === "/order/enter") {
+    if (!allowsImplicitOrderSave(location.pathname)) {
       return undefined;
     }
 

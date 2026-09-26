@@ -27,7 +27,8 @@ import {
 import { Printer } from "@carbon/icons-react";
 import OrderWorkflowLayout from "../OrderWorkflowLayout";
 import EntryRecoveryPanel from "../EntryRecoveryPanel";
-import { useOrderContext } from "../OrderContext";
+import { requiresEntryServerClock, useOrderContext } from "../OrderContext";
+import { getVerifiedServerClock } from "../api/serverClockApi";
 import { NotificationContext, ConfigurationContext } from "../../layout/Layout";
 import {
   AlertDialog,
@@ -50,7 +51,7 @@ const validId = (value) =>
 
 // Saving may fill the generated number and the newly created patient's ID.
 // Everything else remains the user's submitted draft, not a new application.
-const entryFingerprint = (data, samples) => {
+const entryFingerprint = (data, samples, omitAutoReceivedTime = false) => {
   const {
     patientUpdateStatus,
     patientProperties = {},
@@ -63,6 +64,10 @@ const entryFingerprint = (data, samples) => {
     ...patient
   } = patientProperties;
   const { labNo, ...items } = sampleOrderItems;
+  if (omitAutoReceivedTime) {
+    delete items.receivedDateForDisplay;
+    delete items.receivedTime;
+  }
   return JSON.stringify({
     ...rest,
     patientProperties: patient,
@@ -161,8 +166,11 @@ const OrderEnter = () => {
       );
     }
     if (
-      entryFingerprint(current.orderData, current.samples) !==
-      pending.fingerprint
+      entryFingerprint(
+        current.orderData,
+        current.samples,
+        pending.omitAutoReceivedTime,
+      ) !== pending.fingerprint
     )
       return false;
     if (
@@ -456,19 +464,28 @@ const OrderEnter = () => {
       setNotificationVisible(true);
       return;
     }
+    const autoReceivedTime = requiresEntryServerClock(orderData, orderId);
     const pending = {
       ...currentEntry.current,
       originalLabNo: localLabNumber,
-      fingerprint: entryFingerprint(orderData, samples),
+      fingerprint: entryFingerprint(orderData, samples, autoReceivedTime),
+      omitAutoReceivedTime: autoReceivedTime,
       persistedId: orderId ? String(orderId) : "",
       patientId: orderData?.patientProperties?.patientPK
         ? String(orderData.patientProperties.patientPK)
         : "",
-      phase: "number",
+      phase: autoReceivedTime ? "clock" : "number",
     };
     operation.current = pending;
     setIsSaving(true);
     try {
+      let entryClock = null;
+      if (autoReceivedTime) {
+        entryClock = await getVerifiedServerClock();
+        if (!ownsEntry(pending)) return;
+        if (!entryClock) throw entryError("order.entry.serverTimeUnavailable");
+        pending.phase = "number";
+      }
       const effectiveLabNumber = await ensureLabNumber(pending);
       if (!ownsEntry(pending)) return;
       pending.labNo = effectiveLabNumber;
@@ -503,7 +520,7 @@ const OrderEnter = () => {
         }, 30000);
         try {
           Promise.resolve(
-            saveOrderEntry(mode === "draft", effectiveLabNumber),
+            saveOrderEntry(mode === "draft", effectiveLabNumber, entryClock),
           ).then(
             (value) => finish(value),
             (error) => finish(null, error),
@@ -540,6 +557,7 @@ const OrderEnter = () => {
       const knownRejection =
         error?.errorKey !== "order.save.readbackUnconfirmed" &&
         (error?.errorKey === "order.save.incomplete" ||
+          error?.errorKey === "order.entry.serverTimeUnavailable" ||
           error?.errorKey === "security.sessionWriteBlocked" ||
           [400, 401, 403, 409, 422].includes(error?.status));
       const unknown = pending.phase === "save" && !knownRejection;

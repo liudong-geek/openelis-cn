@@ -1,5 +1,11 @@
 import { pushWithListContext } from "../../common/listWorkspace";
-import React, { useContext, useState, useEffect, useRef } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useState,
+  useEffect,
+  useRef,
+} from "react";
 import { useHistory } from "react-router-dom";
 import { useIntl } from "react-intl";
 import { Stack, Button } from "@carbon/react";
@@ -13,6 +19,7 @@ import {
   NotificationKinds,
 } from "../../common/CustomNotification";
 import { getFromOpenElisServer } from "../../utils/Utils";
+import { getVerifiedServerClock } from "../api/serverClockApi";
 import {
   getPendingRequests,
   convertRequestsToSamples,
@@ -20,6 +27,12 @@ import {
 import RequestedTestsSection from "./sections/RequestedTestsSection";
 import SamplesCollectionSection from "./sections/SamplesCollectionSection";
 import ConsentAccordionSection from "./sections/ConsentAccordionSection";
+import {
+  hasPendingClockDefaults,
+  isFutureCollectionTimestamp,
+  mergePendingCollectionSamples,
+  refreshUntouchedCollectionClock,
+} from "./collectionClock";
 import "../order-workflow.scss";
 
 /**
@@ -32,19 +45,17 @@ import "../order-workflow.scss";
  * 2. Samples - Collection details for each sample
  */
 
-export const isFutureCollectionTimestamp = (sample, now = new Date()) => {
-  if (!sample.collectionDate || !sample.collectionTime) return false;
-  const collectionTime = new Date(
-    `${sample.collectionDate}T${sample.collectionTime}:00`,
-  );
-  return !Number.isNaN(collectionTime.getTime()) && collectionTime > now;
-};
+export { isFutureCollectionTimestamp } from "./collectionClock";
 
 const OrderCollect = () => {
   const intl = useIntl();
   const history = useHistory();
   const componentMounted = useRef(true);
   const [lookupView, setLookupView] = useState(null);
+  const [clockSnapshot, setClockSnapshot] = useState(null);
+  const [clockLoading, setClockLoading] = useState(true);
+  const clockRequest = useRef(0);
+  const lastFormVisit = useRef(null);
 
   const {
     orderId,
@@ -53,7 +64,7 @@ const OrderCollect = () => {
     samples,
     setSamples,
     saveOrder,
-    loadOrder,
+    isLoading,
     markStepComplete,
     isReadOnly,
     isEditMode,
@@ -63,9 +74,39 @@ const OrderCollect = () => {
     updateSampleCollectionDetails,
     setOrderData,
   } = useOrderContext();
+  const formKey = `${orderId || ""}|${labNumber || orderData?.sampleOrderItems?.labNo || ""}`;
+  const currentFormKey = useRef(formKey);
+  currentFormKey.current = formKey;
+  const serverClock =
+    clockSnapshot?.formKey === formKey ? clockSnapshot.clock : null;
+  const latestSamples = useRef(samples);
+  latestSamples.current = samples;
+  const latestSaveOrder = useRef(saveOrder);
+  latestSaveOrder.current = saveOrder;
 
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
+
+  const refreshServerClock = useCallback(async () => {
+    const request = ++clockRequest.current;
+    setClockLoading(true);
+    const clock = await getVerifiedServerClock();
+    if (
+      !componentMounted.current ||
+      request !== clockRequest.current ||
+      formKey !== currentFormKey.current
+    )
+      return null;
+    setClockSnapshot({ formKey, clock });
+    setClockLoading(false);
+    return clock;
+  }, [formKey]);
+
+  useEffect(() => {
+    return () => {
+      clockRequest.current += 1;
+    };
+  }, []);
 
   // Sample types from API
   const [sampleTypes, setSampleTypes] = useState([]);
@@ -75,8 +116,11 @@ const OrderCollect = () => {
   const [unitOfMeasures, setUnitOfMeasures] = useState([]);
 
   // Pending sample type requests from Step 1
-  const [pendingRequests, setPendingRequests] = useState([]);
-  const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [requestMapping, setRequestMapping] = useState({
+    orderId: null,
+    status: "idle",
+  });
+  const [requestRetry, setRequestRetry] = useState(0);
 
   // Informed consent data
   const [consentData, setConsentData] = useState({
@@ -137,85 +181,63 @@ const OrderCollect = () => {
 
   // Load pending sample type requests when orderId is available
   useEffect(() => {
+    let cancelled = false;
     const loadPendingRequests = async () => {
-      if (!orderId || !componentMounted.current) return;
+      if (!orderId || isLoading || !componentMounted.current) return;
 
       // Only load if samples don't already have sampleItemIds (not yet collected)
-      const hasSampleItemIds = samples.some((s) => s.sampleItemId);
+      const hasSampleItemIds = latestSamples.current.some(
+        (s) => s.sampleItemId,
+      );
       if (hasSampleItemIds) return;
 
-      setIsLoadingRequests(true);
+      setRequestMapping({ orderId: String(orderId), status: "loading" });
       try {
         const requests = await getPendingRequests(orderId);
-        if (componentMounted.current && requests && requests.length > 0) {
-          setPendingRequests(requests);
-          // Convert pending requests to samples array for the UI
-          const samplesFromRequests = convertRequestsToSamples(requests);
-          // Merge with any existing sample data.
-          // collectionDate/Time are intentionally NOT preserved from existing:
-          // the backend stores the order entry date there, not an actual
-          // collection date. SampleCollectionCard will auto-fill them to
-          // today when they are empty. Only Step-2-specific fields (collector,
-          // conditions, receivedDate/Time) are preserved.
-          const mergedSamples = samplesFromRequests.map((reqSample, idx) => {
-            const existing = samples[idx];
-            if (existing && existing.sampleTypeId === reqSample.sampleTypeId) {
-              return {
-                ...reqSample,
-                collectorId: existing.collectorId || reqSample.collectorId,
-                collectionConditions:
-                  existing.collectionConditions ||
-                  reqSample.collectionConditions,
-                receivedDate: existing.receivedDate || reqSample.receivedDate,
-                receivedTime: existing.receivedTime || reqSample.receivedTime,
-              };
-            }
-            return reqSample;
-          });
-          setSamples(mergedSamples);
+        if (!cancelled && componentMounted.current) {
+          if (requests.length > 0) {
+            const samplesFromRequests = convertRequestsToSamples(requests);
+            setSamples((currentSamples) =>
+              currentSamples.some((sample) => sample.sampleItemId)
+                ? currentSamples
+                : mergePendingCollectionSamples(
+                    samplesFromRequests,
+                    currentSamples,
+                  ),
+            );
+          }
+          setRequestMapping({ orderId: String(orderId), status: "ready" });
         }
       } catch {
-        // Failed to load pending requests
-      } finally {
-        if (componentMounted.current) {
-          setIsLoadingRequests(false);
-        }
+        if (!cancelled && componentMounted.current)
+          setRequestMapping({ orderId: String(orderId), status: "error" });
       }
     };
 
     loadPendingRequests();
-  }, [orderId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId, isLoading, requestRetry]);
 
-  // Track if we've already attempted to reload samples
-  const hasAttemptedReload = useRef(false);
-
-  // Reload order if samples don't have sampleItemId (needed for updates)
-  // This handles the case where user navigates directly to this step
-  useEffect(() => {
-    const labNo = orderData?.sampleOrderItems?.labNo;
-    const hasSampleItemIds = samples.some((s) => s.sampleItemId);
-    const hasSamplesWithTypes = samples.some((s) => s.sampleTypeId);
-
-    if (
-      labNo &&
-      !hasSampleItemIds &&
-      hasSamplesWithTypes &&
-      !hasAttemptedReload.current
-    ) {
-      // Samples exist but don't have sampleItemId - reload to get them
-      hasAttemptedReload.current = true;
-      loadOrder(labNo, false);
-    }
-  }, [orderData?.sampleOrderItems?.labNo, samples, loadOrder]);
+  const requestMappingNeeded =
+    Boolean(orderId) && !samples.some((sample) => sample.sampleItemId);
+  const requestMappingReady =
+    !isLoading &&
+    (!requestMappingNeeded ||
+      (requestMapping.orderId === String(orderId) &&
+        requestMapping.status === "ready"));
+  const requestMappingFailed =
+    requestMappingNeeded &&
+    requestMapping.orderId === String(orderId) &&
+    requestMapping.status === "error";
 
   // Check if we have any tests ordered
   const hasOrderedTests = samples.some(
     (s) => (s.tests && s.tests.length > 0) || (s.panels && s.panels.length > 0),
   );
 
-  const hasFutureCollectionTime = samples.some((sample) =>
-    isFutureCollectionTimestamp(sample),
-  );
+  const pendingClockDefaults = hasPendingClockDefaults(samples);
 
   // A collection cannot move forward without both an ordered test and a typed
   // specimen. Informed consent remains advisory (FRS FR-5-001/FR-5-002).
@@ -223,17 +245,37 @@ const OrderCollect = () => {
     hasOrderedTests &&
     samples?.length > 0 &&
     samples.some((s) => s.sampleTypeId) &&
-    !hasFutureCollectionTime;
+    Boolean(serverClock) &&
+    !clockLoading &&
+    !pendingClockDefaults &&
+    requestMappingReady;
 
-  const hasLoadedOrder = Boolean(orderId || orderData?.sampleOrderItems?.labNo);
+  const hasLoadedOrder = Boolean(orderId);
   const showLookup = lookupView === null ? !hasLoadedOrder : lookupView;
+
+  useEffect(() => {
+    if (!hasLoadedOrder || showLookup) {
+      lastFormVisit.current = null;
+      return;
+    }
+    if (lastFormVisit.current === formKey) return;
+    lastFormVisit.current = formKey;
+    refreshServerClock();
+  }, [formKey, hasLoadedOrder, refreshServerClock, showLookup]);
 
   const lookupPanel = (
     <SpecimenLookupPanel
       active={showLookup}
       canReturn={hasLoadedOrder}
       originalLabNo={labNumber || orderData?.sampleOrderItems?.labNo || ""}
-      onViewChange={setLookupView}
+      onViewChange={(nextView) => {
+        if (nextView) {
+          clockRequest.current += 1;
+          setClockSnapshot(null);
+          setClockLoading(false);
+        }
+        setLookupView(nextView);
+      }}
     />
   );
 
@@ -260,6 +302,48 @@ const OrderCollect = () => {
     setNotificationVisible(true);
   };
 
+  const showServerClockError = () => {
+    addNotification({
+      kind: NotificationKinds.error,
+      title: intl.formatMessage({ id: "notification.title" }),
+      message: intl.formatMessage({
+        id: "collect.sample.serverTimeUnavailable",
+      }),
+    });
+    setNotificationVisible(true);
+  };
+
+  const confirmCollectionTime = async () => {
+    if (!requestMappingReady) return null;
+    const clock = await refreshServerClock();
+    if (!clock) {
+      showServerClockError();
+      return null;
+    }
+    const frozenSamples = refreshUntouchedCollectionClock(
+      latestSamples.current,
+      clock,
+    );
+    if (hasPendingClockDefaults(frozenSamples)) {
+      addNotification({
+        kind: NotificationKinds.error,
+        title: intl.formatMessage({ id: "notification.title" }),
+        message: intl.formatMessage({
+          id: "collect.sample.timeDefaultsPending",
+        }),
+      });
+      setNotificationVisible(true);
+      return null;
+    }
+    if (
+      frozenSamples.some((sample) => isFutureCollectionTimestamp(sample, clock))
+    ) {
+      showFutureCollectionError();
+      return null;
+    }
+    return frozenSamples;
+  };
+
   const getSaveErrorMessage = (error) => {
     const backendMessage = error?.message || "";
     if (/future/i.test(backendMessage)) {
@@ -274,12 +358,10 @@ const OrderCollect = () => {
   };
 
   const handleSave = async () => {
-    if (hasFutureCollectionTime) {
-      showFutureCollectionError();
-      return;
-    }
+    const frozenSamples = await confirmCollectionTime();
+    if (!frozenSamples) return;
     try {
-      await saveOrder();
+      await latestSaveOrder.current(false, false, frozenSamples);
       addNotification({
         kind: NotificationKinds.success,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -297,12 +379,10 @@ const OrderCollect = () => {
   };
 
   const handleSaveAndNext = async () => {
-    if (hasFutureCollectionTime) {
-      showFutureCollectionError();
-      return;
-    }
+    const frozenSamples = await confirmCollectionTime();
+    if (!frozenSamples) return;
     try {
-      await saveOrder();
+      await latestSaveOrder.current(false, false, frozenSamples);
       markStepComplete("collect");
       pushWithListContext(history, "/order/label");
     } catch (error) {
@@ -336,6 +416,12 @@ const OrderCollect = () => {
       currentStep={1}
       title="order.step.collect"
       canProceed={canProceed}
+      saveDisabled={
+        !serverClock ||
+        clockLoading ||
+        pendingClockDefaults ||
+        !requestMappingReady
+      }
       showBarcodeScanner={false}
       showWorkflowProgress={!showLookup}
       showGuidance={!showLookup}
@@ -348,13 +434,44 @@ const OrderCollect = () => {
       onSaveAndNext={handleSaveAndNext}
       blockingReasons={[
         ...(!hasOrderedTests ? ["collect.noTestsWarning.title"] : []),
-        ...(hasFutureCollectionTime ? ["collect.sample.futureTime"] : []),
+        ...(!serverClock && !clockLoading
+          ? ["collect.sample.serverTimeUnavailable"]
+          : []),
+        ...(serverClock && pendingClockDefaults
+          ? ["collect.sample.timeDefaultsPending"]
+          : []),
+        ...(!requestMappingReady
+          ? [
+              requestMappingFailed
+                ? "collect.requests.unavailable"
+                : "collect.requests.loading",
+            ]
+          : []),
       ]}
     >
       {lookupPanel}
       {!showLookup && (
         <>
           {notificationVisible && <AlertDialog />}
+
+          {!requestMappingReady && (
+            <div role={requestMappingFailed ? "alert" : "status"}>
+              {intl.formatMessage({
+                id: requestMappingFailed
+                  ? "collect.requests.unavailable"
+                  : "collect.requests.loading",
+              })}
+              {requestMappingFailed && (
+                <Button
+                  kind="ghost"
+                  size="sm"
+                  onClick={() => setRequestRetry((value) => value + 1)}
+                >
+                  {intl.formatMessage({ id: "button.retry" })}
+                </Button>
+              )}
+            </div>
+          )}
 
           {!hasOrderedTests ? (
             <section className="order-blocked-state" role="status">
@@ -381,6 +498,20 @@ const OrderCollect = () => {
             </section>
           ) : (
             <Stack gap={6} className="order-collect-sections">
+              {!serverClock && (
+                <div role={clockLoading ? "status" : "alert"}>
+                  {intl.formatMessage({
+                    id: clockLoading
+                      ? "collect.sample.serverTimeLoading"
+                      : "collect.sample.serverTimeUnavailable",
+                  })}
+                  {!clockLoading && (
+                    <Button kind="ghost" size="sm" onClick={refreshServerClock}>
+                      {intl.formatMessage({ id: "button.retry" })}
+                    </Button>
+                  )}
+                </div>
+              )}
               <RequestedTestsSection
                 samples={samples}
                 setSamples={setSamples}
@@ -388,13 +519,13 @@ const OrderCollect = () => {
                 assignTestToSample={assignTestToSample}
                 removeTestFromSample={removeTestFromSample}
                 sampleTypes={sampleTypes}
-                isReadOnly={isReadOnly && !isEditMode}
+                isReadOnly={(isReadOnly && !isEditMode) || !requestMappingReady}
               />
 
               <ConsentAccordionSection
                 consentData={consentData}
                 onConsentChange={handleConsentChange}
-                isReadOnly={isReadOnly && !isEditMode}
+                isReadOnly={(isReadOnly && !isEditMode) || !requestMappingReady}
               />
 
               <SamplesCollectionSection
@@ -403,7 +534,10 @@ const OrderCollect = () => {
                 sampleTypes={sampleTypes}
                 unitOfMeasures={unitOfMeasures}
                 updateSampleCollectionDetails={updateSampleCollectionDetails}
-                isReadOnly={isReadOnly && !isEditMode}
+                serverClock={serverClock}
+                refreshServerClock={refreshServerClock}
+                clockLoading={clockLoading}
+                isReadOnly={(isReadOnly && !isEditMode) || !requestMappingReady}
               />
             </Stack>
           )}
