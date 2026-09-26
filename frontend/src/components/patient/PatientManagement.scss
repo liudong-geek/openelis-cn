@@ -1,0 +1,113 @@
+/* Compact list tools belong to the patient workspace, not every patient form. */
+.patient-management-list-surface {
+  > .cds--css-grid,
+  > .cds--grid {
+    --cds-grid-margin: 0rem;
+    --cds-grid-gutter-start: 0rem;
+    --cds-grid-gutter-end: 0rem;
+    padding-inline: 0;
+  }
+
+  .patient-master-list__toolbar {
+    margin-bottom: 0;
+  }
+
+  .patient-master-list__search {
+    grid-template-columns: minmax(14rem, 1fr) auto auto auto;
+    align-items: center;
+    gap: var(--cds-spacing-03, 0.5rem);
+  }
+
+  .patient-master-list__search > .cds--btn {
+    width: auto;
+    min-width: 0;
+    min-height: 2.5rem;
+    max-width: none;
+    white-space: nowrap;
+  }
+
+  .patient-master-list__helper {
+    margin-top: var(--cds-spacing-03, 0.5rem);
+    font-size: var(--cds-label-01-font-size, 0.75rem);
+  }
+
+  .patient-master-list__heading {
+    margin-block: var(--cds-spacing-05, 1rem) var(--cds-spacing-04, 0.75rem);
+  }
+
+  .patient-master-list__heading > div {
+    display: flex;
+    align-items: baseline;
+    gap: var(--cds-spacing-04, 0.75rem);
+  }
+
+  .patient-master-list__heading h2 {
+    font-size: var(--cds-heading-compact-01-font-size, 0.875rem);
+    font-weight: 600;
+  }
+
+  .patient-master-list__heading p {
+    margin: 0;
+    font-size: var(--cds-label-01-font-size, 0.75rem);
+  }
+
+  .patient-management-advanced-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cds-spacing-05, 1rem);
+    margin-bottom: var(--cds-spacing-05, 1rem);
+    border-bottom: 1px solid var(--oe-border, #e2e9ed);
+  }
+
+  .patient-management-advanced-heading h2 {
+    margin: 0;
+    color: var(--oe-text, #203847);
+    font-size: var(--cds-heading-compact-01-font-size, 0.875rem);
+    font-weight: 600;
+  }
+}
+
+.patient-management-actions__options.cds--overflow-menu-options {
+  width: 20rem;
+  max-width: calc(100vw - 2rem);
+
+  .cds--overflow-menu-options__btn {
+    height: auto;
+    min-height: 4.5rem;
+    max-width: none;
+    padding: var(--cds-spacing-05, 1rem);
+    white-space: normal;
+  }
+}
+
+.patient-management-actions__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cds-spacing-02, 0.25rem);
+  line-height: 1.5;
+
+  > strong {
+    font-weight: 600;
+  }
+
+  > span {
+    color: var(--oe-text-muted, #647985);
+    font-size: var(--cds-label-01-font-size, 0.75rem);
+  }
+}
+
+@media (max-width: 41.9375rem) {
+  .patient-management-list-surface .patient-master-list__search {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+
+    > .cds--form-item {
+      grid-column: 1 / -1;
+    }
+
+    > .cds--btn {
+      justify-content: center;
+      padding-inline: var(--cds-spacing-03, 0.5rem);
+    }
+  }
+}

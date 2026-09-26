@@ -2,12 +2,15 @@ import React, { useEffect, useRef, useState } from "react";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import { useHistory, useLocation, useParams } from "react-router-dom";
 import "../Style.css";
+import "./PatientManagement.scss";
 import {
   Grid,
   Column,
   Button,
   Loading,
   InlineNotification,
+  OverflowMenu,
+  OverflowMenuItem,
 } from "@carbon/react";
 import { Add, ArrowLeft } from "@carbon/react/icons";
 import CreatePatientForm from "./CreatePatientForm";
@@ -140,10 +143,28 @@ function PatientManagement() {
         actions={
           isSearchMode ? (
             <>
-              <Button kind="tertiary" onClick={goToPatientMerge}>
-                <FormattedMessage id="banner.menu.patient.merge" />
-              </Button>
-              <Button renderIcon={Add} onClick={goToNewPatient}>
+              <OverflowMenu
+                flipped
+                iconDescription={intl.formatMessage({
+                  id: "patient.management.moreActions",
+                })}
+                menuOptionsClass="patient-management-actions__options"
+              >
+                <OverflowMenuItem
+                  onClick={goToPatientMerge}
+                  itemText={
+                    <span className="patient-management-actions__item">
+                      <strong>
+                        <FormattedMessage id="banner.menu.patient.merge" />
+                      </strong>
+                      <span>
+                        <FormattedMessage id="patient.management.merge.helper" />
+                      </span>
+                    </span>
+                  }
+                />
+              </OverflowMenu>
+              <Button size="md" renderIcon={Add} onClick={goToNewPatient}>
                 <FormattedMessage id="new.patient.label" />
               </Button>
             </>
@@ -154,35 +175,32 @@ function PatientManagement() {
           )
         }
       />
-      <div className="orderLegendBody patient-management-surface">
+      <div
+        className={`orderLegendBody patient-management-surface${isSearchMode ? " patient-management-list-surface" : ""}`}
+      >
         <Grid>
           {isSearchMode && (
             <Column lg={16} md={8} sm={4}>
-              <div
-                className="patient-management-mode-switcher"
-                role="group"
-                aria-label={intl.formatMessage({
-                  id: "patient.management.mode.label",
-                })}
-              >
-                <Button
-                  type="button"
-                  kind={managementMode === "list" ? "primary" : "ghost"}
-                  onClick={() => changeManagementMode("list")}
-                >
-                  <FormattedMessage id="patient.management.list.title" />
-                </Button>
-                <Button
-                  type="button"
-                  kind={managementMode === "advanced" ? "primary" : "ghost"}
-                  onClick={() => changeManagementMode("advanced")}
-                >
-                  <FormattedMessage id="advanced.search" />
-                </Button>
-              </div>
+              {managementMode === "advanced" && (
+                <div className="patient-management-advanced-heading">
+                  <h2>
+                    <FormattedMessage id="advanced.search" />
+                  </h2>
+                  <Button
+                    type="button"
+                    size="md"
+                    kind="ghost"
+                    renderIcon={ArrowLeft}
+                    onClick={() => changeManagementMode("list")}
+                  >
+                    <FormattedMessage id="patient.management.backToList" />
+                  </Button>
+                </div>
+              )}
 
               {managementMode === "list" ? (
                 <PatientMasterList
+                  onOpenAdvancedSearch={() => changeManagementMode("advanced")}
                   initialState={listState.current}
                   onStateChange={(state) => {
                     listState.current = {

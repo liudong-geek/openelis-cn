@@ -314,6 +314,8 @@ const PatientMasterList = ({
         <div className="patient-master-list__search">
           <TextInput
             id="patientMasterListQuery"
+            size="md"
+            hideLabel
             labelText={intl.formatMessage({
               id: "patient.management.list.search.label",
             })}
@@ -346,15 +348,21 @@ const PatientMasterList = ({
               }
             }}
           />
-          <Button renderIcon={Search} type="button" onClick={handleSearch}>
+          <Button
+            size="md"
+            renderIcon={Search}
+            type="button"
+            onClick={handleSearch}
+          >
             <FormattedMessage id="label.button.search" />
           </Button>
-          <Button kind="ghost" type="button" onClick={handleReset}>
+          <Button size="md" kind="ghost" type="button" onClick={handleReset}>
             <FormattedMessage id="patient.management.list.showAll" />
           </Button>
           {onOpenAdvancedSearch && (
             <Button
-              kind="tertiary"
+              kind="ghost"
+              size="md"
               type="button"
               onClick={onOpenAdvancedSearch}
             >

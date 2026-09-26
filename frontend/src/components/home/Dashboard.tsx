@@ -747,7 +747,10 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
             </div>
           </section>
 
-          <Grid fullWidth className="dashboard-command-grid">
+          <Grid
+            fullWidth
+            className="dashboard-command-grid dashboard-layout-grid"
+          >
             <Column lg={10} md={5} sm={4}>
               <Tile className="dashboard-command-panel dashboard-work-panel">
                 <div className="dashboard-section-heading">
@@ -812,7 +815,11 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                           }
                         }}
                       >
-                        <Grid condensed fullWidth>
+                        <Grid
+                          condensed
+                          fullWidth
+                          className="dashboard-task-grid"
+                        >
                           <Column lg={1} md={1} sm={1}>
                             <span className="dashboard-task-icon">
                               <TaskIcon size={22} aria-hidden="true" />
@@ -929,7 +936,11 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                 </p>
               </div>
             </div>
-            <Grid fullWidth condensed className="dashboard-flow-grid">
+            <Grid
+              fullWidth
+              condensed
+              className="dashboard-flow-grid dashboard-layout-grid"
+            >
               {workflowStages.map((stage, index) => (
                 <Column
                   key={stage.labelId}
@@ -986,7 +997,7 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
                 </p>
               </div>
             </div>
-            <Grid fullWidth condensed>
+            <Grid fullWidth condensed className="dashboard-layout-grid">
               {operationalTiles.map((tile) => {
                 const TileIcon = TILE_ICONS[tile.type];
                 return (

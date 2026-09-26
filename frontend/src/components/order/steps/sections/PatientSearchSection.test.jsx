@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock("../../../utils/Utils", () => ({
   getFromOpenElisServer: api.get,
   postToOpenElisServerJsonResponse: api.post,
+  postToOpenElisServer: api.post,
   resolveApiErrorMessage: () => "模拟错误",
 }));
 vi.mock("../../../layout/Layout", () => ({
@@ -159,6 +160,111 @@ beforeEach(() => {
 });
 
 describe("申请页患者选择：真实表单身份与读取状态", () => {
+  const openPicker = async (user) => {
+    await user.click(
+      screen.getByRole("button", {
+        name: messages["order.entry.patient.picker.open"],
+      }),
+    );
+    return screen.getByRole("dialog", {
+      name: messages["order.entry.patient.picker.title"],
+    });
+  };
+  const searchPicker = async (user, dialog) => {
+    await user.type(
+      within(dialog).getByRole("textbox", {
+        name: messages["patient.quickSearch.label"],
+      }),
+      "SIM",
+    );
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: messages["label.button.search"],
+      }),
+    );
+    respond(requests[requests.length - 1], {
+      patientSearchResults: [
+        { ...patient("103", "SIM弹窗患者"), dataSourceName: "OpenElis" },
+      ],
+    });
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: messages["label.button.select"],
+      }),
+    );
+    return requests[requests.length - 1];
+  };
+
+  it("取消患者弹窗保留未保存新患者及申请，迟到详情不能回填", async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(
+      screen.getByRole("button", { name: messages["new.patient.label"] }),
+    );
+    await user.type(document.getElementById("lastName"), "SIM保留草稿");
+    const before = currentOrder;
+    const dialog = await openPicker(user);
+    const pending = await searchPicker(user, dialog);
+    await user.click(
+      within(dialog).getByRole("button", {
+        name: messages["label.button.cancel"],
+      }),
+    );
+    expect(pending.signal.aborted).toBe(true);
+    respond(pending, patient("103", "SIM弹窗患者"));
+    expect(currentOrder).toBe(before);
+    expect(document.getElementById("lastName")).toHaveValue("SIM保留草稿");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("弹窗选择回填已核实患者且不重复读取详情，保留申请其余字段", async () => {
+    const user = userEvent.setup();
+    mount({ initialOrder: order(patient("101")) });
+    const before = currentOrder;
+    const dialog = await openPicker(user);
+    const pending = await searchPicker(user, dialog);
+    expect(pending.url).toBe("/rest/patient-details?patientID=103");
+    respond(pending, patient("103", "SIM弹窗患者"));
+    expect(currentOrder.patientProperties.patientPK).toBe("103");
+    expect(currentOrder.patientProperties.patientUpdateStatus).toBe("UPDATE");
+    expect(currentOrder.sampleOrderItems).toBe(before.sampleOrderItems);
+    expect(currentOrder.samples).toBe(before.samples);
+    expect(
+      requests.filter((request) => request.url.includes("patient-details")),
+    ).toHaveLength(1);
+    expect(api.post).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "SIM弹窗患者" })).toBeVisible();
+  });
+
+  it("换申请和只读切换关闭弹窗，旧选择回调不能改变新申请", async () => {
+    const user = userEvent.setup();
+    mount();
+    const firstDialog = await openPicker(user);
+    const oldSelection = await searchPicker(user, firstDialog);
+    const replacement = {
+      ...order(patient("102", "SIM下一申请患者")),
+      sampleOrderItems: { labNo: "SIM-ORDER-02" },
+    };
+    act(() => replaceOrder(replacement));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(oldSelection.signal.aborted).toBe(true);
+    respond(oldSelection, patient("103", "SIM弹窗患者"));
+    expect(currentOrder).toBe(replacement);
+    const secondDialog = await openPicker(user);
+    const lockedSelection = await searchPicker(user, secondDialog);
+    act(() => setReadOnly(true));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(lockedSelection.signal.aborted).toBe(true);
+    respond(lockedSelection, patient("103", "SIM弹窗患者"));
+    expect(currentOrder).toBe(replacement);
+    expect(
+      screen.getByRole("button", {
+        name: messages["order.entry.patient.picker.open"],
+      }),
+    ).toBeDisabled();
+  });
+
   it("返回编辑新患者时保留该草稿已知的电话校验错误", async () => {
     const user = userEvent.setup();
     mount();

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useHistory, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { useIntl, FormattedMessage } from "react-intl";
 import {
   Tile,
@@ -16,9 +16,15 @@ import {
   Tag,
   InlineLoading,
   InlineNotification,
+  ComposedModal,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
 } from "@carbon/react";
 import { getFromOpenElisServer } from "../../../utils/Utils";
 import CreatePatientForm from "../../../patient/CreatePatientForm";
+import SearchPatientForm from "../../../patient/SearchPatientForm";
+import "./PatientPicker.scss";
 
 const emptyPatient = () => ({
   patientPK: "",
@@ -61,7 +67,6 @@ const PatientSearchSection = ({
   isReadOnly,
 }) => {
   const intl = useIntl();
-  const history = useHistory();
   const location = useLocation();
   const componentMounted = useRef(true);
   const requestRef = useRef(null);
@@ -69,13 +74,16 @@ const PatientSearchSection = ({
   const searchContextRef = useRef(null);
   const draftRef = useRef(null);
   const savedDraftRef = useRef(null);
+  const pickerRef = useRef(null);
+  const pickerButtonRef = useRef(null);
+  const [picker, setPicker] = useState(null);
   const latest = useRef(null);
 
   // Tab state
   const [activeTab, setActiveTab] = useState("search"); // "search" | "new"
 
-  // Order entry uses one compact selector. The complete multi-field search and
-  // all CRUD operations remain in Patient Management.
+  // Quick lookup stays in the application; detailed selection opens in a
+  // drawer without leaving or resetting the current application draft.
   const [quickQuery, setQuickQuery] = useState("");
   const [searchAttempted, setSearchAttempted] = useState(false);
 
@@ -149,6 +157,59 @@ const PatientSearchSection = ({
     return request;
   };
 
+  const ownsPicker = (selection, data = latest.current.orderData) =>
+    componentMounted.current &&
+    selection &&
+    pickerRef.current === selection &&
+    !latest.current.isReadOnly &&
+    selection.orderKey === latest.current.orderKey &&
+    selection.patientProperties === data?.patientProperties;
+
+  const closePicker = () => {
+    pickerRef.current = null;
+    setPicker(null);
+  };
+
+  const openPicker = () => {
+    if (isReadOnly) return;
+    cancelRequest();
+    const selection = {
+      orderKey,
+      patientProperties: orderData?.patientProperties,
+      accepted: false,
+    };
+    pickerRef.current = selection;
+    setPicker(selection);
+  };
+
+  // SearchPatientForm already reads and verifies the complete patient record.
+  // Reuse that read while restricting its callback to the application that
+  // opened the drawer. Closing the drawer never writes into the draft.
+  const selectFromPicker = (selection, patient) => {
+    if (
+      !ownsPicker(selection) ||
+      selection.accepted ||
+      !patientId(patient?.patientPK) ||
+      patient.isMerged === true
+    )
+      return;
+    selection.accepted = true;
+    savedDraftRef.current = null;
+    setPhoneValidation?.(emptyPhoneValidation());
+    setOrderData((prev) =>
+      !ownsPicker(selection, prev)
+        ? prev
+        : {
+            ...prev,
+            patientUpdateStatus: "UPDATE",
+            patientProperties: { ...patient, patientUpdateStatus: "UPDATE" },
+          },
+    );
+    // Keep the owner through the functional update; the existing draft-change
+    // effect below releases it after the new patient has been applied.
+    setPicker(null);
+  };
+
   // A new-patient form owns only its current application draft. In particular,
   // a late Formik observer/validation must not write into another application.
   const isCurrentDraft = useCallback(
@@ -172,12 +233,16 @@ const PatientSearchSection = ({
       requestRef.current?.controller.abort();
       requestRef.current = null;
       draftRef.current = null;
+      pickerRef.current = null;
     };
   }, []);
 
   // Reset stale presentation when a barcode load, readonly transition or route
   // replaces the application. Callback checks also run before effects flush.
   useEffect(() => {
+    if (pickerRef.current && !ownsPicker(pickerRef.current)) {
+      closePicker();
+    }
     if (requestRef.current && !isCurrentRequest(requestRef.current)) {
       cancelRequest();
     }
@@ -522,9 +587,11 @@ const PatientSearchSection = ({
           <Button
             kind="ghost"
             size="sm"
-            onClick={() => history.push("/PatientManagement")}
+            onClick={openPicker}
+            ref={pickerButtonRef}
+            disabled={isReadOnly}
           >
-            <FormattedMessage id="patient.manage.open" />
+            <FormattedMessage id="order.entry.patient.picker.open" />
           </Button>
           {!showNewPatient && (
             <Button
@@ -858,6 +925,53 @@ const PatientSearchSection = ({
           />
         </div>
       )}
+      <ComposedModal
+        open={Boolean(picker && ownsPicker(picker))}
+        onClose={closePicker}
+        className="oe-order-patient-picker"
+        size="lg"
+        selectorPrimaryFocus="#patientManagementQuickQuery"
+        launcherButtonRef={pickerButtonRef}
+        preventCloseOnClickOutside
+        aria-label={intl.formatMessage({
+          id: "order.entry.patient.picker.title",
+        })}
+      >
+        <ModalHeader
+          title={intl.formatMessage({ id: "order.entry.patient.picker.title" })}
+          iconDescription={intl.formatMessage({
+            id: "label.button.close",
+          })}
+        />
+        <ModalBody
+          hasScrollingContent
+          aria-label={intl.formatMessage({
+            id: "order.entry.patient.picker.title",
+          })}
+        >
+          <p className="oe-order-patient-picker__helper">
+            <FormattedMessage id="order.entry.patient.picker.helper" />
+          </p>
+          {picker && ownsPicker(picker) && (
+            <SearchPatientForm
+              initialSearch=""
+              compactSearch
+              selectionMode="button"
+              allowExternalSearch={false}
+              allowExternalImport={false}
+              disableMergedSelection
+              getSelectedPatient={(patient) =>
+                selectFromPicker(picker, patient)
+              }
+            />
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button kind="tertiary" onClick={closePicker}>
+            <FormattedMessage id="label.button.cancel" />
+          </Button>
+        </ModalFooter>
+      </ComposedModal>
     </Tile>
   );
 };

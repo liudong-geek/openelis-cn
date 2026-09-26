@@ -11,7 +11,7 @@ import {
   Pin,
   PinFilled,
 } from "@carbon/icons-react";
-import { IconButton, Select, SelectItem } from "@carbon/react";
+import { Button, IconButton, Select, SelectItem } from "@carbon/react";
 import HelpMenu from "./HelpMenu";
 import AdminSideNav from "../admin/AdminSideNav";
 import React, {
@@ -27,6 +27,7 @@ import { FormattedMessage, useIntl } from "react-intl";
 import { useLocation, useHistory } from "react-router-dom";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import "../Style.css";
+import "./Header.scss";
 import { ConfigurationContext } from "../layout/Layout";
 import SlideOver from "../notifications/SlideOver";
 import { defaultLanguages } from "../../languages";
@@ -1183,6 +1184,9 @@ function OEHeader({
               <HeaderGlobalAction
                 id="user-Icon"
                 aria-label={panelSwitchLabel()}
+                aria-expanded={!switchCollapsed}
+                aria-controls="header-account-panel"
+                isActive={!switchCollapsed}
                 onClick={() => handlePanelToggle(switchCollapsed ? "user" : "")}
                 ref={userSwitchRef}
               >
@@ -1196,42 +1200,42 @@ function OEHeader({
               />
             </HeaderGlobalBar>
             <HeaderPanel
+              id="header-account-panel"
               aria-label={intl.formatMessage({ id: "header.panel.user" })}
               expanded={!switchCollapsed}
-              className="headerPanel"
+              className="headerPanel oe-account-panel"
               ref={headerPanelRef}
             >
-              <ul>
+              <ul className="oe-account-panel__content">
                 {userSessionDetails.authenticated && (
-                  <>
-                    <li className="userDetails">
-                      <UserAvatarFilledAlt
-                        size={18}
-                        style={{ marginRight: "4px" }}
-                      />
-                      {userSessionDetails.firstName}{" "}
-                      {userSessionDetails.lastName}
-                    </li>
-                    {userSessionDetails.loginLabUnit && (
-                      <li className="userDetails">
-                        <LocationFilled
-                          size={18}
-                          style={{ marginRight: "4px" }}
-                        />
-                        {userSessionDetails.loginLabUnit}{" "}
-                      </li>
-                    )}
-                  </>
+                  <li className="oe-account-panel__identity">
+                    <span
+                      className="oe-account-panel__avatar"
+                      aria-hidden="true"
+                    >
+                      <UserAvatarFilledAlt size={24} />
+                    </span>
+                    <div className="oe-account-panel__details">
+                      <span className="oe-account-panel__name">
+                        {userSessionDetails.firstName}{" "}
+                        {userSessionDetails.lastName}
+                      </span>
+                      {userSessionDetails.loginLabUnit && (
+                        <span className="oe-account-panel__lab">
+                          <LocationFilled size={14} aria-hidden="true" />
+                          {userSessionDetails.loginLabUnit}
+                        </span>
+                      )}
+                    </div>
+                  </li>
                 )}
                 {showLanguageSelector && (
-                  <li className="userDetails">
-                    {/* Theme wrapper ONLY around Select to make dropdown light */}
+                  <li className="oe-account-panel__locale">
                     <Theme theme="white">
                       <Select
                         id="selector"
                         name="selectLocale"
-                        className="selectLocale"
-                        invalidText="A valid locale value is required"
+                        size="sm"
                         labelText={
                           <FormattedMessage id="header.label.selectlocale" />
                         }
@@ -1249,38 +1253,40 @@ function OEHeader({
                 )}
                 {userSessionDetails.authenticated && (
                   <>
-                    <li className="clickableUserDetails">
-                      <button
+                    <li className="oe-account-panel__action-row">
+                      <Button
                         type="button"
+                        kind="ghost"
+                        size="md"
                         data-cy="headerChangePassword"
-                        className="oe-header-panel-action"
+                        className="oe-account-panel__action"
+                        renderIcon={Password}
                         onClick={() => {
+                          handlePanelToggle("");
                           history.push("/ChangePasswordLogin");
                         }}
                       >
-                        <Password style={{ marginRight: "3px" }} />
                         <FormattedMessage id="label.button.changepassword" />
-                      </button>
+                      </Button>
                     </li>
-                    <li className="clickableUserDetails">
-                      <button
+                    <li className="oe-account-panel__action-row">
+                      <Button
                         type="button"
+                        kind="ghost"
+                        size="md"
                         data-cy="logOut"
-                        className="oe-header-panel-action"
+                        className="oe-account-panel__action"
+                        renderIcon={Logout}
                         onClick={endSession}
                       >
-                        <Logout style={{ marginRight: "3px" }} />
                         <FormattedMessage id="header.label.logout" />
-                      </button>
+                      </Button>
                     </li>
                   </>
                 )}
-                <li className="userDetails">
-                  <label className="cds--label">
-                    {" "}
-                    <FormattedMessage id="header.label.version" />:{" "}
-                    {configurationProperties?.releaseNumber}
-                  </label>
+                <li className="oe-account-panel__version">
+                  <FormattedMessage id="header.label.version" />:{" "}
+                  {configurationProperties?.releaseNumber}
                 </li>
               </ul>
             </HeaderPanel>

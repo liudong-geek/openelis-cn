@@ -7,6 +7,7 @@ import PrePrint from "./PrePrint";
 import PageBreadCrumb from "../common/PageBreadCrumb";
 import ProductPageHeader from "../common/ProductPageHeader";
 import ListReturnButton from "../common/ListReturnButton";
+import "./PrintBarcode.scss";
 
 export default function PrintBarcode() {
   const location = useLocation();
@@ -21,6 +22,11 @@ export default function PrintBarcode() {
         breadcrumbs={[
           { label: "home.label", link: "/" },
           { label: "sidenav.label.order.active", link: "/order" },
+          {
+            label: "barcode.print.title",
+            link: "/PrintBarcode",
+            isCurrentPage: true,
+          },
         ]}
       />
       <ProductPageHeader
@@ -32,34 +38,35 @@ export default function PrintBarcode() {
         subtitle={<FormattedMessage id="workspace.barcode.helper" />}
         actions={<ListReturnButton fallback="/order" />}
       />
-      {labNumber ? (
-        <ExistingOrder key={labNumber} initialLabNumber={labNumber} />
-      ) : (
-        <Tabs
-          key={preprint ? "preprint" : "existing"}
-          defaultSelectedIndex={preprint ? 1 : 0}
-        >
-          <TabList
-            aria-label={intl.formatMessage({ id: "barcode.print.title" })}
-            contained
+      <div className="barcode-workspace__body">
+        {labNumber ? (
+          <ExistingOrder key={labNumber} initialLabNumber={labNumber} />
+        ) : (
+          <Tabs
+            key={preprint ? "preprint" : "existing"}
+            defaultSelectedIndex={preprint ? 1 : 0}
           >
-            <Tab>
-              <FormattedMessage id="workspace.order.reprint" />
-            </Tab>
-            <Tab>
-              <FormattedMessage id="workspace.barcode.preprint" />
-            </Tab>
-          </TabList>
-          <TabPanels>
-            <TabPanel>
-              <ExistingOrder />
-            </TabPanel>
-            <TabPanel>
-              <PrePrint />
-            </TabPanel>
-          </TabPanels>
-        </Tabs>
-      )}
+            <TabList
+              aria-label={intl.formatMessage({ id: "barcode.print.title" })}
+            >
+              <Tab>
+                <FormattedMessage id="workspace.order.reprint" />
+              </Tab>
+              <Tab>
+                <FormattedMessage id="workspace.barcode.preprint" />
+              </Tab>
+            </TabList>
+            <TabPanels>
+              <TabPanel>
+                <ExistingOrder />
+              </TabPanel>
+              <TabPanel>
+                <PrePrint />
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
+        )}
+      </div>
     </div>
   );
 }

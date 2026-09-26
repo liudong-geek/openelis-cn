@@ -1,0 +1,97 @@
+/* Account menu uses the same surfaces and controls as the clinical workspace. */
+#mainHeader .headerPanel.oe-account-panel {
+  --cds-button-tertiary: var(--oe-brand);
+  --cds-link-primary: var(--oe-text);
+  --cds-background-hover: var(--oe-brand-soft);
+  --cds-focus: var(--oe-brand);
+  width: min(18rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - var(--oe-workspace-header-height, 3rem) - 1rem);
+  inset-inline-end: var(--cds-spacing-05, 1rem);
+  overflow-y: auto;
+  border-radius: 0 0 var(--oe-surface-radius) var(--oe-surface-radius);
+}
+
+.oe-account-panel__content {
+  margin: 0;
+  padding: var(--cds-spacing-03, 0.5rem);
+  list-style: none;
+}
+
+.oe-account-panel__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--cds-spacing-04, 0.75rem);
+  margin-block-end: var(--cds-spacing-03, 0.5rem);
+  padding: var(--cds-spacing-05, 1rem) var(--cds-spacing-04, 0.75rem);
+  border-bottom: 1px solid var(--oe-border);
+}
+
+.oe-account-panel__avatar {
+  display: flex;
+  flex: 0 0 2.5rem;
+  align-items: center;
+  justify-content: center;
+  height: 2.5rem;
+  border-radius: 50%;
+  color: var(--oe-brand-strong);
+  background: var(--oe-brand-soft);
+}
+
+.oe-account-panel__details {
+  min-width: 0;
+}
+
+.oe-account-panel__name {
+  display: block;
+  color: var(--oe-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.oe-account-panel__lab {
+  display: flex;
+  align-items: center;
+  gap: var(--cds-spacing-02, 0.25rem);
+  margin-block-start: var(--cds-spacing-02, 0.25rem);
+  color: var(--oe-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.oe-account-panel__lab svg {
+  flex-shrink: 0;
+}
+
+.oe-account-panel__locale {
+  padding: var(--cds-spacing-03, 0.5rem) var(--cds-spacing-04, 0.75rem)
+    var(--cds-spacing-05, 1rem);
+}
+
+#mainHeader .oe-account-panel .oe-account-panel__action {
+  width: 100%;
+  max-width: none;
+  border-radius: var(--oe-control-radius);
+  color: var(--oe-text);
+}
+
+#mainHeader .oe-account-panel .oe-account-panel__action:hover {
+  color: var(--oe-brand-strong);
+  background: var(--oe-brand-soft);
+}
+
+#mainHeader .oe-account-panel .oe-account-panel__action:focus {
+  border-color: var(--oe-brand);
+  box-shadow: inset 0 0 0 1px var(--oe-brand);
+}
+
+.oe-account-panel__version {
+  margin-block-start: var(--cds-spacing-03, 0.5rem);
+  padding: var(--cds-spacing-04, 0.75rem);
+  border-top: 1px solid var(--oe-border);
+  color: var(--oe-text-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}

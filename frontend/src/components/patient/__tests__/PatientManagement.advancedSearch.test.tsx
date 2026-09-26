@@ -25,7 +25,12 @@ vi.mock("../../common/ProductPageHeader", () => ({
   ),
 }));
 vi.mock("../PatientMasterList", () => ({
-  default: () => <div>SIM patient master list</div>,
+  default: ({ onOpenAdvancedSearch }: { onOpenAdvancedSearch: () => void }) => (
+    <div>
+      SIM patient master list
+      <button onClick={onOpenAdvancedSearch}>Advanced Search</button>
+    </div>
+  ),
 }));
 vi.mock("../CreatePatientForm", () => ({
   default: () => <div>SIM patient editor</div>,
@@ -96,7 +101,9 @@ describe("PatientManagement advanced search", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "SIM save advanced state" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Patient list" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Back to patient list" }),
+    );
     expect(screen.getByText("SIM patient master list")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Advanced Search" }));
     expect(searchFormProps.mock.calls.at(-1)?.[0].initialState).toEqual({

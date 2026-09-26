@@ -1,0 +1,223 @@
+/* Keep both label tools on the same page grid; no legacy form spacers. */
+.barcode-workspace {
+  --cds-layer: var(--oe-surface, #fff);
+  --cds-layer-01: var(--oe-surface, #fff);
+  --cds-field: var(--oe-surface, #fff);
+  --cds-field-01: var(--oe-surface, #fff);
+  --cds-border-interactive: var(--oe-brand);
+  --cds-focus: var(--oe-brand);
+  padding-bottom: var(--cds-spacing-07, 2rem);
+
+  .barcode-workspace__body {
+    width: calc(100% - (2 * var(--oe-page-gutter)));
+    max-width: var(--oe-content-max-width);
+    margin-inline: auto;
+  }
+
+  .cds--tab--list {
+    border-bottom: 1px solid var(--oe-border);
+    background: transparent;
+  }
+
+  .cds--tabs .cds--tabs__nav-link {
+    padding-inline: var(--cds-spacing-06, 1.5rem);
+    border-radius: 0;
+    color: var(--oe-text-muted);
+    background: transparent;
+  }
+
+  .cds--tabs .cds--tabs__nav-item--selected .cds--tabs__nav-link {
+    border-bottom-color: var(--oe-brand);
+    color: var(--oe-brand-strong);
+    background: var(--oe-brand-soft);
+  }
+
+  .cds--tab-content {
+    padding: var(--cds-spacing-05, 1rem) 0 0;
+    background: transparent;
+  }
+
+  .barcode-card {
+    min-width: 0;
+    margin-bottom: var(--cds-spacing-05, 1rem);
+    padding: var(--cds-spacing-06, 1.5rem);
+    border: 1px solid var(--oe-border);
+    border-radius: var(--oe-surface-radius);
+    color: var(--oe-text);
+    background: var(--oe-surface, #fff);
+  }
+
+  .barcode-card h2 {
+    margin: 0;
+    color: var(--oe-text);
+    font-size: var(--cds-heading-03-font-size, 1.25rem);
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  .barcode-form-grid.cds--css-grid,
+  .barcode-fields-grid.cds--css-grid,
+  .barcode-fields-grid.cds--subgrid {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    column-gap: var(--cds-spacing-06, 1.5rem);
+    row-gap: var(--cds-spacing-05, 1rem);
+  }
+
+  .barcode-form-grid.cds--css-grid > .cds--css-grid-column,
+  .barcode-fields-grid > .cds--css-grid-column {
+    min-width: 0;
+    margin: 0;
+  }
+
+  .barcode-form-section + .barcode-form-section {
+    padding-inline-start: var(--cds-spacing-06, 1.5rem);
+    border-inline-start: 1px solid var(--oe-border);
+  }
+
+  .barcode-section-help {
+    margin: var(--cds-spacing-02, 0.25rem) 0 var(--cds-spacing-06, 1.5rem);
+    color: var(--oe-text-muted);
+    font-size: var(--cds-body-compact-01-font-size, 0.875rem);
+    line-height: 1.5;
+  }
+
+  .cds--number input[type="number"],
+  .cds--select-input,
+  .cds--combo-box .cds--text-input {
+    min-height: 2.5rem;
+    border: 1px solid var(--oe-border-strong, var(--oe-border));
+    border-radius: var(--oe-control-radius, 0.375rem);
+    color: var(--oe-text);
+    background: var(--oe-surface, #fff);
+  }
+
+  .cds--number__controls {
+    border-radius: 0 var(--oe-control-radius, 0.375rem)
+      var(--oe-control-radius, 0.375rem) 0;
+  }
+
+  .barcode-selection-hint {
+    margin-top: var(--cds-spacing-05, 1rem);
+    padding: var(--cds-spacing-06, 1.5rem);
+    border: 1px dashed var(--oe-border-strong, var(--oe-border));
+    border-radius: var(--oe-control-radius, 0.375rem);
+    color: var(--oe-text-muted);
+    background: var(--oe-page);
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+
+  .barcode-checklist {
+    margin: var(--cds-spacing-05, 1rem) 0 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .barcode-checklist legend {
+    margin-bottom: var(--cds-spacing-03, 0.5rem);
+    color: var(--oe-text);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .barcode-checklist__items {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--cds-spacing-02, 0.25rem) var(--cds-spacing-04, 0.75rem);
+    max-height: 16rem;
+    overflow-y: auto;
+    padding: var(--cds-spacing-02, 0.25rem);
+  }
+
+  .barcode-checklist .cds--form-item {
+    margin-block: var(--cds-spacing-02, 0.25rem);
+  }
+
+  .barcode-preprint__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cds-spacing-05, 1rem);
+    margin-top: var(--cds-spacing-06, 1.5rem);
+    padding-top: var(--cds-spacing-05, 1rem);
+    border-top: 1px solid var(--oe-border);
+  }
+
+  .barcode-print-total {
+    display: flex;
+    align-items: center;
+    gap: var(--cds-spacing-04, 0.75rem);
+    color: var(--oe-text-muted);
+    font-size: 0.875rem;
+  }
+
+  .barcode-print-total strong {
+    color: var(--oe-brand-strong);
+    font-size: 1.75rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+  }
+
+  .barcode-print-note {
+    margin: var(--cds-spacing-04, 0.75rem) 0 0;
+    color: var(--oe-text-muted);
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+
+  .barcode-search-action {
+    align-self: end;
+  }
+
+  .barcode-patient-summary {
+    margin-top: var(--cds-spacing-06, 1.5rem) !important;
+    padding-top: var(--cds-spacing-05, 1rem) !important;
+    border-top: 1px solid var(--oe-border);
+  }
+
+  .barcode-patient-summary span,
+  .barcode-patient-summary strong {
+    display: block;
+    overflow-wrap: anywhere;
+  }
+
+  .barcode-patient-summary span {
+    color: var(--oe-text-muted);
+    font-size: 0.75rem;
+    margin-bottom: var(--cds-spacing-02, 0.25rem);
+  }
+
+  .barcode-patient-summary strong {
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  .barcode-preview iframe {
+    margin-top: var(--cds-spacing-05, 1rem);
+    border: 1px solid var(--oe-border);
+    border-radius: var(--oe-control-radius, 0.375rem);
+  }
+
+  @media (max-width: 671px) {
+    .barcode-card {
+      padding: var(--cds-spacing-05, 1rem);
+    }
+    .barcode-form-section + .barcode-form-section {
+      padding-inline-start: 0;
+      padding-top: var(--cds-spacing-05, 1rem);
+      border-inline-start: 0;
+      border-top: 1px solid var(--oe-border);
+    }
+    .barcode-preprint__footer {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .barcode-preprint__footer .cds--btn {
+      width: 100%;
+      max-width: none;
+    }
+  }
+}

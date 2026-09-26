@@ -164,15 +164,15 @@ const ExistingOrder = ({ initialLabNumber = "" }) => {
   return (
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
-      <div className="orderLegendBody">
+      <div className="barcode-card">
         <Form onSubmit={handleSearch}>
-          <Grid>
+          <Grid fullWidth className="barcode-fields-grid">
             <Column lg={16} md={8} sm={4}>
-              <h4>
+              <h2>
                 <FormattedMessage id="sample.entry.search.barcode" />
-              </h4>
+              </h2>
             </Column>
-            <Column lg={8} md={8} sm={4}>
+            <Column lg={10} md={6} sm={4}>
               <CustomLabNumberInput
                 placeholder={intl.formatMessage({
                   id: "barcode.scan.placeholder",
@@ -191,18 +191,16 @@ const ExistingOrder = ({ initialLabNumber = "" }) => {
                 labelText={<FormattedMessage id="search.label.accession" />}
               />
             </Column>
-            <div className="tabsLayout">
-              <Column lg={16} md={8} sm={4}>
-                <Button
-                  data-cy="submitButton"
-                  type="submit"
-                  className="btn"
-                  disabled={pending > 0 || !accessionNumber.trim()}
-                >
-                  <FormattedMessage id="label.button.search" />
-                </Button>
-              </Column>
-            </div>
+            <Column lg={6} md={2} sm={4} className="barcode-search-action">
+              <Button
+                data-cy="submitButton"
+                type="submit"
+                className="btn"
+                disabled={pending > 0 || !accessionNumber.trim()}
+              >
+                <FormattedMessage id="label.button.search" />
+              </Button>
+            </Column>
           </Grid>
         </Form>
         {pending > 0 && (
@@ -218,66 +216,55 @@ const ExistingOrder = ({ initialLabNumber = "" }) => {
           />
         )}
         {patientSearchResults !== null && orderResults !== null && (
-          <Grid>
-            <Column lg={4}>
-              <h4>
-                <FormattedMessage id="patient.label.name" />
-              </h4>
-            </Column>
-            <Column lg={4}>
-              <h4>
-                <FormattedMessage id="patient.dob" />
-              </h4>
-            </Column>
-            <Column lg={4}>
-              <h4>
-                <FormattedMessage id="patient.gender" />
-              </h4>
-            </Column>
-            <Column lg={4}>
-              <h4>
-                <FormattedMessage id="patient.natioanalid" />
-              </h4>
-            </Column>
-            <Column lg={4}>
-              {patientSearchResults.firstName +
-                " " +
-                patientSearchResults.lastName}
-            </Column>
-            <Column lg={4}>{patientSearchResults.birthdate}</Column>
-            <Column lg={4}>{patientSearchResults.gender}</Column>
-            <Column lg={4}>{patientSearchResults.nationalId}</Column>
+          <Grid
+            fullWidth
+            className="barcode-fields-grid barcode-patient-summary"
+          >
+            {[
+              [
+                "patient.label.name",
+                `${patientSearchResults.firstName || ""} ${patientSearchResults.lastName || ""}`.trim(),
+              ],
+              ["patient.dob", patientSearchResults.birthdate],
+              ["patient.gender", patientSearchResults.gender],
+              ["patient.natioanalid", patientSearchResults.nationalId],
+            ].map(([label, value]) => (
+              <Column lg={4} md={4} sm={4} key={label}>
+                <span>
+                  <FormattedMessage id={label} />
+                </span>
+                <strong>{value || "—"}</strong>
+              </Column>
+            ))}
           </Grid>
         )}
       </div>
       {patientSearchResults !== null && orderResults !== null && (
-        <div className="orderLegendBody">
-          <Grid>
+        <div className="barcode-card">
+          <Grid fullWidth className="barcode-fields-grid">
             <Column lg={16} md={8} sm={4}>
-              <h4>
+              <h2>
                 <FormattedMessage id="barcode.print.section.set" />
-              </h4>
+              </h2>
             </Column>
             <Column lg={16} md={8} sm={4}>
               <FormattedMessage id="barcode.print.set.instruction" />
             </Column>
-            <div className="tabsLayout">
-              <Column>
-                <Button onClick={printLabelSets}>
-                  <FormattedMessage id="barcode.print.set.button" />
-                </Button>
-              </Column>
-            </div>
+            <Column lg={16} md={8} sm={4}>
+              <Button onClick={printLabelSets}>
+                <FormattedMessage id="barcode.print.set.button" />
+              </Button>
+            </Column>
           </Grid>
         </div>
       )}
       {patientSearchResults !== null && orderResults !== null && (
-        <div className="orderLegendBody">
-          <Grid>
+        <div className="barcode-card">
+          <Grid fullWidth className="barcode-fields-grid">
             <Column lg={16} md={8} sm={4}>
-              <h4>
+              <h2>
                 <FormattedMessage id="barcode.print.reprint.dialog" />
-              </h4>
+              </h2>
             </Column>
             <Column lg={16} md={8} sm={4}>
               <PostSavePrintDialog
@@ -289,7 +276,7 @@ const ExistingOrder = ({ initialLabNumber = "" }) => {
         </div>
       )}
       {patientSearchResults !== null && orderResults !== null && (
-        <div className="orderLegendBody">
+        <div className="barcode-card">
           <DataTable
             headers={[
               {
@@ -395,15 +382,20 @@ const ExistingOrder = ({ initialLabNumber = "" }) => {
         </div>
       )}
       {renderBarcode && (
-        <div className="orderLegendBody">
-          <Grid>
+        <div className="barcode-card">
+          <Grid fullWidth className="barcode-fields-grid">
             <Column lg={16} md={8} sm={4}>
-              <h4>
+              <h2>
                 <FormattedMessage id="barcode.header" />
-              </h4>
+              </h2>
             </Column>
           </Grid>
-          <iframe src={source} width="100%" height="500px" />
+          <iframe
+            title={intl.formatMessage({ id: "barcode.header" })}
+            src={source}
+            width="100%"
+            height="500px"
+          />
         </div>
       )}
     </>
