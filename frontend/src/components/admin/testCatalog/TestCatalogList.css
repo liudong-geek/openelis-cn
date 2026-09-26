@@ -15,18 +15,20 @@
   line-height: 1.5;
 }
 
-.testCatalogList__filterBar {
-  margin: 0.5rem 0 1rem;
-  border: 1px solid var(--cds-border-subtle-01, #c6c6c6);
-  background: var(--cds-layer-01, #fff);
-}
-
 .testCatalogList__filters {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
   gap: 1rem;
   align-items: end;
-  padding: 0 1rem 1rem;
+  padding: 1rem;
+  border-top: 1px solid var(--cds-border-subtle-01, #c6c6c6);
+  border-bottom: 1px solid var(--cds-border-subtle-01, #c6c6c6);
+  background: var(--cds-layer-01, #fff);
+}
+
+.testCatalogList__filterTrigger {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .testCatalogList__state {

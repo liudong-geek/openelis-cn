@@ -261,6 +261,93 @@ const TestCatalogList = () => {
     setIssuesOnly(false);
   };
 
+  const filterPanel = (
+    <div className="testCatalogList__filters">
+      <Dropdown
+        id="filter-domain"
+        titleText={intl.formatMessage({
+          id: "label.testCatalog.basicInfo.domain",
+        })}
+        label=""
+        items={domainOptions}
+        itemToString={(item) =>
+          item ? intl.formatMessage({ id: item.label }) : ""
+        }
+        selectedItem={domainOptions.find((o) => o.id === domain)}
+        onChange={({ selectedItem }) => {
+          setPage(1);
+          setDomain(selectedItem ? selectedItem.id : "");
+        }}
+      />
+      <Dropdown
+        id="filter-status"
+        titleText={intl.formatMessage({
+          id: "label.testCatalog.list.col.status",
+        })}
+        label=""
+        items={STATUS_OPTIONS}
+        itemToString={(item) =>
+          item ? intl.formatMessage({ id: item.label }) : ""
+        }
+        selectedItem={STATUS_OPTIONS.find((o) => o.id === status)}
+        onChange={({ selectedItem }) => {
+          setPage(1);
+          setStatus(selectedItem ? selectedItem.id : "all");
+        }}
+      />
+      <Dropdown
+        id="filter-amr"
+        titleText={intl.formatMessage({
+          id: "label.testCatalog.list.filter.amr",
+        })}
+        label=""
+        items={AMR_OPTIONS}
+        itemToString={(item) =>
+          item ? intl.formatMessage({ id: item.label }) : ""
+        }
+        selectedItem={AMR_OPTIONS.find((o) => o.id === amr)}
+        onChange={({ selectedItem }) => {
+          setPage(1);
+          setAmr(selectedItem ? selectedItem.id : "");
+        }}
+      />
+      <ComboBox
+        id="filter-sample-type"
+        titleText={intl.formatMessage({
+          id: "label.testCatalog.list.filter.sampleType",
+        })}
+        items={sampleTypeItems}
+        itemToString={(item) => (item ? item.name : "")}
+        selectedItem={sampleTypeItems.find((o) => o.id === sampleType)}
+        onChange={({ selectedItem }) => {
+          setPage(1);
+          setSampleType(selectedItem ? selectedItem.id : "");
+        }}
+      />
+      <Toggle
+        id="filter-issues-only"
+        size="sm"
+        labelText={intl.formatMessage({
+          id: "label.testCatalog.list.filter.issuesOnly",
+        })}
+        labelA={intl.formatMessage({ id: "label.no" })}
+        labelB={intl.formatMessage({ id: "label.yes" })}
+        toggled={issuesOnly}
+        onToggle={(checked) => {
+          setPage(1);
+          setIssuesOnly(checked);
+        }}
+      />
+      {hasActiveQuery && (
+        <Button kind="tertiary" size="md" onClick={clearFilters}>
+          {intl.formatMessage({
+            id: "button.testCatalog.clearFilters",
+          })}
+        </Button>
+      )}
+    </div>
+  );
+
   const baseRows = (pageData.rows || []).map((r) => ({
     id: r.testId,
     name: r.name,
@@ -322,113 +409,6 @@ const TestCatalogList = () => {
               <FormattedMessage id="label.testCatalog.list.subtitle" />
             </p>
           </Section>
-        </Column>
-
-        <Column lg={16} md={8} sm={4}>
-          <div className="testCatalogList__filterBar">
-            <Button
-              kind="ghost"
-              size="sm"
-              renderIcon={Filter}
-              onClick={() => setFiltersOpen((o) => !o)}
-              aria-expanded={filtersOpen}
-            >
-              {activeFilterCount > 0
-                ? intl.formatMessage(
-                    { id: "label.testCatalog.list.filters.count" },
-                    { count: activeFilterCount },
-                  )
-                : intl.formatMessage({ id: "label.testCatalog.list.filters" })}
-            </Button>
-            {filtersOpen && (
-              <div className="testCatalogList__filters">
-                <Dropdown
-                  id="filter-domain"
-                  titleText={intl.formatMessage({
-                    id: "label.testCatalog.basicInfo.domain",
-                  })}
-                  label=""
-                  items={domainOptions}
-                  itemToString={(item) =>
-                    item ? intl.formatMessage({ id: item.label }) : ""
-                  }
-                  selectedItem={domainOptions.find((o) => o.id === domain)}
-                  onChange={({ selectedItem }) => {
-                    setPage(1);
-                    setDomain(selectedItem ? selectedItem.id : "");
-                  }}
-                />
-                <Dropdown
-                  id="filter-status"
-                  titleText={intl.formatMessage({
-                    id: "label.testCatalog.list.col.status",
-                  })}
-                  label=""
-                  items={STATUS_OPTIONS}
-                  itemToString={(item) =>
-                    item ? intl.formatMessage({ id: item.label }) : ""
-                  }
-                  selectedItem={STATUS_OPTIONS.find((o) => o.id === status)}
-                  onChange={({ selectedItem }) => {
-                    setPage(1);
-                    setStatus(selectedItem ? selectedItem.id : "all");
-                  }}
-                />
-                <Dropdown
-                  id="filter-amr"
-                  titleText={intl.formatMessage({
-                    id: "label.testCatalog.list.filter.amr",
-                  })}
-                  label=""
-                  items={AMR_OPTIONS}
-                  itemToString={(item) =>
-                    item ? intl.formatMessage({ id: item.label }) : ""
-                  }
-                  selectedItem={AMR_OPTIONS.find((o) => o.id === amr)}
-                  onChange={({ selectedItem }) => {
-                    setPage(1);
-                    setAmr(selectedItem ? selectedItem.id : "");
-                  }}
-                />
-                <ComboBox
-                  id="filter-sample-type"
-                  titleText={intl.formatMessage({
-                    id: "label.testCatalog.list.filter.sampleType",
-                  })}
-                  items={sampleTypeItems}
-                  itemToString={(item) => (item ? item.name : "")}
-                  selectedItem={sampleTypeItems.find(
-                    (o) => o.id === sampleType,
-                  )}
-                  onChange={({ selectedItem }) => {
-                    setPage(1);
-                    setSampleType(selectedItem ? selectedItem.id : "");
-                  }}
-                />
-                <Toggle
-                  id="filter-issues-only"
-                  size="sm"
-                  labelText={intl.formatMessage({
-                    id: "label.testCatalog.list.filter.issuesOnly",
-                  })}
-                  labelA={intl.formatMessage({ id: "label.no" })}
-                  labelB={intl.formatMessage({ id: "label.yes" })}
-                  toggled={issuesOnly}
-                  onToggle={(checked) => {
-                    setPage(1);
-                    setIssuesOnly(checked);
-                  }}
-                />
-                {hasActiveQuery && (
-                  <Button kind="tertiary" size="md" onClick={clearFilters}>
-                    {intl.formatMessage({
-                      id: "button.testCatalog.clearFilters",
-                    })}
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
         </Column>
 
         {!issuesOnly &&
@@ -531,6 +511,24 @@ const TestCatalogList = () => {
                       </TableBatchAction>
                     </TableBatchActions>
                     <TableToolbarContent>
+                      <Button
+                        className="testCatalogList__filterTrigger"
+                        kind="ghost"
+                        renderIcon={Filter}
+                        onClick={() => setFiltersOpen((open) => !open)}
+                        aria-expanded={filtersOpen}
+                      >
+                        {activeFilterCount > 0
+                          ? intl.formatMessage(
+                              {
+                                id: "label.testCatalog.list.filters.count",
+                              },
+                              { count: activeFilterCount },
+                            )
+                          : intl.formatMessage({
+                              id: "label.testCatalog.list.filters",
+                            })}
+                      </Button>
                       <Search
                         size="lg"
                         id="test-search"
@@ -558,6 +556,7 @@ const TestCatalogList = () => {
                       </Button>
                     </TableToolbarContent>
                   </TableToolbar>
+                  {filtersOpen && filterPanel}
                   {tableRows.length === 0 ? (
                     <div className="testCatalogList__state" role="status">
                       <InlineNotification
