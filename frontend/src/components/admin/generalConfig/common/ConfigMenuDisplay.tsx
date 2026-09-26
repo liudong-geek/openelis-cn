@@ -249,7 +249,7 @@ function ConfigMenuDisplay(props: ConfigMenuDisplayProps) {
           description={intl.formatMessage({ id: "loading.description" })}
         />
       )}
-      <div className="adminPageContent admin-list-workspace config-workspace">
+      <div className="adminPageContent admin-list-workspace admin-list-workspace--compact config-workspace">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
         <ProductPageHeader
           title={<FormattedMessage id={props.id} />}

@@ -1,16 +1,11 @@
 import { ArrowLeft, ArrowRight } from "@carbon/icons-react";
 import {
   Button,
-  Column,
   DataTable,
   Dropdown,
-  Form,
-  Grid,
-  Heading,
   Modal,
   Pagination,
   Search,
-  Section,
   Table,
   TableBody,
   TableCell,
@@ -28,8 +23,10 @@ import {
   NotificationKinds,
 } from "../../common/CustomNotification";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import ProductPageHeader from "../../common/ProductPageHeader";
 import { ConfigurationContext, NotificationContext } from "../../layout/Layout";
 import "../../Style.css";
+import "../AdminListWorkspace.css";
 import {
   getFromOpenElisServer,
   postToOpenElisServer,
@@ -73,14 +70,6 @@ function DictionaryManagement() {
   const [isSearching, setIsSearching] = useState(false);
   const [panelSearchTerm, setPanelSearchTerm] = useState("");
   const [searchedMenuList, setSearchedMenuList] = useState([]);
-
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 530);
-
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 530);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
 
   useEffect(() => {
     componentMounted.current = true;
@@ -271,6 +260,7 @@ function DictionaryManagement() {
       displayStatus,
     );
     setOpen(false);
+    setEditMode(true);
   };
 
   const handleUpdateModal = (e) => {
@@ -309,6 +299,7 @@ function DictionaryManagement() {
       displayStatus,
     );
     setOpen(false);
+    setEditMode(true);
   };
 
   const renderCell = (cell, row) => {
@@ -427,6 +418,7 @@ function DictionaryManagement() {
   const handlePanelSearchChange = (event) => {
     const query = event.target.value;
     setPanelSearchTerm(query);
+    setPage(1);
     if (query) {
       setIsSearching(true);
     } else {
@@ -434,8 +426,12 @@ function DictionaryManagement() {
     }
   };
 
+  const visibleDictionaryRows = isSearching
+    ? searchedMenuList
+    : dictionaryMenuList;
+
   return (
-    <div className="adminPageContent">
+    <div className="adminPageContent admin-list-workspace admin-list-workspace--compact dictionary-management-page">
       {notificationVisible === true ? <AlertDialog /> : ""}
       <PageBreadCrumb
         breadcrumbs={[
@@ -447,393 +443,308 @@ function DictionaryManagement() {
           },
         ]}
       />
-      <Grid fullWidth={true}>
-        <Column lg={16} md={8} sm={4}>
-          <Section>
-            <Heading>
-              <FormattedMessage id="dictionary.label.modify" />
-            </Heading>
-          </Section>
-          <br />
-          <Section>
-            <Form
-              style={{
-                display: "flex",
-                flexDirection: isMobile ? "column" : "row",
-                gap: isMobile ? "1rem" : "2rem",
-                justifyContent: "space-between",
-                alignItems: isMobile ? "stretch" : "center",
-                flexWrap: "wrap",
-              }}
+      <ProductPageHeader
+        title={<FormattedMessage id="dictionary.label.modify" />}
+        subtitle={<FormattedMessage id="dictionary.workspace.subtitle" />}
+        actions={
+          <Button
+            data-cy="addButton"
+            onClick={() => {
+              setDictionaryNumber("");
+              setCategory("");
+              setDictionaryEntry("");
+              setLocalAbbreviation("");
+              setIsActive("");
+              setLoincCode("");
+              setEditMode(true);
+              setOpen(true);
+            }}
+          >
+            <FormattedMessage id="admin.page.configuration.formEntryConfigMenu.button.add" />
+          </Button>
+        }
+      />
+
+      <section className="admin-list-workspace__surface">
+        <header className="admin-list-workspace__section-heading">
+          <div>
+            <h2>
+              <FormattedMessage id="dictionary.workspace.list.title" />
+            </h2>
+            <p>
+              <FormattedMessage id="dictionary.workspace.list.description" />
+            </p>
+          </div>
+          <div className="admin-list-workspace__selection-actions">
+            <span>
+              <FormattedMessage
+                id="dictionary.workspace.selected"
+                values={{ count: selectedRowIds.length }}
+              />
+            </span>
+            <Button
+              data-cy="modifyButton"
+              kind="secondary"
+              size="sm"
+              disabled={modifyButton}
+              type="button"
+              onClick={handleOnClickOnModification}
             >
-              <Column
-                lg={16}
-                md={8}
-                sm={4}
-                style={{
-                  display: "flex",
-                  gap: isMobile ? "0.75rem" : "0.5rem",
-                  flexDirection: isMobile ? "column" : "row",
-                  width: isMobile ? "100%" : "auto",
-                  margin: "0",
-                }}
-              >
-                <Button
-                  data-cy="addButton"
-                  style={{ width: isMobile ? "100%" : "auto" }}
-                  disabled={!editMode}
-                  onClick={() => setOpen(true)}
-                >
-                  {intl.formatMessage({
-                    id: "admin.page.configuration.formEntryConfigMenu.button.add",
-                  })}
-                </Button>
-                <Button
-                  data-cy="modifyButton"
-                  style={{ width: isMobile ? "100%" : "auto" }}
-                  disabled={modifyButton}
-                  type="submit"
-                  onClick={handleOnClickOnModification}
-                >
-                  <FormattedMessage id="admin.page.configuration.formEntryConfigMenu.button.modify" />
-                </Button>
-                <Modal
-                  open={open}
-                  size="sm"
-                  onRequestClose={() => setOpen(false)}
-                  modalHeading={
-                    editMode
-                      ? intl.formatMessage({
-                          id: "dictionary.modal.add.heading",
-                        })
-                      : intl.formatMessage({
-                          id: "dictionary.modal.edit.heading",
-                        })
-                  }
-                  primaryButtonText={
-                    editMode
-                      ? intl.formatMessage({ id: "label.button.add" })
-                      : intl.formatMessage({ id: "label.button.update" })
-                  }
-                  secondaryButtonText={intl.formatMessage({
-                    id: "label.button.cancel",
-                  })}
-                  onRequestSubmit={
-                    editMode ? handleSubmitModal : handleUpdateModal
-                  }
-                >
-                  <TextInput
-                    data-modal-primary-focus
-                    id="dictNumber"
-                    labelText={intl.formatMessage({
-                      id: "dictionary.number.label",
-                    })}
-                    disabled
-                    value={dictionaryNumber}
-                    onChange={(e) => setDictionaryNumber(e.target.value)}
-                    style={{
-                      marginBottom: "1rem",
-                    }}
-                  />
-                  <Dropdown
-                    id="description"
-                    label=""
-                    type="default"
-                    items={categoryDescription}
-                    titleText={intl.formatMessage({
-                      id: "dictionary.category.label",
-                    })}
-                    itemToString={(item) => (item ? item.description : "")}
-                    onChange={({ selectedItem }) => {
-                      setCategory(selectedItem);
-                    }}
-                    selectedItem={category}
-                    size="md"
-                    style={{
-                      marginBottom: "1rem",
-                    }}
-                  />
-                  <TextInput
-                    id="dictEntry"
-                    labelText={intl.formatMessage({
-                      id: "dictionary.dictEntry",
-                    })}
-                    value={dictionaryEntry}
-                    onChange={(e) => setDictionaryEntry(e.target.value)}
-                    style={{
-                      marginBottom: "1rem",
-                    }}
-                  />
-                  <Dropdown
-                    id="isActive"
-                    type="default"
-                    label=""
-                    items={yesOrNo}
-                    titleText={intl.formatMessage({
-                      id: "dictionary.category.isActive",
-                    })}
-                    itemToString={(item) => (item ? item.id : "")}
-                    onChange={({ selectedItem }) => {
-                      setIsActive(selectedItem);
-                    }}
-                    selectedItem={isActive}
-                    size="md"
-                    style={{
-                      marginBottom: "1rem",
-                    }}
-                  />
-                  <TextInput
-                    id="localAbbrev"
-                    labelText={intl.formatMessage({
-                      id: "dictionary.category.localAbbreviation",
-                    })}
-                    value={localAbbreviation}
-                    onChange={(e) => setLocalAbbreviation(e.target.value)}
-                    style={{
-                      marginBottom: "1rem",
-                    }}
-                  />
+              <FormattedMessage id="admin.page.configuration.formEntryConfigMenu.button.modify" />
+            </Button>
+            <Button
+              data-cy="deactivateButton"
+              kind="danger--tertiary"
+              size="sm"
+              disabled={deactivateButton}
+              onClick={handleDeactivation}
+              type="button"
+            >
+              <FormattedMessage id="admin.page.configuration.formEntryConfigMenu.button.deactivate" />
+            </Button>
+          </div>
+        </header>
 
-                  <TextInput
-                    id="loincCode"
-                    labelText={intl.formatMessage({
-                      id: "dictionary.loincCode",
-                    })}
-                    value={loincCode}
-                    onChange={(e) => setLoincCode(e.target.value)}
-                    // invalid={!/^(?!-)(?:\d+-)*\d*$/.test(loincCode)}
-                    // invalidText={
-                    //   <FormattedMessage id="dictionary.loincCode.invalid" />
-                    // }
-                    style={{
-                      marginBottom: "1rem",
-                    }}
-                  />
-                </Modal>
-                <Button
-                  data-cy="deactivateButton"
-                  style={{ width: isMobile ? "100%" : "auto" }}
-                  disabled={deactivateButton}
-                  onClick={handleDeactivation}
-                  type="submit"
-                >
-                  <FormattedMessage id="admin.page.configuration.formEntryConfigMenu.button.deactivate" />
-                </Button>
-              </Column>
-
-              <Column
-                lg={16}
-                md={8}
-                sm={4}
-                style={{
-                  display: "flex",
-                  flexDirection: isMobile ? "column" : "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: isMobile ? "0.75rem" : "0.5rem",
-                }}
-              >
-                <h4
-                  style={{
-                    margin: 0,
-                    fontSize: isMobile ? "1.2rem" : "1.2rem",
-                    textAlign: isMobile ? "center" : "left",
-                  }}
-                >
-                  <FormattedMessage id="showing" /> {fromRecordCount} -{" "}
-                  {toRecordCount} <FormattedMessage id="of" />{" "}
-                  {totalRecordCount}
-                </h4>
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "0.5rem",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Button
-                    style={{
-                      minWidth: isMobile ? "2rem" : "2.5rem",
-                      minHeight: isMobile ? "2rem" : "2.5rem",
-                      padding: "0.5rem",
-                    }}
-                    hasIconOnly
-                    iconDescription={intl.formatMessage({
-                      id: "organization.previous",
-                    })}
-                    disabled={parseInt(fromRecordCount) <= 1}
-                    onClick={handlePreviousPage}
-                    renderIcon={ArrowLeft}
-                  />
-                  <Button
-                    style={{
-                      minWidth: isMobile ? "2rem" : "2.5rem",
-                      minHeight: isMobile ? "2rem" : "2.5rem",
-                      padding: "0.5rem",
-                    }}
-                    hasIconOnly
-                    iconDescription={intl.formatMessage({
-                      id: "organization.next",
-                    })}
-                    renderIcon={ArrowRight}
-                    onClick={handleNextPage}
-                    disabled={
-                      parseInt(toRecordCount) >= parseInt(totalRecordCount)
-                    }
-                  />
-                </div>
-              </Column>
-            </Form>
-          </Section>
-        </Column>
-      </Grid>
-      <div className="orderLegendBody">
-        <Grid>
-          <Column lg={16} md={8} sm={4}>
-            <Section>
-              <Search
-                size="lg"
-                id="dictionary-entry-search"
-                labelText={<FormattedMessage id="search.by.dictionary.entry" />}
-                placeholder={intl.formatMessage({
-                  id: "search.by.dictionary.entry",
+        <div className="admin-list-workspace__filters admin-list-workspace__filters--search-only dictionary-management-page__filters">
+          <Search
+            size="lg"
+            id="dictionary-entry-search"
+            labelText={intl.formatMessage({
+              id: "search.by.dictionary.entry",
+            })}
+            placeholder={intl.formatMessage({
+              id: "search.by.dictionary.entry",
+            })}
+            closeButtonLabelText={intl.formatMessage({
+              id: "admin.dashboard.search.clear",
+            })}
+            onChange={handlePanelSearchChange}
+            value={panelSearchTerm || ""}
+          />
+          <div className="dictionary-management-page__server-pagination">
+            <p>
+              <FormattedMessage id="showing" /> {fromRecordCount}–
+              {toRecordCount} <FormattedMessage id="of" /> {totalRecordCount}
+            </p>
+            <div>
+              <Button
+                kind="ghost"
+                size="sm"
+                hasIconOnly
+                iconDescription={intl.formatMessage({
+                  id: "organization.previous",
                 })}
-                onChange={handlePanelSearchChange}
-                value={panelSearchTerm || ""}
-              ></Search>
-            </Section>
-          </Column>
-        </Grid>
-        <br />
-        <Grid fullWidth={true} className="gridBoundary">
-          <Column lg={16} md={8} sm={4}>
-            <DataTable
-              size="sm"
-              rows={
-                isSearching
-                  ? searchedMenuList.slice(
-                      (page - 1) * pageSize,
-                      page * pageSize,
-                    )
-                  : dictionaryMenuList.slice(
-                      (page - 1) * pageSize,
-                      page * pageSize,
-                    )
-              }
-              headers={[
-                {
-                  key: "select",
-                  header: intl.formatMessage({
-                    id: "admin.page.configuration.formEntryConfigMenu.select",
-                  }),
-                },
-                {
-                  key: "categoryName",
-                  header: intl.formatMessage({
-                    id: "dictionary.category.name",
-                  }),
-                },
-                {
-                  key: "dictEntry",
-                  header: intl.formatMessage({ id: "dictionary.dictEntry" }),
-                },
-                {
-                  key: "localAbbreviation",
-                  header: intl.formatMessage({
-                    id: "dictionary.category.localAbbreviation",
-                  }),
-                },
-                {
-                  key: "isActive",
-                  header: intl.formatMessage({
-                    id: "dictionary.category.isActive",
-                  }),
-                },
+                disabled={parseInt(fromRecordCount) <= 1}
+                onClick={handlePreviousPage}
+                renderIcon={ArrowLeft}
+              />
+              <Button
+                kind="ghost"
+                size="sm"
+                hasIconOnly
+                iconDescription={intl.formatMessage({
+                  id: "organization.next",
+                })}
+                renderIcon={ArrowRight}
+                onClick={handleNextPage}
+                disabled={parseInt(toRecordCount) >= parseInt(totalRecordCount)}
+              />
+            </div>
+          </div>
+        </div>
 
-                {
-                  key: "loincCode",
-                  header: intl.formatMessage({ id: "dictionary.loincCode" }),
-                },
-              ]}
-              isSortable
-            >
-              {({ rows, headers, getHeaderProps, getTableProps }) => {
-                return (
-                  <TableContainer title="" description="">
-                    <Table {...getTableProps()}>
-                      <TableHead>
-                        <TableRow>
-                          {headers.map((header) => (
-                            <TableHeader
-                              key={header.key}
-                              {...getHeaderProps({ header })}
-                            >
-                              {header.header}
-                            </TableHeader>
-                          ))}
-                          <TableHeader />
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {rows.map((row) => (
-                          <TableRow key={row.id}>
-                            {row.cells.map((cell) => renderCell(cell, row))}
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                );
-              }}
-            </DataTable>
-            <Pagination
-              onChange={handlePageChange}
-              page={page}
-              pageSize={pageSize}
-              pageSizes={[10, 20]}
-              totalItems={
-                isSearching
-                  ? searchedMenuList.length
-                  : dictionaryMenuList.length
-              }
-              forwardText={intl.formatMessage({ id: "pagination.forward" })}
-              backwardText={intl.formatMessage({ id: "pagination.backward" })}
-              size="sm"
-              itemRangeText={(min, max, total) =>
-                intl.formatMessage(
-                  { id: "pagination.item-range" },
-                  { min: min, max: max, total: total },
-                )
-              }
-              itemsPerPageText={intl.formatMessage({
-                id: "pagination.items-per-page",
-              })}
-              itemText={(min, max) =>
-                intl.formatMessage(
-                  { id: "pagination.item" },
-                  { min: min, max: max },
-                )
-              }
-              pageNumberText={intl.formatMessage({
-                id: "pagination.page-number",
-              })}
-              pageRangeText={(_current, total) =>
-                intl.formatMessage(
-                  { id: "pagination.page-range" },
-                  { total: total },
-                )
-              }
-              pageText={(page, pagesUnknown) =>
-                intl.formatMessage(
-                  { id: "pagination.page" },
-                  { page: pagesUnknown ? "" : page },
-                )
-              }
-            />
-          </Column>
-        </Grid>
-      </div>
+        <div className="admin-list-workspace__table-scroll">
+          <DataTable
+            size="sm"
+            rows={visibleDictionaryRows.slice(
+              (page - 1) * pageSize,
+              page * pageSize,
+            )}
+            headers={[
+              {
+                key: "select",
+                header: intl.formatMessage({
+                  id: "admin.page.configuration.formEntryConfigMenu.select",
+                }),
+              },
+              {
+                key: "categoryName",
+                header: intl.formatMessage({
+                  id: "dictionary.category.name",
+                }),
+              },
+              {
+                key: "dictEntry",
+                header: intl.formatMessage({ id: "dictionary.dictEntry" }),
+              },
+              {
+                key: "localAbbreviation",
+                header: intl.formatMessage({
+                  id: "dictionary.category.localAbbreviation",
+                }),
+              },
+              {
+                key: "isActive",
+                header: intl.formatMessage({
+                  id: "dictionary.category.isActive",
+                }),
+              },
+              {
+                key: "loincCode",
+                header: intl.formatMessage({ id: "dictionary.loincCode" }),
+              },
+            ]}
+            isSortable
+          >
+            {({ rows, headers, getHeaderProps, getTableProps }) => (
+              <TableContainer className="admin-list-workspace__table">
+                <Table {...getTableProps()}>
+                  <TableHead>
+                    <TableRow>
+                      {headers.map((header) => (
+                        <TableHeader
+                          key={header.key}
+                          {...getHeaderProps({ header })}
+                        >
+                          {header.header}
+                        </TableHeader>
+                      ))}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {rows.map((row) => (
+                      <TableRow key={row.id}>
+                        {row.cells.map((cell) => renderCell(cell, row))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </DataTable>
+        </div>
+        <Pagination
+          className="admin-list-workspace__pagination"
+          onChange={handlePageChange}
+          page={page}
+          pageSize={pageSize}
+          pageSizes={[10, 20]}
+          totalItems={visibleDictionaryRows.length}
+          forwardText={intl.formatMessage({ id: "pagination.forward" })}
+          backwardText={intl.formatMessage({ id: "pagination.backward" })}
+          size="sm"
+          itemRangeText={(min, max, total) =>
+            intl.formatMessage(
+              { id: "pagination.item-range" },
+              { min: min, max: max, total: total },
+            )
+          }
+          itemsPerPageText={intl.formatMessage({
+            id: "pagination.items-per-page",
+          })}
+          itemText={(min, max) =>
+            intl.formatMessage(
+              { id: "pagination.item" },
+              { min: min, max: max },
+            )
+          }
+          pageNumberText={intl.formatMessage({
+            id: "pagination.page-number",
+          })}
+          pageRangeText={(_current, total) =>
+            intl.formatMessage(
+              { id: "pagination.page-range" },
+              { total: total },
+            )
+          }
+          pageText={(currentPage, pagesUnknown) =>
+            intl.formatMessage(
+              { id: "pagination.page" },
+              { page: pagesUnknown ? "" : currentPage },
+            )
+          }
+        />
+      </section>
+
+      <Modal
+        open={open}
+        size="sm"
+        onRequestClose={() => {
+          setOpen(false);
+          setEditMode(true);
+        }}
+        modalHeading={
+          editMode
+            ? intl.formatMessage({ id: "dictionary.modal.add.heading" })
+            : intl.formatMessage({ id: "dictionary.modal.edit.heading" })
+        }
+        primaryButtonText={
+          editMode
+            ? intl.formatMessage({ id: "label.button.add" })
+            : intl.formatMessage({ id: "label.button.update" })
+        }
+        secondaryButtonText={intl.formatMessage({
+          id: "label.button.cancel",
+        })}
+        onRequestSubmit={editMode ? handleSubmitModal : handleUpdateModal}
+      >
+        <div className="dictionary-management-page__editor">
+          <TextInput
+            data-modal-primary-focus
+            id="dictNumber"
+            labelText={intl.formatMessage({ id: "dictionary.number.label" })}
+            disabled
+            value={dictionaryNumber}
+            onChange={(event) => setDictionaryNumber(event.target.value)}
+          />
+          <Dropdown
+            id="description"
+            label=""
+            type="default"
+            items={categoryDescription}
+            titleText={intl.formatMessage({
+              id: "dictionary.category.label",
+            })}
+            itemToString={(item) => (item ? item.description : "")}
+            onChange={({ selectedItem }) => setCategory(selectedItem)}
+            selectedItem={category}
+            size="md"
+          />
+          <TextInput
+            id="dictEntry"
+            labelText={intl.formatMessage({ id: "dictionary.dictEntry" })}
+            value={dictionaryEntry}
+            onChange={(event) => setDictionaryEntry(event.target.value)}
+          />
+          <Dropdown
+            id="isActive"
+            type="default"
+            label=""
+            items={yesOrNo}
+            titleText={intl.formatMessage({
+              id: "dictionary.category.isActive",
+            })}
+            itemToString={(item) => (item ? item.id : "")}
+            onChange={({ selectedItem }) => setIsActive(selectedItem)}
+            selectedItem={isActive}
+            size="md"
+          />
+          <TextInput
+            id="localAbbrev"
+            labelText={intl.formatMessage({
+              id: "dictionary.category.localAbbreviation",
+            })}
+            value={localAbbreviation}
+            onChange={(event) => setLocalAbbreviation(event.target.value)}
+          />
+          <TextInput
+            id="loincCode"
+            labelText={intl.formatMessage({ id: "dictionary.loincCode" })}
+            value={loincCode}
+            onChange={(event) => setLoincCode(event.target.value)}
+          />
+        </div>
+      </Modal>
     </div>
   );
 }

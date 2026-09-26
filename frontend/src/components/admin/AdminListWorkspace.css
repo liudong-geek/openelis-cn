@@ -224,6 +224,40 @@
   min-width: 64rem;
 }
 
+.dictionary-management-page .admin-list-workspace__table {
+  min-width: 48rem;
+}
+
+.dictionary-management-page__server-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.dictionary-management-page__server-pagination > p {
+  margin: 0;
+  color: var(--oe-text-muted);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.dictionary-management-page__server-pagination > div {
+  display: flex;
+  align-items: center;
+}
+
+.dictionary-management-page__editor {
+  display: grid;
+  gap: 1rem;
+  padding-block: 0.25rem;
+}
+
+.dictionary-management-page__editor .cds--text-input-wrapper,
+.dictionary-management-page__editor .cds--dropdown__wrapper {
+  width: 100%;
+}
+
 .config-workspace__value {
   display: block;
   overflow: hidden;
@@ -405,6 +439,10 @@
 
   .admin-list-workspace__filters--search-only > p {
     text-align: left;
+  }
+
+  .dictionary-management-page__server-pagination {
+    justify-content: space-between;
   }
 
   .admin-list-workspace__filters--organization > p {
