@@ -101,6 +101,17 @@ public class SampleManagementRestController extends BaseRestController {
     }
 
     /**
+     * Return the latest sample items for the default management view.
+     */
+    @GetMapping(value = "/recent", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public ResponseEntity<SearchSamplesResponse> listRecentSampleItems(
+            @RequestParam(defaultValue = "50") int limit,
+            @RequestParam(defaultValue = "false") boolean includeTests) {
+        return ResponseEntity.ok(sampleManagementService.listRecentSampleItems(limit, includeTests));
+    }
+
+    /**
      * Create an aliquot from a parent sample item.
      *
      * <p>

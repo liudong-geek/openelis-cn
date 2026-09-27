@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useCallback, useState, useMemo } from "react";
 import {
   Grid,
   Column,
@@ -119,13 +119,13 @@ export default function SampleManagement() {
    * @param {Object} response - SearchSamplesResponse from backend
    * @param {Object} error - Error object if search failed
    */
-  const handleSearchResults = (response, error) => {
+  const handleSearchResults = useCallback((response, error) => {
     setSearchResponse(response);
     setSearchError(error);
 
     // Clear selection when new search results arrive
     setSelectedSampleIds([]);
-  };
+  }, []);
 
   /**
    * Handle row selection changes from SampleResultsTable component.
@@ -162,12 +162,7 @@ export default function SampleManagement() {
    */
   const handleAliquotSuccess = (response) => {
     // Refresh search results to show the new aliquot(s)
-    if (searchResponse && searchResponse.accessionNumber) {
-      handleSearchResults(null, null); // Clear current results
-      // Trigger a re-search by calling the search API directly
-      // Note: In production, you might want to add a refresh mechanism
-      // For now, we'll just show a success message and user can re-search
-
+    if (searchResponse) {
       // Handle both single and multiple aliquot creation
       const aliquotCount = response.aliquotCount || 1;
       let message;
@@ -441,13 +436,21 @@ export default function SampleManagement() {
                         flexWrap: "wrap",
                       }}
                     >
-                      <span>
-                        <strong>
-                          <FormattedMessage id="sample.management.results.accessionNumber" />
-                          :
-                        </strong>{" "}
-                        {searchResponse.accessionNumber}
-                      </span>
+                      {searchResponse.accessionNumber ? (
+                        <span>
+                          <strong>
+                            <FormattedMessage id="sample.management.results.accessionNumber" />
+                            :
+                          </strong>{" "}
+                          {searchResponse.accessionNumber}
+                        </span>
+                      ) : (
+                        <span>
+                          <strong>
+                            <FormattedMessage id="sample.management.results.recent" />
+                          </strong>
+                        </span>
+                      )}
                       <span>
                         <strong>
                           <FormattedMessage id="sample.management.results.totalCount" />
@@ -601,13 +604,15 @@ export default function SampleManagement() {
                   </Button>
 
                   {/* Print Barcode Button */}
-                  <Button
-                    kind="tertiary"
-                    renderIcon={Printer}
-                    onClick={handlePrintBarCode}
-                  >
-                    <FormattedMessage id="print.barcode" />
-                  </Button>
+                  {searchResponse.accessionNumber && (
+                    <Button
+                      kind="tertiary"
+                      renderIcon={Printer}
+                      onClick={handlePrintBarCode}
+                    >
+                      <FormattedMessage id="print.barcode" />
+                    </Button>
+                  )}
                 </div>
               </Column>
             </Grid>

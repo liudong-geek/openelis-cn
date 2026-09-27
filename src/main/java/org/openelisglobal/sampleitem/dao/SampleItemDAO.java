@@ -39,6 +39,8 @@ public interface SampleItemDAO extends BaseDAO<SampleItem, String> {
 
     public List<SampleItem> getPageOfSampleItems(int startingRecNo) throws LIMSRuntimeException;
 
+    public List<SampleItem> getRecentSampleItems(int limit) throws LIMSRuntimeException;
+
     public void getData(SampleItem sampleItem) throws LIMSRuntimeException;
 
     // public void updateData(SampleItem sampleItem) throws LIMSRuntimeException;

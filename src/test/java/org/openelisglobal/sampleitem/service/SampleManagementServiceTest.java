@@ -163,4 +163,17 @@ public class SampleManagementServiceTest extends BaseWebContextSensitiveTest {
         dto.isAliquot(); // Should not throw exception
         dto.getNestingLevel(); // Should not throw exception
     }
+
+    @Test
+    public void listRecentSampleItems_shouldReturnBoundedItemsWithAccessionNumbers() {
+        SearchSamplesResponse response = sampleManagementService.listRecentSampleItems(2, false);
+
+        assertNotNull(response);
+        assertNotNull(response.getSampleItems());
+        assertTrue(response.getSampleItems().size() <= 2);
+        assertEquals(response.getSampleItems().size(), response.getTotalCount());
+        for (SampleItemDTO item : response.getSampleItems()) {
+            assertNotNull(item.getSampleAccessionNumber());
+        }
+    }
 }

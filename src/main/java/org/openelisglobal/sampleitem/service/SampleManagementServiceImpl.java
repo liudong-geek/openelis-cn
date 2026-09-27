@@ -107,6 +107,14 @@ public class SampleManagementServiceImpl implements SampleManagementService {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public SearchSamplesResponse listRecentSampleItems(int limit, boolean includeTests) {
+        List<SampleItemDTO> dtos = sampleItemDAO.getRecentSampleItems(limit).stream()
+                .map(item -> convertToDTO(item, includeTests)).collect(Collectors.toList());
+        return new SearchSamplesResponse("", dtos, dtos.size());
+    }
+
+    @Override
     @Transactional
     public CreateAliquotResponse createAliquot(CreateAliquotForm form, String sysUserId) {
         // Step 1: Validate and load parent sample item

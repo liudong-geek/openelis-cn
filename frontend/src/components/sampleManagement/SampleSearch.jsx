@@ -39,18 +39,14 @@ function SampleSearch({ onSearchResults, includeTests = false }) {
    */
   const performSearch = useCallback(
     (accessionNumber) => {
-      if (!accessionNumber || accessionNumber.trim() === "") {
-        // Clear results when search is empty
-        onSearchResults(null, null);
-        setIsLoading(false);
-        return;
-      }
-
       setIsLoading(true);
 
-      const endpoint = `/rest/sample-management/search?accessionNumber=${encodeURIComponent(
-        accessionNumber.trim(),
-      )}&includeTests=${includeTests}`;
+      const normalizedValue = accessionNumber?.trim() || "";
+      const endpoint = normalizedValue
+        ? `/rest/sample-management/search?accessionNumber=${encodeURIComponent(
+            normalizedValue,
+          )}&includeTests=${includeTests}`
+        : `/rest/sample-management/recent?limit=50&includeTests=${includeTests}`;
 
       getFromOpenElisServer(endpoint, (response) => {
         setIsLoading(false);
@@ -70,6 +66,10 @@ function SampleSearch({ onSearchResults, includeTests = false }) {
     },
     [includeTests, onSearchResults, intl],
   );
+
+  useEffect(() => {
+    performSearch("");
+  }, [performSearch]);
 
   /**
    * Handle search input change - no longer auto-triggers search.
@@ -113,8 +113,7 @@ function SampleSearch({ onSearchResults, includeTests = false }) {
       clearTimeout(debounceTimerRef.current);
     }
 
-    // Clear results
-    onSearchResults(null, null);
+    performSearch("");
   };
 
   return (
@@ -158,7 +157,7 @@ function SampleSearch({ onSearchResults, includeTests = false }) {
         kind="primary"
         renderIcon={SearchIcon}
         onClick={handleSearchSubmit}
-        disabled={isLoading || !searchValue.trim()}
+        disabled={isLoading}
         style={{ minHeight: "48px" }}
       >
         {intl.formatMessage({ id: "label.button.search" })}

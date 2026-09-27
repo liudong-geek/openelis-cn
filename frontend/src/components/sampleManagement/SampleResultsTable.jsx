@@ -56,6 +56,12 @@ function SampleResultsTable({
   const headers = useMemo(
     () => [
       {
+        key: "sampleAccessionNumber",
+        header: intl.formatMessage({
+          id: "sample.management.table.header.accessionNumber",
+        }),
+      },
+      {
         key: "externalId",
         header: intl.formatMessage({
           id: "sample.management.table.header.externalId",
@@ -113,6 +119,7 @@ function SampleResultsTable({
 
       return {
         id: item.id,
+        sampleAccessionNumber: item.sampleAccessionNumber || "-",
         externalId: item.externalId || "-",
         sampleType: item.sampleType || "-",
         quantity: item.quantity

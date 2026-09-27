@@ -51,6 +51,15 @@ public interface SampleManagementService {
     SearchSamplesResponse searchByAccessionNumber(String accessionNumber, boolean includeTests);
 
     /**
+     * Return a bounded list of the most recently created sample items.
+     *
+     * @param limit        maximum number of sample items to return
+     * @param includeTests if true, loads ordered tests for each sample item
+     * @return recent sample items and result metadata
+     */
+    SearchSamplesResponse listRecentSampleItems(int limit, boolean includeTests);
+
+    /**
      * Create an aliquot from a parent sample item.
      *
      * <p>

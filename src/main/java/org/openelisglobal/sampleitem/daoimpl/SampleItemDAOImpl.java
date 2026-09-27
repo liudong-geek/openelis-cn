@@ -117,6 +117,19 @@ public class SampleItemDAOImpl extends BaseDAOImpl<SampleItem, String> implement
         return list;
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<SampleItem> getRecentSampleItems(int limit) throws LIMSRuntimeException {
+        try {
+            String hql = "from SampleItem si order by si.sample.id desc, si.sortOrder, si.id desc";
+            return entityManager.unwrap(Session.class).createQuery(hql, SampleItem.class)
+                    .setMaxResults(Math.max(1, Math.min(limit, 100))).getResultList();
+        } catch (RuntimeException e) {
+            LogEvent.logError(e);
+            throw new LIMSRuntimeException("Error in SampleItem getRecentSampleItems()", e);
+        }
+    }
+
     public SampleItem readSampleItem(String idString) {
         SampleItem samp = null;
         try {
