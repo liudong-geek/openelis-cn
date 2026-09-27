@@ -9,6 +9,7 @@ import {
   NumberInput,
   Button,
   ComboBox,
+  Modal,
 } from "@carbon/react";
 import { getFromOpenElisServer } from "../utils/Utils";
 import { sampleTypeTestsStructure } from "../data/SampleEntryTestsForTypeProvider";
@@ -33,7 +34,7 @@ const PrePrint = () => {
   const [facilityId, setFacilityId] = useState("");
 
   const [source, setSource] = useState("about:blank");
-  const [renderBarcode, setRenderBarcode] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [siteNames, setSiteNames] = useState([]);
 
   const getSiteList = (response) => {
@@ -123,15 +124,15 @@ const PrePrint = () => {
   function addTestToSelectedTests(test) {
     setSelectedTests([...selectedTests, { id: test.id, name: test.name }]);
   }
-  const handlePanelCheckbox = (e, panel) => {
-    if (e.currentTarget.checked) {
+  const handlePanelCheckbox = (checked, panel) => {
+    if (checked) {
       addPanelToSelectedPanels(panel);
     } else {
       removePanelFromSelectedPanels(panel);
     }
   };
-  const handleTestCheckbox = (e, test) => {
-    if (e.currentTarget.checked) {
+  const handleTestCheckbox = (checked, test) => {
+    if (checked) {
       addTestToSelectedTests(test);
     } else {
       removeTestFromSelectedTests(test);
@@ -165,7 +166,7 @@ const PrePrint = () => {
       testIds: selectedTestIds,
     });
     setSource(buildLabelMakerUrl(params));
-    setRenderBarcode(true);
+    setPreviewOpen(true);
   };
 
   useEffect(() => {
@@ -309,7 +310,9 @@ const PrePrint = () => {
                         .filter((panel) => panel.name)
                         .map((panel) => (
                           <Checkbox
-                            onChange={(e) => handlePanelCheckbox(e, panel)}
+                            onChange={(_event, { checked }) =>
+                              handlePanelCheckbox(checked, panel)
+                            }
                             labelText={panel.name}
                             id={"panel_" + panel.id}
                             key={panel.id}
@@ -330,7 +333,9 @@ const PrePrint = () => {
                       ?.filter((test) => test.name)
                       .map((test) => (
                         <Checkbox
-                          onChange={(e) => handleTestCheckbox(e, test)}
+                          onChange={(_event, { checked }) =>
+                            handleTestCheckbox(checked, test)
+                          }
                           labelText={test.name}
                           id={"test_" + test.id}
                           key={test.id}
@@ -365,19 +370,26 @@ const PrePrint = () => {
           <FormattedMessage id="barcode.print.preprint.note" />
         </p>
       </div>
-      {renderBarcode && (
-        <section className="barcode-card barcode-preview">
-          <h2>
-            <FormattedMessage id="barcode.header" />
-          </h2>
+      <Modal
+        open={previewOpen}
+        passiveModal
+        size="lg"
+        className="barcode-preview-modal"
+        modalHeading={intl.formatMessage({ id: "barcode.header" })}
+        closeButtonLabel={intl.formatMessage({ id: "button.close" })}
+        onRequestClose={() => {
+          setPreviewOpen(false);
+          setSource("about:blank");
+        }}
+      >
+        {previewOpen && (
           <iframe
+            className="barcode-preview-modal__frame"
             title={intl.formatMessage({ id: "barcode.header" })}
             src={source}
-            width="100%"
-            height="500px"
           />
-        </section>
-      )}
+        )}
+      </Modal>
     </>
   );
 };
