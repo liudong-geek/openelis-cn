@@ -3,55 +3,573 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="OpenELIS-CN 检验工作台功能、岗位权限和业务操作手册" />
   <title>LIS 检验工作台功能与操作手册</title>
   <style>
-    :root { --ink:#183446; --muted:#5f7482; --brand:#168b87; --brand-dark:#0f6867; --line:#d8e2e8; --surface:#f4f7f9; --warm:#fff8ed; }
-    * { box-sizing:border-box; }
-    html { scroll-behavior:smooth; }
-    body { margin:0; color:var(--ink); background:var(--surface); font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif; line-height:1.75; }
-    .topbar { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:14px; min-height:64px; padding:10px 28px; color:white; background:#123140; box-shadow:0 2px 10px #0b233033; }
-    .mark { display:grid; place-items:center; width:40px; height:40px; border-radius:12px; font-size:22px; font-weight:700; background:var(--brand); }
-    .topbar strong { display:block; font-size:17px; }
-    .topbar small { display:block; color:#bcd0db; }
-    .layout { display:grid; grid-template-columns:280px minmax(0, 920px); justify-content:center; gap:28px; padding:28px; }
-    nav { position:sticky; top:92px; align-self:start; max-height:calc(100vh - 116px); overflow:auto; padding:18px; border:1px solid var(--line); border-radius:14px; background:white; }
-    nav h2 { margin:0 0 12px; font-size:15px; }
-    nav a { display:block; padding:7px 10px; border-radius:8px; color:#365564; font-size:14px; text-decoration:none; }
-    nav a:hover { color:var(--brand-dark); background:#eaf5f4; }
-    nav .toc-sub { padding-left:24px; color:#667d89; font-size:13px; }
-    main { min-width:0; padding:42px 54px 70px; border:1px solid var(--line); border-radius:16px; background:white; box-shadow:0 10px 30px #1834460d; }
-    h1 { margin:0 0 10px; font-size:36px; line-height:1.25; letter-spacing:-1px; }
-    h2 { margin:48px 0 16px; padding-top:10px; border-top:1px solid var(--line); font-size:26px; line-height:1.35; }
-    h3 { margin:30px 0 12px; color:var(--brand-dark); font-size:20px; }
-    p { margin:12px 0; }
-    ul,ol { padding-left:24px; }
-    li { margin:7px 0; }
-    strong { color:#102c3b; }
-    code { padding:2px 5px; border-radius:5px; background:#eef3f5; }
-    .flow { overflow:auto; padding:22px; border-left:5px solid var(--brand); border-radius:10px; color:#123140; background:#eaf5f4; font-size:15px; line-height:1.9; }
-    .table-wrap { overflow-x:auto; margin:18px 0 26px; border:1px solid var(--line); border-radius:10px; }
-    table { width:100%; border-collapse:collapse; font-size:14px; }
-    th { color:#173746; background:#edf4f6; text-align:left; }
-    th,td { padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:top; }
-    tr:last-child td { border-bottom:0; }
-    .notice { margin:18px 0; padding:14px 16px; border:1px solid #efd8af; border-radius:10px; background:var(--warm); }
-    .actions { margin-left:auto; }
-    .actions button { padding:9px 14px; border:1px solid #8fb0bd; border-radius:8px; color:white; background:transparent; cursor:pointer; }
-    @media (max-width:900px) { .layout { display:block; padding:14px; } nav { position:static; max-height:none; margin-bottom:14px; } main { padding:28px 22px 50px; } h1 { font-size:28px; } }
-    @media print { body { background:white; } .topbar, nav { display:none; } .layout { display:block; padding:0; } main { border:0; box-shadow:none; padding:0; } h2 { break-after:avoid; } table, pre { break-inside:avoid; } }
+    :root {
+      color-scheme: light;
+      --ink: #183646;
+      --muted: #607b89;
+      --line: #d7e3e8;
+      --paper: #ffffff;
+      --canvas: #f3f7f8;
+      --brand: #087f79;
+      --brand-dark: #075e5a;
+      --brand-soft: #e8f5f3;
+      --warn: #8a5700;
+      --warn-soft: #fff7df;
+      --shadow: 0 10px 30px rgba(24, 54, 70, 0.08);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: var(--ink); background: var(--canvas); line-height: 1.75; }
+    a { color: #086d91; }
+    .skip { position: fixed; left: 1rem; top: -5rem; z-index: 20; padding: .65rem 1rem; background: var(--paper); border: 2px solid var(--brand); border-radius: .4rem; }
+    .skip:focus { top: 1rem; }
+    .hero { color: white; background: linear-gradient(130deg, #0b6661 0%, #0b827b 55%, #095a72 100%); }
+    .hero-inner { max-width: 1480px; margin: 0 auto; padding: 2.4rem clamp(1.25rem, 4vw, 4rem) 2.6rem; }
+    .eyebrow { margin: 0 0 .4rem; font-size: .85rem; font-weight: 700; letter-spacing: .15em; opacity: .82; }
+    h1 { max-width: 880px; margin: 0; font-size: clamp(2rem, 4vw, 3.25rem); line-height: 1.2; letter-spacing: -.02em; }
+    .hero-summary { max-width: 920px; margin: .9rem 0 0; color: rgba(255,255,255,.86); font-size: 1.05rem; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.3rem; }
+    .pill { display: inline-flex; align-items: center; min-height: 2.2rem; padding: .35rem .75rem; border: 1px solid rgba(255,255,255,.3); border-radius: 999px; color: white; font-size: .88rem; }
+    button { border: 1px solid rgba(255,255,255,.65); border-radius: .45rem; padding: .55rem .9rem; color: var(--brand-dark); background: white; font: inherit; font-weight: 700; cursor: pointer; }
+    .layout { display: grid; grid-template-columns: minmax(230px, 280px) minmax(0, 1fr); gap: 1.5rem; max-width: 1480px; margin: 0 auto; padding: 1.5rem clamp(1rem, 3vw, 3rem) 4rem; }
+    nav { position: sticky; top: 1rem; align-self: start; max-height: calc(100vh - 2rem); overflow: auto; padding: 1rem; background: var(--paper); border: 1px solid var(--line); border-radius: .75rem; box-shadow: var(--shadow); }
+    nav strong { display: block; margin: .1rem .55rem .75rem; }
+    nav a { display: grid; grid-template-columns: 2rem 1fr; gap: .35rem; align-items: start; padding: .48rem .55rem; border-radius: .45rem; color: var(--ink); text-decoration: none; font-size: .9rem; line-height: 1.35; }
+    nav a:hover, nav a:focus { background: var(--brand-soft); color: var(--brand-dark); }
+    nav a span { color: var(--brand); font-variant-numeric: tabular-nums; }
+    main { min-width: 0; }
+    main > p:first-child, main > p:nth-child(2), main > p:nth-child(3) { margin: 0; padding: 0 1.5rem; color: var(--muted); background: var(--paper); }
+    main > p:first-child { padding-top: 1.4rem; border: 1px solid var(--line); border-bottom: 0; border-radius: .8rem .8rem 0 0; }
+    main > p:nth-child(3) { padding-bottom: 1.2rem; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 .8rem .8rem; }
+    .notice { margin: 1rem 0 1.5rem; padding: 1rem 1.15rem; border-left: 4px solid #e0a200; border-radius: .5rem; color: #62430a; background: var(--warn-soft); }
+    .manual-section { margin-top: 1.3rem; padding: clamp(1.25rem, 2.6vw, 2.25rem); background: var(--paper); border: 1px solid var(--line); border-radius: .8rem; box-shadow: 0 2px 8px rgba(24, 54, 70, 0.025); scroll-margin-top: 1rem; }
+    h2 { margin: 0 0 1rem; padding-bottom: .75rem; border-bottom: 2px solid var(--brand-soft); font-size: clamp(1.45rem, 2vw, 2rem); line-height: 1.35; }
+    h3 { margin: 1.65rem 0 .55rem; font-size: 1.2rem; line-height: 1.4; }
+    p { margin: .55rem 0 .9rem; }
+    ul, ol { margin: .55rem 0 1rem; padding-left: 1.5rem; }
+    li { margin: .3rem 0; }
+    strong { color: #173441; }
+    code { padding: .12rem .3rem; border-radius: .25rem; background: #edf2f4; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
+    pre.flow { overflow: auto; margin: 1rem 0 1.2rem; padding: 1.2rem; border: 1px solid #b7dad6; border-radius: .65rem; color: #123f3c; background: var(--brand-soft); line-height: 1.65; }
+    pre.flow code { padding: 0; background: transparent; font-size: .9rem; }
+    .table-wrap { overflow-x: auto; margin: 1rem 0 1.35rem; border: 1px solid var(--line); border-radius: .65rem; }
+    table { width: 100%; border-collapse: collapse; min-width: 720px; font-size: .93rem; }
+    th, td { padding: .72rem .8rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: #284a58; background: #edf4f6; white-space: nowrap; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:nth-child(even) { background: #fbfcfd; }
+    .footer { padding: 1.5rem; text-align: center; color: var(--muted); font-size: .9rem; }
+    @media (max-width: 900px) {
+      .layout { display: block; }
+      nav { position: static; max-height: none; margin-bottom: 1rem; columns: 2; }
+      nav strong { column-span: all; }
+      nav a { break-inside: avoid; }
+    }
+    @media (max-width: 560px) {
+      nav { columns: 1; }
+      .hero-inner { padding: 1.7rem 1rem; }
+      .manual-section { padding: 1rem; }
+    }
+    @media print {
+      body { background: white; font-size: 10.5pt; }
+      .hero { color: var(--ink); background: white; border-bottom: 2px solid var(--ink); }
+      .hero-inner { max-width: none; padding: 0 0 1rem; }
+      .hero-summary { color: var(--muted); }
+      .pill { color: var(--ink); border-color: var(--line); }
+      button, nav, .skip { display: none !important; }
+      .layout { display: block; max-width: none; padding: 0; }
+      .manual-section { break-inside: avoid-page; margin: 1rem 0; padding: .6rem 0; border: 0; box-shadow: none; }
+      a { color: inherit; text-decoration: none; }
+    }
   </style>
 </head>
 <body>
-  <header class="topbar">
-    <span class="mark" aria-hidden="true">L</span>
-    <span><strong>LIS 检验工作台</strong><small>功能与操作手册 · 当前中国版界面</small></span>
-    <span class="actions"><button type="button" onclick="window.print()">打印 / 保存 PDF</button></span>
+  <a class="skip" href="#content">跳到正文</a>
+  <header class="hero">
+    <div class="hero-inner">
+      <p class="eyebrow">OPENELIS-CN · 使用指南</p>
+      <h1>LIS 检验工作台功能与操作手册</h1>
+      <p class="hero-summary">从申请、单管/多管标本处理，到结果审核、报告和岗位权限的完整操作说明。</p>
+      <div class="hero-actions">
+        <span class="pill">版本 0.3</span>
+        <span class="pill">更新：2026-09-27</span>
+        <button type="button" onclick="window.print()">打印 / 保存为 PDF</button>
+      </div>
+    </div>
   </header>
   <div class="layout">
-    <nav aria-label="手册目录"><h2>目录</h2><a class="toc-main" href="#section-2">1. 先理解这套系统在做什么</a><a class="toc-main" href="#section-3">2. 第一次登录后的 10 分钟上手</a><a class="toc-main" href="#section-4">3. 左侧六个入口</a><a class="toc-main" href="#section-5">4. 日常业务闭环</a><a class="toc-sub" href="#section-6">4.1 建立检验申请</a><a class="toc-sub" href="#section-7">4.2 采集或签收标本</a><a class="toc-sub" href="#section-8">4.3 打印标签与上架</a><a class="toc-sub" href="#section-9">4.4 标本验收</a><a class="toc-sub" href="#section-10">4.5 结果录入</a><a class="toc-sub" href="#section-11">4.6 结果审核</a><a class="toc-sub" href="#section-12">4.7 报告查询、签发与打印</a><a class="toc-main" href="#section-13">5. 工作台和常用操作</a><a class="toc-sub" href="#section-14">5.1 工作台</a><a class="toc-sub" href="#section-15">5.2 搜索和扫描</a><a class="toc-sub" href="#section-16">5.3 列表返回</a><a class="toc-sub" href="#section-17">5.4 菜单展开</a><a class="toc-main" href="#section-18">6. 质量管理</a><a class="toc-sub" href="#section-19">6.1 不符合项</a><a class="toc-sub" href="#section-20">6.2 室内质控</a><a class="toc-sub" href="#section-21">6.3 告警</a><a class="toc-main" href="#section-22">7. 管理中心</a><a class="toc-sub" href="#section-23">7.1 检验目录</a><a class="toc-sub" href="#section-24">7.2 机构与人员</a><a class="toc-sub" href="#section-25">7.3 流程与报告配置</a><a class="toc-sub" href="#section-26">7.4 仪器与接口</a><a class="toc-sub" href="#section-27">7.5 系统与安全</a><a class="toc-sub" href="#section-28">7.6 数据维护与上线准备</a><a class="toc-main" href="#section-29">8. 当前版本的功能边界</a><a class="toc-main" href="#section-30">9. 常见问题</a><a class="toc-sub" href="#section-31">看不到某个菜单</a><a class="toc-sub" href="#section-32">页面提示加载失败</a><a class="toc-sub" href="#section-33">保存后不确定是否成功</a><a class="toc-sub" href="#section-34">扫描条码没有反应</a><a class="toc-sub" href="#section-35">打印内容或尺寸不对</a><a class="toc-sub" href="#section-36">结果不能审核或报告不能签发</a><a class="toc-main" href="#section-37">10. 建议的岗位日清单</a><a class="toc-sub" href="#section-38">接收/采样人员</a><a class="toc-sub" href="#section-39">检验人员</a><a class="toc-sub" href="#section-40">审核/报告人员</a><a class="toc-sub" href="#section-41">质量负责人</a><a class="toc-sub" href="#section-42">系统管理员</a><a class="toc-main" href="#section-43">11. 上线前必须补齐的医院资料</a></nav>
-    <main><h1 id="section-1">LIS 检验工作台功能与操作手册</h1><p>版本：0.2（基于当前中国版界面） 更新日期：2026-09-23 适用对象：检验科接收人员、检验人员、审核人员、报告人员、质量负责人、系统管理员</p><h2 id="section-2">1. 先理解这套系统在做什么</h2><p>这套 LIS 按一份检验申请的生命周期组织工作：</p><pre class="flow" data-language="text"><code>建立申请 → 采集/签收标本 → 打印并核对标签 → 标本验收
-        → 结果录入 → 结果审核 → 报告签发/查询
-        ↘ 异常进入质量管理，接口与基础资料由管理中心维护</code></pre><p>每个岗位只处理自己有权限的环节。左侧菜单是工作入口，页面中的状态、筛选和步骤条说明当前任务走到哪里。菜单分组可以同时展开；点击分组标题只负责展开或收起，不会改变其他分组。</p><h2 id="section-3">2. 第一次登录后的 10 分钟上手</h2><ol><li><strong>确认账号和实验室。</strong> 登录后查看右上角账号、当前实验室或专业组。菜单少于本手册属于权限差异，不代表功能丢失。</li><li><strong>先看“工作台”。</strong> 工作台显示今日待办、异常和各环节数量，可点击卡片进入对应队列。</li><li><strong>用一条测试申请跑通流程。</strong> 进入“申请与标本”，新建申请，依次完成“新建申请、采集签收、贴签上架、标本验收”。</li><li><strong>在“检验”录入测试结果。</strong> 找到刚验收的标本，录入结果并保存。</li><li><strong>在“审核与报告”完成审核。</strong> 审核结果，确认患者、项目、结果、单位和参考范围，再进入报告查询或签发。</li><li><strong>遇到异常不要绕过。</strong> 标本拒收、质控失控、结果退回等情况进入“质量管理”留痕。</li></ol><p>建议培训时使用明确标记的测试患者和测试标本。正式上线前不要用真实患者数据验证尚未接通的接口。</p><h2 id="section-4">3. 左侧六个入口</h2><div class="table-wrap"><table><thead><tr><th>入口</th><th>谁使用</th><th>主要任务</th><th>完成后流向</th></tr></thead><tbody><tr><td>01 工作台</td><td>所有岗位</td><td>查看今日待办、异常、快捷入口</td><td>对应业务队列</td></tr><tr><td>02 申请与标本</td><td>接收、采样人员</td><td>建申请、采集/签收、贴签、验收、患者查询</td><td>检验</td></tr><tr><td>03 检验</td><td>检验人员、仪器接口人员</td><td>查看标本队列、手工或仪器结果录入、保存</td><td>审核与报告</td></tr><tr><td>04 审核与报告</td><td>审核、报告人员</td><td>审核、退回、报告查询、签发、打印</td><td>患者/临床/外部系统</td></tr><tr><td>05 质量管理</td><td>质量负责人、授权人员</td><td>不符合项、纠正措施、质控告警</td><td>闭环或解除拦截</td></tr><tr><td>06 管理中心</td><td>管理员</td><td>主数据、人员机构、流程规则、仪器接口、系统维护</td><td>全系统生效</td></tr></tbody></table></div><h2 id="section-5">4. 日常业务闭环</h2><h3 id="section-6">4.1 建立检验申请</h3><p>入口：<strong>申请与标本 → 申请列表 → 新建申请</strong>。</p><p>操作顺序：</p><ol><li>先搜索患者，优先复用已有患者档案，避免重复建档。</li><li>核对患者姓名、性别、出生日期、证件或患者唯一编号。</li><li>选择送检机构、科室、医生和优先级。</li><li>选择标本类型和检验项目；能从下拉框选择的内容不手工输入。</li><li>保存申请。系统生成实验室编号后，才表示申请已经建立。</li></ol><p>注意：急诊、定时采集和普通申请应选择正确优先级。发现患者重复时不要继续建立第二份档案，应交由有权限人员处理患者合并。</p><h3 id="section-7">4.2 采集或签收标本</h3><p>入口：申请的第二步 <strong>采集签收</strong>，也可在申请列表扫描条码后继续。</p><p>操作顺序：</p><ol><li>扫描或输入实验室编号。</li><li>核对患者和申请项目。</li><li>对院内采集标本登记采集信息；对外送标本登记签收信息。</li><li>核对标本类型、容器、数量、采集/签收时间和人员。</li><li>保存后进入贴签步骤。</li></ol><p>标本不符合要求时，不要直接标记完成。记录拒收、重采或不符合事件，并填写原因。</p><h3 id="section-8">4.3 打印标签与上架</h3><p>入口：申请的第三步 <strong>贴签上架</strong>。</p><ol><li>选择对应标本管和标签预设。</li><li>预览标签，核对患者标识、实验室编号、标本类型和条码。</li><li>打印并贴在正确容器上，避免遮挡液面和原有关键标识。</li><li>需要位置管理时选择存储位置；现场暂不管理位置时，按本机构规则选择跳过。</li></ol><p>打印失败时先检查浏览器打印窗口、打印机选择和标签尺寸。不要连续重复点击打印，以免产生重复标签。</p><h3 id="section-9">4.4 标本验收</h3><p>入口：申请的第四步 <strong>标本验收</strong>。</p><ol><li>核对申请、患者、标本、标签和检验项目是否一致。</li><li>检查标本量、容器、溶血/凝块/污染等情况。</li><li>合格则确认进入检验；不合格则选择问题类型和处置。</li><li>完成后，申请从接收环节进入检验队列。</li></ol><p>步骤条后续环节不可点击时，说明前序步骤尚未完成。返回前一步补齐必填项后再继续。</p><h3 id="section-10">4.5 结果录入</h3><p>入口：<strong>工作台 → 待录入结果</strong>，或 <strong>检验 → 检验工作站</strong>。</p><ol><li>待录入队列自动加载。先确认“共几项检验任务”，再按实验室编号、状态、日期或专业组筛选。</li><li>点击左侧的一条标本记录，核对患者、实验室编号和条码，集中查看该标本的项目；“全部标本记录”可返回全队列。</li><li>结果不可编辑时，点击该行的“受限说明”，页面会选中对应标本并定位原因。同一标本的共同原因集中说明，项目自己的问题仍在行内提示。全队列也可点击“展开受限说明”查看。</li><li>需要核对前置记录时，有相应权限且没有未处理草稿的账号可以“打开申请列表核对”。按实验室编号查找，处理后返回结果页重新查询；没有入口时联系有申请与标本接收权限的人员。</li><li>可录入的项目逐项填写结果，核对单位、参考范围、异常标志和仪器原始结果，再保存当前结果。保存成功只表示完成结果录入，尚未审核和签发。</li><li>进入审核前先处理本页的未保存内容。未确认的提交不能当作已经成功，也不要重复保存。</li></ol><p>关键规则：</p><ul><li>顶部数字是检验任务数，同一任务的多个结果组件不会重复计数；左侧数字是标本记录数，两者不能直接相比或相加。</li><li>加载中或失败时，数量暂不显示不代表没有任务；重新查询成功后再看数字。</li><li>切换左侧标本可继续保留当前页面的草稿；离开或刷新页面前仍须处理未保存及提交状态未确认的内容。</li><li>保存超时或结果未知时，按页面的核对和恢复提示读取服务器状态，不要直接重提。</li><li>受限说明不会代替接收、拒收、补采或审核处理；前置记录核对完成后，重新查询才会读取最新状态。</li><li>质控拒绝级失控会拦截相关仪器结果放行，应先处理质控问题。</li></ul><h3 id="section-11">4.6 结果审核</h3><p>入口：<strong>审核与报告 → 审核工作台</strong>。</p><p>从工作台点击“待审核检验任务”，会自动加载当前账号权限范围内的全部待审核队列。也可以选择“按专业组”“按申请单”“申请单范围”或“按检验日期”缩小范围。只打开审核页而没有选择查询条件时，显示“尚未查询”，不表示待审核数量为零。</p><p>页面统计的是整次查询中的检验任务、受理号组、展示行和质控受阻任务，翻页不会把统计改成当前页数量。尚未确认的统计不会显示为零，页面会提示仅显示已确认的数量；质控受阻任务仍包含在总数内。已签发或打印的遗留记录可能仍在待审核列表中，页面会说明只读原因，不能据待审核数量判断这些记录可以重新批准。</p><p>审核顺序：</p><ol><li>核对患者和标本身份。</li><li>查看结果、单位、参考范围、异常标志和历史结果。</li><li>必要时查看原始值、分析版本或不符合记录。</li><li>正确的结果选择接受；需修改的结果选择退回并填写原因。</li><li>批量操作前再次核对选中范围，再提交审核。</li></ol><p>审核人员不应替代检验人员直接修改原始结果。危急值、质控失控或身份不清的记录应先按本机构制度处置。</p><h3 id="section-12">4.7 报告查询、签发与打印</h3><p>入口：<strong>审核与报告 → 报告工作台</strong>。</p><p>报告可按实验室编号、患者、送检机构和日期查询。正式报告流程包括：</p><ol><li>选择检验申请和报告分组。</li><li>建立或选择报告文档版本。</li><li>冻结报告内容。</li><li>核对患者身份、结果、单位、参考范围和预览 PDF。</li><li>输入当前账号密码完成签名和签发。</li><li>打印时登记打印记录；更正或作废必须填写原因。</li></ol><p>“预览”不是正式报告。只有已签发版本可作为当前正式报告；更正版签发后，原版本应保留为历史原件。</p><h2 id="section-13">5. 工作台和常用操作</h2><h3 id="section-14">5.1 工作台</h3><p>工作台用于判断“今天先做什么”。点击“待录入结果”，会直接打开当前账号可见的待录入队列。数量包含需要先处理前置条件的任务，不代表每一项都能立即录入。不同卡片的单位和范围可能不同，不要直接相加。</p><p>“0”表示已确认当前范围没有任务；“数量暂不可用”或加载失败表示尚未确认。待录入和待审核卡片分别显示检验任务数及成功查询时间；刷新失败不会把旧时间改成新的成功时间。</p><h3 id="section-15">5.2 搜索和扫描</h3><ul><li>顶部搜索用于跨页面查找常用对象。</li><li>条码输入框适合扫描实验室编号；扫描枪通常等同于键盘输入并回车。</li><li>列表内搜索只过滤当前业务范围。没有结果时先清除筛选，再检查日期和状态。</li></ul><h3 id="section-16">5.3 列表返回</h3><p>从列表进入详情后使用页面上的“返回列表”，系统会尽量保留之前的搜索、筛选和页码。浏览器直接后退可能丢失未保存输入。</p><h3 id="section-17">5.4 菜单展开</h3><p>左侧各分组可以独立展开和收起，可同时保留多个分组。当前页面所属分组会自动展开。图钉用于固定侧栏；小屏幕下选择页面后侧栏会自动收起。</p><h2 id="section-18">6. 质量管理</h2><h3 id="section-19">6.1 不符合项</h3><p>用于记录标本拒收、申请错误、结果问题、流程偏差等事件。一般流程为：登记事件 → 分派/调查 → 纠正措施 → 复核关闭。记录应包含发生时间、对象、原因、处理人和证据。</p><h3 id="section-20">6.2 室内质控</h3><p>质控工作台按仪器和项目查看状态、控制图、告警和活动记录。拒绝级规则触发后，相关患者结果可能被阻止放行。先确认控制品批号、靶值、仪器状态和规则，再决定重测、校准或解除。</p><h3 id="section-21">6.3 告警</h3><p>告警需要明确确认人和处置结果。确认告警只表示已知悉，完成纠正并验证有效后才能关闭。</p><h2 id="section-22">7. 管理中心</h2><p>管理中心按业务领域组织配置。可在首页搜索配置名称，不需要记住旧菜单路径。</p><h3 id="section-23">7.1 检验目录</h3><ul><li><strong>检验主数据</strong>：项目目录、标本类型、组合、专业组、单位、方法、结果选择列表。</li><li><strong>规则管理</strong>：反射检验、计算项目、批量项目调整。</li></ul><p>建议顺序：先建立单位/方法/标本类型和专业组，再建立检验项目，最后配置组合、规则和可开单范围。</p><h3 id="section-24">7.2 机构与人员</h3><ul><li>用户：账号、角色、启停状态。</li><li>机构：医院、科室、送检单位等组织资料。</li><li>医务人员：申请医生或相关人员资料。</li></ul><p>账号应按人分配，禁止多人共用。岗位变化时同步调整角色，不应只隐藏菜单而保留不必要权限。</p><h3 id="section-25">7.3 流程与报告配置</h3><p>包含站点信息、品牌、申请录入、患者、工作单、实验室编号、标签预设、结果录入、审核、打印报告、结果发送和检验通知配置。</p><p>变更编号、标签、审核或报告规则前，应记录变更原因并在测试环境用完整流程验证。</p><h3 id="section-26">7.4 仪器与接口</h3><ul><li>仪器管理：仪器资料、连接方式和状态。</li><li>仪器项目映射：将仪器项目代码映射到 LIS 检验项目。</li><li>外部连接：HIS/EMR 等连接配置。</li><li>数据发送监控：查看成功、待处理、失败和重试记录。</li><li>室内质控工作台：查看与仪器相关的质控状态。</li></ul><p>接口失败时先查看发送监控的时间、目标、状态和错误信息，再决定重试。未知结果时不要连续重发。</p><h3 id="section-27">7.5 系统与安全</h3><p>包含日志级别、搜索索引、数据库清理、语言、翻译、插件和系统参数。数据库清理、插件及关键系统参数属于高风险操作，应由指定管理员执行，并在操作前完成备份和变更记录。</p><h3 id="section-28">7.6 数据维护与上线准备</h3><p>主数据编码、附加申请配置和上线准备集中在此。上线准备页目前用于保存本机配置草稿和模拟验证，覆盖 HIS、仪器、打印、时效/审核规则及检查清单。</p><h2 id="section-29">8. 当前版本的功能边界</h2><div class="table-wrap"><table><thead><tr><th>功能</th><th>当前状态</th><th>使用要求</th></tr></thead><tbody><tr><td>申请、采集、贴签、验收、结果录入、审核</td><td>核心业务流程</td><td>使用测试数据完成医院 UAT 后上线</td></tr><tr><td>正式报告版本、签发、打印登记</td><td>已有工作流</td><td>需确认医院报告样张、签章和审核制度</td></tr><tr><td>检验目录、人员机构、流程配置</td><td>可配置</td><td>变更前备份，变更后回归验证</td></tr><tr><td>HIS/EMR、仪器连接</td><td>有配置和模拟验证能力</td><td>需医院接口文档、网络参数和仪器协议后才能真实联调</td></tr><tr><td>上线准备检查</td><td>本机草稿与模拟检查</td><td>不能代替真实端到端联调和验收签字</td></tr><tr><td>通知模板及本地发送历史</td><td>配置/模拟辅助</td><td>正式短信、邮件或院内消息通道需另行接入</td></tr><tr><td>标签与报告打印</td><td>有预设和预览能力</td><td>需使用实际打印机、纸张和样张校准</td></tr><tr><td>可选专科/标本库/转运/室间质评</td><td>默认关闭或按部署启用</td><td>由医院确认范围后启用并单独验收</td></tr></tbody></table></div><h2 id="section-30">9. 常见问题</h2><h3 id="section-31">看不到某个菜单</h3><p>先确认登录账号、角色和当前实验室。菜单按后端授权显示；管理员修改角色后，退出并重新登录再检查。</p><h3 id="section-32">页面提示加载失败</h3><p>先点击“重新加载页面”。仍失败时记录页面名称、发生时间、实验室编号和操作步骤，交给管理员查看服务状态。不要反复提交写入操作。</p><h3 id="section-33">保存后不确定是否成功</h3><p>保留当前页面，先使用页面提供的核对或恢复入口读取服务器当前状态。若提示“结果尚未确认”或输入已暂停，不要重复保存、签发、打印或重试接口，也不要直接刷新丢弃未保存输入。</p><h3 id="section-34">扫描条码没有反应</h3><p>点击条码输入框后再扫描，确认扫描枪会发送回车；也可手工输入实验室编号验证。再检查条码内容是否与系统编号格式一致。</p><h3 id="section-35">打印内容或尺寸不对</h3><p>检查标签预设、浏览器打印缩放、纸张尺寸和打印机。先用测试标签校准，不要直接用患者正式标签试印。</p><h3 id="section-36">结果不能审核或报告不能签发</h3><p>检查结果是否保存、当前账号权限、质控拦截、报告分组和患者/标本信息是否完整。退回记录必须写明原因。</p><h2 id="section-37">10. 建议的岗位日清单</h2><h3 id="section-38">接收/采样人员</h3><ul><li>清理采集待办、标签待办和验收待办。</li><li>处理拒收、重采和身份不符记录。</li><li>核对当天未完成申请。</li></ul><h3 id="section-39">检验人员</h3><ul><li>处理本专业组待录入结果。</li><li>检查仪器导入失败和本页未保存输入。</li><li>交班前确认急诊及超时任务。</li></ul><h3 id="section-40">审核/报告人员</h3><ul><li>清理待审核和退回队列。</li><li>核对危急值、质控拦截和异常结果。</li><li>检查待签发、待打印及更正报告。</li></ul><h3 id="section-41">质量负责人</h3><ul><li>查看质控告警和不符合项。</li><li>跟踪纠正措施和未关闭事件。</li><li>抽查审计记录及关键配置变更。</li></ul><h3 id="section-42">系统管理员</h3><ul><li>查看接口失败、服务异常和数据发送积压。</li><li>管理账号、角色和主数据变更。</li><li>按制度检查备份、日志和上线检查项。</li></ul><h2 id="section-43">11. 上线前必须补齐的医院资料</h2><ol><li>HIS/EMR 接口规范、字段字典、认证方式和测试地址。</li><li>仪器清单、通讯协议、驱动方式和项目代码表。</li><li>报告样张、签章规则、报告分组、更正/作废制度。</li><li>标签尺寸、条码规则、打印机型号和部署位置。</li><li>岗位角色、审核层级、危急值和质控放行规则。</li><li>实验室编号、专业组、标本、项目、单位和参考范围主数据。</li><li>UAT 场景、验收人和上线/回退方案。</li></ol><p>本手册描述当前软件的工作方式。医院制度与本手册不一致时，应先完成配置、开发和验证，再更新手册并培训使用人员。</p></main>
+    <nav aria-label="手册目录">
+      <strong>目录</strong>
+      <a href="#section-1"><span>01</span>1. 先看懂 LIS 的完整流程</a>
+<a href="#section-2"><span>02</span>2. 第一次登录后的 10 分钟上手</a>
+<a href="#section-3"><span>03</span>3. 七个一级菜单</a>
+<a href="#section-4"><span>04</span>4. 默认岗位权限</a>
+<a href="#section-5"><span>05</span>5. 申请与标本</a>
+<a href="#section-6"><span>06</span>6. 检验</a>
+<a href="#section-7"><span>07</span>7. 审核与报告</a>
+<a href="#section-8"><span>08</span>8. 质量管理</a>
+<a href="#section-9"><span>09</span>9. 基础配置</a>
+<a href="#section-10"><span>10</span>10. 系统管理</a>
+<a href="#section-11"><span>11</span>11. 页面操作规则</a>
+<a href="#section-12"><span>12</span>12. 常见问题</a>
+<a href="#section-13"><span>13</span>13. 岗位日清单</a>
+<a href="#section-14"><span>14</span>14. 当前版本边界</a>
+    </nav>
+    <main id="content">
+      <p>版本：0.3（适配当前 <code>develop</code> 中国版界面）</p>
+<p>更新日期：2026-09-27</p>
+<p>适用对象：申请与标本接收人员、检验技师、结果审核人员、报告发布人员、质量负责人、系统管理员和审计人员</p>
+<aside class="notice">本手册说明当前本地版本的真实工作方式。菜单会随岗位权限变化；医院尚未提供的接口、仪器、报告样张、标签规格、危急值和质控规则，必须在现场资料齐全后配置并验收。</aside>
+<section class="manual-section" id="section-1">
+<h2>1. 先看懂 LIS 的完整流程</h2>
+<p>LIS 围绕“申请—标本—检验任务—结果—报告”组织工作。一份申请可以对应一管，也可以按标本类型拆成多管。</p>
+<pre class="flow"><code>HIS/电子申请 ─┐
+              ├→ 申请登记 → 生成申请号与管码 → 采集/签收 → 逐管验收
+LIS 手工申请 ─┘                                      │
+                                  合格管 → 结果录入 → 结果审核 → 报告发布/查询/打印
+                                  拒收管 → 记录原因 → 关联补采 ────────────┘</code></pre>
+<p>需要记住四个概念：</p>
+<ul>
+<li><strong>申请号</strong>：标识一份检验申请，一份申请可包含多个项目和多管标本。</li>
+<li><strong>管码</strong>：标识一支实际标本管。多管申请的每支管都有独立管码。</li>
+<li><strong>检验任务</strong>：由申请项目和标本管共同产生，只有已验收合格的管可以继续检验。</li>
+<li><strong>逐管验收</strong>：同一申请内，一管合格、一管拒收时分别处理；合格管继续，拒收管进入补采，不把整单一起阻断。</li>
+</ul>
+<p>页面状态比菜单位置更重要。每次操作后都要确认状态已变化，再进入下一环节；出现“保存结果未知”时先查询服务器状态，不要重复提交。</p>
+</section>
+<section class="manual-section" id="section-2">
+<h2>2. 第一次登录后的 10 分钟上手</h2>
+<p>建议培训时使用明确标记的测试患者和测试标本。正式联调前不要录入真实患者资料。</p>
+<ol>
+<li><strong>确认账号和岗位。</strong> 登录后查看右上角账号。菜单少于本手册通常是岗位权限差异，不代表功能丢失。</li>
+<li><strong>打开工作台。</strong> 查看今日待接收、待录入、待审核和待打印数量；点击待办可进入对应队列。</li>
+<li><strong>建立一份单管测试申请。</strong> 进入“申请与标本 → 申请列表 → 新建申请”，选择患者、送检机构、标本类型和检验项目后保存。</li>
+<li><strong>完成采集和标签。</strong> 在申请流程中确认管码，登记采集；需要时预览并打印标签。演示环境可选择“仅采集，稍后签收”。</li>
+<li><strong>完成签收和验收。</strong> 进入“申请与标本 → 标本处理”，扫描管码，核对患者、申请、标本类型和项目，先签收再验收。</li>
+<li><strong>录入结果。</strong> 进入“检验 → 待录入结果”，找到刚验收的标本，填写并保存结果。</li>
+<li><strong>审核结果。</strong> 使用审核岗位进入“审核与报告 → 审核工作台”，核对后通过；有问题则退回并填写原因。</li>
+<li><strong>查询报告。</strong> 进入“审核与报告 → 患者检验报告”，按患者或实验室编号查询已审核结果并预览报告。</li>
+</ol>
+<p>如果第 5 步之后在待录入队列找不到任务，优先检查：管码是否正确、标本是否已验收、项目是否分配到当前专业组、当前账号是否有该专业组权限。</p>
+</section>
+<section class="manual-section" id="section-3">
+<h2>3. 七个一级菜单</h2>
+<div class="table-wrap"><table><thead><tr>
+<th>一级菜单</th>
+<th>主要使用岗位</th>
+<th>主要任务</th>
+<th>典型输出</th>
+</tr></thead><tbody>
+<tr>
+<td>工作台</td>
+<td>所有岗位</td>
+<td>查看今日待办、异常和快捷入口</td>
+<td>进入对应业务队列</td>
+</tr>
+<tr>
+<td>申请与标本</td>
+<td>接收、采样人员</td>
+<td>电子申请接收、手工建单、采集、条码、签收、逐管验收</td>
+<td>合格检验任务或拒收/补采记录</td>
+</tr>
+<tr>
+<td>检验</td>
+<td>检验技师、仪器数据人员</td>
+<td>待录入结果、外送检验、检验工作单</td>
+<td>已保存的检验结果</td>
+</tr>
+<tr>
+<td>审核与报告</td>
+<td>审核、报告人员</td>
+<td>结果审核、退回、报告查询、统计</td>
+<td>审核结论和报告</td>
+</tr>
+<tr>
+<td>质量管理</td>
+<td>质量负责人</td>
+<td>不符合项、质量预警和处理闭环</td>
+<td>处置记录和关闭结论</td>
+</tr>
+<tr>
+<td>基础配置</td>
+<td>系统管理员</td>
+<td>检验主数据、规则、机构人员、流程报告、仪器接口、数据字典</td>
+<td>可供业务选择的配置</td>
+</tr>
+<tr>
+<td>系统管理</td>
+<td>账号管理员、系统管理员、审计人员</td>
+<td>用户权限、运行参数、语言、日志和审计</td>
+<td>账号权限及运维记录</td>
+</tr>
+</tbody></table></div>
+<p>左侧菜单分组可以同时展开。一级菜单负责跨业务模块导航；页面内页签只用于同一任务的视图切换。常规搜索默认保持简洁，更多条件通过“高级搜索”展开。</p>
+</section>
+<section class="manual-section" id="section-4">
+<h2>4. 默认岗位权限</h2>
+<p>入口：<strong>系统管理 → 用户管理 → 新建/编辑用户 → 默认岗位模板</strong>。</p>
+<p>选择模板后还要选择适用专业组并保存。模板是建议起点，医院可按实际岗位微调；菜单可见性和后端操作权限会同时生效。</p>
+<div class="table-wrap"><table><thead><tr>
+<th>默认岗位模板</th>
+<th>默认可见业务域</th>
+<th>允许的主要操作</th>
+<th>不应承担的操作</th>
+</tr></thead><tbody>
+<tr>
+<td>申请与标本接收员</td>
+<td>工作台、申请与标本、质量管理</td>
+<td>患者建档、申请接收、采集签收、条码和不符合项</td>
+<td>结果录入、结果审核</td>
+</tr>
+<tr>
+<td>检验技师</td>
+<td>工作台、检验</td>
+<td>指定专业组工作单和结果录入</td>
+<td>审核自己的结果、发布报告</td>
+</tr>
+<tr>
+<td>结果审核员</td>
+<td>工作台、审核与报告、质量管理</td>
+<td>指定专业组结果复核、退回和批准</td>
+<td>同批原始结果录入、系统配置</td>
+</tr>
+<tr>
+<td>报告发布员</td>
+<td>工作台、审核与报告</td>
+<td>查询、生成和交付已审核报告</td>
+<td>修改原始检验结果</td>
+</tr>
+<tr>
+<td>质量负责人（常规）</td>
+<td>工作台、质量管理、审核与报告</td>
+<td>不符合项、审核追踪、质量报表和审计查看</td>
+<td>日常结果录入、仪器质控配置</td>
+</tr>
+<tr>
+<td>仪器数据操作员</td>
+<td>工作台、检验、系统管理</td>
+<td>仪器结果导入及指定专业组结果录入</td>
+<td>结果审核、报告发布</td>
+</tr>
+<tr>
+<td>用户账号管理员</td>
+<td>工作台、系统管理</td>
+<td>新增/停用账号、分配岗位权限</td>
+<td>检验业务操作</td>
+</tr>
+<tr>
+<td>系统管理员</td>
+<td>工作台、基础配置、系统管理</td>
+<td>主数据、接口和系统运行参数</td>
+<td>日常结果录入或审核</td>
+</tr>
+<tr>
+<td>审计查看员</td>
+<td>工作台、审计入口</td>
+<td>只读查看审计记录</td>
+<td>修改患者、申请、结果或配置</td>
+</tr>
+</tbody></table></div>
+<p>系统会提示同一专业组同时拥有“结果录入”和“结果审核”的职责冲突。人员不足时如需兼岗，应由医院建立补偿性复核制度，不能只靠隐藏菜单代替权限控制。</p>
+</section>
+<section class="manual-section" id="section-5">
+<h2>5. 申请与标本</h2>
+<h3>5.1 接收电子申请或手工建单</h3>
+<ul>
+<li><strong>电子申请</strong>：进入“待接收电子申请”，核对 HIS/EMR 传入的患者、项目、送检科室和医生后接收。</li>
+<li><strong>LIS 手工申请</strong>：进入“申请列表 → 新建申请”，用于单机运行、模拟演示或医院允许的补录场景。</li>
+<li><strong>批量申请录入</strong>：适合体检或同批标本；正式使用前应先确认批量编号和标签规则。</li>
+</ul>
+<p>手工建单顺序：</p>
+<ol>
+<li>搜索并选择已有患者；确认没有档案后再新建，避免重复患者。</li>
+<li>核对姓名、性别、出生日期、证件或患者唯一编号。</li>
+<li>选择送检机构、科室/病区、申请医生和优先级。</li>
+<li>选择标本类型、组合项目或单项检验。</li>
+<li>核对系统分配的标本管，保存申请并记录申请号。</li>
+</ol>
+<p>申请号默认由系统首次保存时生成。只有接收外部系统已有编号时才录入外部编号。</p>
+<h3>5.2 单管和多管申请</h3>
+<p><strong>单管</strong>指申请中的项目都可由同一支标本完成。<strong>多管</strong>指同一申请因标本类型、容器或检验要求不同，需要生成两支或更多实际标本管。</p>
+<p>当前系统按“标本类型—检验项目”配置自动拆管。例如一份申请同时包含血清生化和全血血常规时，应形成血清管和全血管，各有独立管码。</p>
+<p>操作人员不需要手工决定底层关联，只需在保存前核对：</p>
+<ul>
+<li>每个项目是否归到正确标本类型；</li>
+<li>管数是否符合当前申请项目；</li>
+<li>每支管的条码、标本类型和项目是否一致；</li>
+<li>后续采集、签收、验收和拒收是否作用于当前管。</li>
+</ul>
+<h3>5.3 采集和标签</h3>
+<ol>
+<li>打开申请并进入采集步骤。</li>
+<li>逐管核对患者、标本类型、管码和项目。</li>
+<li>登记采集时间和采集人员；暂不签收时选择“仅采集，稍后签收”。</li>
+<li>预览标签，核对患者标识、管码、标本类型和条码。</li>
+<li>打印后贴在正确容器上，避免遮挡液面和原有关键标识。</li>
+</ol>
+<p>打印失败时先检查浏览器打印窗口、打印机、纸张和标签预设。不要连续点击打印，以免产生重复标签。</p>
+<h3>5.4 扫码签收和逐管验收</h3>
+<p>入口：<strong>申请与标本 → 标本处理</strong>。</p>
+<ol>
+<li>扫描或输入管码，系统定位申请、患者和当前管。</li>
+<li>核对患者身份、标本类型、容器、采集时间和检验项目。</li>
+<li>未签收的管先完成签收。</li>
+<li>合格管选择验收，进入结果录入队列。</li>
+<li>不合格管选择拒收原因并提交，系统保留拒收记录。</li>
+<li>需要重新采集时建立关联补采申请，新管使用新管码继续流程。</li>
+</ol>
+<p>同一申请中的各管独立处理。一管拒收不会自动撤销另一支已验收合格管；已验收管的项目可以继续检验。</p>
+<h3>5.5 常见标本异常</h3>
+<p>标本量不足、容器错误、凝块、溶血、污染、身份不清等原因必须按医院制度配置。软件提供拒收、原因记录和补采关联能力；哪些情形必须拒收、是否允许让步接收，属于医院待确认规则。</p>
+</section>
+<section class="manual-section" id="section-6">
+<h2>6. 检验</h2>
+<h3>6.1 待录入结果</h3>
+<p>入口：<strong>检验 → 待录入结果</strong>。</p>
+<ol>
+<li>默认加载当前账号可见的待处理队列；可按实验室编号、专业组、日期和状态筛选。</li>
+<li>选择左侧标本，核对患者、管码和项目。</li>
+<li>逐项填写结果，核对单位、参考范围、异常标志和仪器原始值。</li>
+<li>保存当前结果。保存成功表示录入完成，尚未完成审核和报告发布。</li>
+<li>结果不可编辑时点击“受限说明”，先处理标本未验收、项目拒收、质控阻断或权限不足等原因。</li>
+</ol>
+<p>顶部数量是检验任务数，左侧数量是标本记录数，两者口径不同。加载失败或状态未知时不要把空白当成零。</p>
+<h3>6.2 外送检验</h3>
+<p>外送页面默认先显示常用患者/实验室编号查询，出生日期、性别等放在高级搜索中。查询后核对外送机构、项目、送出时间和回传结果。</p>
+<p>医院需要提供外送机构、项目映射、报告回传和责任边界后，才能作为正式外送流程验收。</p>
+<h3>6.3 检验工作单</h3>
+<p>检验工作单用于从同一个待检验任务集合中按检验项目、组合项目、专业组或优先级分类筛选并打印。分类是筛选条件，不是四套独立业务流程。</p>
+<p>打印前核对专业组、筛选条件、项目总数和异常标记。工作单只辅助台面作业，不能代替系统中的标本状态和结果记录。</p>
+</section>
+<section class="manual-section" id="section-7">
+<h2>7. 审核与报告</h2>
+<h3>7.1 结果审核</h3>
+<p>入口：<strong>审核与报告 → 审核工作台</strong>。</p>
+<ol>
+<li>按专业组、申请单或检验日期加载待审核队列。</li>
+<li>核对患者、标本、结果、单位、参考范围、异常标志和历史结果。</li>
+<li>正确结果选择通过；需修改的结果选择退回并填写原因。</li>
+<li>批量通过前再次核对选中范围，再提交审核。</li>
+</ol>
+<p>统计显示整次查询的任务数，不等于当前页行数。质控受阻、已签发遗留或权限不足的记录可能只读，应按页面提示处理。</p>
+<p>审核人员不应替代检验技师直接改写原始结果。危急值、质控失控或身份不清的处置方式必须按医院制度配置。</p>
+<h3>7.2 报告查询、发布与打印</h3>
+<p>入口：<strong>审核与报告 → 患者检验报告</strong>。</p>
+<ol>
+<li>按实验室编号、患者、送检机构或日期查询。</li>
+<li>选择已审核申请，核对报告分组和报告内容。</li>
+<li>预览报告，确认患者、结果、单位和参考范围。</li>
+<li>由有权限人员发布/签发报告。</li>
+<li>打印时登记打印记录。</li>
+</ol>
+<p>预览不等于正式报告。报告样式、电子签章、审核层级、更正/作废流程和临床发送方式，仍需医院资料和现场验收。当前版本不要把报告更正当作已经完成的生产闭环。</p>
+<h3>7.3 业务统计</h3>
+<p>检验工作量、项目汇总、外送结果、不符合项和审核超时等统计共用一套分类查询方式：先选择统计类型，再在同页设置专业组、优先级、日期等条件。统计口径应在正式使用前由医院确认。</p>
+</section>
+<section class="manual-section" id="section-8">
+<h2>8. 质量管理</h2>
+<h3>8.1 不符合项</h3>
+<p>用于记录标本拒收、申请错误、结果问题和流程偏差。默认直接显示台账列表，常用搜索在列表上方；状态、类别、严重度等更多条件通过高级搜索展开。</p>
+<p>一般流程：登记事件 → 分派/调查 → 纠正措施 → 复核关闭。记录应包含发生时间、对象、原因、处理人和证据。</p>
+<h3>8.2 质量预警</h3>
+<p>质量预警按规则显示待处理风险。确认告警只表示已知悉；完成处置并验证有效后才能关闭。</p>
+<p>仪器质控规则、危急值范围和放行条件属于医院制度。系统管理员负责配置，质量负责人负责按制度处置和追踪。</p>
+</section>
+<section class="manual-section" id="section-9">
+<h2>9. 基础配置</h2>
+<p>基础配置按业务领域组织，不再使用顶部功能页签。先从左侧一级菜单进入，再选择对应配置组。</p>
+<div class="table-wrap"><table><thead><tr>
+<th>配置组</th>
+<th>主要内容</th>
+<th>推荐配置顺序</th>
+</tr></thead><tbody>
+<tr>
+<td>检验主数据</td>
+<td>检验项目、标本类型、组合、专业组、单位、方法</td>
+<td>先字典和标本类型，再项目和组合</td>
+</tr>
+<tr>
+<td>规则管理</td>
+<td>反射检验、计算项目、参考范围、结果规则</td>
+<td>主数据稳定后配置并验证</td>
+</tr>
+<tr>
+<td>机构与人员</td>
+<td>医院、科室/病区、送检机构、申请医生</td>
+<td>先组织，再人员和联系方式</td>
+</tr>
+<tr>
+<td>流程与报告配置</td>
+<td>申请、编号、条码、标签、结果、审核、报告和通知</td>
+<td>按一条完整测试申请逐项验证</td>
+</tr>
+<tr>
+<td>仪器与接口配置</td>
+<td>仪器、项目映射、外部连接、发送监控</td>
+<td>取得协议和测试地址后联调</td>
+</tr>
+<tr>
+<td>主数据编码与有效期</td>
+<td>外部编码、启停状态和生效范围</td>
+<td>与 HIS/仪器代码表对照维护</td>
+</tr>
+<tr>
+<td>附加申请配置</td>
+<td>补充申请字段和专用业务资料</td>
+<td>医院确认后启用</td>
+</tr>
+<tr>
+<td>上线准备</td>
+<td>本机配置草稿和检查清单</td>
+<td>仅作准备记录，不代替验收</td>
+</tr>
+</tbody></table></div>
+<h3>9.1 多管规则怎么配置</h3>
+<ol>
+<li>在“基础配置 → 检验主数据”维护标本类型。</li>
+<li>为每个检验项目关联正确的标本类型。</li>
+<li>在组合项目中核对各子项目的标本类型，不要强行合并不同标本要求。</li>
+<li>使用一份测试申请同时选择两种标本类型的项目，确认生成多支管及独立管码。</li>
+<li>分别验收、拒收和补采，确认只有对应管的任务受影响。</li>
+</ol>
+<p>容器帽色、采血顺序、最小采血量、分杯和运输温度尚不能由项目团队代替医院决定。取得院方规则后再增加配置和验收场景。</p>
+</section>
+<section class="manual-section" id="section-10">
+<h2>10. 系统管理</h2>
+<h3>10.1 用户和权限</h3>
+<p>账号按人分配，禁止多人共用。新增用户时先应用默认岗位模板，再选择专业组并核对职责边界。岗位变化、离职或轮岗时及时调整或停用账号。</p>
+<h3>10.2 操作日志</h3>
+<p>操作日志默认直接显示最近记录。日期、业务对象、操作类型、用户和业务编号等条件放在可展开的高级搜索中。先缩小日期范围，再按业务编号追溯；导出只用于授权的审计用途。</p>
+<h3>10.3 系统参数和语言</h3>
+<p>系统参数、语言、翻译、日志级别、搜索索引和数据库维护由系统管理员操作。删除、停用、数据库清理等高风险动作会显示确认框；应核对对象和影响后再确认。</p>
+</section>
+<section class="manual-section" id="section-11">
+<h2>11. 页面操作规则</h2>
+<h3>11.1 搜索</h3>
+<ul>
+<li>列表默认展示可查看的数据，并提供一行常用搜索。</li>
+<li>“高级搜索”展开日期、状态、类别、专业组等低频条件。</li>
+<li>无结果时先清除筛选，再检查日期、状态、专业组和权限。</li>
+<li>条码框适合扫描枪；扫描枪通常等同于键盘输入并回车。</li>
+</ul>
+<h3>11.2 返回和未保存内容</h3>
+<p>从列表进入详情后优先使用页面中的“返回列表”，以保留搜索、筛选和页码。离开有未保存内容的页面时，应先保存或明确放弃；不要用刷新来判断保存是否成功。</p>
+<h3>11.3 弹窗</h3>
+<p>弹窗只用于不离开当前任务即可完成的短操作，例如选择患者、查看详情、填写拒收原因或确认删除。较长的申请、配置和多步骤流程使用完整页面。</p>
+<p>危险操作的弹窗会明确显示对象、影响和红色确认按钮。关闭或取消不会执行操作。</p>
+<h3>11.4 页面加载失败</h3>
+<p>先点击“重新加载页面”。仍失败时记录页面名称、时间、申请号或管码及操作步骤，交给管理员查看服务状态。写操作失败时不要连续点击。</p>
+</section>
+<section class="manual-section" id="section-12">
+<h2>12. 常见问题</h2>
+<h3>看不到某个菜单</h3>
+<p>确认账号岗位和专业组。管理员修改权限后退出并重新登录。若岗位模板包含菜单但操作仍被拒绝，应检查后端角色是否已保存。</p>
+<h3>新建申请时没有可选标本类型或项目</h3>
+<p>检查检验项目是否启用、是否关联标本类型和专业组、送检机构是否有开单范围。由系统管理员修复主数据后重新打开申请。</p>
+<h3>一支管合格、另一支管不合格，怎么办</h3>
+<p>分别处理每支管。合格管验收后继续检验；不合格管记录拒收原因并建立关联补采。不要撤销整份申请，也不要把补采管复用旧管码。</p>
+<h3>扫描管码没有反应</h3>
+<p>先点击管码输入框再扫描，确认扫描枪会发送回车；也可手工输入管码验证。再检查标签内容与系统管码是否一致。</p>
+<h3>保存后不确定是否成功</h3>
+<p>保留当前页面，按页面提示查询服务器状态。未确认前不要重复保存、审核、发布、打印或重发接口。</p>
+<h3>结果不能录入、审核或发布</h3>
+<p>依次检查标本是否验收、项目是否拒收、当前专业组权限、结果是否保存、质控是否阻断、审核是否完成。页面“受限说明”会显示可处理原因。</p>
+<h3>打印内容或尺寸不对</h3>
+<p>检查标签/报告预设、浏览器缩放、纸张和打印机。使用测试标签和测试报告校准，不能直接拿患者正式标签反复试印。</p>
+</section>
+<section class="manual-section" id="section-13">
+<h2>13. 岗位日清单</h2>
+<h3>申请与标本接收人员</h3>
+<ul>
+<li>清理待接收电子申请、采集/签收和验收待办。</li>
+<li>处理拒收、补采和身份不符记录。</li>
+<li>核对当天未完成申请及未处理标本管。</li>
+</ul>
+<h3>检验技师</h3>
+<ul>
+<li>清理本专业组待录入结果和退回结果。</li>
+<li>检查仪器导入失败、受限任务和未保存输入。</li>
+<li>交班前确认急诊及超时任务。</li>
+</ul>
+<h3>审核和报告人员</h3>
+<ul>
+<li>清理待审核和退回队列。</li>
+<li>核对异常结果、质控阻断和危急值处置。</li>
+<li>检查待发布、待打印和报告异常。</li>
+</ul>
+<h3>质量负责人</h3>
+<ul>
+<li>查看质量预警和不符合项。</li>
+<li>跟踪纠正措施和未关闭事件。</li>
+<li>抽查审计记录及关键配置变更。</li>
+</ul>
+<h3>系统和账号管理员</h3>
+<ul>
+<li>查看接口失败、服务异常和发送积压。</li>
+<li>管理账号、权限和主数据变更。</li>
+<li>按制度检查备份、日志和上线检查项。</li>
+</ul>
+</section>
+<section class="manual-section" id="section-14">
+<h2>14. 当前版本边界</h2>
+<div class="table-wrap"><table><thead><tr>
+<th>能力</th>
+<th>当前状态</th>
+<th>还需要什么</th>
+</tr></thead><tbody>
+<tr>
+<td>手工申请、单管采集签收验收</td>
+<td>本地模拟流程已验证</td>
+<td>医院 UAT</td>
+</tr>
+<tr>
+<td>多管拆分、逐管验收、部分拒收和关联补采</td>
+<td>本地模拟流程已验证</td>
+<td>医院多管规则和 UAT</td>
+</tr>
+<tr>
+<td>结果录入、审核、报告查询</td>
+<td>本地模拟流程已有能力</td>
+<td>按正式岗位连续复测和医院验收</td>
+</tr>
+<tr>
+<td>默认岗位模板和菜单分配</td>
+<td>已提供九套模板</td>
+<td>医院岗位表、专业组和审批制度</td>
+</tr>
+<tr>
+<td>HIS/EMR 与仪器接口</td>
+<td>有配置和模拟能力</td>
+<td>接口文档、测试地址、仪器协议和真实联调</td>
+</tr>
+<tr>
+<td>标签和报告</td>
+<td>有预设、预览与打印入口</td>
+<td>实际打印机、纸张、样张和签章规则</td>
+</tr>
+<tr>
+<td>危急值、质控和放行</td>
+<td>有相关配置与拦截能力</td>
+<td>医院阈值、复核、通知和闭环制度</td>
+</tr>
+<tr>
+<td>报告更正/作废</td>
+<td>尚未作为生产闭环验收</td>
+<td>医院制度、版本规则和完整测试</td>
+</tr>
+<tr>
+<td>外送、通知及可选专科</td>
+<td>按部署启用</td>
+<td>医院确认范围并单独验收</td>
+</tr>
+</tbody></table></div>
+<p>本地模拟通过不等于医院生产验收。系统正式上线前必须取得 HIS/EMR 接口规范、仪器协议与项目代码、报告和标签样张、岗位权限表、危急值及质控规则，并完成真实设备和真实网络环境的端到端验收。</p>
+</section>
+    </main>
   </div>
+  <footer class="footer">OpenELIS-CN 本地版本操作手册 · 模拟验证不能替代医院现场验收</footer>
 </body>
 </html>
