@@ -6,10 +6,6 @@ import React, {
   useState,
 } from "react";
 import {
-  Grid,
-  Column,
-  Section,
-  Heading,
   DataTable,
   TableContainer,
   Table,
@@ -27,6 +23,7 @@ import {
   TextInput,
   Loading,
 } from "@carbon/react";
+import { ChevronDown, ChevronUp, Download, Search } from "@carbon/icons-react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { getFromOpenElisServer } from "../../utils/Utils";
 import config from "../../../config.json";
@@ -46,6 +43,7 @@ import {
   getAuditFieldMessageId,
 } from "./auditLocalization";
 import "../../Style.css";
+import "./SystemAuditEvents.scss";
 
 const PATIENT_ENTITY_NAME = "PATIENT";
 
@@ -91,7 +89,8 @@ const SystemAuditEvents = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [totalItems, setTotalItems] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [entityTypes, setEntityTypes] = useState([]);
   const [users, setUsers] = useState([]);
   const [selectedEntityType, setSelectedEntityType] = useState("");
@@ -104,6 +103,7 @@ const SystemAuditEvents = () => {
   const [showPatientSearch, setShowPatientSearch] = useState(false);
   const requestGeneration = useRef(0);
   const patientPickerGeneration = useRef(0);
+  const initialQueryStarted = useRef(false);
   const renderedPickerGeneration = patientPickerGeneration.current;
 
   const isPatientEntity = selectedEntityType === PATIENT_ENTITY_NAME;
@@ -281,6 +281,12 @@ const SystemAuditEvents = () => {
     fetchEvents(1, pageSize);
   };
 
+  useEffect(() => {
+    if (initialQueryStarted.current) return;
+    initialQueryStarted.current = true;
+    fetchEvents(1, pageSize);
+  }, [fetchEvents, pageSize]);
+
   const handlePageChange = (pageInfo) => {
     if (!canQuery) return;
     setPage(pageInfo.page);
@@ -310,107 +316,39 @@ const SystemAuditEvents = () => {
     );
   };
 
+  const activeFilterCount = [
+    startDate,
+    endDate,
+    selectedEntityType,
+    selectedAction,
+    selectedUser,
+    searchText,
+  ].filter(Boolean).length;
+
   return (
-    <>
-      <br />
-      <Grid fullWidth={true}>
-        <Column lg={16}>
-          <Section>
-            <Heading>
-              <FormattedMessage id="reports.systemAuditTrail" />
-            </Heading>
-          </Section>
-        </Column>
-      </Grid>
-      <br />
-      <Grid fullWidth={true}>
-        <Column lg={4} md={4} sm={4}>
-          <DatePicker
-            datePickerType="single"
-            dateFormat={dateFormat}
-            value={formatReportApiDateForLocale(startDate, dateLocale)}
-            onChange={(_dates, dateStr) =>
-              setStartDate(parseReportDisplayDateToApi(dateStr, dateLocale))
-            }
-          >
-            <DatePickerInput
-              id="startDate"
-              placeholder={datePlaceholder}
-              labelText={intl.formatMessage({
-                id: "systemAudit.filter.startDate",
-              })}
-            />
-          </DatePicker>
-        </Column>
-        <Column lg={4} md={4} sm={4}>
-          <DatePicker
-            datePickerType="single"
-            dateFormat={dateFormat}
-            value={formatReportApiDateForLocale(endDate, dateLocale)}
-            onChange={(_dates, dateStr) =>
-              setEndDate(parseReportDisplayDateToApi(dateStr, dateLocale))
-            }
-          >
-            <DatePickerInput
-              id="endDate"
-              placeholder={datePlaceholder}
-              labelText={intl.formatMessage({
-                id: "systemAudit.filter.endDate",
-              })}
-            />
-          </DatePicker>
-        </Column>
-        <Column lg={4} md={4} sm={4}>
-          <Dropdown
-            id="entityType"
-            titleText={intl.formatMessage({
-              id: "systemAudit.filter.entityType",
-            })}
-            items={entityTypes}
-            itemToString={(item) => (item ? item.text : "")}
-            onChange={({ selectedItem }) => {
-              const newType = selectedItem?.apiName || "";
-              clearScopedResults();
-              setShowPatientSearch(false);
-              setSelectedEntityType(newType);
-              // Never carry a patient restriction into another entity type.
-              if (newType !== PATIENT_ENTITY_NAME) {
-                setSelectedPatient(null);
-              }
-            }}
-            label={intl.formatMessage({ id: "systemAudit.filter.entityType" })}
+    <div className="system-audit-workspace">
+      <header className="system-audit-workspace__header">
+        <div>
+          <h1>
+            <FormattedMessage id="reports.systemAuditTrail" />
+          </h1>
+          <p>
+            <FormattedMessage id="systemAudit.workspace.subtitle" />
+          </p>
+        </div>
+        <Tag type="blue">
+          <FormattedMessage
+            id="systemAudit.results.summary"
+            values={{ count: totalItems }}
           />
-        </Column>
-        <Column lg={4} md={4} sm={4}>
-          <Dropdown
-            id="action"
-            titleText={intl.formatMessage({ id: "systemAudit.filter.action" })}
-            items={actionOptions}
-            itemToString={(item) => (item ? item.text : "")}
-            onChange={({ selectedItem }) =>
-              setSelectedAction(selectedItem ? selectedItem.id : "")
-            }
-            label={intl.formatMessage({ id: "systemAudit.filter.action" })}
-          />
-        </Column>
-      </Grid>
-      <br />
-      <Grid fullWidth={true}>
-        <Column lg={4} md={4} sm={4}>
-          <Dropdown
-            id="user"
-            titleText={intl.formatMessage({ id: "systemAudit.filter.user" })}
-            items={users}
-            itemToString={(item) => (item ? item.value : "")}
-            onChange={({ selectedItem }) =>
-              setSelectedUser(selectedItem ? selectedItem.id : "")
-            }
-            label={intl.formatMessage({ id: "systemAudit.filter.user" })}
-          />
-        </Column>
-        <Column lg={4} md={4} sm={4}>
+        </Tag>
+      </header>
+
+      <section className="system-audit-query">
+        <div className="system-audit-query__quick-row">
           <TextInput
             id="searchText"
+            hideLabel
             labelText={intl.formatMessage({
               id: "systemAudit.filter.searchText",
             })}
@@ -418,27 +356,136 @@ const SystemAuditEvents = () => {
               id: "systemAudit.filter.searchText.placeholder",
             })}
             value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
+            onChange={(event) => setSearchText(event.target.value)}
           />
-        </Column>
-      </Grid>
-      {/* Patient picker — only relevant when filtering on the PATIENT entity.
-          A specific patient must be selected before the audit trail can run.
-          Wrapped in a bordered panel so it reads as a distinct sub-section,
-          not as another filter input. */}
-      {isPatientEntity && (
-        <>
-          <br />
-          <Grid fullWidth={true}>
-            <Column lg={16} md={8} sm={4}>
-              <div className="bordered-section-panel">
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.75rem",
-                  }}
-                >
+          <Button
+            renderIcon={Search}
+            onClick={handleSearch}
+            disabled={!canQuery}
+          >
+            <FormattedMessage id="systemAudit.filter.search" />
+          </Button>
+          <Button
+            kind="tertiary"
+            renderIcon={filtersExpanded ? ChevronUp : ChevronDown}
+            aria-expanded={filtersExpanded}
+            onClick={() => setFiltersExpanded((expanded) => !expanded)}
+          >
+            <FormattedMessage
+              id={
+                filtersExpanded
+                  ? "systemAudit.filter.collapse"
+                  : "systemAudit.filter.expand"
+              }
+              values={{ count: activeFilterCount }}
+            />
+          </Button>
+          <div className="system-audit-query__exports">
+            <Button
+              kind="ghost"
+              renderIcon={Download}
+              onClick={handleExportCsv}
+              disabled={!canQuery}
+            >
+              <FormattedMessage id="systemAudit.filter.export" />
+            </Button>
+            <Button
+              kind="ghost"
+              renderIcon={Download}
+              onClick={handleExportPdf}
+              disabled={!canQuery}
+            >
+              <FormattedMessage id="systemAudit.filter.exportPdf" />
+            </Button>
+          </div>
+        </div>
+
+        {filtersExpanded && (
+          <div className="system-audit-query__advanced">
+            <div className="system-audit-query__filter-grid">
+              <DatePicker
+                datePickerType="single"
+                dateFormat={dateFormat}
+                value={formatReportApiDateForLocale(startDate, dateLocale)}
+                onChange={(_dates, dateStr) =>
+                  setStartDate(parseReportDisplayDateToApi(dateStr, dateLocale))
+                }
+              >
+                <DatePickerInput
+                  id="startDate"
+                  placeholder={datePlaceholder}
+                  labelText={intl.formatMessage({
+                    id: "systemAudit.filter.startDate",
+                  })}
+                />
+              </DatePicker>
+              <DatePicker
+                datePickerType="single"
+                dateFormat={dateFormat}
+                value={formatReportApiDateForLocale(endDate, dateLocale)}
+                onChange={(_dates, dateStr) =>
+                  setEndDate(parseReportDisplayDateToApi(dateStr, dateLocale))
+                }
+              >
+                <DatePickerInput
+                  id="endDate"
+                  placeholder={datePlaceholder}
+                  labelText={intl.formatMessage({
+                    id: "systemAudit.filter.endDate",
+                  })}
+                />
+              </DatePicker>
+              <Dropdown
+                id="entityType"
+                titleText={intl.formatMessage({
+                  id: "systemAudit.filter.entityType",
+                })}
+                items={entityTypes}
+                itemToString={(item) => (item ? item.text : "")}
+                onChange={({ selectedItem }) => {
+                  const newType = selectedItem?.apiName || "";
+                  clearScopedResults();
+                  setShowPatientSearch(false);
+                  setSelectedEntityType(newType);
+                  if (newType !== PATIENT_ENTITY_NAME) {
+                    setSelectedPatient(null);
+                  }
+                }}
+                label={intl.formatMessage({
+                  id: "systemAudit.filter.entityType",
+                })}
+              />
+              <Dropdown
+                id="action"
+                titleText={intl.formatMessage({
+                  id: "systemAudit.filter.action",
+                })}
+                items={actionOptions}
+                itemToString={(item) => (item ? item.text : "")}
+                onChange={({ selectedItem }) =>
+                  setSelectedAction(selectedItem ? selectedItem.id : "")
+                }
+                label={intl.formatMessage({
+                  id: "systemAudit.filter.action",
+                })}
+              />
+              <Dropdown
+                id="user"
+                titleText={intl.formatMessage({
+                  id: "systemAudit.filter.user",
+                })}
+                items={users}
+                itemToString={(item) => (item ? item.value : "")}
+                onChange={({ selectedItem }) =>
+                  setSelectedUser(selectedItem ? selectedItem.id : "")
+                }
+                label={intl.formatMessage({ id: "systemAudit.filter.user" })}
+              />
+            </div>
+
+            {isPatientEntity && (
+              <div className="system-audit-query__patient-scope">
+                <div className="system-audit-query__patient-actions">
                   <Tag type={selectedPatient?.patientPK ? "blue" : "gray"}>
                     <FormattedMessage id="systemAudit.filter.selectedPatient" />
                     ：{" "}
@@ -458,7 +505,7 @@ const SystemAuditEvents = () => {
                     size="sm"
                     onClick={() => {
                       patientPickerGeneration.current += 1;
-                      setShowPatientSearch((prev) => !prev);
+                      setShowPatientSearch((previous) => !previous);
                     }}
                   >
                     {selectedPatient?.patientPK ? (
@@ -482,7 +529,7 @@ const SystemAuditEvents = () => {
                   )}
                 </div>
                 {showPatientSearch && (
-                  <div style={{ marginTop: "1rem" }}>
+                  <div className="system-audit-query__patient-picker">
                     <SearchPatientForm
                       getSelectedPatient={(patient) => {
                         if (
@@ -499,56 +546,44 @@ const SystemAuditEvents = () => {
                   </div>
                 )}
               </div>
-            </Column>
-          </Grid>
-        </>
-      )}
-      <br />
-      <Grid fullWidth={true}>
-        <Column lg={16}>
-          <Button
-            onClick={handleSearch}
-            disabled={!canQuery}
-            style={{ marginRight: "1rem" }}
-          >
-            <FormattedMessage id="systemAudit.filter.search" />
+            )}
+
+            <div className="system-audit-query__advanced-footer">
+              {activeFilterCount > 0 && (
+                <span>
+                  <FormattedMessage
+                    id="systemAudit.filter.activeSummary"
+                    values={{ count: activeFilterCount }}
+                  />
+                </span>
+              )}
+              <Button onClick={handleSearch} disabled={!canQuery}>
+                <FormattedMessage id="results.workbench.applyFilters" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="system-audit-results" aria-live="polite">
+        {isLoading && events.length === 0 && (
+          <div className="system-audit-results__loading">
             <Loading
-              small={true}
+              small
               withOverlay={false}
               description={intl.formatMessage({ id: "loading.description" })}
-              className={isLoading ? "show" : "hidden"}
             />
-          </Button>
-          <Button
-            kind="secondary"
-            onClick={handleExportCsv}
-            disabled={!canQuery}
-            style={{ marginRight: "1rem" }}
-          >
-            <FormattedMessage id="systemAudit.filter.export" />
-          </Button>
-          <Button
-            kind="tertiary"
-            onClick={handleExportPdf}
-            disabled={!canQuery}
-          >
-            <FormattedMessage id="systemAudit.filter.exportPdf" />
-          </Button>
-        </Column>
-      </Grid>
-      <br />
-      {events.length === 0 && !isLoading && (
-        <Grid fullWidth={true}>
-          <Column lg={16}>
+          </div>
+        )}
+        {events.length === 0 && !isLoading && (
+          <div className="oe-empty-state">
             <p>
               <FormattedMessage id="systemAudit.noResults" />
             </p>
-          </Column>
-        </Grid>
-      )}
-      {events.length > 0 && (
-        <Grid fullWidth={true}>
-          <Column lg={16}>
+          </div>
+        )}
+        {events.length > 0 && (
+          <>
             <DataTable rows={events} headers={headers} isSortable>
               {({ rows, headers, getHeaderProps, getTableProps }) => (
                 <TableContainer>
@@ -611,10 +646,10 @@ const SystemAuditEvents = () => {
                 )
               }
             />
-          </Column>
-        </Grid>
-      )}
-    </>
+          </>
+        )}
+      </section>
+    </div>
   );
 };
 

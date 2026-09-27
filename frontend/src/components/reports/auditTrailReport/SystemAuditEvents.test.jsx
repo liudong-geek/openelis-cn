@@ -97,6 +97,9 @@ describe("中国版操作日志查询", () => {
   test("日期按年/月/日显示，并按 ISO 日期调用后台", () => {
     renderPage();
 
+    expect(screen.queryByTestId("audit-date-picker")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /高级筛选/ }));
+
     const datePickers = screen.getAllByTestId("audit-date-picker");
     expect(datePickers).toHaveLength(2);
     datePickers.forEach((picker) =>
@@ -112,9 +115,9 @@ describe("中国版操作日志查询", () => {
     fireEvent.change(endDate, { target: { value: "2026/08/24" } });
     fireEvent.click(screen.getByRole("button", { name: /搜索/ }));
 
-    const request = getFromOpenElisServer.mock.calls.find(([url]) =>
-      url.startsWith("/rest/systemAuditEvents?"),
-    );
+    const request = getFromOpenElisServer.mock.calls
+      .filter(([url]) => url.startsWith("/rest/systemAuditEvents?"))
+      .at(-1);
     expect(request?.[0]).toContain("startDate=2026-08-01");
     expect(request?.[0]).toContain("endDate=2026-08-24");
   });
@@ -143,7 +146,6 @@ describe("中国版操作日志查询", () => {
     });
 
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /搜索/ }));
 
     expect(await screen.findByText("患者档案")).toBeInTheDocument();
     expect(screen.getByText("新增")).toBeInTheDocument();

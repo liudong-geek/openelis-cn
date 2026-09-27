@@ -91,6 +91,9 @@ const renderPage = () =>
   );
 
 const chooseType = async (user, label) => {
+  if (!screen.queryByRole("combobox", { name: "业务对象" })) {
+    await user.click(screen.getByRole("button", { name: /高级筛选/ }));
+  }
   await user.click(screen.getByRole("combobox", { name: "业务对象" }));
   await user.click(await screen.findByRole("option", { name: label }));
 };
@@ -180,7 +183,7 @@ describe("患者档案操作日志的联合实体范围", () => {
     await user.click(search);
     await user.click(csv);
     await user.click(pdf);
-    expect(listRequests()).toHaveLength(0);
+    expect(listRequests()).toHaveLength(1);
     expect(opened).not.toHaveBeenCalled();
   });
 
@@ -193,11 +196,11 @@ describe("患者档案操作日志的联合实体范围", () => {
 
     expect(await screen.findByText(/SIM患者属性-301/)).toBeInTheDocument();
     expect(screen.getByText(/SIM姓名变更-301/)).toBeInTheDocument();
-    expect(paramsFor(listRequests()[0][0]).get("entityType")).toBe(
+    expect(paramsFor(listRequests().at(-1)[0]).get("entityType")).toBe(
       "PATIENT,PERSON",
     );
-    expect(paramsFor(listRequests()[0][0]).get("patientId")).toBe("301");
-    expect(paramsFor(listRequests()[0][0]).get("page")).toBe("1");
+    expect(paramsFor(listRequests().at(-1)[0]).get("patientId")).toBe("301");
+    expect(paramsFor(listRequests().at(-1)[0]).get("page")).toBe("1");
     await user.click(screen.getByRole("button", { name: "下一页" }));
     const pageParams = paramsFor(listRequests().at(-1)[0]);
     expect(pageParams.get("page")).toBe("2");

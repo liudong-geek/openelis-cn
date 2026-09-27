@@ -454,6 +454,7 @@ const LanguageManagement = () => {
       {/* Add/Edit Modal */}
       <Modal
         open={isModalOpen}
+        size="sm"
         modalHeading={
           editingLocale
             ? intl.formatMessage({
@@ -548,7 +549,14 @@ const LanguageManagement = () => {
       {/* Delete Confirmation Modal */}
       <Modal
         open={isDeleteModalOpen}
+        alert
         danger
+        size="xs"
+        className="oe-confirm-modal"
+        closeButtonLabel={intl.formatMessage({
+          id: "button.close",
+          defaultMessage: "Close",
+        })}
         modalHeading={intl.formatMessage({
           id: "locale.delete.confirm.title",
           defaultMessage: "Delete Language",
@@ -564,14 +572,14 @@ const LanguageManagement = () => {
         onRequestClose={() => setIsDeleteModalOpen(false)}
         onRequestSubmit={confirmDelete}
       >
-        <p>
+        <p className="oe-confirm-modal__message">
           <FormattedMessage
             id="locale.delete.confirm.message"
             defaultMessage="Are you sure you want to delete this language? This action cannot be undone."
           />
         </p>
         {deleteTarget && (
-          <p style={{ marginTop: "1rem" }}>
+          <p className="oe-confirm-modal__subject">
             <strong>
               {deleteTarget.displayName} ({deleteTarget.localeCode})
             </strong>
