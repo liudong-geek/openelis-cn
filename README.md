@@ -1,294 +1,203 @@
-# OpenELIS Global 2
+# OpenELIS-CN 临床检验信息系统
 
-OpenELIS Global is open enterprise-level laboratory information system software
-tailored for public health laboratories. OpenELIS is used at a national scale in
-a variety of settings, from small general hospital labs, all the way up to
-national reference labs, and all sizes in between.
+OpenELIS-CN 是基于 [OpenELIS Global 2](https://github.com/DIGI-UW/OpenELIS-Global-2) 改造的中国医院临床检验信息系统（LIS）。项目保留 OpenELIS 的检验业务、权限、审计和接口基础，并围绕国内医院常用的“申请—标本—检验—审核—报告”流程重组菜单、页面和操作路径。
 
-Thousands of users use OpenELIS daily to make their laboratory jobs easier by
-automating work plans, importing results from clinical analyzers, and supporting
-complex workflows like pathology and cytology, reducing turnaround times, and
-increasing result accuracy for better patient care.
+> **当前状态：开发试用候选。** `develop` 是当前集成基线，已经完成本机模拟数据下的单管正常闭环和多管部分拒收/补采验证。真实 HIS、真实仪器、医院主数据、报告与标签样张、危急值制度及岗位权限仍须在具体医院现场验收后才能用于生产。
 
-OpenELIS Global meets all relevant ISO and SLIPTA requirements for the
-accreditation of labs.
+## 产品目标
 
-OpenELIS adheres to the strictest of security standards to keep your data safe
-and supports fully featured, standards-based interoperability to make it easy to
-receive lab orders and send results to other systems
+- 用业务任务组织界面，让检验人员知道当前要做什么、完成条件是什么、下一步去哪里。
+- 优先跑通核心流程，减少重复入口、过深菜单、孤立页面和不必要填写。
+- 一份检验申请可以关联一根或多根实管，每根管独立采集、签收、验收、拒收和补采。
+- 用主数据、角色权限和审计记录约束操作，避免依赖自由文本或直接修改数据库。
+- 复用 OpenELIS 现有能力渐进改造，保持升级、扩展和外部系统对接的空间。
 
-Please vist our [website](http://www.openelis-global.org/) for more information.
+## 核心业务流程
 
-You can find more information on how to set up OpenELIS at our
-[docs page](http://docs.openelis-global.org/)
+```mermaid
+flowchart LR
+    A[HIS/EMR 电子申请\n或 LIS 手工申请] --> B[生成申请号并分配实管]
+    B --> C[采集与打印条码]
+    C --> D[签收与逐管验收]
+    D -->|合格| E[检验与结果录入]
+    D -->|拒收| R[登记原因并创建补采任务]
+    R --> C
+    E --> F[结果审核]
+    F -->|通过| G[报告生成与发布]
+    F -->|退回| E
+    G --> H[报告查询/打印\nHIS 回传与审计]
+```
 
-### CI Status
+系统同时保留两种申请来源：
 
-[![01 - Backend Status](https://github.com/DIGI-UW/OpenELIS-Global-2/actions/workflows/backend.yml/badge.svg)](https://github.com/DIGI-UW/OpenELIS-Global-2/actions/workflows/backend.yml)
-![Coverage](https://raw.githubusercontent.com/DIGI-UW/OpenELIS-Global-2/refs/heads/gh-pages/badges/jacoco.svg)
+1. **电子申请**：用于后续接收 HIS/EMR 下发的患者、就诊和检验申请。
+2. **LIS 手工申请**：用于单机、应急、补录和本机模拟环境。
 
-[![02 - Frontend Status](https://github.com/DIGI-UW/OpenELIS-Global-2/actions/workflows/frontend.yml/badge.svg)](https://github.com/DIGI-UW/OpenELIS-Global-2/actions/workflows/frontend.yml)
+## 当前功能范围
 
-[![03 - Playwright Status](https://github.com/DIGI-UW/OpenELIS-Global-2/actions/workflows/e2e-playwright.yml/badge.svg)](https://github.com/DIGI-UW/OpenELIS-Global-2/actions/workflows/e2e-playwright.yml)
+| 业务域     | 当前入口与能力                                                                     |
+| ---------- | ---------------------------------------------------------------------------------- |
+| 工作台     | 今日待办、核心任务数量、常用操作和主流程入口                                       |
+| 申请与标本 | 申请列表、手工新建、电子申请接收、批量录入、采集、条码、签收、逐管验收、拒收与补采 |
+| 检验       | 待录入结果、结果录入工作台、外送检验、检验工作单                                   |
+| 审核与报告 | 结果审核、退回、患者检验报告、报告工作台和业务统计入口                             |
+| 质量管理   | 不符合项、质量预警以及与审核流程关联的质量阻断                                     |
+| 基础配置   | 检验主数据、规则、机构与人员、流程与报告、仪器与接口、编码及有效期                 |
+| 系统管理   | 用户、角色、菜单权限、运行参数、操作日志和系统运维                                 |
 
-[![04 - Cypress Status](https://github.com/DIGI-UW/OpenELIS-Global-2/actions/workflows/e2e-cypress-deprecated.yml/badge.svg)](https://github.com/DIGI-UW/OpenELIS-Global-2/actions/workflows/e2e-cypress-deprecated.yml)
+病理、细胞学、免疫组化、EQA、库存和区域转运等独立专业域在中国版默认关闭，需要时再按医院范围启用。
 
-[![E2E Wrapper Status](https://github.com/DIGI-UW/OpenELIS-Global-2/actions/workflows/e2e-tests.yml/badge.svg)](https://github.com/DIGI-UW/OpenELIS-Global-2/actions/workflows/e2e-tests.yml)
+## 单管与多管
 
-[![Installer Packaging Status](https://github.com/DIGI-UW/OpenELIS-Global-2/actions/workflows/build-installer.yml/badge.svg)](https://github.com/DIGI-UW/OpenELIS-Global-2/actions/workflows/build-installer.yml)
+系统以“申请”和“实管”两个层级管理标本：
 
-### CI Architecture
+- **单管**：一份申请只需要一种标本或一根容器，采集和验收路径最短。
+- **多管**：一份申请按项目与标本类型拆成多根实管。例如生化项目使用血清管，血常规使用全血管；每根管拥有独立条码、状态和验收结论。
+- **部分拒收**：同一申请中一根管拒收不会自动否定其他合格管；系统保留拒收原因并为该管创建关联补采任务。
 
-For the current fork/non-fork E2E validation design, artifact contracts, and
-checkpoint/status model, see
-[`specs/plans/ci-e2e-architecture-spec.md`](specs/plans/ci-e2e-architecture-spec.md).
+当前多管配置复用已有主数据：
 
-For operational troubleshooting of the E2E wrapper and downstream execution, see
-[`specs/plans/e2e-ci-operator-model.md`](specs/plans/e2e-ci-operator-model.md).
+1. 在“基础配置 → 检验主数据 → 标本类型管理”维护可用标本类型。
+2. 将检验项目关联到允许的标本类型。
+3. 在字典与规则中维护拒收原因。
+4. 为接收岗位分配申请、采集、签收和逐管验收权限。
 
-### Contributing
+试管颜色、添加剂、最小采样量、采血顺序、运输温度和时限等高级规则需要取得医院制度后再配置，当前不预设为院方正式规则。
 
-We welcome community contributions to help improve OpenELIS Global!
+## 默认岗位与菜单
 
-1. Read our
-   [Dev Environment Setup Instructions](https://uwdigi.atlassian.net/wiki/spaces/OG/pages/240844805/Dev+Environment+Setup+Instructions)
-   on the project wiki.
-2. Check out our [CONTRIBUTING guide](./CONTRIBUTING.md) for detailed
-   contribution practices and [pull request tips](PULL_REQUEST_TIPS.md).
-3. To report a **security vulnerability**, follow [SECURITY.md](./SECURITY.md)
-   (private reporting — not public issues).
+用户管理页提供以下中国医院岗位模板。模板用于快速分配基础角色和菜单，医院管理员仍应按科室、专业组和本院制度复核。
 
-### Requirements
+| 岗位模板         | 默认菜单范围                       | 主要职责                               |
+| ---------------- | ---------------------------------- | -------------------------------------- |
+| 申请与标本接收员 | 工作台、申请与标本、质量管理       | 申请核对、采集、签收、验收、拒收和补采 |
+| 检验技师         | 工作台、检验                       | 处理检验任务并录入或接收结果           |
+| 结果审核员       | 工作台、审核与报告、质量管理       | 审核或退回结果，处理质量阻断           |
+| 报告签发员       | 工作台、审核与报告                 | 生成、核对和发布报告                   |
+| 质量管理员       | 工作台、质量管理、审核与报告       | 不符合项、审核追踪和质量相关报表       |
+| 仪器数据操作员   | 工作台、检验、系统管理中的仪器入口 | 仪器结果导入、异常队列和映射处理       |
+| 用户账号管理员   | 工作台、系统管理                   | 用户账号、角色和组织范围维护           |
+| 系统管理员       | 工作台、基础配置、系统管理         | 主数据、接口和系统参数维护             |
+| 审计查看员       | 工作台、统计与审计入口             | 只读查看业务统计和操作审计             |
 
-1. You need to install [Docker](https://docs.docker.com/engine/install/) and
-   [Docker compose](https://docs.docker.com/compose/install/)
+结果录入、结果审核和报告签发应按医院制度进行职责分离；本机演示允许同一管理员账号完成全流程，仅用于功能验证。
 
-1. For development , you need to install [Java](https://openjdk.org/install/) 21
+## 本机演示
 
-### For Offline Installation Using the OpenELIS Global2 Installer
+### 环境要求
 
-Download the OpenELIS Global Installer for each Release from the
-[Release Assets](https://github.com/DIGI-UW/OpenELIS-Global-2/releases)
+- Docker Desktop 与 Docker Compose
+- 首次构建建议预留 4 GB 以上可用内存
+- 开发构建需要 Java 21、Maven 3.8+、Node.js 20+
 
-see full
-[installation instructions](https://uwdigi.atlassian.net/wiki/x/EoBIDg#Downloaded-Installer-Offline-Setup)
-for Offline Installation
+### 首次启动
 
-### For running OpenELIS Global2 in Docker with default Settings out of the Box
-
-see [OpenELIS-Docker setup](https://github.com/DIGI-UW/openelis-docker)
-
-### For Running OpenELIS Global2 from Source Code
-
-**Prerequisites for all methods below:**
-
-Before running any `docker compose` command, you must create a `.env` file with
-your environment configuration:
-
-```bash
+```sh
 cp .env.example .env
+
+docker compose --env-file .env -p openelis-cn-e2e \
+  -f build.docker-compose.yml \
+  -f docker-compose.e2e.yml \
+  -f docker-compose.demo.yml \
+  up -d --build \
+  certs db.openelis.org oe.openelis.org frontend.openelis.org proxy
 ```
 
-Then edit `.env` to customize settings for your environment (database passwords,
-domain, etc.). See `.env.example` for detailed documentation of each variable.
+该组合只启动证书、数据库、后端、前端和代理 5 个必要服务，FHIR 服务默认不启动。资源限制由 `docker-compose.demo.yml` 提供。
 
-**IMPORTANT:** Never commit `.env` to version control as it contains secrets and
-server-specific settings. CI copies `.env.example` to `.env` before running
-docker compose.
+已有镜像时可使用轻量启动，避免重复构建：
 
-#### Running OpenELIS Global2 using docker compose With published docker images on dockerhub
-
-    docker compose up -d
-
-#### Running OpenELIS Global2 using docker compose with docker images built directly from the source code
-
-    docker compose -f build.docker-compose.yml up -d --build
-
-#### Running OpenELIS Global2 with docker compose For Development
-
-Here Artifacts (ie the War file and React code) are compiled/built on the local
-machine outside docker and just mounted into the docker compose setup. This
-speeds up the development process
-
-1.  Fork the
-    [OpenELIS-Global Repository](https://github.com/DIGI-UW/OpenELIS-Global-2.git)
-    and clone the forked repo. The `username` below is the `username` of your
-    Github profile.
-
-         git clone https://github.com/username/OpenELIS-Global-2.git
-
-1.  innitialize and build sub modules
-
-        cd OpenELIS-Global-2
-        git submodule update --init --recursive
-        cd dataexport
-        mvn clean install -DskipTests
-
-1.  Navigate back to the repository directory:
-
-         cd ..
-
-1.  Build the War file
-
-          mvn clean install -DskipTests -Dmaven.test.skip=true
-
-1.  Start the containers to mount the locally compiled artifacts
-
-        docker compose -f dev.docker-compose.yml up -d
-
-    Note : For Reflecting Local changes in the Running Containers ;
-
-- Any Changes to the [Front-end](./frontend/) React Source Code will be directly
-  Hot Reloaded in the UI
-- For changes to the [Back-end](./src/) Java Source code
-
-  - Run the maven build again to re-build the War file
-
-         mvn clean install -DskipTests -Dmaven.test.skip=true
-
-  - Recreate the Openelis webapp container
-
-        docker compose -f dev.docker-compose.yml up -d  --no-deps --force-recreate oe.openelis.org
-
-#### The Instances can be accessed at
-
-| Instance     |                   URL                   | credentials (user : password) |
-| ------------ | :-------------------------------------: | ----------------------------: |
-| Legacy UI    | https://localhost/api/OpenELIS-Global/  |            admin: adminADMIN! |
-| New React UI |           https://localhost/            |            admin: adminADMIN! |
-
-**Note:** If your browser indicates that the website is not secure after
-accessing any of these links, simply follow these steps:
-
-1. Scroll down on the warning page.
-2. Click on the "Advanced" button.
-3. Finally, click on "Proceed to https://localhost" to access the development
-   environment.
-
-#### Formating the Source code after making changes
-
-1.  After making UI changes to the [frontend](./frontend/) directory , run the
-    formatter to properly format the Frontend code
-
-        cd frontend
-        npm run format
-
-2.  After making changes to the [backend](./src/) directory, run the formatter
-    to properly format the Java code
-
-        mvn spotless:apply
-
-#### To ensure your code passes the same checks as the CI pipeline
-
-**Recommended: Use the CI check scripts** (replicates exact CI workflow):
-
-```bash
-# Run backend CI checks (formatting + build + tests)
-./scripts/run-ci-checks.sh
-
-# Run frontend CI checks (formatting + unit tests + E2E tests)
-./scripts/run-frontend-ci-checks.sh
-
-# Run both (full CI simulation)
-./scripts/run-ci-checks.sh && ./scripts/run-frontend-ci-checks.sh
+```sh
+docker compose --env-file .env -p openelis-cn-e2e \
+  -f build.docker-compose.yml \
+  -f docker-compose.e2e.yml \
+  -f docker-compose.demo.yml \
+  up -d --no-build --pull never \
+  certs db.openelis.org oe.openelis.org frontend.openelis.org proxy
 ```
 
-**Options:**
+访问地址：<http://127.0.0.1:18080/login>
 
-- `--skip-submodules`: Skip submodule build (faster, for quick checks)
-- `--skip-tests`: Skip tests (formatting only)
-- `--skip-e2e`: Skip E2E tests (frontend only)
+本机模拟账号：
 
-**Manual commands** (if you prefer to run steps individually):
+- 用户名：`admin`
+- 密码：`adminADMIN!`
 
-1.  Run Code Formatting Check (Backend). This command checks code formatting and
-    performs validation similar to the CI
+以上账号和密码仅用于本机演示，部署到医院环境前必须更换。
 
-        mvn spotless:check
+停止本机服务并保留数据卷：
 
-1.  Run Build Check (Backend). This command builds the project similar to CI
-
-        mvn clean install -Dspotless.check.skip=true
-
-1.  To run Individual Integration Test
-
-         mvn verify -Dit.test=<packageName>.<TestClassName>
-
-    **DBUnit test data note:** DB-backed integration tests typically load DBUnit
-    Flat XML datasets from `src/test/resources/testdata/` via
-    `executeDataSetWithStateManagement("testdata/<file>.xml")`. Prefer datasets
-    over inline SQL setup/cleanup to avoid test data pollution.
-
-1.  Run Frontend Formatting, Build, and E2E Test Checks similar to CI
-
-    > **Note:** Frontend checks will only pass successfully if your development
-    > environment is properly set up and running without issues.
-
-        cd frontend/ # from project directory
-        npm install
-        npm run build
-        npm run cy:run # this will run e2e testing same CI
-
-### AI-Assisted Development (SpecKit)
-
-This project uses [GitHub SpecKit](https://github.com/github/spec-kit) for
-Spec-Driven Development (SDD). AI coding agents can use slash commands to create
-specifications, plans, and tasks.
-
-**Available Commands:**
-
-- `/speckit.specify` - Create feature specification
-- `/speckit.plan` - Generate implementation plan
-- `/speckit.tasks` - Generate task breakdown
-- `/speckit.implement` - Execute implementation
-- `/speckit.analyze` - Validate consistency
-
-**Reference Documentation:**
-
-- **AGENTS.md** - Comprehensive guide for AI coding agents
-- **Constitution**: `.specify/memory/constitution.md` - Governance principles
-- **Feature Example**: `specs/001-sample-storage/` - Complete SDD example
-
-### Testing Resources
-
-For comprehensive testing guidance, see:
-
-- **Testing Roadmap**: `.specify/guides/testing-roadmap.md` - Complete testing
-  guide for both agents and humans
-- **Test Templates**: `.specify/templates/testing/` - Standardized test
-  templates
-- **AGENTS.md**: Testing Strategy section - Overview of testing approach
-- **Test Data Strategy**: `.specify/guides/test-data-strategy.md` - Unified test
-  data management guide
-
-### Test Data Setup
-
-For E2E testing, integration testing, and manual testing, load test fixtures:
-
-```bash
-# Basic usage (loads and verifies automatically)
-./src/test/resources/load-test-fixtures.sh --profile=core
-
-# Harness fixture lane (includes HARN-* lane data)
-./src/test/resources/load-test-fixtures.sh --profile=harness
-
-# Reset database before loading (clean state)
-./src/test/resources/load-test-fixtures.sh --profile=core --reset
-
-# Load without verification (faster)
-./src/test/resources/load-test-fixtures.sh --profile=core --no-verify
+```sh
+docker compose --env-file .env -p openelis-cn-e2e \
+  -f build.docker-compose.yml \
+  -f docker-compose.e2e.yml \
+  -f docker-compose.demo.yml \
+  stop
 ```
 
-**Note**: The unified loader script provides dependency checks, verification,
-and reset capabilities. See
-[Test Data Strategy Guide](.specify/guides/test-data-strategy.md) for details.
+## 技术架构
 
-### Pull request guidelines
+| 层次     | 技术                                                          |
+| -------- | ------------------------------------------------------------- |
+| 后端     | Java 21、Spring Framework 6、Spring MVC、Hibernate、Tomcat 10 |
+| 前端     | React 17、Vite、Carbon Design System、React Intl              |
+| 数据库   | PostgreSQL 14+、Liquibase                                     |
+| 接口基础 | REST、HAPI FHIR R4、分析仪文件/ASTM/HL7 接入基础              |
+| 部署     | Docker Compose、Nginx                                         |
+| 测试     | JUnit、Mockito、Vitest、React Testing Library、Playwright     |
 
-Please follow the [pull request tips](PULL_REQUEST_TIPS.md) in order to make
-life easy for the code reviewers by having a well defined and clean pull
-request.
+后端是传统 Spring MVC WAR 工程，不是 Spring Boot 应用。数据库变更使用 Liquibase，前端用户可见文字使用 React Intl。
 
-### code of conduct
+## 开发与验证
 
-Please see our [Contributor Code of Conduct](./CODE_OF_CONDUCT.md)
+后端构建：
+
+```sh
+java -version  # 必须为 Java 21
+mvn clean install -DskipTests -Dmaven.test.skip=true
+```
+
+前端构建：
+
+```sh
+cd frontend
+npm ci
+npm run build
+```
+
+常用前端检查：
+
+```sh
+cd frontend
+npm run check:i18n:delivery
+npm run typecheck:delivery
+npm run test:unit
+```
+
+每批业务改动应绑定需求编号、验收场景、测试记录、Git 提交和实际运行版本。模拟验证与真实医院验收必须分别记录。
+
+## 文档入口
+
+- [中国版产品规格](specs/017-lis-product-delivery/spec.md)
+- [生产交付计划](specs/017-lis-product-delivery/plan.md)
+- [开发路线与完成状态](specs/017-lis-product-delivery/development-roadmap-20260915.md)
+- [本地主流程演示](docs/cn-local-demo.md)
+- [中国版检验设备接入指南](docs/analyzers/OpenELIS-中国版-检验设备接入指南.md)
+- [交付验收测试用例](docs/qa/OpenELIS-交付验收测试用例-v1.0.md)
+- [中文功能产品手册（PDF）](docs/OpenELIS-Global-中文功能产品手册-v1.0.pdf)
+- [开发贡献说明](CONTRIBUTING.md)
+- [安全策略](SECURITY.md)
+
+## 当前交付边界
+
+当前代码可用于本机开发、模拟数据演示和医院需求核对，不能仅凭本机通过认定生产交付完成。正式上线至少还需要：
+
+- 导入并核对医院真实科室、病区、医生、项目、组合、参考范围和危急值等主数据。
+- 完成真实 HIS/EMR 的患者、就诊、申请、撤单、结果、报告、回执和对账联调。
+- 按设备清单逐台完成仪器映射、双向工作单、重复结果、断线恢复和异常队列验收。
+- 对报告、标签、签名、打印、修订、撤回和临床回执进行样张及现场签字。
+- 完成多岗位最小权限、越权、审计、备份恢复、性能、安全和试运行验收。
+
+## 上游与许可证
+
+本项目基于 OpenELIS Global 2 持续改造，保留其开源许可证与上游版权声明。许可证全文见 [LICENSE](LICENSE)。如需了解上游项目，请访问 [OpenELIS Global 官方网站](https://openelis-global.org/) 和 [上游代码仓库](https://github.com/DIGI-UW/OpenELIS-Global-2)。
