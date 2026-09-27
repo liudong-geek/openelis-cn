@@ -34,7 +34,7 @@
     .hero-summary { max-width: 920px; margin: .9rem 0 0; color: rgba(255,255,255,.86); font-size: 1.05rem; }
     .hero-actions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.3rem; }
     .pill { display: inline-flex; align-items: center; min-height: 2.2rem; padding: .35rem .75rem; border: 1px solid rgba(255,255,255,.3); border-radius: 999px; color: white; font-size: .88rem; }
-    button { border: 1px solid rgba(255,255,255,.65); border-radius: .45rem; padding: .55rem .9rem; color: var(--brand-dark); background: white; font: inherit; font-weight: 700; cursor: pointer; }
+    button, .manual-pdf-action { display: inline-flex; align-items: center; border: 1px solid rgba(255,255,255,.65); border-radius: .45rem; padding: .55rem .9rem; color: var(--brand-dark); background: white; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
     .print-status { align-self: center; color: rgba(255,255,255,.9); font-size: .88rem; }
     .layout { display: grid; grid-template-columns: minmax(230px, 280px) minmax(0, 1fr); gap: 1.5rem; max-width: 1480px; margin: 0 auto; padding: 1.5rem clamp(1rem, 3vw, 3rem) 4rem; }
     nav { position: sticky; top: 1rem; align-self: start; max-height: calc(100vh - 2rem); overflow: auto; padding: 1rem; background: var(--paper); border: 1px solid var(--line); border-radius: .75rem; box-shadow: var(--shadow); }
@@ -80,7 +80,7 @@
       .hero-inner { max-width: none; padding: 0 0 1rem; }
       .hero-summary { color: var(--muted); }
       .pill { color: var(--ink); border-color: var(--line); }
-      button, nav, .skip, .print-status { display: none !important; }
+      button, .manual-pdf-action, nav, .skip, .print-status { display: none !important; }
       .layout { display: block; max-width: none; padding: 0; }
       .manual-section { break-inside: avoid-page; margin: 1rem 0; padding: .6rem 0; border: 0; box-shadow: none; }
       a { color: inherit; text-decoration: none; }
@@ -97,7 +97,8 @@
       <div class="hero-actions">
         <span class="pill">版本 0.4.1</span>
         <span class="pill">更新：2026-09-27</span>
-        <button id="manual-print-button" type="button">打印 / 保存为 PDF</button>
+        <a class="manual-pdf-action" href="/docs/china-lis-user-manual.pdf" download="LIS-检验工作台功能与操作手册-v0.4.1.pdf">下载 PDF</a>
+        <button id="manual-print-button" type="button">浏览器打印</button>
         <span id="manual-print-status" class="print-status" role="status" aria-live="polite"></span>
       </div>
     </div>
