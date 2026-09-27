@@ -9,6 +9,7 @@ import {
   PasswordInput,
   Checkbox,
   FormGroup,
+  InlineNotification,
 } from "@carbon/react";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import { useLocation } from "react-router-dom";
@@ -27,6 +28,12 @@ import AutoComplete from "../../common/AutoComplete";
 import ProductPageHeader from "../../common/ProductPageHeader";
 import { navigateToInternalPath } from "../../utils/NavigationUtils";
 import "../AdminFormWorkspace.css";
+import {
+  CHINA_PERMISSION_PROFILES,
+  findDutySeparationConflicts,
+  getPermissionProfile,
+  resolvePermissionProfile,
+} from "./chinaPermissionProfiles";
 
 const breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -85,6 +92,10 @@ function UserAddModify() {
     userPassword: false,
     confirmPassword: false,
   });
+  const [permissionProfileId, setPermissionProfileId] = useState("");
+  const [permissionProfileLabUnit, setPermissionProfileLabUnit] = useState("");
+  const [permissionProfileFeedback, setPermissionProfileFeedback] =
+    useState(null);
 
   const location = useLocation();
   const ID = (() => {
@@ -772,6 +783,65 @@ function UserAddModify() {
     return messageId ? intl.formatMessage({ id: messageId }) : roleName;
   };
 
+  const selectedPermissionProfile = getPermissionProfile(permissionProfileId);
+  const dutySeparationConflicts = findDutySeparationConflicts(
+    selectedTestSectionLabUnits,
+    userDataShow.labUnitRoles,
+  );
+  const labUnitNameById = new Map(
+    (userDataShow.testSections || []).map((section) => [
+      section.id,
+      section.value,
+    ]),
+  );
+
+  const applyPermissionProfile = () => {
+    const resolved = resolvePermissionProfile({
+      profile: selectedPermissionProfile,
+      globalRoles: userDataShow.globalRoles,
+      labUnitRoles: userDataShow.labUnitRoles,
+      labUnitId: permissionProfileLabUnit,
+    });
+
+    if (resolved.missingLabUnit) {
+      setPermissionProfileFeedback({
+        kind: "warning",
+        messageId: "user.editor.profile.labUnitRequired",
+      });
+      return;
+    }
+    if (resolved.missingRoleNames.length > 0) {
+      setPermissionProfileFeedback({
+        kind: "error",
+        messageId: "user.editor.profile.roleUnavailable",
+        values: { roles: resolved.missingRoleNames.join(", ") },
+      });
+      return;
+    }
+
+    setSelectedGlobalLabUnitRoles(resolved.globalRoleIds);
+    setSelectedTestSectionLabUnits(resolved.selectedTestSectionLabUnits);
+    setSelectedTestSectionList(
+      Object.keys(resolved.selectedTestSectionLabUnits),
+    );
+    setUserDataPost((current) => ({
+      ...current,
+      selectedRoles: resolved.globalRoleIds,
+      selectedTestSectionLabUnits: resolved.selectedTestSectionLabUnits,
+    }));
+    setUserDataShow((current) => ({
+      ...current,
+      selectedRoles: resolved.globalRoleIds,
+      selectedTestSectionLabUnits: resolved.selectedTestSectionLabUnits,
+    }));
+    setPermissionProfileFeedback({
+      kind: "success",
+      messageId: "user.editor.profile.applied",
+    });
+    setSaveButton(false);
+    setValidation((current) => ({ ...current, roleProfile: true }));
+  };
+
   const passwordChanged =
     passwordTouched.userPassword || passwordTouched.confirmPassword;
   const passwordValid =
@@ -1008,6 +1078,127 @@ function UserAddModify() {
               </p>
             </div>
             <div className="admin-form-workspace__fields">
+              <div className="admin-form-workspace__profile-panel admin-form-workspace__field--wide">
+                <div className="admin-form-workspace__profile-controls">
+                  <Select
+                    id="permission-profile"
+                    labelText={intl.formatMessage({
+                      id: "user.editor.profile.label",
+                    })}
+                    value={permissionProfileId}
+                    onChange={(event) => {
+                      const profileId = event.target.value;
+                      const profile = getPermissionProfile(profileId);
+                      setPermissionProfileId(profileId);
+                      setPermissionProfileLabUnit("");
+                      setPermissionProfileFeedback(null);
+                      if (profile?.labUnitRoleNames.length === 0) {
+                        setPermissionProfileLabUnit("");
+                      }
+                    }}
+                  >
+                    <SelectItem
+                      value=""
+                      text={intl.formatMessage({
+                        id: "user.editor.profile.placeholder",
+                      })}
+                    />
+                    {CHINA_PERMISSION_PROFILES.map((profile) => (
+                      <SelectItem
+                        key={profile.id}
+                        value={profile.id}
+                        text={intl.formatMessage({ id: profile.labelId })}
+                      />
+                    ))}
+                  </Select>
+                  <Select
+                    id="permission-profile-lab-unit"
+                    labelText={intl.formatMessage({
+                      id: "user.editor.profile.labUnit",
+                    })}
+                    value={permissionProfileLabUnit}
+                    disabled={
+                      !selectedPermissionProfile ||
+                      selectedPermissionProfile.labUnitRoleNames.length === 0
+                    }
+                    onChange={(event) => {
+                      setPermissionProfileLabUnit(event.target.value);
+                      setPermissionProfileFeedback(null);
+                    }}
+                  >
+                    <SelectItem
+                      value=""
+                      text={intl.formatMessage({
+                        id: "user.editor.profile.labUnit.placeholder",
+                      })}
+                    />
+                    {userDataShow.testSections?.map((section) => (
+                      <SelectItem
+                        key={`permission-profile-${section.id}`}
+                        value={section.id}
+                        text={section.value}
+                      />
+                    ))}
+                  </Select>
+                  <Button
+                    kind="tertiary"
+                    type="button"
+                    disabled={!selectedPermissionProfile}
+                    onClick={applyPermissionProfile}
+                  >
+                    <FormattedMessage id="user.editor.profile.apply" />
+                  </Button>
+                </div>
+                {selectedPermissionProfile ? (
+                  <div className="admin-form-workspace__profile-preview">
+                    <strong>
+                      <FormattedMessage
+                        id={selectedPermissionProfile.labelId}
+                      />
+                    </strong>
+                    <p>
+                      <FormattedMessage
+                        id={selectedPermissionProfile.descriptionId}
+                      />
+                    </p>
+                    <p>
+                      <strong>
+                        <FormattedMessage id="user.editor.profile.menus" />
+                      </strong>{" "}
+                      {selectedPermissionProfile.menuIds
+                        .map((messageId) =>
+                          intl.formatMessage({ id: messageId }),
+                        )
+                        .join("、")}
+                    </p>
+                    <p>
+                      <strong>
+                        <FormattedMessage id="user.editor.profile.boundary" />
+                      </strong>{" "}
+                      <FormattedMessage
+                        id={selectedPermissionProfile.boundaryId}
+                      />
+                    </p>
+                  </div>
+                ) : (
+                  <p className="admin-form-workspace__required-note">
+                    <FormattedMessage id="user.editor.profile.helper" />
+                  </p>
+                )}
+                {permissionProfileFeedback ? (
+                  <InlineNotification
+                    lowContrast
+                    hideCloseButton
+                    kind={permissionProfileFeedback.kind}
+                    title={intl.formatMessage(
+                      {
+                        id: permissionProfileFeedback.messageId,
+                      },
+                      permissionProfileFeedback.values,
+                    )}
+                  />
+                ) : null}
+              </div>
               <div className="admin-form-workspace__inline-action admin-form-workspace__field--wide">
                 <AutoComplete
                   name="copy-permissions"
@@ -1066,6 +1257,22 @@ function UserAddModify() {
                 </FormGroup>
               </div>
             </div>
+
+            {dutySeparationConflicts.length > 0 ? (
+              <InlineNotification
+                lowContrast
+                hideCloseButton
+                kind="warning"
+                title={intl.formatMessage(
+                  { id: "user.editor.permissions.separationWarning" },
+                  {
+                    labUnits: dutySeparationConflicts
+                      .map((id) => labUnitNameById.get(id) || id)
+                      .join("、"),
+                  },
+                )}
+              />
+            ) : null}
 
             <div className="admin-form-workspace__permission-list">
               {selectedTestSectionList.map((key) => (
