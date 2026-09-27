@@ -17,6 +17,13 @@
   line-height: 1.25;
 }
 
+.batch-order-setup__heading p {
+  max-width: 48rem;
+  margin: 0.5rem 0 0;
+  color: var(--oe-text-muted, #647985);
+  line-height: 1.5;
+}
+
 .batch-order-setup .orderLegendBody.batch-order-setup__card {
   margin: 0 0 1rem;
   padding: 1.25rem;
@@ -32,9 +39,59 @@
   row-gap: 1rem;
 }
 
+.batch-order-setup__card h2,
 .batch-order-setup__card h3,
-.batch-order-setup__card h4 {
+.batch-order-setup__card h4,
+.batch-order-setup__card p {
   margin: 0;
+}
+
+.batch-order-setup__section-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--oe-border, #e2e9ed);
+}
+
+.batch-order-setup__section-heading h2 {
+  color: var(--oe-text, #203847);
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.batch-order-setup__section-heading p,
+.batch-order-setup__subheading p {
+  margin-top: 0.25rem;
+  color: var(--oe-text-muted, #647985);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.batch-order-setup__step-number {
+  display: inline-flex;
+  flex: 0 0 1.75rem;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: var(--oe-accent, #0f7c7a);
+  color: #ffffff;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.batch-order-setup__subheading {
+  padding-top: 0.25rem;
+}
+
+.batch-order-setup__subheading h3,
+.batch-order-setup__readiness h3 {
+  color: var(--oe-text, #203847);
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
 .batch-order-setup__card .cds--form-item,
@@ -62,6 +119,41 @@
   margin-block: 0.75rem;
 }
 
+.batch-order-setup__readiness {
+  margin-top: 0.25rem;
+  padding: 1rem;
+  border: 1px solid var(--oe-border, #e2e9ed);
+  border-radius: var(--oe-surface-radius, 0.5rem);
+  background: var(--oe-layer, #f7f9fa);
+}
+
+.batch-order-setup__readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.batch-order-setup__readiness-grid > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2.5rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--oe-border, #e2e9ed);
+  border-radius: 0.375rem;
+  background: #ffffff;
+  color: var(--oe-text-muted, #647985);
+  font-size: 0.75rem;
+}
+
+.batch-order-setup__readiness-grid > div.is-ready {
+  border-color: #a7d8c3;
+  background: #edf8f2;
+  color: #176b43;
+}
+
 .batch-order-setup__actions {
   display: flex;
   flex-wrap: wrap;
@@ -87,5 +179,9 @@
 
   .batch-order-setup__actions .cds--btn {
     flex: 1 1 8rem;
+  }
+
+  .batch-order-setup__readiness-grid {
+    grid-template-columns: 1fr;
   }
 }

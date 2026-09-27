@@ -368,18 +368,29 @@ const SampleBatchEntrySetup = () => {
                         defaultMessage="Batch Order Entry Setup"
                       />
                     </Heading>
+                    <p>
+                      <FormattedMessage id="batchOrder.setup.description" />
+                    </p>
                   </Section>
                 </Column>
               </Grid>
               <div className="orderLegendBody batch-order-setup__card">
                 <Grid>
-                  <Column lg={16} md={8} sm={4}>
-                    <h3>
-                      <FormattedMessage
-                        id="order.title"
-                        defaultMessage="Order"
-                      />
-                    </h3>
+                  <Column
+                    lg={16}
+                    md={8}
+                    sm={4}
+                    className="batch-order-setup__section-heading"
+                  >
+                    <span className="batch-order-setup__step-number">1</span>
+                    <div>
+                      <h2>
+                        <FormattedMessage id="batchOrder.setup.receipt.title" />
+                      </h2>
+                      <p>
+                        <FormattedMessage id="batchOrder.setup.receipt.description" />
+                      </p>
+                    </div>
                   </Column>
 
                   <Column lg={4} md={4} sm={4}>
@@ -605,17 +616,28 @@ const SampleBatchEntrySetup = () => {
               </div>
               <div className="orderLegendBody batch-order-setup__card">
                 <Grid>
-                  <Column lg={16} md={8} sm={4}>
-                    <h3>
-                      <FormattedMessage id="order.legend.configureBarcode" />
-                    </h3>
+                  <Column
+                    lg={16}
+                    md={8}
+                    sm={4}
+                    className="batch-order-setup__section-heading"
+                  >
+                    <span className="batch-order-setup__step-number">3</span>
+                    <div>
+                      <h2>
+                        <FormattedMessage id="batchOrder.setup.barcode.title" />
+                      </h2>
+                      <p>
+                        <FormattedMessage id="batchOrder.setup.barcode.description" />
+                      </p>
+                    </div>
                   </Column>
                   <Column lg={8} md={4} sm={4}>
                     <Select
                       className="inputText"
                       id="method-dropdown"
                       labelText={
-                        <FormattedMessage id="referral.label.testmethod" />
+                        <FormattedMessage id="batchOrder.setup.barcode.method" />
                       }
                       onChange={handleMethodChange}
                       defaultValue=""
@@ -641,9 +663,14 @@ const SampleBatchEntrySetup = () => {
                     </Select>
                   </Column>
                   <Column lg={16} md={8} sm={4}>
-                    <p>
-                      <FormattedMessage id="order.legend.optionalFields" />
-                    </p>
+                    <div className="batch-order-setup__subheading">
+                      <h3>
+                        <FormattedMessage id="batchOrder.setup.barcode.fields" />
+                      </h3>
+                      <p>
+                        <FormattedMessage id="batchOrder.setup.barcode.fields.description" />
+                      </p>
+                    </div>
                   </Column>
                   <Column lg={4} md={4} sm={2}>
                     <Checkbox
@@ -719,6 +746,69 @@ const SampleBatchEntrySetup = () => {
                       )}
                   </Column>
                   <Column lg={16} md={8} sm={4}>
+                    <div className="batch-order-setup__readiness">
+                      <h3>
+                        <FormattedMessage id="batchOrder.setup.readiness.title" />
+                      </h3>
+                      <div className="batch-order-setup__readiness-grid">
+                        <div
+                          className={
+                            orderFormValues.tests?.length > 0 ? "is-ready" : ""
+                          }
+                        >
+                          <span>
+                            <FormattedMessage id="batchOrder.setup.readiness.sample" />
+                          </span>
+                          <strong>
+                            <FormattedMessage
+                              id={
+                                orderFormValues.tests?.length > 0
+                                  ? "batchOrder.setup.ready"
+                                  : "batchOrder.setup.pending"
+                              }
+                            />
+                          </strong>
+                        </div>
+                        <div
+                          className={orderFormValues.method ? "is-ready" : ""}
+                        >
+                          <span>
+                            <FormattedMessage id="batchOrder.setup.readiness.barcode" />
+                          </span>
+                          <strong>
+                            <FormattedMessage
+                              id={
+                                orderFormValues.method
+                                  ? "batchOrder.setup.ready"
+                                  : "batchOrder.setup.pending"
+                              }
+                            />
+                          </strong>
+                        </div>
+                        <div
+                          className={
+                            orderFormValues.sampleOrderItems.referringSiteId
+                              ? "is-ready"
+                              : ""
+                          }
+                        >
+                          <span>
+                            <FormattedMessage id="batchOrder.setup.readiness.site" />
+                          </span>
+                          <strong>
+                            <FormattedMessage
+                              id={
+                                orderFormValues.sampleOrderItems.referringSiteId
+                                  ? "batchOrder.setup.ready"
+                                  : "batchOrder.setup.pending"
+                              }
+                            />
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
+                  </Column>
+                  <Column lg={16} md={8} sm={4}>
                     <div className="batch-order-setup__actions">
                       <Button
                         onClick={handleSubmitButton1}
@@ -729,7 +819,7 @@ const SampleBatchEntrySetup = () => {
                         }
                         data-testid="next-button-BatchOrderEntry"
                       >
-                        <FormattedMessage id="next.action.button" />
+                        <FormattedMessage id="batchOrder.setup.start" />
                       </Button>
                       <Button
                         data-testid="cancel-button-BatchOrderEntry"

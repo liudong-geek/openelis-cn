@@ -153,10 +153,21 @@ const SampleType = ({ updateFormValues }) => {
     <>
       <div className="orderLegendBody batch-order-setup__card batch-order-setup__sample">
         <Grid>
-          <Column lg={16} md={8} sm={4}>
-            <h4>
-              <FormattedMessage id="label.button.sample" />
-            </h4>
+          <Column
+            lg={16}
+            md={8}
+            sm={4}
+            className="batch-order-setup__section-heading"
+          >
+            <span className="batch-order-setup__step-number">2</span>
+            <div>
+              <h2>
+                <FormattedMessage id="batchOrder.setup.specimen.title" />
+              </h2>
+              <p>
+                <FormattedMessage id="batchOrder.setup.specimen.description" />
+              </p>
+            </div>
           </Column>
           <Column lg={8} md={6} sm={4}>
             <Select
