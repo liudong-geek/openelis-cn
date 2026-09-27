@@ -244,4 +244,14 @@ public class StatisticsReportData {
     public void setSamplesDec(int samplesDec) {
         this.samplesDec = samplesDec;
     }
+
+    public int getTotalTests() {
+        return testsJan + testsFeb + testsMar + testsApr + testsMay + testsJun + testsJul + testsAug + testsSep
+                + testsOct + testsNov + testsDec;
+    }
+
+    public int getTotalSamples() {
+        return samplesJan + samplesFeb + samplesMar + samplesApr + samplesMay + samplesJun + samplesJul + samplesAug
+                + samplesSep + samplesOct + samplesNov + samplesDec;
+    }
 }

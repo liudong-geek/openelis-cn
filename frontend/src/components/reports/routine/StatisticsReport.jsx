@@ -4,6 +4,7 @@ import {
   Checkbox,
   Button,
   Dropdown,
+  InlineLoading,
   InlineNotification,
 } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -27,6 +28,25 @@ const timeFrames = [
 
 const MINIMUM_REPORT_YEAR = 2009;
 
+const monthColumns = [
+  ["Jan", 1],
+  ["Feb", 2],
+  ["Mar", 3],
+  ["Apr", 4],
+  ["May", 5],
+  ["Jun", 6],
+  ["Jul", 7],
+  ["Aug", 8],
+  ["Sep", 9],
+  ["Oct", 10],
+  ["Nov", 11],
+  ["Dec", 12],
+].map(([suffix, month]) => ({
+  month,
+  testsKey: `tests${suffix}`,
+  samplesKey: `samples${suffix}`,
+}));
+
 export const buildStatisticsReportUrl = ({
   serverBaseUrl,
   labUnits = [],
@@ -49,6 +69,21 @@ export const buildStatisticsReportUrl = ({
   return `${baseUrl}/ReportPrint?${query.toString()}`;
 };
 
+export const buildStatisticsPreviewUrl = ({
+  labUnits = [],
+  priorities = [],
+  receptionTimes = [],
+  year,
+}) => {
+  const query = new URLSearchParams({ year: String(year) });
+  labUnits.forEach((unit) => query.append("labSections", String(unit)));
+  priorities.forEach((priority) => query.append("priority", String(priority)));
+  receptionTimes.forEach((timeFrame) =>
+    query.append("receptionTime", String(timeFrame)),
+  );
+  return `/rest/reports/statistics/workload?${query.toString()}`;
+};
+
 const StatisticsReport = () => {
   const intl = useIntl();
   const [labUnits, setLabUnits] = useState([]);
@@ -67,6 +102,9 @@ const StatisticsReport = () => {
   const [prioritiesState, setPrioritiesState] = useState("loading");
   const [launchError, setLaunchError] = useState(false);
   const [yearError, setYearError] = useState(false);
+  const [previewState, setPreviewState] = useState("idle");
+  const [preview, setPreview] = useState(null);
+  const [previewCriteria, setPreviewCriteria] = useState(null);
 
   useEffect(() => {
     getFromOpenElisServer(
@@ -105,57 +143,93 @@ const StatisticsReport = () => {
     );
   }, []);
 
-  const handleSubmit = (event) => {
-    event?.preventDefault();
-    const year = Number(selectedYear?.value);
-    if (
+  const getCriteria = () => ({
+    labUnits:
+      selectedLabUnits.length > 0
+        ? selectedLabUnits
+        : labUnits.map((unit) => unit.id),
+    priorities:
+      selectedPriorities.length > 0
+        ? selectedPriorities
+        : priorities.map((priority) => priority.id),
+    receptionTimes:
+      selectedTimeFrames.length > 0
+        ? selectedTimeFrames
+        : timeFrames.map((frame) => frame.id),
+    year: Number(selectedYear?.value),
+  });
+
+  const validateYear = (year) => {
+    const invalid =
       !Number.isInteger(year) ||
       year < MINIMUM_REPORT_YEAR ||
-      year > currentYear
-    ) {
-      setYearError(true);
+      year > currentYear;
+    setYearError(invalid);
+    if (invalid) {
       setLaunchError(false);
+    }
+    return !invalid;
+  };
+
+  const resetPreview = () => {
+    setPreview(null);
+    setPreviewCriteria(null);
+    setPreviewState("idle");
+    setLaunchError(false);
+  };
+
+  const handlePreview = (event) => {
+    event?.preventDefault();
+    const criteria = getCriteria();
+    if (!validateYear(criteria.year)) {
       return;
     }
 
+    setPreviewState("loading");
+    setPreview(null);
+    setPreviewCriteria(null);
+    getFromOpenElisServer(buildStatisticsPreviewUrl(criteria), (response) => {
+      if (!response || !Array.isArray(response.rows) || !response.totals) {
+        setPreviewState("error");
+        return;
+      }
+      setPreview(response);
+      setPreviewCriteria(criteria);
+      setPreviewState("ready");
+    });
+  };
+
+  const handlePrint = () => {
+    if (!previewCriteria) return;
+
     const url = buildStatisticsReportUrl({
       serverBaseUrl: config.serverBaseUrl,
-      labUnits:
-        selectedLabUnits.length > 0
-          ? selectedLabUnits
-          : labUnits.map((unit) => unit.id),
-      priorities:
-        selectedPriorities.length > 0
-          ? selectedPriorities
-          : priorities.map((priority) => priority.id),
-      receptionTimes:
-        selectedTimeFrames.length > 0
-          ? selectedTimeFrames
-          : timeFrames.map((frame) => frame.id),
-      year,
+      ...previewCriteria,
     });
-    setYearError(false);
     setLaunchError(!openReportWindow(url));
   };
 
   const handleYearChange = (year) => {
     setSelectedYear(year ? { value: year.value, label: year.label } : null);
     setYearError(false);
-    setLaunchError(false);
+    resetPreview();
   };
 
   const handleSelectAllLabUnits = (isChecked) => {
     setSelectedLabUnits(isChecked ? labUnits.map((unit) => unit.id) : []);
+    resetPreview();
   };
 
   const handleSelectAllPriorities = (isChecked) => {
     setSelectedPriorities(
       isChecked ? priorities.map((priority) => priority.id) : [],
     );
+    resetPreview();
   };
 
   const handleSelectAllTimeFrames = (isChecked) => {
     setSelectedTimeFrames(isChecked ? timeFrames.map((frame) => frame.id) : []);
+    resetPreview();
   };
 
   const currentYear = new Date().getFullYear();
@@ -180,7 +254,7 @@ const StatisticsReport = () => {
           <FormattedMessage id="openreports.stat.aggregate" />
         </h1>
       </header>
-      <Form className="statistics-report__form" onSubmit={handleSubmit}>
+      <Form className="statistics-report__form" onSubmit={handlePreview}>
         <div className="statistics-report__notifications">
           {optionsLoading && (
             <InlineNotification
@@ -263,6 +337,7 @@ const StatisticsReport = () => {
                   id={`statistics-lab-unit-${unit.id}`}
                   checked={selectedLabUnits.includes(unit.id)}
                   onChange={() => {
+                    resetPreview();
                     setSelectedLabUnits((prev) => {
                       if (prev.includes(unit.id)) {
                         return prev.filter((item) => item !== unit.id);
@@ -298,6 +373,7 @@ const StatisticsReport = () => {
                   id={`statistics-priority-${priority.id}`}
                   checked={selectedPriorities.includes(priority.id)}
                   onChange={() => {
+                    resetPreview();
                     setSelectedPriorities((prev) => {
                       if (prev.includes(priority.id)) {
                         return prev.filter((item) => item !== priority.id);
@@ -335,6 +411,7 @@ const StatisticsReport = () => {
                   })}
                   checked={selectedTimeFrames.includes(frame.id)}
                   onChange={() => {
+                    resetPreview();
                     setSelectedTimeFrames((prev) => {
                       if (prev.includes(frame.id)) {
                         return prev.filter((item) => item !== frame.id);
@@ -378,15 +455,136 @@ const StatisticsReport = () => {
               )}
             />
           </div>
-          <Button
-            data-cy="printableVersion"
-            type="submit"
-            disabled={optionsLoading || optionsLoadError || optionsEmpty}
-          >
-            <FormattedMessage id="label.button.generatePrintableVersion" />
-          </Button>
+          <div className="statistics-report__action-buttons">
+            <Button
+              data-cy="statisticsPreview"
+              type="submit"
+              disabled={
+                optionsLoading ||
+                optionsLoadError ||
+                optionsEmpty ||
+                previewState === "loading"
+              }
+            >
+              <FormattedMessage id="reports.statistics.preview.action" />
+            </Button>
+            <Button
+              data-cy="printableVersion"
+              type="button"
+              kind="secondary"
+              disabled={previewState !== "ready"}
+              onClick={handlePrint}
+            >
+              <FormattedMessage id="label.button.generatePrintableVersion" />
+            </Button>
+          </div>
         </div>
       </Form>
+      <section
+        className="statistics-report__results"
+        aria-labelledby="statistics-report-results-title"
+      >
+        <div className="statistics-report__results-heading">
+          <div>
+            <h2 id="statistics-report-results-title">
+              <FormattedMessage id="reports.statistics.preview.title" />
+            </h2>
+            <p>
+              <FormattedMessage id="reports.statistics.preview.description" />
+            </p>
+          </div>
+          {previewState === "ready" && (
+            <div className="statistics-report__totals" role="status">
+              <span>
+                <FormattedMessage
+                  id="reports.statistics.preview.totalTests"
+                  values={{ total: preview.totals.tests }}
+                />
+              </span>
+              <span>
+                <FormattedMessage
+                  id="reports.statistics.preview.totalSamples"
+                  values={{ total: preview.totals.samples }}
+                />
+              </span>
+            </div>
+          )}
+        </div>
+        {previewState === "idle" && (
+          <div className="statistics-report__empty">
+            <FormattedMessage id="reports.statistics.preview.idle" />
+          </div>
+        )}
+        {previewState === "loading" && (
+          <InlineLoading
+            description={intl.formatMessage({
+              id: "reports.statistics.preview.loading",
+            })}
+          />
+        )}
+        {previewState === "error" && (
+          <InlineNotification
+            kind="error"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({
+              id: "reports.statistics.preview.error.title",
+            })}
+            subtitle={intl.formatMessage({
+              id: "reports.statistics.preview.error.description",
+            })}
+          />
+        )}
+        {previewState === "ready" && preview.rows.length === 0 && (
+          <div className="statistics-report__empty">
+            <FormattedMessage id="reports.statistics.preview.empty" />
+          </div>
+        )}
+        {previewState === "ready" && preview.rows.length > 0 && (
+          <div className="statistics-report__table-wrap">
+            <p className="statistics-report__table-legend">
+              <FormattedMessage id="reports.statistics.preview.legend" />
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">
+                    <FormattedMessage id="reports.statistics.preview.test" />
+                  </th>
+                  {monthColumns.map(({ month }) => (
+                    <th scope="col" key={month}>
+                      <FormattedMessage
+                        id="reports.statistics.preview.month"
+                        values={{ month }}
+                      />
+                    </th>
+                  ))}
+                  <th scope="col">
+                    <FormattedMessage id="reports.statistics.preview.annual" />
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.rows.map((row) => (
+                  <tr key={row.testName}>
+                    <th scope="row">{row.testName}</th>
+                    {monthColumns.map(({ month, testsKey, samplesKey }) => (
+                      <td key={month}>
+                        {row[testsKey]} / {row[samplesKey]}
+                      </td>
+                    ))}
+                    <td>
+                      <strong>
+                        {row.totalTests} / {row.totalSamples}
+                      </strong>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 };

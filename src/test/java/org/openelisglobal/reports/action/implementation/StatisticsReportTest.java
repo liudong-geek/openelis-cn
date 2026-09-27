@@ -1,6 +1,7 @@
 package org.openelisglobal.reports.action.implementation;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -30,6 +31,7 @@ import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.image.service.ImageService;
 import org.openelisglobal.internationalization.MessageUtil;
 import org.openelisglobal.organization.service.OrganizationService;
+import org.openelisglobal.reports.action.implementation.reportBeans.StatisticsReportData;
 import org.openelisglobal.reports.form.ReportForm;
 import org.openelisglobal.reports.form.ReportForm.ReceptionTime;
 import org.openelisglobal.sample.valueholder.OrderPriority;
@@ -139,7 +141,7 @@ public class StatisticsReportTest {
         when(analysisService.getAnalysisByTestIdAndTestSectionIdsAndStartedInDateRange(any(Date.class),
                 any(Date.class), anyString(), anyList())).thenReturn(null);
 
-        new StatisticsReport().createReportData(new ReportForm());
+        List<StatisticsReportData> rows = new StatisticsReport().createReportData(new ReportForm());
 
         ArgumentCaptor<Date> lowDate = ArgumentCaptor.forClass(Date.class);
         ArgumentCaptor<Date> highDate = ArgumentCaptor.forClass(Date.class);
@@ -151,6 +153,22 @@ public class StatisticsReportTest {
         assertEquals(Calendar.getInstance().get(Calendar.YEAR), yearOf(lowDate.getValue()));
         assertEquals(Calendar.getInstance().get(Calendar.YEAR), yearOf(highDate.getValue()));
         assertTrue(lowDate.getValue().before(highDate.getValue()));
+        assertEquals(1, rows.size());
+        assertNull(rows.get(0).getTestName());
+    }
+
+    @Test
+    public void reportRowsExposeAnnualTestAndSampleTotals() {
+        StatisticsReportData row = new StatisticsReportData();
+        row.setTestsJan(3);
+        row.setSamplesJan(2);
+        row.setTestsSep(4);
+        row.setSamplesSep(1);
+        row.setTestsDec(5);
+        row.setSamplesDec(3);
+
+        assertEquals(12, row.getTotalTests());
+        assertEquals(6, row.getTotalSamples());
     }
 
     @Test

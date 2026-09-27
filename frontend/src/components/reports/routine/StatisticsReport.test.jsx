@@ -23,6 +23,44 @@ const renderReport = () =>
 const generateButton = () =>
   screen.getByRole("button", { name: "生成可打印版本" });
 
+const previewButton = () => screen.getByRole("button", { name: "查询统计" });
+
+const previewResponse = {
+  year: new Date().getFullYear(),
+  rows: [
+    {
+      testName: "白细胞计数（WBC）",
+      testsJan: 3,
+      samplesJan: 2,
+      testsFeb: 0,
+      samplesFeb: 0,
+      testsMar: 0,
+      samplesMar: 0,
+      testsApr: 0,
+      samplesApr: 0,
+      testsMay: 0,
+      samplesMay: 0,
+      testsJun: 0,
+      samplesJun: 0,
+      testsJul: 0,
+      samplesJul: 0,
+      testsAug: 0,
+      samplesAug: 0,
+      testsSep: 4,
+      samplesSep: 4,
+      testsOct: 0,
+      samplesOct: 0,
+      testsNov: 0,
+      samplesNov: 0,
+      testsDec: 0,
+      samplesDec: 0,
+      totalTests: 7,
+      totalSamples: 6,
+    },
+  ],
+  totals: { tests: 7, samples: 6 },
+};
+
 const selectAllCheckboxes = () =>
   [
     "select-all-lab-units",
@@ -33,6 +71,10 @@ const selectAllCheckboxes = () =>
 beforeEach(() => {
   vi.clearAllMocks();
   apiMocks.get.mockImplementation((url, callback) => {
+    if (url.includes("/rest/reports/statistics/workload")) {
+      callback(previewResponse);
+      return;
+    }
     callback(
       url.includes("user-test-sections")
         ? [
@@ -54,10 +96,11 @@ afterEach(() => {
 });
 
 describe("StatisticsReport", () => {
-  test("defaults every filter group to all and launches one safely encoded report", () => {
+  test("defaults every filter group to all, previews the list, then prints the same scope", () => {
     renderReport();
 
-    expect(generateButton()).toBeEnabled();
+    expect(previewButton()).toBeEnabled();
+    expect(generateButton()).toBeDisabled();
     expect(screen.getByText("统计范围")).toBeInTheDocument();
     expect(
       screen.getByText("正常工作时间（接收时间 09:00–15:30）"),
@@ -70,6 +113,23 @@ describe("StatisticsReport", () => {
     expect(screen.getByText("急诊")).toBeInTheDocument();
     expect(screen.getByText("预定急诊")).toBeInTheDocument();
     selectAllCheckboxes().forEach((checkbox) => expect(checkbox).toBeChecked());
+
+    fireEvent.click(previewButton());
+
+    expect(screen.getByText("白细胞计数（WBC）")).toBeInTheDocument();
+    expect(screen.getByText("检验量 7")).toBeInTheDocument();
+    expect(screen.getByText("标本量 6")).toBeInTheDocument();
+    expect(generateButton()).toBeEnabled();
+    const previewUrl = new URL(
+      apiMocks.get.mock.calls.find(([url]) =>
+        url.includes("/rest/reports/statistics/workload"),
+      )[0],
+      "http://local",
+    );
+    expect(previewUrl.searchParams.getAll("labSections")).toEqual([
+      "LAB A&B/1",
+      "LAB-2",
+    ]);
 
     fireEvent.click(generateButton());
 
@@ -97,9 +157,10 @@ describe("StatisticsReport", () => {
 
   test("treats a deliberately cleared group as all available values", () => {
     renderReport();
-    expect(generateButton()).toBeEnabled();
+    expect(previewButton()).toBeEnabled();
 
     selectAllCheckboxes().forEach((checkbox) => fireEvent.click(checkbox));
+    fireEvent.click(previewButton());
     fireEvent.click(generateButton());
 
     const openedUrl = new URL(window.open.mock.calls[0][0], "http://local");
@@ -124,6 +185,7 @@ describe("StatisticsReport", () => {
   test("shows a Chinese popup-blocked error instead of reporting success", () => {
     window.open.mockReturnValue(null);
     renderReport();
+    fireEvent.click(previewButton());
     expect(generateButton()).toBeEnabled();
 
     fireEvent.click(generateButton());
@@ -143,6 +205,7 @@ describe("StatisticsReport", () => {
     renderReport();
 
     expect(await screen.findByText("无法加载报告选项")).toBeInTheDocument();
+    expect(previewButton()).toBeDisabled();
     expect(generateButton()).toBeDisabled();
     expect(window.open).not.toHaveBeenCalled();
   });
@@ -154,8 +217,30 @@ describe("StatisticsReport", () => {
     expect(
       await screen.findByText("当前没有可用的报告选项。"),
     ).toBeInTheDocument();
+    expect(previewButton()).toBeDisabled();
     expect(generateButton()).toBeDisabled();
     fireEvent.click(generateButton());
+    expect(window.open).not.toHaveBeenCalled();
+  });
+
+  test("keeps print disabled when the preview request fails", () => {
+    apiMocks.get.mockImplementation((url, callback) => {
+      if (url.includes("/rest/reports/statistics/workload")) {
+        callback(undefined);
+        return;
+      }
+      callback(
+        url.includes("user-test-sections")
+          ? [{ id: "LAB-1", value: "生化" }]
+          : [{ id: "ROUTINE", value: "Routine" }],
+      );
+    });
+    renderReport();
+
+    fireEvent.click(previewButton());
+
+    expect(screen.getByText("工作量统计失败")).toBeInTheDocument();
+    expect(generateButton()).toBeDisabled();
     expect(window.open).not.toHaveBeenCalled();
   });
 });

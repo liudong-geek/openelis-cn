@@ -97,7 +97,7 @@ public class StatisticsReport extends IndicatorReport
         return "StatisticsReport";
     }
 
-    public void createReportData(ReportForm form) {
+    public List<StatisticsReportData> createReportData(ReportForm form) {
         AnalysisService analysisService = SpringContext.getBean(AnalysisService.class);
         TestService testService = SpringContext.getBean(TestService.class);
         TestSectionService testSectionService = SpringContext.getBean(TestSectionService.class);
@@ -256,6 +256,7 @@ public class StatisticsReport extends IndicatorReport
             emptydata.setTestName(null);
             reportItems.add(emptydata);
         }
+        return List.copyOf(reportItems);
     }
 
     @Override
@@ -347,7 +348,7 @@ public class StatisticsReport extends IndicatorReport
         return prioritMap;
     }
 
-    static int resolveReportYear(String requestedYear) {
+    public static int resolveReportYear(String requestedYear) {
         int currentYear = DateUtil.getCurrentYear();
         if (requestedYear == null || requestedYear.isBlank()) {
             return currentYear;
