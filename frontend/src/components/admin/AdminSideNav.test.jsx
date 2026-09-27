@@ -26,7 +26,10 @@ import { render, act, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import AdminSideNav from "./AdminSideNav";
-import { V1_SECTIONS } from "./testCatalog/sectionConfig";
+import {
+  TEST_CATALOG_SECTION_GROUPS,
+  V1_SECTIONS,
+} from "./testCatalog/sectionConfig";
 import { SAMPLE_TYPE_SECTIONS } from "./sampleTypeManagement/sectionConfig";
 import messages from "../../languages/en.json";
 
@@ -136,7 +139,7 @@ describe("AdminSideNav — Test Catalog Management entry", () => {
     ).toHaveAttribute("href", "/MasterListsPage/interfaceWorkspace");
   });
 
-  it("makes the 9 sections live routed links when editing a test", () => {
+  it("groups the routed sections and expands only the current group", () => {
     mockLocation = {
       pathname: "/MasterListsPage/TestCatalogEditor/7/methods",
       search: "",
@@ -173,7 +176,23 @@ describe("AdminSideNav — Test Catalog Management entry", () => {
     expect(
       container.querySelector('[data-cy="testCatalogSectionsContext"]')
         .textContent,
-    ).toBe("Editing: Hemoglobin");
+    ).toBe("Current testHemoglobin");
+    expect(
+      screen.getByRole("button", { name: "Definition & results" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    TEST_CATALOG_SECTION_GROUPS.slice(1).forEach((group) => {
+      expect(
+        screen.getByRole("button", {
+          name: messages[`sidenav.label.admin.testCatalog.group.${group.key}`],
+        }),
+      ).toHaveAttribute("aria-expanded", "false");
+    });
+    expect(
+      screen.queryByRole("button", { name: "Test Catalog Management" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("admin-back-to-management-center"),
+    ).not.toBeInTheDocument();
   });
 
   it("falls back to a generic context label when the test name can't load", async () => {
@@ -189,7 +208,7 @@ describe("AdminSideNav — Test Catalog Management entry", () => {
     expect(
       container.querySelector('[data-cy="testCatalogSectionsContext"]')
         .textContent,
-    ).toBe("Editing test");
+    ).toBe("Current testEditing test");
   });
 
   it("aborts the in-flight test-name fetch on unmount", async () => {

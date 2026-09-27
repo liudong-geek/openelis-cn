@@ -2,7 +2,9 @@ import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { waitFor } from "@testing-library/dom";
 import { IntlProvider } from "react-intl";
-import WorkplanFilterSelect from "./WorkplanFilterSelect";
+import WorkplanFilterSelect, {
+  shouldFilterWorkplanItem,
+} from "./WorkplanFilterSelect";
 import messages from "../../languages/en.json";
 import { getFromOpenElisServer } from "../utils/Utils";
 
@@ -64,5 +66,20 @@ describe("WorkplanFilterSelect", () => {
     expect(screen.getByRole("combobox", { name: "Test" })).toHaveValue(
       "White blood cell count",
     );
+  });
+
+  test("treats Carbon's empty filter value as an unfiltered list", () => {
+    expect(
+      shouldFilterWorkplanItem({
+        item: tests[0],
+        inputValue: null,
+      }),
+    ).toBe(true);
+    expect(
+      shouldFilterWorkplanItem({
+        item: tests[1],
+        inputValue: "white",
+      }),
+    ).toBe(true);
   });
 });

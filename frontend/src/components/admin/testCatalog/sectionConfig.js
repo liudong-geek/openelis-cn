@@ -27,6 +27,31 @@ export const V1_SECTIONS = [
   "display-order",
 ];
 
+export const TEST_CATALOG_SECTION_GROUPS = [
+  {
+    key: "definition",
+    sections: [
+      "basic-info",
+      "sample-results",
+      "methods",
+      "ranges",
+      "localization",
+    ],
+  },
+  {
+    key: "specimen-workflow",
+    sections: ["storage", "panels", "labels", "display-order"],
+  },
+  {
+    key: "coding-instruments",
+    sections: ["terminology", "reagents", "analyzers"],
+  },
+  {
+    key: "rules-alerts",
+    sections: ["alerts", "reflex-calc"],
+  },
+];
+
 export const DEFAULT_SECTION = V1_SECTIONS[0]; // "basic-info"
 
 export const isValidSection = (s) => V1_SECTIONS.includes(s);

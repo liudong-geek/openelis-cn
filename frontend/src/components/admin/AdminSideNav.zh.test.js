@@ -1,7 +1,10 @@
 import enMessages from "../../languages/en.json";
 import zhMessages from "../../languages/zh.json";
 import zhCnMessages from "../../languages/zh_CN.json";
-import { V1_SECTIONS } from "./testCatalog/sectionConfig";
+import {
+  TEST_CATALOG_SECTION_GROUPS,
+  V1_SECTIONS,
+} from "./testCatalog/sectionConfig";
 import { SAMPLE_TYPE_SECTIONS } from "./sampleTypeManagement/sectionConfig";
 
 const CHINESE_CATALOG_NAV_LABELS = {
@@ -15,6 +18,11 @@ const CHINESE_CATALOG_NAV_LABELS = {
   "sidenav.label.admin.testCatalog.sectionsHelper":
     "请选择检验项目后编辑详细配置",
   "sidenav.label.admin.testCatalog.editingGeneric": "正在编辑检验项目",
+  "sidenav.label.admin.testCatalog.currentItem": "当前检验项目",
+  "sidenav.label.admin.testCatalog.group.definition": "基础定义与结果",
+  "sidenav.label.admin.testCatalog.group.specimen-workflow": "标本与流程",
+  "sidenav.label.admin.testCatalog.group.coding-instruments": "编码与仪器",
+  "sidenav.label.admin.testCatalog.group.rules-alerts": "规则与预警",
   "sidenav.label.admin.sampleTypeManagement": "标本类型管理",
   "sidenav.label.admin.sampleType.backToList": "← 返回标本类型列表",
   "sidenav.label.admin.sampleType.editingGeneric": "正在编辑标本类型",
@@ -68,6 +76,14 @@ describe.each(CHINESE_LOCALES)(
           CHINESE_TEST_SECTION_LABELS[section],
         );
       });
+    });
+
+    it("groups every Test Catalog section exactly once", () => {
+      const groupedSections = TEST_CATALOG_SECTION_GROUPS.flatMap(
+        (group) => group.sections,
+      );
+      expect(groupedSections).toHaveLength(V1_SECTIONS.length);
+      expect(new Set(groupedSections)).toEqual(new Set(V1_SECTIONS));
     });
 
     it("translates every routed sample-type section", () => {

@@ -14,6 +14,11 @@ const normalizeItems = (response) =>
       )
     : [];
 
+export const shouldFilterWorkplanItem = ({ item, inputValue }) =>
+  String(item?.value ?? "")
+    .toLocaleLowerCase()
+    .includes(String(inputValue ?? "").toLocaleLowerCase());
+
 export default function WorkplanFilterSelect({
   id,
   endpoint,
@@ -73,9 +78,7 @@ export default function WorkplanFilterSelect({
       titleText={title}
       placeholder={placeholder}
       onChange={handleChange}
-      shouldFilterItem={({ item, inputValue }) =>
-        item.value.toLocaleLowerCase().includes(inputValue.toLocaleLowerCase())
-      }
+      shouldFilterItem={shouldFilterWorkplanItem}
     />
   );
 }

@@ -9,7 +9,7 @@ import {
   SideNavMenuItem,
 } from "@carbon/react";
 import { getFromOpenElisServer } from "../utils/Utils";
-import { V1_SECTIONS } from "./testCatalog/sectionConfig";
+import { TEST_CATALOG_SECTION_GROUPS } from "./testCatalog/sectionConfig";
 import { SAMPLE_TYPE_SECTIONS } from "./sampleTypeManagement/sectionConfig";
 import { getAdminNavigationDomain } from "./adminNavigation";
 
@@ -61,6 +61,9 @@ export default function AdminSideNav() {
   }, [editorTestId]);
   const editorTestName =
     editorTest.id === editorTestId ? editorTest.name : null;
+  const editorSection = editorTestId
+    ? normalizePath(location.pathname).split("/").at(-1)
+    : null;
 
   const [editorSampleType, setEditorSampleType] = useState({
     id: null,
@@ -153,6 +156,66 @@ export default function AdminSideNav() {
     );
   }
 
+  if (editorTestId) {
+    return (
+      <SideNavItems className="adminSideNav adminSideNav--compact adminSideNav--editor">
+        <SideNavLink
+          data-cy="testCatalogList"
+          data-testid="test-catalog-back-to-list"
+          renderIcon={ArrowLeft}
+          {...navProps(`${basePath}/TestCatalogList`)}
+        >
+          <FormattedMessage id="sidenav.label.admin.testCatalog.backToList" />
+        </SideNavLink>
+
+        <li
+          id="testCatalogSectionsHelp"
+          data-cy="testCatalogSectionsContext"
+          className="adminSideNav__sectionsContext adminSideNav__editorContext"
+        >
+          <span className="adminSideNav__editorEyebrow">
+            <FormattedMessage id="sidenav.label.admin.testCatalog.currentItem" />
+          </span>
+          <strong>
+            {editorTestName ? (
+              editorTestName
+            ) : (
+              <FormattedMessage id="sidenav.label.admin.testCatalog.editingGeneric" />
+            )}
+          </strong>
+        </li>
+
+        {TEST_CATALOG_SECTION_GROUPS.map((group) => {
+          const isCurrentGroup = group.sections.includes(editorSection);
+          return (
+            <SideNavMenu
+              key={`${group.key}-${isCurrentGroup ? "active" : "idle"}`}
+              data-cy={`testCatalog-group-${group.key}`}
+              defaultExpanded={isCurrentGroup}
+              title={intl.formatMessage({
+                id: `sidenav.label.admin.testCatalog.group.${group.key}`,
+              })}
+            >
+              {group.sections.map((sectionKey) => (
+                <SideNavMenuItem
+                  key={sectionKey}
+                  data-cy={`section-${sectionKey}`}
+                  {...navProps(
+                    `${basePath}/TestCatalogEditor/${editorTestId}/${sectionKey}`,
+                  )}
+                >
+                  <FormattedMessage
+                    id={`label.testCatalog.section.${sectionKey}`}
+                  />
+                </SideNavMenuItem>
+              ))}
+            </SideNavMenu>
+          );
+        })}
+      </SideNavItems>
+    );
+  }
+
   return (
     <SideNavItems className="adminSideNav adminSideNav--compact">
       {backToManagementCenter}
@@ -221,39 +284,7 @@ export default function AdminSideNav() {
               </SideNavMenuItem>
             ))}
           </>
-        ) : (
-          editorTestId && (
-            <>
-              <li
-                id="testCatalogSectionsHelp"
-                data-cy="testCatalogSectionsContext"
-                className="adminSideNav__sectionsContext"
-              >
-                {editorTestName ? (
-                  <FormattedMessage
-                    id="sidenav.label.admin.testCatalog.editing"
-                    values={{ name: editorTestName }}
-                  />
-                ) : (
-                  <FormattedMessage id="sidenav.label.admin.testCatalog.editingGeneric" />
-                )}
-              </li>
-              {V1_SECTIONS.map((sectionKey) => (
-                <SideNavMenuItem
-                  key={sectionKey}
-                  data-cy={`section-${sectionKey}`}
-                  {...navProps(
-                    `${basePath}/TestCatalogEditor/${editorTestId}/${sectionKey}`,
-                  )}
-                >
-                  <FormattedMessage
-                    id={`label.testCatalog.section.${sectionKey}`}
-                  />
-                </SideNavMenuItem>
-              ))}
-            </>
-          )
-        )}
+        ) : null}
       </SideNavMenu>
     </SideNavItems>
   );

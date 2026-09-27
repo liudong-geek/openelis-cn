@@ -1075,3 +1075,29 @@ nav.cds--side-nav .cds--side-nav__link::before {
   font-size: 0.75rem;
   line-height: 1.35;
 }
+
+.adminSideNav__editorContext {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.5rem 1rem 0.75rem;
+  padding: 0.75rem;
+  border-left: 3px solid #42b4ad;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.adminSideNav__editorContext strong {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--cds-text-on-color, #ffffff);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.adminSideNav__editorEyebrow {
+  color: #c6c6c6;
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+}
