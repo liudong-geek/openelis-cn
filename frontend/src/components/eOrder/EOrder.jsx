@@ -389,18 +389,41 @@ const EOrder = ({ eOrders, setEOrders, eOrderRef }) => {
   };
 
   return (
-    <div ref={eOrderRef}>
-      {eOrders.length > 0 && (
-        <>
-          <FormattedMessage id="eorder.instructions.enter1" /> <ChevronDown />{" "}
-          <FormattedMessage id="eorder.instructions.enter2" /> <TaskAdd />{" "}
-          <FormattedMessage id="eorder.instructions.enter3" /> <Edit />{" "}
-          <FormattedMessage id="eorder.instructions.enter4" />
-          <br></br>
-          {createDataTable(eOrders)}
-        </>
-      )}
-    </div>
+    <section
+      ref={eOrderRef}
+      className="eorder-list-panel"
+      aria-labelledby="eorder-list-title"
+    >
+      <div className="eorder-list-panel__heading">
+        <div>
+          <h2 id="eorder-list-title">
+            <FormattedMessage id="eorder.list.title" />
+          </h2>
+          <p>
+            <FormattedMessage
+              id="eorder.list.count"
+              values={{ total: eOrders.length }}
+              defaultMessage="{total} records"
+            />
+          </p>
+        </div>
+      </div>
+      <div className="eorder-list-panel__body">
+        {eOrders.length > 0 ? (
+          <div className="eorder-list-panel__instructions">
+            <FormattedMessage id="eorder.instructions.enter1" /> <ChevronDown />{" "}
+            <FormattedMessage id="eorder.instructions.enter2" /> <TaskAdd />{" "}
+            <FormattedMessage id="eorder.instructions.enter3" /> <Edit />{" "}
+            <FormattedMessage id="eorder.instructions.enter4" />
+          </div>
+        ) : (
+          <div className="eorder-list-panel__empty" role="status">
+            <FormattedMessage id="eorder.search.noresults" />
+          </div>
+        )}
+        {createDataTable(eOrders)}
+      </div>
+    </section>
   );
 };
 

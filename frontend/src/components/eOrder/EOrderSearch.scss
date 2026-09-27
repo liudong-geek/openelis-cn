@@ -90,6 +90,57 @@
   gap: var(--cds-spacing-02, 0.25rem);
 }
 
+.eorder-list-panel {
+  overflow: hidden;
+  border: 1px solid var(--oe-border, #e2e9ed);
+  border-radius: var(--oe-surface-radius, 0.5rem);
+  background: var(--oe-surface, #ffffff);
+}
+
+.eorder-list-panel__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--cds-spacing-05, 1rem) var(--cds-spacing-06, 1.5rem);
+  border-bottom: 1px solid var(--oe-border, #e2e9ed);
+}
+
+.eorder-list-panel__heading h2,
+.eorder-list-panel__heading p {
+  margin: 0;
+}
+
+.eorder-list-panel__heading h2 {
+  color: var(--oe-text, #203847);
+  font-size: var(--cds-heading-compact-02-font-size, 1rem);
+  font-weight: 600;
+}
+
+.eorder-list-panel__heading p {
+  margin-top: var(--cds-spacing-02, 0.25rem);
+  color: var(--oe-text-muted, #647985);
+  font-size: var(--cds-label-01-font-size, 0.75rem);
+}
+
+.eorder-list-panel__body {
+  overflow-x: auto;
+}
+
+.eorder-list-panel__body table {
+  min-width: 90rem;
+}
+
+.eorder-list-panel__instructions,
+.eorder-list-panel__empty {
+  padding: var(--cds-spacing-04, 0.75rem) var(--cds-spacing-06, 1.5rem);
+  color: var(--oe-text-muted, #647985);
+  font-size: var(--cds-label-01-font-size, 0.75rem);
+}
+
+.eorder-list-panel__instructions svg {
+  vertical-align: middle;
+}
+
 @media (max-width: 65.9375rem) {
   .eorder-search-controls--date-status {
     grid-template-columns: repeat(2, minmax(0, 1fr));

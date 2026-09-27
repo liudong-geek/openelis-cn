@@ -3090,6 +3090,8 @@
   "eorder.instructions.enter2": "可直接接收申请并生成实验室编号；",
   "eorder.instructions.enter3": "如需调整内容，请选择",
   "eorder.instructions.enter4": "修改申请。",
+  "eorder.list.title": "电子申请列表",
+  "eorder.list.count": "共 {total} 份申请",
   "eorder.labNumber": "实验室编号",
   "eorder.labnumber.referring": "原机构检验号",
   "eorder.name.first": "名",

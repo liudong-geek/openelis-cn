@@ -3114,6 +3114,8 @@
   "eorder.instructions.enter2": " menu, add a lab number and select ",
   "eorder.instructions.enter3": " to accept the order as is, or select ",
   "eorder.instructions.enter4": " to make changes ",
+  "eorder.list.title": "Electronic request list",
+  "eorder.list.count": "{total} requests",
   "eorder.labNumber": "Lab Number",
   "eorder.labnumber.referring": "Referring Lab Number",
   "eorder.name.first": "First Name",

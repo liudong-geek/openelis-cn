@@ -41,7 +41,6 @@ const EOrderSearch = ({
 }) => {
   const intl = useIntl();
 
-  const [hasEOrders, setHasEOrders] = useState(false);
   const [searchMode, setSearchMode] = useState("identifier");
   const [searchValue, setSearchValue] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -50,39 +49,53 @@ const EOrderSearch = ({
   const [statusOptions, setStatusOptions] = useState([]);
   const [allInfo, setAllInfo] = useState(false);
   const [allInfo2, setAllInfo2] = useState(false);
-  const [searchCompleted, setSearchCompleted] = useState(false);
   const [nextPage, setNextPage] = useState(null);
   const [previousPage, setPreviousPage] = useState(null);
   const [pagination, setPagination] = useState(false);
   const [currentApiPage, setCurrentApiPage] = useState(null);
   const [totalApiPages, setTotalApiPages] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
 
   useEffect(() => {
-    getFromOpenElisServer("/rest/ElectronicOrders", handleElectronicOrders);
+    loadDefaultOrders();
     getFromOpenElisServer(
       "/rest/displayList/ELECTRONIC_ORDER_STATUSES",
       handleOrderStatus,
     );
   }, []);
 
-  const handleElectronicOrders = (response) => {
-    console.log(response);
-  };
-
   const handleOrderStatus = (response) => {
-    setStatusOptions(response);
+    setStatusOptions(Array.isArray(response) ? response : []);
     setNextPage(null);
     setPreviousPage(null);
     setPagination(false);
   };
 
+  function loadDefaultOrders() {
+    const params = new URLSearchParams({
+      searchType: "DATE_STATUS",
+      startDate: "",
+      endDate: "",
+      statusId: "",
+      useAllInfo: "false",
+    });
+    setLoading(true);
+    getFromOpenElisServer(
+      "/rest/ElectronicOrders?" + params.toString(),
+      (response) => parseEOrders(response, { notifyEmpty: false }),
+    );
+  }
+
   function searchByIdentifier() {
+    if (!searchValue.trim()) {
+      loadDefaultOrders();
+      return;
+    }
     const params = new URLSearchParams({
       searchType: "IDENTIFIER",
-      searchValue: searchValue,
+      searchValue: searchValue.trim(),
       useAllInfo: allInfo,
     });
     setLoading(true);
@@ -107,8 +120,8 @@ const EOrderSearch = ({
     );
   }
 
-  const parseEOrders = (response) => {
-    setSearchCompleted(true);
+  const parseEOrders = (response, { notifyEmpty = true } = {}) => {
+    const orders = Array.isArray(response?.eOrders) ? response.eOrders : [];
     if (response && response.paging) {
       const { totalPages, currentPage } = response.paging;
       if (totalPages > 1) {
@@ -132,11 +145,8 @@ const EOrderSearch = ({
         setPagination(false);
       }
     }
-    setHasEOrders(
-      response.eOrders instanceof Array && response.eOrders.length > 0,
-    );
     setEOrders(
-      response.eOrders.map((item) => {
+      orders.map((item) => {
         return { ...item, id: item.electronicOrderId };
       }),
     );
@@ -147,7 +157,7 @@ const EOrderSearch = ({
         behavior: "smooth",
       });
     }
-    if (response.eOrders.length == 0) {
+    if (orders.length === 0 && notifyEmpty) {
       addNotification({
         kind: NotificationKinds.warning,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -296,11 +306,6 @@ const EOrderSearch = ({
               <InlineLoading
                 description={intl.formatMessage({ id: "loading.description" })}
               />
-            )}
-            {searchCompleted && !hasEOrders && !loading && (
-              <span>
-                <FormattedMessage id="eorder.search.noresults" />
-              </span>
             )}
           </div>
 
