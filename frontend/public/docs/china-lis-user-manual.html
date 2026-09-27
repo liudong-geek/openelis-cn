@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="OpenELIS-CN 检验工作台功能、岗位权限和业务操作手册" />
   <title>LIS 检验工作台功能与操作手册</title>
+  <script src="/docs/china-lis-user-manual.js" defer></script>
   <style>
     :root {
       color-scheme: light;
@@ -34,6 +35,7 @@
     .hero-actions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.3rem; }
     .pill { display: inline-flex; align-items: center; min-height: 2.2rem; padding: .35rem .75rem; border: 1px solid rgba(255,255,255,.3); border-radius: 999px; color: white; font-size: .88rem; }
     button { border: 1px solid rgba(255,255,255,.65); border-radius: .45rem; padding: .55rem .9rem; color: var(--brand-dark); background: white; font: inherit; font-weight: 700; cursor: pointer; }
+    .print-status { align-self: center; color: rgba(255,255,255,.9); font-size: .88rem; }
     .layout { display: grid; grid-template-columns: minmax(230px, 280px) minmax(0, 1fr); gap: 1.5rem; max-width: 1480px; margin: 0 auto; padding: 1.5rem clamp(1rem, 3vw, 3rem) 4rem; }
     nav { position: sticky; top: 1rem; align-self: start; max-height: calc(100vh - 2rem); overflow: auto; padding: 1rem; background: var(--paper); border: 1px solid var(--line); border-radius: .75rem; box-shadow: var(--shadow); }
     nav strong { display: block; margin: .1rem .55rem .75rem; }
@@ -78,7 +80,7 @@
       .hero-inner { max-width: none; padding: 0 0 1rem; }
       .hero-summary { color: var(--muted); }
       .pill { color: var(--ink); border-color: var(--line); }
-      button, nav, .skip { display: none !important; }
+      button, nav, .skip, .print-status { display: none !important; }
       .layout { display: block; max-width: none; padding: 0; }
       .manual-section { break-inside: avoid-page; margin: 1rem 0; padding: .6rem 0; border: 0; box-shadow: none; }
       a { color: inherit; text-decoration: none; }
@@ -93,9 +95,10 @@
       <h1>LIS 检验工作台功能与操作手册</h1>
       <p class="hero-summary">适用范围：检验申请、单管与多管标本、结果审核、报告发布、质量管理和岗位权限。</p>
       <div class="hero-actions">
-        <span class="pill">版本 0.4</span>
+        <span class="pill">版本 0.4.1</span>
         <span class="pill">更新：2026-09-27</span>
-        <button type="button" onclick="window.print()">打印 / 保存为 PDF</button>
+        <button id="manual-print-button" type="button">打印 / 保存为 PDF</button>
+        <span id="manual-print-status" class="print-status" role="status" aria-live="polite"></span>
       </div>
     </div>
   </header>
@@ -119,7 +122,7 @@
     </nav>
     <main id="content">
       <section class="manual-intro" aria-label="文档信息">
-<p>版本：0.4（适配当前 <code>develop</code> 中国版界面）</p>
+<p>版本：0.4.1（适配当前 <code>develop</code> 中国版界面）</p>
 <p>更新日期：2026-09-27</p>
 <p>文档性质：岗位操作手册</p>
 <p>适用对象：申请与标本接收人员、检验技师、结果审核人员、报告发布人员、质量负责人、系统管理员和审计人员</p>
