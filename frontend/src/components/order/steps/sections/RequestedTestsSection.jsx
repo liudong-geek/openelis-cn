@@ -10,6 +10,7 @@ import {
   TableBody,
   TableCell,
   Tag,
+  InlineNotification,
 } from "@carbon/react";
 import { Checkmark } from "@carbon/icons-react";
 import { getFromOpenElisServer } from "../../../utils/Utils";
@@ -76,33 +77,37 @@ const RequestedTestsSection = ({
     ...allPanels.map((p) => ({ ...p, isPanel: true })),
     ...allTests.map((t) => ({ ...t, isPanel: false })),
   ];
+  const compatibilitySignature = allTests
+    .map((test) => test.id)
+    .sort()
+    .join(",");
 
   // Fetch test-sample-type compatibility when tests change
   useEffect(() => {
     componentMounted.current = true;
 
-    const testIds = allTests.map((t) => t.id).join(",");
+    const testIds = compatibilitySignature;
     if (!testIds) return;
 
     setIsLoadingCompatibility(true);
+    setTestSampleTypeMap({});
     getFromOpenElisServer(
       `/rest/test-sample-types?testIds=${testIds}`,
       (response) => {
-        if (componentMounted.current && response?.tests) {
-          const map = {};
-          response.tests.forEach((t) => {
-            map[t.testId] = t.compatibleSampleTypes || [];
-          });
-          setTestSampleTypeMap(map);
-          setIsLoadingCompatibility(false);
-        }
+        if (!componentMounted.current) return;
+        const map = {};
+        (response?.tests || []).forEach((t) => {
+          map[t.testId] = t.compatibleSampleTypes || [];
+        });
+        setTestSampleTypeMap(map);
+        setIsLoadingCompatibility(false);
       },
     );
 
     return () => {
       componentMounted.current = false;
     };
-  }, [allTests.length]);
+  }, [compatibilitySignature]);
 
   // Get compatible sample types for a test
   const getCompatibleSampleTypes = (testId) => {
@@ -261,20 +266,12 @@ const RequestedTestsSection = ({
               </Tag>
             ))
           ) : (
-            // If no compatibility data, show all sample types as options
-            sampleTypes.slice(0, 5).map((st) => (
-              <Tag
-                key={st.id}
-                type="green"
-                size="sm"
-                className="sample-type-tag clickable"
-                onClick={() =>
-                  handleSampleTypeClick(item, { id: st.id, name: st.value })
-                }
-              >
-                + {st.value}
-              </Tag>
-            ))
+            <Tag type="red" size="sm">
+              <FormattedMessage
+                id="collect.compatibility.unconfigured"
+                defaultMessage="未配置兼容标本类型"
+              />
+            </Tag>
           )}
         </div>
       ),
@@ -338,6 +335,26 @@ const RequestedTestsSection = ({
           defaultMessage="Tests and panels ordered in Step 1. Click a sample type to assign. If a matching sample already exists, you choose whether to add to it or draw a new sample. If no match, a new sample is created directly. A test or panel can be assigned to multiple samples when needed."
         />
       </p>
+
+      {!isLoadingCompatibility &&
+        allTests.some(
+          (test) => getCompatibleSampleTypes(test.id).length === 0,
+        ) && (
+          <InlineNotification
+            kind="warning"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({
+              id: "collect.compatibility.warning.title",
+              defaultMessage: "采管配置不完整",
+            })}
+            subtitle={intl.formatMessage({
+              id: "collect.compatibility.warning.help",
+              defaultMessage:
+                "请在“基础配置 → 检验主数据 → 标本类型管理”中维护检验项目与标本类型的关联，再分配或新增实管。",
+            })}
+          />
+        )}
 
       <DataTable rows={rows} headers={headers} size="lg">
         {({ rows, headers, getTableProps, getHeaderProps, getRowProps }) => (

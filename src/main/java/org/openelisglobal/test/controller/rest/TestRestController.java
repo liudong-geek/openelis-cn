@@ -67,7 +67,7 @@ public class TestRestController {
 
                 for (TypeOfSampleTest sampleTest : sampleTests) {
                     TypeOfSample sampleType = typeOfSampleService.get(sampleTest.getTypeOfSampleId());
-                    if (sampleType != null && "Y".equals(sampleType.getIsActive())) {
+                    if (sampleType != null && sampleType.getIsActive()) {
                         Map<String, Object> typeData = new HashMap<>();
                         typeData.put("id", sampleType.getId());
                         typeData.put("name", sampleType.getLocalizedName() != null ? sampleType.getLocalizedName()
