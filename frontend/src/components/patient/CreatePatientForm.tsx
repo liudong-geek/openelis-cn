@@ -76,6 +76,8 @@ interface CreatePatientFormProps {
   >;
   showActionsButton?: boolean;
   showPatientSearch?: boolean;
+  onCancel?: () => void;
+  onSaveSuccess?: (savedPatientId?: string) => void;
   [key: string]: unknown;
 }
 
@@ -755,6 +757,10 @@ function CreatePatientForm(props: CreatePatientFormProps) {
             props.selectedPatient?.patientPK ||
             response?.patientId ||
             response?.patientPK;
+          if (props.onSaveSuccess) {
+            props.onSaveSuccess(savedId);
+            return;
+          }
           history.push(
             savedId ? `/PatientManagement/${savedId}` : "/PatientManagement",
           );
@@ -1973,28 +1979,40 @@ function CreatePatientForm(props: CreatePatientFormProps) {
                       </Button>
                     </Column>
                     <Column lg={4} md={4} sm={4}>
-                      <Button
-                        id="clear"
-                        kind="danger"
-                        disabled={isSubmitting}
-                        onClick={() => {
-                          // resetForm resets years/months/days alongside
-                          // birthDateForDisplay — they're real Formik fields
-                          // now, no parallel state to reset.
-                          resetForm({
-                            values: defaultNationality
-                              ? {
-                                  ...CreatePatientFormValues,
-                                  nationality: defaultNationality,
-                                }
-                              : CreatePatientFormValues,
-                          });
-                          setHealthDistricts([]);
-                          props.onClear?.();
-                        }}
-                      >
-                        <FormattedMessage id="label.button.clear" />
-                      </Button>
+                      {props.onCancel ? (
+                        <Button
+                          id="cancel"
+                          type="button"
+                          kind="secondary"
+                          disabled={isSubmitting}
+                          onClick={props.onCancel}
+                        >
+                          <FormattedMessage id="label.button.cancel" />
+                        </Button>
+                      ) : (
+                        <Button
+                          id="clear"
+                          kind="danger"
+                          disabled={isSubmitting}
+                          onClick={() => {
+                            // resetForm resets years/months/days alongside
+                            // birthDateForDisplay — they're real Formik fields
+                            // now, no parallel state to reset.
+                            resetForm({
+                              values: defaultNationality
+                                ? {
+                                    ...CreatePatientFormValues,
+                                    nationality: defaultNationality,
+                                  }
+                                : CreatePatientFormValues,
+                            });
+                            setHealthDistricts([]);
+                            props.onClear?.();
+                          }}
+                        >
+                          <FormattedMessage id="label.button.clear" />
+                        </Button>
+                      )}
                     </Column>
                   </>
                 )}

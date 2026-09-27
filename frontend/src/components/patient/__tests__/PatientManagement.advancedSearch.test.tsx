@@ -25,15 +25,36 @@ vi.mock("../../common/ProductPageHeader", () => ({
   ),
 }));
 vi.mock("../PatientMasterList", () => ({
-  default: ({ onOpenAdvancedSearch }: { onOpenAdvancedSearch: () => void }) => (
+  default: ({
+    onOpenAdvancedSearch,
+    onNewPatient,
+  }: {
+    onOpenAdvancedSearch: () => void;
+    onNewPatient: () => void;
+  }) => (
     <div>
       SIM patient master list
       <button onClick={onOpenAdvancedSearch}>Advanced Search</button>
+      <button onClick={onNewPatient}>SIM new patient</button>
     </div>
   ),
 }));
 vi.mock("../CreatePatientForm", () => ({
-  default: () => <div>SIM patient editor</div>,
+  default: ({
+    onCancel,
+    onSaveSuccess,
+  }: {
+    onCancel?: () => void;
+    onSaveSuccess?: (patientId?: string) => void;
+  }) => (
+    <div>
+      SIM patient editor
+      {onCancel && <button onClick={onCancel}>SIM cancel patient</button>}
+      {onSaveSuccess && (
+        <button onClick={() => onSaveSuccess("91")}>SIM save patient</button>
+      )}
+    </div>
+  ),
 }));
 vi.mock("../usePatientDetails", () => ({
   default: (id: string | null) => ({
@@ -136,5 +157,24 @@ describe("PatientManagement advanced search", () => {
         expect(history.location.pathname).toBe("/PatientManagement/42");
       }
     });
+  });
+
+  it("creates a patient in a modal without leaving or replacing the list", () => {
+    const history = mount("/PatientManagement");
+
+    fireEvent.click(screen.getByRole("button", { name: "SIM new patient" }));
+    expect(screen.getByText("SIM patient master list")).toBeVisible();
+    expect(screen.getByText("SIM patient editor")).toBeVisible();
+    expect(history.location.pathname).toBe("/PatientManagement");
+
+    fireEvent.click(screen.getByRole("button", { name: "SIM cancel patient" }));
+    expect(screen.queryByText("SIM patient editor")).not.toBeInTheDocument();
+    expect(screen.getByText("SIM patient master list")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "SIM new patient" }));
+    fireEvent.click(screen.getByRole("button", { name: "SIM save patient" }));
+    expect(screen.queryByText("SIM patient editor")).not.toBeInTheDocument();
+    expect(screen.getByText("SIM patient master list")).toBeVisible();
+    expect(history.location.pathname).toBe("/PatientManagement");
   });
 });

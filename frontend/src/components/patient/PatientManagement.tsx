@@ -11,6 +11,9 @@ import {
   InlineNotification,
   OverflowMenu,
   OverflowMenuItem,
+  ComposedModal,
+  ModalHeader,
+  ModalBody,
 } from "@carbon/react";
 import { Add, ArrowLeft } from "@carbon/react/icons";
 import CreatePatientForm from "./CreatePatientForm";
@@ -66,11 +69,17 @@ function PatientManagement() {
   const [managementMode, setManagementMode] = useState<"list" | "advanced">(
     listState.current.managementMode || "list",
   );
+  const [newPatientModalOpen, setNewPatientModalOpen] = useState(false);
+  const [patientListVersion, setPatientListVersion] = useState(0);
   const { patientId } = useParams<{ patientId?: string }>();
 
   const isNewMode = patientId === "new";
   const isEditMode = !!patientId && !isNewMode;
-  const isSearchMode = !patientId;
+  const isSearchMode = !patientId || isNewMode;
+
+  useEffect(() => {
+    if (isNewMode) setNewPatientModalOpen(true);
+  }, [isNewMode]);
 
   useEffect(() => {
     if (isSearchMode && hasSearchDeepLink) {
@@ -100,7 +109,20 @@ function PatientManagement() {
       state: fromList("/PatientManagement", listState.current),
     });
   };
-  const goToNewPatient = () => openFromList("/PatientManagement/new");
+  const goToNewPatient = () => setNewPatientModalOpen(true);
+  const closeNewPatientModal = () => {
+    setNewPatientModalOpen(false);
+    if (isNewMode) {
+      history.replace(listReturnLocation(location.state, "/PatientManagement"));
+    }
+  };
+  const handleNewPatientSaved = () => {
+    setNewPatientModalOpen(false);
+    setPatientListVersion((current) => current + 1);
+    if (isNewMode) {
+      history.replace(listReturnLocation(location.state, "/PatientManagement"));
+    }
+  };
   const goToPatientMerge = () => openFromList("/PatientMerge");
   const goToEditPatient = (selected: PatientRecord) =>
     openFromList(`/PatientManagement/${selected.patientPK}`);
@@ -200,6 +222,7 @@ function PatientManagement() {
 
               {managementMode === "list" ? (
                 <PatientMasterList
+                  key={patientListVersion}
                   onOpenAdvancedSearch={() => changeManagementMode("advanced")}
                   initialState={listState.current}
                   onStateChange={(state) => {
@@ -233,16 +256,6 @@ function PatientManagement() {
                   disableMergedSelection
                 />
               )}
-            </Column>
-          )}
-
-          {isNewMode && (
-            <Column lg={16} md={8} sm={4}>
-              <CreatePatientForm
-                key="new"
-                showActionsButton={true}
-                selectedPatient={{}}
-              />
             </Column>
           )}
 
@@ -289,6 +302,32 @@ function PatientManagement() {
           )}
         </Grid>
       </div>
+      {newPatientModalOpen && (
+        <ComposedModal
+          open
+          onClose={closeNewPatientModal}
+          size="lg"
+          preventCloseOnClickOutside
+          className="patient-create-modal"
+        >
+          <ModalHeader
+            title={intl.formatMessage({ id: "patient.management.new.title" })}
+            label={intl.formatMessage({
+              id: "patient.management.new.subtitle",
+            })}
+            closeModal={closeNewPatientModal}
+          />
+          <ModalBody className="patient-create-modal__body">
+            <CreatePatientForm
+              key="new"
+              showActionsButton={true}
+              selectedPatient={{}}
+              onCancel={closeNewPatientModal}
+              onSaveSuccess={handleNewPatientSaved}
+            />
+          </ModalBody>
+        </ComposedModal>
+      )}
     </>
   );
 }
