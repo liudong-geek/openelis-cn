@@ -7991,6 +7991,7 @@
   "workplan.panel.title": "Workplan By Panel",
   "workplan.panel.types": "Panel Type",
   "workplan.filter.help": "Choose one filter to load the tests currently waiting for work.",
+  "workplan.mode.label": "Query category",
   "workplan.filter.required": "Select a workplan filter to view pending tests.",
   "workplan.print": "Print Workplan",
   "workplan.priority.list": "Priority",

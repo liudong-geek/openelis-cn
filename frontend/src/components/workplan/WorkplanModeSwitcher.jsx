@@ -1,5 +1,5 @@
 import React from "react";
-import { ContentSwitcher, Switch } from "@carbon/react";
+import { Dropdown } from "@carbon/react";
 import { useIntl } from "react-intl";
 import { useHistory } from "react-router-dom";
 
@@ -32,12 +32,15 @@ export const getWorkplanModeIndex = (type) =>
     WORKPLAN_MODES.findIndex((mode) => mode.type === type),
   );
 
+export const getWorkplanMode = (type) =>
+  WORKPLAN_MODES[getWorkplanModeIndex(type)];
+
 export default function WorkplanModeSwitcher({ type }) {
   const history = useHistory();
   const intl = useIntl();
 
-  const handleChange = ({ index }) => {
-    const nextMode = WORKPLAN_MODES[index];
+  const handleChange = ({ selectedItem }) => {
+    const nextMode = selectedItem;
     if (nextMode && nextMode.type !== type) {
       history.push(nextMode.path);
     }
@@ -45,22 +48,20 @@ export default function WorkplanModeSwitcher({ type }) {
 
   return (
     <section
-      className="oe-workspace-switcher oe-workspace-switcher--secondary oe-workplan-modes"
+      className="oe-workplan-modes"
       aria-label={intl.formatMessage({ id: "banner.menu.workplan" })}
     >
-      <ContentSwitcher
-        selectedIndex={getWorkplanModeIndex(type)}
+      <Dropdown
+        id="workplan-query-category"
+        titleText={intl.formatMessage({ id: "workplan.mode.label" })}
+        label={intl.formatMessage({ id: "workplan.mode.label" })}
+        items={WORKPLAN_MODES}
+        selectedItem={getWorkplanMode(type)}
+        itemToString={(item) =>
+          item ? intl.formatMessage({ id: item.labelId }) : ""
+        }
         onChange={handleChange}
-        size="md"
-      >
-        {WORKPLAN_MODES.map((mode) => (
-          <Switch
-            key={mode.type}
-            name={mode.type}
-            text={intl.formatMessage({ id: mode.labelId })}
-          />
-        ))}
-      </ContentSwitcher>
+      />
     </section>
   );
 }

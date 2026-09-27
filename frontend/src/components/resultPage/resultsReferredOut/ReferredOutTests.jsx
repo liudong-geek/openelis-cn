@@ -415,6 +415,7 @@ function ReferredOutTests() {
           <br />
           <Column lg={16} md={8} sm={4}>
             <SearchPatientForm
+              compactSearch
               getSelectedPatient={getSelectedPatient}
             ></SearchPatientForm>
           </Column>

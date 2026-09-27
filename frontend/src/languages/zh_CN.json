@@ -7868,6 +7868,7 @@
   "workplan.panel.title": "按组合项目生成工作单",
   "workplan.panel.types": "组合项目",
   "workplan.filter.help": "选择一个条件，加载当前待检验项目。",
+  "workplan.mode.label": "查询分类",
   "workplan.filter.required": "请选择工作单条件后查看待检验项目。",
   "workplan.print": "打印检验工作单",
   "workplan.priority.list": "优先级",

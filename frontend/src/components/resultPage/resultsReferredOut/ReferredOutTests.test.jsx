@@ -22,7 +22,12 @@ vi.mock("../../common/PageBreadCrumb", () => ({
 }));
 
 vi.mock("../../patient/SearchPatientForm", () => ({
-  default: () => <div data-testid="patient-search" />,
+  default: ({ compactSearch }) => (
+    <div
+      data-testid="patient-search"
+      data-compact-search={String(Boolean(compactSearch))}
+    />
+  ),
 }));
 
 vi.mock("../../common/CustomDatePicker", () => ({
@@ -117,6 +122,10 @@ describe("ReferredOutTests", () => {
       await screen.findByRole("heading", { name: "外送检验查询" }),
     ).toBeInTheDocument();
     expect(screen.getByText("发送日期")).toBeInTheDocument();
+    expect(screen.getByTestId("patient-search")).toHaveAttribute(
+      "data-compact-search",
+      "true",
+    );
     expect(screen.getByText("请选择一种查询方式")).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(

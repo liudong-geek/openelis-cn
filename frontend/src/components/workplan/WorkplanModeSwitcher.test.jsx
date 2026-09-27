@@ -24,24 +24,19 @@ const renderSwitcher = (type = "test") => {
 };
 
 describe("WorkplanModeSwitcher", () => {
-  test("shows the four workplan views inside one workspace", () => {
+  test("shows the current workplan query category", () => {
     renderSwitcher();
 
-    expect(screen.getByRole("tab", { name: "By Test Type" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(screen.getByRole("tab", { name: "By Panel" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "By Unit" })).toBeInTheDocument();
     expect(
-      screen.getByRole("tab", { name: "By Priority" }),
-    ).toBeInTheDocument();
+      screen.getByRole("combobox", { name: "Query category" }),
+    ).toHaveTextContent("By Test Type");
   });
 
   test("moves between existing bookmark-compatible routes", () => {
     const history = renderSwitcher();
 
-    fireEvent.click(screen.getByRole("tab", { name: "By Priority" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Query category" }));
+    fireEvent.click(screen.getByText("By Priority"));
 
     expect(history.location.pathname).toBe("/WorkPlanByPriority");
     expect(history.location.search).toBe("?type=priority");

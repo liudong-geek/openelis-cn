@@ -10,7 +10,8 @@
 }
 
 .oe-workplan-modes {
-  max-width: 44rem;
+  max-width: 24rem;
+  margin-bottom: 1rem;
 }
 
 .oe-workplan-filter__heading {
