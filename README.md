@@ -185,6 +185,7 @@ npm run test:unit
 - [中国版检验设备接入指南](docs/analyzers/OpenELIS-中国版-检验设备接入指南.md)
 - [交付验收测试用例](docs/qa/OpenELIS-交付验收测试用例-v1.0.md)
 - [中文功能产品手册（PDF）](docs/OpenELIS-Global-中文功能产品手册-v1.0.pdf)
+- [中文三甲医院合成展示数据与安全加载说明](docs/cn-showcase-data.md)
 - [开发贡献说明](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)
 
