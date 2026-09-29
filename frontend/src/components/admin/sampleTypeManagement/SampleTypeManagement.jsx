@@ -40,6 +40,10 @@ import {
   Tile,
   Loading,
   Pagination,
+  ComposedModal,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
 } from "@carbon/react";
 import {
   DEFAULT_SAMPLE_TYPE_SECTION,
@@ -471,9 +475,6 @@ function SampleTypeManagement({ intl }) {
     setIsSubmitting(true);
     try {
       if (view === "add") {
-        // Snapshot existing ids so we can identify the newly-created row after
-        // refresh regardless of how its name is stored/localized.
-        const existingIds = new Set(sampleTypes.map((t) => String(t.id)));
         // The legacy create flow also wires the workplan/results/validation
         // role modules for the new type, so creation goes through it.
         const sampleTypeData = {
@@ -498,28 +499,12 @@ function SampleTypeManagement({ intl }) {
             },
           );
         });
-        const refreshed = await refreshSampleTypes();
+        await refreshSampleTypes();
         setFormErrors({});
-        // Land on the newly-created sample type's editor (matching the test
-        // catalog "create → edit the new record" flow), not back on the list.
-        // Identify it as the row whose id wasn't present before the create;
-        // fall back to a name match, then to the list.
-        const createdName = editingType.name.trim();
-        const created =
-          Array.isArray(refreshed) &&
-          (refreshed.find((t) => !existingIds.has(String(t.id))) ||
-            refreshed.find((t) => t.name === createdName));
-        if (created) {
-          setEditingType(null);
-          history.push(
-            `${listUrl}/${created.id}/${DEFAULT_SAMPLE_TYPE_SECTION}`,
-          );
-        } else {
-          setShowSuccess(true);
-          setTimeout(() => setShowSuccess(false), 3000);
-          setEditingType(null);
-          history.push(listUrl);
-        }
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        setEditingType(null);
+        history.replace(listUrl);
       } else if (view === "editor") {
         const updateData = {
           id: editingType.id,
@@ -606,11 +591,23 @@ function SampleTypeManagement({ intl }) {
   );
 
   // ─── LIST VIEW ────────────────────────────────────────────────
-  if (view === "list") {
+  if (view === "list" || view === "add") {
     return (
       <div className="adminPageContent">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
         <Stack gap={5}>
+          {showSuccess && view === "list" && (
+            <InlineNotification
+              kind="success"
+              title=""
+              subtitle={intl.formatMessage({
+                id: "message.sampleType.add.success",
+              })}
+              lowContrast
+              hideCloseButton
+            />
+          )}
+
           {/* Loading State */}
           {isLoading && (
             <div
@@ -1039,12 +1036,167 @@ function SampleTypeManagement({ intl }) {
             </>
           )}
         </Stack>
+
+        <ComposedModal
+          open={view === "add"}
+          onClose={() => {
+            if (!isSubmitting) goToList();
+          }}
+          size="md"
+          data-testid="sample-type-create-modal"
+        >
+          <ModalHeader
+            title={intl.formatMessage({ id: "heading.sampleType.add" })}
+            label={intl.formatMessage({ id: "heading.sampleType.management" })}
+          />
+          <ModalBody hasScrollingContent>
+            <Stack gap={5}>
+              {formErrors.submit && (
+                <InlineNotification
+                  kind="error"
+                  title=""
+                  subtitle={formErrors.submit}
+                  lowContrast
+                  hideCloseButton={false}
+                  onCloseButtonClick={() =>
+                    setFormErrors((prev) => ({ ...prev, submit: "" }))
+                  }
+                />
+              )}
+
+              <TextInput
+                ref={nameInputRef}
+                id="st-name"
+                labelText={
+                  <>
+                    <FormattedMessage id="label.sampleType.name" />
+                    <span style={{ color: "var(--cds-support-error)" }}>
+                      {" "}
+                      *
+                    </span>
+                  </>
+                }
+                value={editingType?.name || ""}
+                onChange={(event) => {
+                  setEditingType((prev) => ({
+                    ...prev,
+                    name: event.target.value,
+                  }));
+                  if (formErrors.name) {
+                    setFormErrors((prev) => ({ ...prev, name: "" }));
+                  }
+                }}
+                invalid={!!formErrors.name}
+                invalidText={formErrors.name}
+                helperText={intl.formatMessage({
+                  id: "helper.sampleType.name",
+                })}
+                autoComplete="off"
+              />
+
+              <Select
+                id="st-domain"
+                labelText={
+                  <>
+                    <FormattedMessage id="label.sampleType.domain" />
+                    <span style={{ color: "var(--cds-support-error)" }}>
+                      {" "}
+                      *
+                    </span>
+                  </>
+                }
+                value={editingType?.domain || "CLINICAL"}
+                onChange={(event) =>
+                  setEditingType((prev) => ({
+                    ...prev,
+                    domain: event.target.value,
+                  }))
+                }
+                helperText={intl.formatMessage({
+                  id: "label.sampleType.domain.helper",
+                })}
+              >
+                {domains.map((domain) => (
+                  <SelectItem
+                    key={domain.id}
+                    value={domain.id}
+                    text={domainLabel(domain.id)}
+                  />
+                ))}
+              </Select>
+
+              <TextArea
+                id="st-description"
+                labelText={
+                  <>
+                    <FormattedMessage id="label.sampleType.description" />
+                    <span style={{ color: "var(--cds-support-error)" }}>
+                      {" "}
+                      *
+                    </span>
+                  </>
+                }
+                value={editingType?.description || ""}
+                onChange={(event) => {
+                  setEditingType((prev) => ({
+                    ...prev,
+                    description: event.target.value,
+                  }));
+                  if (formErrors.description) {
+                    setFormErrors((prev) => ({ ...prev, description: "" }));
+                  }
+                }}
+                rows={4}
+                invalid={!!formErrors.description}
+                invalidText={formErrors.description}
+                helperText={intl.formatMessage({
+                  id: "helper.sampleType.description",
+                })}
+              />
+
+              <Toggle
+                id="st-active"
+                labelText={intl.formatMessage({
+                  id: "label.sampleType.active",
+                })}
+                labelA={intl.formatMessage({ id: "label.inactive" })}
+                labelB={intl.formatMessage({ id: "label.active" })}
+                toggled={!!editingType?.active}
+                onToggle={(checked) =>
+                  setEditingType((prev) => ({ ...prev, active: checked }))
+                }
+              />
+            </Stack>
+          </ModalBody>
+          <ModalFooter>
+            <Button kind="secondary" disabled={isSubmitting} onClick={goToList}>
+              <FormattedMessage id="button.cancel" />
+            </Button>
+            <Button
+              kind="primary"
+              disabled={
+                isSubmitting ||
+                !editingType?.name?.trim() ||
+                !editingType?.description?.trim()
+              }
+              onClick={saveEditor}
+            >
+              <FormattedMessage
+                id={
+                  isSubmitting
+                    ? "button.sampleType.creating"
+                    : "button.sampleType.create"
+                }
+              />
+            </Button>
+          </ModalFooter>
+        </ComposedModal>
       </div>
     );
   }
 
-  // ─── EDITOR/ADD VIEW ──────────────────────────────────────────
-  if (view === "editor" || view === "add") {
+  // ─── EDITOR VIEW ──────────────────────────────────────────────
+  if (view === "editor") {
     return (
       <div className="adminPageContent">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
@@ -1079,12 +1231,7 @@ function SampleTypeManagement({ intl }) {
                       lineHeight: 1.4,
                     }}
                   >
-                    {view === "add" ? (
-                      <FormattedMessage
-                        id="heading.sampleType.add"
-                        defaultMessage="Add New Sample Type"
-                      />
-                    ) : editingType?.name ? (
+                    {editingType?.name ? (
                       <FormattedMessage
                         id="heading.sampleType.editing"
                         defaultMessage="Editing: {name}"
@@ -1236,10 +1383,7 @@ function SampleTypeManagement({ intl }) {
                               kind="success"
                               title=""
                               subtitle={intl.formatMessage({
-                                id:
-                                  view === "add"
-                                    ? "message.sampleType.add.success"
-                                    : "message.sampleType.edit.success",
+                                id: "message.sampleType.edit.success",
                                 defaultMessage:
                                   "Sample type saved successfully.",
                               })}
@@ -1454,8 +1598,7 @@ function SampleTypeManagement({ intl }) {
                       <div
                         style={{
                           borderTop: "1px solid var(--cds-border-subtle-01)",
-                          marginTop:
-                            view === "add" ? "3rem" : "var(--cds-spacing-08)",
+                          marginTop: "var(--cds-spacing-08)",
                           paddingTop: "var(--cds-spacing-10)",
                         }}
                       >
@@ -1475,23 +1618,11 @@ function SampleTypeManagement({ intl }) {
                             {isSubmitting ? (
                               <>
                                 <Loading style={{ marginRight: "8px" }} />
-                                {view === "add" ? (
-                                  <FormattedMessage
-                                    id="button.sampleType.creating"
-                                    defaultMessage="Creating..."
-                                  />
-                                ) : (
-                                  <FormattedMessage
-                                    id="button.saving"
-                                    defaultMessage="Saving..."
-                                  />
-                                )}
+                                <FormattedMessage
+                                  id="button.saving"
+                                  defaultMessage="Saving..."
+                                />
                               </>
-                            ) : view === "add" ? (
-                              <FormattedMessage
-                                id="button.sampleType.create"
-                                defaultMessage="Create Sample Type"
-                              />
                             ) : (
                               <FormattedMessage
                                 id="button.save"
@@ -1521,25 +1652,10 @@ function SampleTypeManagement({ intl }) {
                         borderRadius: "var(--cds-border-radius)",
                       }}
                     >
-                      {view === "add" ? (
-                        <p
-                          style={{
-                            color: "var(--cds-text-secondary)",
-                            fontSize: "14px",
-                            margin: 0,
-                          }}
-                        >
-                          <FormattedMessage
-                            id="label.sampleType.tests.addHint"
-                            defaultMessage="Save this sample type first, then associate tests from the test configuration."
-                          />
-                        </p>
-                      ) : (
-                        <AssociatedTestsSection
-                          sampleTypeId={sampleTypeId}
-                          onChange={setAssociatedTests}
-                        />
-                      )}
+                      <AssociatedTestsSection
+                        sampleTypeId={sampleTypeId}
+                        onChange={setAssociatedTests}
+                      />
                     </Tile>
                   </div>
                 )}
@@ -1555,19 +1671,7 @@ function SampleTypeManagement({ intl }) {
                         borderRadius: "var(--cds-border-radius)",
                       }}
                     >
-                      {view === "add" ? (
-                        <p
-                          style={{
-                            color: "var(--cds-text-secondary)",
-                            fontSize: "14px",
-                            margin: 0,
-                          }}
-                        >
-                          <FormattedMessage id="label.sampleType.displayOrder.addHint" />
-                        </p>
-                      ) : (
-                        <DisplayOrderSection sampleTypeId={sampleTypeId} />
-                      )}
+                      <DisplayOrderSection sampleTypeId={sampleTypeId} />
                     </Tile>
                   </div>
                 )}
@@ -1583,19 +1687,7 @@ function SampleTypeManagement({ intl }) {
                         borderRadius: "var(--cds-border-radius)",
                       }}
                     >
-                      {view === "add" ? (
-                        <p
-                          style={{
-                            color: "var(--cds-text-secondary)",
-                            fontSize: "14px",
-                            margin: 0,
-                          }}
-                        >
-                          <FormattedMessage id="label.sampleType.disposal.addHint" />
-                        </p>
-                      ) : (
-                        <DisposalSection sampleTypeId={sampleTypeId} />
-                      )}
+                      <DisposalSection sampleTypeId={sampleTypeId} />
                     </Tile>
                   </div>
                 )}
@@ -1611,22 +1703,7 @@ function SampleTypeManagement({ intl }) {
                         borderRadius: "var(--cds-border-radius)",
                       }}
                     >
-                      {view === "add" ? (
-                        <p
-                          style={{
-                            color: "var(--cds-text-secondary)",
-                            fontSize: "14px",
-                            margin: 0,
-                          }}
-                        >
-                          <FormattedMessage
-                            id="label.sampleType.terminology.addHint"
-                            defaultMessage="Save this sample type first, then add terminology mappings."
-                          />
-                        </p>
-                      ) : (
-                        <TerminologySection sampleTypeId={sampleTypeId} />
-                      )}
+                      <TerminologySection sampleTypeId={sampleTypeId} />
                     </Tile>
                   </div>
                 )}

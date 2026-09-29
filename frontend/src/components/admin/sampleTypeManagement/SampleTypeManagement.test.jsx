@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { IntlProvider } from "react-intl";
 import { MemoryRouter, Route } from "react-router-dom";
 import enMessages from "../../../languages/en.json";
@@ -70,7 +70,9 @@ describe("SampleTypeManagement", () => {
     renderPage();
 
     expect(await screen.findByText("标本类型管理")).toBeInTheDocument();
-    expect(screen.getByText("新增标本类型")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "新增标本类型" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("血清")).toBeInTheDocument();
     expect(screen.getByLabelText("页码，共1页")).toBeInTheDocument();
     expect(
@@ -78,15 +80,31 @@ describe("SampleTypeManagement", () => {
     ).not.toBeInTheDocument();
   });
 
-  test("opens the add form and returns to the list", async () => {
+  test("opens the add form in a modal and keeps the list visible", async () => {
     renderPage();
 
-    fireEvent.click(await screen.findByText("新增标本类型"));
-    expect(screen.getByText("新增标本类型")).toBeInTheDocument();
-    expect(screen.getByText("创建标本类型")).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "新增标本类型" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("新增标本类型")).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "创建标本类型" }),
+    ).toBeDisabled();
+    expect(screen.getByText("血清")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("返回列表"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(await screen.findByText("血清")).toBeInTheDocument();
+  });
+
+  test("opens a legacy new deep link in the same list modal", async () => {
+    renderPage({
+      entry: "/MasterListsPage/SampleTypeManagement/new/basic-info",
+    });
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("血清")).toBeInTheDocument();
   });
 
   test("makes an empty filtered result recoverable", async () => {

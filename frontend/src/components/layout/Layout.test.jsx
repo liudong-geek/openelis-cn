@@ -6,7 +6,11 @@ import { IntlProvider } from "react-intl";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import Admin from "../admin/Admin";
-import Layout, { ConfigurationContext, NotificationContext } from "./Layout";
+import Layout, {
+  ConfigurationContext,
+  NotificationContext,
+  isAdminEditorRoute,
+} from "./Layout";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import enMessages from "../../languages/en.json";
 import { getFromOpenElisServer } from "../utils/Utils";
@@ -58,6 +62,22 @@ vi.mock("../utils/Utils", () => ({
 }));
 
 const defaultGetFromServer = getFromOpenElisServer.getMockImplementation();
+
+describe("administration navigation context", () => {
+  test("keeps the primary menu while the sample type create modal is open", () => {
+    expect(
+      isAdminEditorRoute(
+        "/MasterListsPage/SampleTypeManagement/new/basic-info",
+      ),
+    ).toBe(false);
+  });
+
+  test("uses the editor section menu for an existing sample type", () => {
+    expect(
+      isAdminEditorRoute("/MasterListsPage/SampleTypeManagement/38/basic-info"),
+    ).toBe(true);
+  });
+});
 
 // Mock user session context value
 const mockUserSessionContextValue = {

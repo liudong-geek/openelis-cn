@@ -68,8 +68,8 @@ const getPageFamily = (pathname) => {
 
 // Test and sample-type editors use the side navigation as an in-task section
 // index. Other administration routes stay in the primary management menu.
-const isAdminEditorRoute = (pathname) =>
-  /^\/(?:admin|MasterListsPage)\/(?:TestCatalogEditor\/|SampleTypeManagement\/[^/?#]+)/.test(
+export const isAdminEditorRoute = (pathname) =>
+  /^\/(?:admin|MasterListsPage)\/(?:TestCatalogEditor\/|SampleTypeManagement\/(?!new(?:[/?#]|$))[^/?#]+)/.test(
     pathname,
   );
 
