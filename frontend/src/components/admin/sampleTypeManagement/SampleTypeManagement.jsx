@@ -63,12 +63,16 @@ import {
 } from "@carbon/react/icons";
 import { injectIntl, FormattedMessage } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import ProductPageHeader from "../../common/ProductPageHeader";
 import useDomains from "../../common/useDomains";
 import {
   getFromOpenElisServer,
   postToOpenElisServerJsonResponse,
   putToOpenElisServer,
 } from "../../utils/Utils";
+import "../AdminListWorkspace.css";
+import "../AdminModal.css";
+import "./SampleTypeManagement.css";
 
 // Breadcrumbs
 let breadcrumbs = [
@@ -593,8 +597,36 @@ function SampleTypeManagement({ intl }) {
   // ─── LIST VIEW ────────────────────────────────────────────────
   if (view === "list" || view === "add") {
     return (
-      <div className="adminPageContent">
+      <div className="adminPageContent admin-list-workspace admin-list-workspace--compact sample-type-management-page">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
+        <ProductPageHeader
+          title={
+            <FormattedMessage
+              id="heading.sampleType.management"
+              defaultMessage="Sample Type Management"
+            />
+          }
+          subtitle={
+            <FormattedMessage
+              id="heading.sampleType.subtitle"
+              defaultMessage="Configure sample types, display order, test associations, and domain classification."
+            />
+          }
+          actions={
+            <Button
+              kind="primary"
+              size="md"
+              renderIcon={Add}
+              onClick={openAddForm}
+            >
+              <FormattedMessage
+                id="button.sampleType.add"
+                defaultMessage="Add Sample Type"
+              />
+            </Button>
+          }
+          titleId="sample-type-management-title"
+        />
         <Stack gap={5}>
           {showSuccess && view === "list" && (
             <InlineNotification
@@ -655,110 +687,47 @@ function SampleTypeManagement({ intl }) {
 
           {!isLoading && !loadError && (
             <>
-              {/* Page Header */}
-              <Tile style={{ padding: "var(--cds-spacing-06)" }}>
-                <Grid>
-                  <Column lg={8} md={4} sm={4}>
-                    <h2
-                      style={{
-                        margin: "0 0 var(--cds-spacing-03) 0",
-                        color: "var(--cds-text-primary)",
-                        fontWeight: 600,
+              <div
+                className="sample-type-management-page__summary"
+                role="status"
+              >
+                <p>
+                  {searchText || domainFilter ? (
+                    <FormattedMessage
+                      id="heading.sampleType.filtered"
+                      defaultMessage="Showing {filtered} of {total} sample types"
+                      values={{
+                        filtered: filteredTypes.length,
+                        total: sampleTypes.length,
                       }}
-                    >
-                      <FormattedMessage
-                        id="heading.sampleType.management"
-                        defaultMessage="Sample Type Management"
-                      />
-                    </h2>
-                    <p
-                      style={{
-                        fontSize: "14px",
-                        color: "var(--cds-text-secondary)",
-                        margin: "0",
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      <FormattedMessage
-                        id="heading.sampleType.subtitle"
-                        defaultMessage="Configure sample types, display order, test associations, and domain classification."
-                      />
-                    </p>
-                    {!isLoading && (
-                      <p
-                        style={{
-                          fontSize: "12px",
-                          color: "var(--cds-text-secondary)",
-                          margin: "var(--cds-spacing-02) 0 0 0",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {searchText || domainFilter ? (
-                          <FormattedMessage
-                            id="heading.sampleType.filtered"
-                            defaultMessage="Showing {filtered} of {total} sample types"
-                            values={{
-                              filtered: filteredTypes.length,
-                              total: sampleTypes.length,
-                            }}
-                          />
-                        ) : (
-                          <FormattedMessage
-                            id="heading.sampleType.total"
-                            defaultMessage="Total: {total} sample types"
-                            values={{ total: sampleTypes.length }}
-                          />
-                        )}
-                      </p>
-                    )}
-                  </Column>
-                  <Column lg={8} md={4} sm={4} style={{ textAlign: "right" }}>
-                    <Stack
-                      orientation="horizontal"
-                      gap={4}
-                      style={{
-                        justifyContent: "flex-end",
-                        alignItems: "center",
-                      }}
-                    >
-                      {domains.map((d) => (
-                        <div
-                          key={d.id}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "var(--cds-spacing-02)",
-                          }}
-                        >
-                          <Tag type={domainColor(d.id)} size="md">
-                            {domainCounts[d.id] || 0}
-                          </Tag>
-                          <span style={{ fontSize: "14px", fontWeight: 500 }}>
-                            {domainLabel(d.id)}
-                          </span>
-                        </div>
-                      ))}
-                    </Stack>
-                  </Column>
-                </Grid>
-              </Tile>
+                    />
+                  ) : (
+                    <FormattedMessage
+                      id="heading.sampleType.total"
+                      defaultMessage="Total: {total} sample types"
+                      values={{ total: sampleTypes.length }}
+                    />
+                  )}
+                </p>
+                <div className="sample-type-management-page__domain-counts">
+                  {domains.map((domain) => (
+                    <span key={domain.id}>
+                      <Tag type={domainColor(domain.id)} size="sm">
+                        {domainCounts[domain.id] || 0}
+                      </Tag>
+                      {domainLabel(domain.id)}
+                    </span>
+                  ))}
+                </div>
+              </div>
 
               {/* Sample Type Table */}
-              <TableContainer style={{ marginBottom: 0 }}>
+              <TableContainer
+                className="admin-list-workspace__surface"
+                style={{ marginBottom: 0 }}
+              >
                 {/* Enhanced Toolbar */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    flexWrap: "wrap",
-                    gap: "var(--cds-spacing-04)",
-                    padding: "0 var(--cds-spacing-05)",
-                    minHeight: "56px",
-                    background: "var(--cds-layer)",
-                    borderBottom: "1px solid var(--cds-border-subtle-01)",
-                  }}
-                >
+                <div className="sample-type-management-page__filters">
                   <TextInput
                     id="sample-type-search"
                     labelText={intl.formatMessage({
@@ -773,19 +742,9 @@ function SampleTypeManagement({ intl }) {
                     value={searchText}
                     onChange={(e) => setSearchText(e.target.value)}
                     size="sm"
-                    style={{
-                      flex: "1 1 240px",
-                      maxWidth: "360px",
-                    }}
+                    className="sample-type-management-page__search"
                   />
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: "var(--cds-spacing-04)",
-                    }}
-                  >
+                  <div className="sample-type-management-page__filter-actions">
                     <Select
                       id="domain-filter"
                       labelText={intl.formatMessage({
@@ -795,9 +754,6 @@ function SampleTypeManagement({ intl }) {
                       hideLabel
                       value={domainFilter}
                       onChange={(e) => setDomainFilter(e.target.value)}
-                      style={{
-                        flex: "0 0 200px",
-                      }}
                     >
                       <SelectItem
                         value=""
@@ -814,21 +770,6 @@ function SampleTypeManagement({ intl }) {
                         />
                       ))}
                     </Select>
-                    <Button
-                      kind="primary"
-                      size="sm"
-                      renderIcon={Add}
-                      onClick={openAddForm}
-                      style={{
-                        whiteSpace: "nowrap",
-                        flex: "0 0 auto",
-                      }}
-                    >
-                      <FormattedMessage
-                        id="button.sampleType.add"
-                        defaultMessage="Add Sample Type"
-                      />
-                    </Button>
                   </div>
                 </div>
                 <Table>
@@ -1043,11 +984,12 @@ function SampleTypeManagement({ intl }) {
             if (!isSubmitting) goToList();
           }}
           size="md"
+          className="oe-admin-modal sample-type-create-modal"
           data-testid="sample-type-create-modal"
         >
           <ModalHeader
             title={intl.formatMessage({ id: "heading.sampleType.add" })}
-            label={intl.formatMessage({ id: "heading.sampleType.management" })}
+            iconDescription={intl.formatMessage({ id: "button.close" })}
           />
           <ModalBody hasScrollingContent>
             <Stack gap={5}>

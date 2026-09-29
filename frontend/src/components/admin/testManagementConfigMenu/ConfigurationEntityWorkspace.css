@@ -1,0 +1,72 @@
+.configuration-entity-workspace__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.configuration-entity-workspace__state {
+  display: flex;
+  min-height: 12rem;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 2rem;
+}
+
+.configuration-entity-workspace__state .cds--inline-notification {
+  max-width: 36rem;
+}
+
+.configuration-entity-workspace__table {
+  min-width: 48rem;
+}
+
+.configuration-entity-workspace__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.configuration-entity-workspace__empty {
+  padding: 2.5rem !important;
+  color: var(--oe-text-muted);
+  text-align: center;
+}
+
+.configuration-entity-workspace__form {
+  display: grid;
+  gap: 1rem;
+  padding-block: 0.25rem;
+}
+
+.configuration-entity-workspace__form .cds--text-input-wrapper,
+.configuration-entity-workspace__form .cds--select,
+.configuration-entity-workspace__form .cds--select-input {
+  width: 100%;
+  max-width: none;
+}
+
+@media (max-width: 65.9375rem) {
+  .configuration-entity-workspace .admin-list-workspace__section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .configuration-entity-workspace__actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 41.9375rem) {
+  .configuration-entity-workspace__actions,
+  .configuration-entity-workspace__actions .cds--btn {
+    width: 100%;
+  }
+
+  .configuration-entity-workspace__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
