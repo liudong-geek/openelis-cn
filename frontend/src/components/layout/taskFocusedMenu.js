@@ -1,6 +1,5 @@
 import { isSecurityRestrictedReport } from "../reports/reportAvailability";
 import { ROUTINE_REPORT_TASKS } from "../reports/routineReportNavigation";
-import { ADMIN_NAVIGATION_DOMAINS } from "../admin/adminNavigation";
 
 export const MENU_PROFILES = Object.freeze({
   CHINA: "china",
@@ -114,6 +113,125 @@ const CHINA_WORKSPACE_DISPLAY_KEYS = Object.freeze({
   configuration: "sidenav.workspace.configuration",
 });
 
+// Administration routes in the upstream application are arranged as landing
+// pages that open another directory of cards. In the China profile, the side
+// navigation is the directory: every second-level entry below configuration
+// and system management must open the working page directly.
+const CHINA_ADMIN_TASKS = Object.freeze([
+  {
+    elementId: "menu_configuration_test_catalog",
+    displayKey: "sidenav.china.configuration.testCatalog",
+    actionURL: "/MasterListsPage/TestCatalogList",
+    workspace: "configuration",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+  {
+    elementId: "menu_configuration_sample_types",
+    displayKey: "sidenav.china.configuration.sampleTypes",
+    actionURL: "/MasterListsPage/SampleTypeManagement",
+    workspace: "configuration",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+  {
+    elementId: "menu_configuration_panels",
+    displayKey: "sidenav.china.configuration.panels",
+    actionURL: "/MasterListsPage/PanelManagement",
+    workspace: "configuration",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+  {
+    elementId: "menu_configuration_test_sections",
+    displayKey: "sidenav.china.configuration.testSections",
+    actionURL: "/MasterListsPage/TestSectionManagement",
+    workspace: "configuration",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+  {
+    elementId: "menu_configuration_rules",
+    displayKey: "sidenav.china.configuration.rules",
+    actionURL: "/MasterListsPage/reflex",
+    workspace: "configuration",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+  {
+    elementId: "menu_configuration_organizations",
+    displayKey: "sidenav.china.configuration.organizations",
+    actionURL: "/MasterListsPage/organizationManagement",
+    workspace: "configuration",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+  {
+    elementId: "menu_configuration_providers",
+    displayKey: "sidenav.china.configuration.providers",
+    actionURL: "/MasterListsPage/providerMenu",
+    workspace: "configuration",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+  {
+    elementId: "menu_configuration_labels",
+    displayKey: "sidenav.china.configuration.labels",
+    actionURL: "/MasterListsPage/labelPresets",
+    workspace: "configuration",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+  {
+    elementId: "menu_configuration_reports",
+    displayKey: "sidenav.china.configuration.reports",
+    actionURL: "/MasterListsPage/resultReportingConfiguration",
+    workspace: "configuration",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+  {
+    elementId: "menu_management_users",
+    displayKey: "sidenav.china.management.users",
+    actionURL: "/MasterListsPage/userManagement",
+    workspace: "management",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN, ROLE_NAMES.USER_ACCOUNT_ADMIN],
+  },
+  {
+    elementId: "menu_management_menu_permissions",
+    displayKey: "sidenav.china.management.menuPermissions",
+    actionURL: "/MasterListsPage/globalMenuManagement",
+    workspace: "management",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+  {
+    elementId: "menu_management_system_properties",
+    displayKey: "sidenav.china.management.systemProperties",
+    actionURL: "/MasterListsPage/commonproperties",
+    workspace: "management",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+  {
+    elementId: "menu_management_external_connections",
+    displayKey: "sidenav.china.management.externalConnections",
+    actionURL: "/MasterListsPage/externalConnections",
+    workspace: "management",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+  {
+    elementId: "menu_management_language",
+    displayKey: "sidenav.china.management.language",
+    actionURL: "/MasterListsPage/languageManagement",
+    workspace: "management",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+  {
+    elementId: "menu_management_logging",
+    displayKey: "sidenav.china.management.logging",
+    actionURL: "/MasterListsPage/loggingManagement",
+    workspace: "management",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+  {
+    elementId: "menu_management_delivery",
+    displayKey: "sidenav.china.management.delivery",
+    actionURL: "/MasterListsPage/deliveryReadiness",
+    workspace: "management",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+]);
+
 /**
  * Optional product areas are off in the standard China LIS edition. Hospitals
  * can enable a module in config.json without restoring the upstream catch-all
@@ -175,9 +293,7 @@ export const CHINA_MENU_MESSAGE_IDS = Object.freeze([
     ...Object.values(CHINA_WORKSPACE_DISPLAY_KEYS),
     ...Object.values(CHINA_ITEM_DISPLAY_KEYS),
     ...ROUTINE_REPORT_TASKS.map(({ displayKey }) => displayKey),
-    ...ADMIN_NAVIGATION_DOMAINS.flatMap(({ links }) =>
-      links.map(([displayKey]) => displayKey),
-    ),
+    ...CHINA_ADMIN_TASKS.map(({ displayKey }) => displayKey),
   ]),
 ]);
 
@@ -739,12 +855,8 @@ const compactQualityDestinations = (destinations) => {
   return primaryEntries.length > 0 ? primaryEntries : compacted;
 };
 
-const SYSTEM_CONFIGURATION_PATHS = new Set([
-  "systemOperations",
-  "deliveryReadiness",
-]);
-
-const splitManagementDestinations = (destinations) => {
+const splitManagementDestinations = (destinations, options = {}) => {
+  const roleSet = roleSetFromOptions(options);
   const systemAudit = destinations.find(
     (entry) => getActionURL(entry) === "/AuditTrailReport?type=system",
   );
@@ -787,29 +899,21 @@ const splitManagementDestinations = (destinations) => {
     return true;
   });
 
-  const configurationEntries = configurationWorkspace
-    ? ADMIN_NAVIGATION_DOMAINS.flatMap(({ links }) =>
-        links.map(([displayKey, path]) =>
-          createDestination(
-            `menu_administration_${path}`,
-            displayKey,
-            `/MasterListsPage/${path}`,
-          ),
-        ),
-      )
+  const administrationTasks = configurationWorkspace
+    ? CHINA_ADMIN_TASKS.filter(({ allowedRoles }) =>
+        canUseRoleSlice(roleSet, allowedRoles),
+      ).map(({ elementId, displayKey, actionURL, workspace }) => ({
+        workspace,
+        destination: createDestination(elementId, displayKey, actionURL),
+      }))
     : [];
 
-  const baseConfigurationEntries = configurationEntries.filter(
-    (entry) =>
-      !SYSTEM_CONFIGURATION_PATHS.has(
-        getActionURL(entry).replace("/MasterListsPage/", ""),
-      ),
-  );
-  const systemConfigurationEntries = configurationEntries.filter((entry) =>
-    SYSTEM_CONFIGURATION_PATHS.has(
-      getActionURL(entry).replace("/MasterListsPage/", ""),
-    ),
-  );
+  const baseConfigurationEntries = administrationTasks
+    .filter(({ workspace }) => workspace === "configuration")
+    .map(({ destination }) => destination);
+  const systemConfigurationEntries = administrationTasks
+    .filter(({ workspace }) => workspace === "management")
+    .map(({ destination }) => destination);
 
   const primaryEntries = [
     [
@@ -829,10 +933,7 @@ const splitManagementDestinations = (destinations) => {
   return {
     baseConfiguration:
       baseConfigurationEntries.length > 0 ? baseConfigurationEntries : [],
-    systemManagement:
-      systemConfigurationEntries.length > 0 || primaryEntries.length > 0
-        ? [...systemConfigurationEntries, ...primaryEntries]
-        : compacted,
+    systemManagement: [...systemConfigurationEntries, ...primaryEntries],
   };
 };
 
@@ -921,7 +1022,7 @@ const compactReviewReportDestinations = (destinations) => {
   return primaryEntries.length > 0 ? primaryEntries : destinations;
 };
 
-const organizeChinaWorkspaces = (items) => {
+const organizeChinaWorkspaces = (items, options = {}) => {
   const byId = new Map(items.map((entry) => [getElementId(entry), entry]));
   const output = [];
   const addWorkspace = (elementId, key, sources, directItem = null) => {
@@ -1008,6 +1109,7 @@ const organizeChinaWorkspaces = (items) => {
   );
   const { baseConfiguration, systemManagement } = splitManagementDestinations(
     managementDestinations,
+    options,
   );
   addWorkspace(
     "menu_configuration_workspace",
@@ -1298,7 +1400,7 @@ const buildChinaMenu = (items, options) => {
 export const buildTaskFocusedMenu = (items = [], options = {}) => {
   const profile = options.profile || MENU_PROFILES.CHINA;
   return profile === MENU_PROFILES.CHINA
-    ? organizeChinaWorkspaces(buildChinaMenu(items, options))
+    ? organizeChinaWorkspaces(buildChinaMenu(items, options), options)
     : buildGlobalTaskFocusedMenu(items);
 };
 

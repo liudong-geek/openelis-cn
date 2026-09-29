@@ -7,7 +7,6 @@ import {
 } from "./taskFocusedMenu";
 import { SECURITY_REVIEW_REPORTS } from "../reports/reportAvailability";
 import { ROUTINE_REPORT_TASKS } from "../reports/routineReportNavigation";
-import { ADMIN_NAVIGATION_DOMAINS } from "../admin/adminNavigation";
 
 const item = (elementId, actionURL = "", childMenus = []) => ({
   menu: {
@@ -321,9 +320,8 @@ describe("taskFocusedMenu", () => {
       "/Results",
     );
     expect(
-      findById(result, "menu_administration_testManagementConfigMenu").menu
-        .actionURL,
-    ).toBe("/MasterListsPage/testManagementConfigMenu");
+      findById(result, "menu_configuration_test_catalog").menu.actionURL,
+    ).toBe("/MasterListsPage/TestCatalogList");
   });
 
   test("keeps one compact task list when the intake workbench is available", () => {
@@ -550,21 +548,35 @@ describe("taskFocusedMenu", () => {
       ]),
     ).toEqual([
       [
-        "/MasterListsPage/testManagementConfigMenu",
-        "workspace.masterData.title",
-      ],
-      ["/MasterListsPage/rulesWorkspace", "workspace.rules.title"],
-      [
-        "/MasterListsPage/organizationPeopleWorkspace",
-        "workspace.organizationPeople.title",
+        "/MasterListsPage/TestCatalogList",
+        "sidenav.china.configuration.testCatalog",
       ],
       [
-        "/MasterListsPage/workflowReportWorkspace",
-        "workspace.workflowReport.title",
+        "/MasterListsPage/SampleTypeManagement",
+        "sidenav.china.configuration.sampleTypes",
       ],
-      ["/MasterListsPage/interfaceWorkspace", "workspace.interface.title"],
-      ["/MasterListsPage/masterDataIdentity", "masterData.title"],
-      ["/MasterListsPage/program", "sidenav.label.admin.program"],
+      [
+        "/MasterListsPage/PanelManagement",
+        "sidenav.china.configuration.panels",
+      ],
+      [
+        "/MasterListsPage/TestSectionManagement",
+        "sidenav.china.configuration.testSections",
+      ],
+      ["/MasterListsPage/reflex", "sidenav.china.configuration.rules"],
+      [
+        "/MasterListsPage/organizationManagement",
+        "sidenav.china.configuration.organizations",
+      ],
+      [
+        "/MasterListsPage/providerMenu",
+        "sidenav.china.configuration.providers",
+      ],
+      ["/MasterListsPage/labelPresets", "sidenav.china.configuration.labels"],
+      [
+        "/MasterListsPage/resultReportingConfiguration",
+        "sidenav.china.configuration.reports",
+      ],
     ]);
     const management = findById(result, "menu_management_workspace");
     expect(
@@ -573,8 +585,31 @@ describe("taskFocusedMenu", () => {
         menu.displayKey,
       ]),
     ).toEqual([
-      ["/MasterListsPage/systemOperations", "workspace.system.title"],
-      ["/MasterListsPage/deliveryReadiness", "workspace.delivery.title"],
+      ["/MasterListsPage/userManagement", "sidenav.china.management.users"],
+      [
+        "/MasterListsPage/globalMenuManagement",
+        "sidenav.china.management.menuPermissions",
+      ],
+      [
+        "/MasterListsPage/commonproperties",
+        "sidenav.china.management.systemProperties",
+      ],
+      [
+        "/MasterListsPage/externalConnections",
+        "sidenav.china.management.externalConnections",
+      ],
+      [
+        "/MasterListsPage/languageManagement",
+        "sidenav.china.management.language",
+      ],
+      [
+        "/MasterListsPage/loggingManagement",
+        "sidenav.china.management.logging",
+      ],
+      [
+        "/MasterListsPage/deliveryReadiness",
+        "sidenav.china.management.delivery",
+      ],
       ["/AuditTrailReport?type=system", "sideNav.title.audittrail"],
       ["/analyzers", "analyzer.page.title"],
     ]);
@@ -594,8 +629,8 @@ describe("taskFocusedMenu", () => {
     ],
     [
       ROLE_NAMES.GLOBAL_ADMIN,
-      "/MasterListsPage/testManagementConfigMenu",
-      "workspace.masterData.title",
+      "/MasterListsPage/TestCatalogList",
+      "sidenav.china.configuration.testCatalog",
     ],
     [ROLE_NAMES.ANALYSER_IMPORT, "/analyzers", "analyzer.page.title"],
   ])(
@@ -606,7 +641,7 @@ describe("taskFocusedMenu", () => {
       });
       const workspace = findById(
         result,
-        expectedPath.startsWith("/MasterListsPage/testManagement")
+        expectedPath.startsWith("/MasterListsPage/TestCatalog")
           ? "menu_configuration_workspace"
           : expectedPath === "/TATReport"
             ? "menu_review_report_workspace"
@@ -1007,17 +1042,14 @@ describe("taskFocusedMenu", () => {
     },
     {
       role: ROLE_NAMES.REPORTS,
-      visible: [
-        "menu_home",
-        "menu_review_report_workspace",
-        "menu_management_workspace",
-      ],
+      visible: ["menu_home", "menu_review_report_workspace"],
       hidden: [
         "menu_sample",
         "menu_patient",
         "menu_results",
         "menu_resultvalidation",
         "menu_reports_audittrail",
+        "menu_management_workspace",
       ],
     },
     {
@@ -1026,7 +1058,7 @@ describe("taskFocusedMenu", () => {
         "menu_home",
         "menu_configuration_workspace",
         "menu_management_workspace",
-        "menu_administration_testManagementConfigMenu",
+        "menu_configuration_test_catalog",
       ],
       hidden: [
         "menu_sample",
@@ -1040,9 +1072,8 @@ describe("taskFocusedMenu", () => {
       role: ROLE_NAMES.USER_ACCOUNT_ADMIN,
       visible: [
         "menu_home",
-        "menu_configuration_workspace",
         "menu_management_workspace",
-        "menu_administration_testManagementConfigMenu",
+        "menu_management_users",
       ],
       hidden: [
         "menu_sample",
@@ -1050,6 +1081,8 @@ describe("taskFocusedMenu", () => {
         "menu_results",
         "menu_resultvalidation",
         "menu_reports",
+        "menu_configuration_workspace",
+        "menu_management_menu_permissions",
       ],
     },
     {
@@ -1111,15 +1144,19 @@ describe("taskFocusedMenu", () => {
     expect(findById(result, "menu_administration")).toBeNull();
     const configuration = findById(result, "menu_configuration_workspace");
     const management = findById(result, "menu_management_workspace");
-    expect([
-      ...allIds(configuration.childMenus),
-      ...allIds(management.childMenus),
-    ]).toEqual(
-      expect.arrayContaining(
-        ADMIN_NAVIGATION_DOMAINS.flatMap(({ links }) =>
-          links.map(([, path]) => `menu_administration_${path}`),
-        ),
-      ),
+    expect(allIds(configuration.childMenus)).toEqual(
+      expect.arrayContaining([
+        "menu_configuration_test_catalog",
+        "menu_configuration_sample_types",
+        "menu_configuration_organizations",
+      ]),
+    );
+    expect(allIds(management.childMenus)).toEqual(
+      expect.arrayContaining([
+        "menu_management_users",
+        "menu_management_menu_permissions",
+        "menu_management_system_properties",
+      ]),
     );
   });
 
