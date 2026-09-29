@@ -36,6 +36,7 @@ import {
   navigateToInternalPath,
   refreshCurrentRoute,
 } from "../../utils/NavigationUtils";
+import UserAddModify from "./UserAddModify";
 import "../AdminListWorkspace.css";
 import "../AdminModal.css";
 
@@ -71,6 +72,8 @@ function UserManagement() {
   const [panelSearchTerm, setPanelSearchTerm] = useState("");
   const [appliedSearchTerm, setAppliedSearchTerm] = useState("");
   const [confirmDeactivateOpen, setConfirmDeactivateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [roleFilter, setRoleFilter] = useState("");
   const [filters, setFilters] = useState([]);
   const [totalRecordCount, setTotalRecordCount] = useState("");
@@ -174,7 +177,7 @@ function UserManagement() {
       )}&roleFilter=${encodeURIComponent(roleFilter)}`,
       handleMenuItems,
     );
-  }, [filters, appliedSearchTerm, roleFilter]);
+  }, [filters, appliedSearchTerm, roleFilter, reloadKey]);
 
   useEffect(() => {
     if (userManagementListShow) {
@@ -325,10 +328,7 @@ function UserManagement() {
   ).length;
   const selectedCount = selectedRowIds.length;
 
-  const openAddUser = () =>
-    navigateToInternalPath(
-      "/MasterListsPage/userEdit?ID=0&startingRecNo=1&roleFilter=",
-    );
+  const openAddUser = () => setCreateOpen(true);
 
   const updateFilter = (filterName, enabled) => {
     setPage(1);
@@ -343,12 +343,39 @@ function UserManagement() {
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
       <Modal
+        className="oe-admin-modal oe-admin-modal--large"
+        open={createOpen}
+        passiveModal
+        size="lg"
+        modalHeading={intl.formatMessage({
+          id: "unifiedSystemUser.add.user",
+        })}
+        iconDescription={intl.formatMessage({ id: "label.button.close" })}
+        selectorPrimaryFocus="#login-name"
+        onRequestClose={() => setCreateOpen(false)}
+        preventCloseOnClickOutside
+      >
+        {createOpen && (
+          <UserAddModify
+            embedded
+            userId="0"
+            onRequestClose={() => setCreateOpen(false)}
+            onSaved={() => {
+              setCreateOpen(false);
+              setPage(1);
+              setReloadKey((value) => value + 1);
+            }}
+          />
+        )}
+      </Modal>
+      <Modal
         className="oe-admin-modal"
         open={confirmDeactivateOpen}
         danger
         modalHeading={intl.formatMessage({
           id: "user.management.deactivate.confirm.title",
         })}
+        iconDescription={intl.formatMessage({ id: "label.button.close" })}
         primaryButtonText={intl.formatMessage({
           id: "externalconnections.action.deactivate",
         })}

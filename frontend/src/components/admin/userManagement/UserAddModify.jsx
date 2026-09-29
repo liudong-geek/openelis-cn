@@ -60,7 +60,12 @@ const roleMessageIds = {
   Validation: "user.editor.role.validation",
 };
 
-function UserAddModify() {
+function UserAddModify({
+  embedded = false,
+  userId,
+  onRequestClose,
+  onSaved,
+} = {}) {
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
   const { configurationProperties } = useContext(ConfigurationContext);
@@ -98,14 +103,16 @@ function UserAddModify() {
     useState(null);
 
   const location = useLocation();
-  const ID = (() => {
-    const search = location.search;
-    if (search) {
-      const urlParams = new URLSearchParams(search);
-      return urlParams.get("ID");
-    }
-    return "0";
-  })();
+  const ID =
+    userId ||
+    (() => {
+      const search = location.search;
+      if (search) {
+        const urlParams = new URLSearchParams(search);
+        return urlParams.get("ID");
+      }
+      return "0";
+    })();
 
   useEffect(() => {
     setIsLoading(true);
@@ -116,9 +123,13 @@ function UserAddModify() {
       );
     } else {
       setTimeout(() => {
-        navigateToInternalPath("/MasterListsPage/userManagement", {
-          replace: true,
-        });
+        if (onSaved) {
+          onSaved();
+        } else {
+          navigateToInternalPath("/MasterListsPage/userManagement", {
+            replace: true,
+          });
+        }
       }, 200);
     }
   }, [ID]);
@@ -773,10 +784,15 @@ function UserAddModify() {
     }
   };
 
-  const cancel = () =>
+  const cancel = () => {
+    if (onRequestClose) {
+      onRequestClose();
+      return;
+    }
     navigateToInternalPath("/MasterListsPage/userManagement", {
       replace: true,
     });
+  };
 
   const formatRoleName = (roleName) => {
     const messageId = roleMessageIds[String(roleName || "").trim()];
@@ -863,21 +879,27 @@ function UserAddModify() {
 
   return (
     <>
-      {notificationVisible === true ? <AlertDialog /> : null}
-      <div className="adminPageContent admin-form-workspace user-editor-page">
-        <PageBreadCrumb breadcrumbs={breadcrumbs} />
-        <ProductPageHeader
-          title={
-            <FormattedMessage
-              id={
-                ID === "0"
-                  ? "unifiedSystemUser.add.user"
-                  : "unifiedSystemUser.edit.user"
-              }
-            />
-          }
-          subtitle={<FormattedMessage id="user.editor.subtitle" />}
-        />
+      {!embedded && notificationVisible === true ? <AlertDialog /> : null}
+      <div
+        className={`adminPageContent admin-form-workspace user-editor-page${
+          embedded ? " user-editor-page--modal" : ""
+        }`}
+      >
+        {!embedded && <PageBreadCrumb breadcrumbs={breadcrumbs} />}
+        {!embedded && (
+          <ProductPageHeader
+            title={
+              <FormattedMessage
+                id={
+                  ID === "0"
+                    ? "unifiedSystemUser.add.user"
+                    : "unifiedSystemUser.edit.user"
+                }
+              />
+            }
+            subtitle={<FormattedMessage id="user.editor.subtitle" />}
+          />
+        )}
 
         <Form className="admin-form-workspace__content">
           <section className="admin-form-workspace__card">

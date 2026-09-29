@@ -93,6 +93,13 @@ interface ConfigurationContextValue {
   configurationProperties: Record<string, string>;
 }
 
+interface OrganizationAddModifyProps {
+  embedded?: boolean;
+  organizationId?: string;
+  onRequestClose?: () => void;
+  onSaved?: () => void;
+}
+
 const breadcrumbs = [
   { label: "home.label", link: "/" },
   { label: "breadcrums.admin.managment", link: "/MasterListsPage" },
@@ -146,7 +153,12 @@ const organizationTypeMessageIds: Record<
   },
 };
 
-function OrganizationAddModify() {
+function OrganizationAddModify({
+  embedded = false,
+  organizationId,
+  onRequestClose,
+  onSaved,
+}: OrganizationAddModifyProps = {}) {
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext) as unknown as NotificationContextValue;
   const { configurationProperties } = useContext(
@@ -154,7 +166,8 @@ function OrganizationAddModify() {
   ) as unknown as ConfigurationContextValue;
   const intl = useIntl();
   const location = useLocation();
-  const ID = new URLSearchParams(location.search).get("ID") || "0";
+  const ID =
+    organizationId || new URLSearchParams(location.search).get("ID") || "0";
 
   const [loading, setLoading] = useState(true);
   const [selectedTypeIds, setSelectedTypeIds] = useState<string[]>([]);
@@ -168,10 +181,15 @@ function OrganizationAddModify() {
     OrganizationType[]
   >([]);
 
-  const cancel = () =>
+  const cancel = () => {
+    if (onRequestClose) {
+      onRequestClose();
+      return;
+    }
     navigateToInternalPath("/MasterListsPage/organizationManagement", {
       replace: true,
     });
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -329,7 +347,15 @@ function OrganizationAddModify() {
           }),
           kind: failed ? NotificationKinds.error : NotificationKinds.success,
         });
-        if (!failed) setTimeout(cancel, 200);
+        if (!failed) {
+          setTimeout(() => {
+            if (onSaved) {
+              onSaved();
+            } else {
+              cancel();
+            }
+          }, 200);
+        }
       },
     );
   };
@@ -338,21 +364,27 @@ function OrganizationAddModify() {
 
   return (
     <>
-      {notificationVisible ? <AlertDialog /> : null}
-      <div className="adminPageContent admin-form-workspace organization-editor-page">
-        <PageBreadCrumb breadcrumbs={breadcrumbs} />
-        <ProductPageHeader
-          title={
-            <FormattedMessage
-              id={
-                ID === "0"
-                  ? "organization.add.title"
-                  : "organization.edit.title"
-              }
-            />
-          }
-          subtitle={<FormattedMessage id="organization.editor.subtitle" />}
-        />
+      {!embedded && notificationVisible ? <AlertDialog /> : null}
+      <div
+        className={`adminPageContent admin-form-workspace organization-editor-page${
+          embedded ? " organization-editor-page--modal" : ""
+        }`}
+      >
+        {!embedded && <PageBreadCrumb breadcrumbs={breadcrumbs} />}
+        {!embedded && (
+          <ProductPageHeader
+            title={
+              <FormattedMessage
+                id={
+                  ID === "0"
+                    ? "organization.add.title"
+                    : "organization.edit.title"
+                }
+              />
+            }
+            subtitle={<FormattedMessage id="organization.editor.subtitle" />}
+          />
+        )}
 
         <Form className="admin-form-workspace__content">
           <section className="admin-form-workspace__card">

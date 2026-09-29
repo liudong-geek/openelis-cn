@@ -252,16 +252,16 @@ describe("TestCatalogList", () => {
     expect(await screen.findByText("Serum")).toBeInTheDocument();
   });
 
-  it("New test button opens create-in-place", async () => {
+  it("opens the new test form in a modal without leaving the list", async () => {
     getFromOpenElisServer.mockImplementation((url, cb) =>
       cb(url.includes("/tests") ? pageOf([]) : []),
     );
     renderList();
     const button = await screen.findByTestId("new-test-button");
     fireEvent.click(button);
-    expect(mockHistory.push).toHaveBeenCalledWith(
-      "/MasterListsPage/TestCatalogEditor/new/basic-info",
-    );
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByLabelText("Test name")).toBeInTheDocument();
+    expect(mockHistory.push).not.toHaveBeenCalled();
   });
 
   it("renders the high-frequency list controls in Simplified Chinese", async () => {

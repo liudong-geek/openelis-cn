@@ -36,7 +36,9 @@ import {
   navigateToInternalPath,
   refreshCurrentRoute,
 } from "../../utils/NavigationUtils";
+import OrganizationAddModify from "./OrganizationAddModify";
 import "../AdminListWorkspace.css";
+import "../AdminModal.css";
 
 interface OrganizationMenuItem {
   id: string;
@@ -124,6 +126,8 @@ function OrganizationManagement() {
   const [appliedSearchTerm, setAppliedSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [confirmDeactivateOpen, setConfirmDeactivateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [totalRecordCount, setTotalRecordCount] = useState("");
   const [organizationsManagmentList, setOrganizationsManagmentList] =
     useState<OrganizationMenuResponse>();
@@ -222,7 +226,7 @@ function OrganizationManagement() {
         )}`
       : "/rest/OrganizationMenu?paging=1&startingRecNo=1";
     getFromOpenElisServer(endpoint, handleMenuItems);
-  }, [appliedSearchTerm]);
+  }, [appliedSearchTerm, reloadKey]);
 
   useEffect(() => {
     if (organizationsManagmentList) {
@@ -333,18 +337,43 @@ function OrganizationManagement() {
   );
   const selectedCount = selectedRowIds.length;
 
-  const openAddOrganization = () =>
-    navigateToInternalPath("/MasterListsPage/organizationEdit?ID=0");
+  const openAddOrganization = () => setCreateOpen(true);
 
   return (
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
       <Modal
+        className="oe-admin-modal oe-admin-modal--large"
+        open={createOpen}
+        passiveModal
+        size="lg"
+        modalHeading={intl.formatMessage({ id: "organization.add.title" })}
+        iconDescription={intl.formatMessage({ id: "label.button.close" })}
+        selectorPrimaryFocus="#org-name"
+        onRequestClose={() => setCreateOpen(false)}
+        preventCloseOnClickOutside
+      >
+        {createOpen && (
+          <OrganizationAddModify
+            embedded
+            organizationId="0"
+            onRequestClose={() => setCreateOpen(false)}
+            onSaved={() => {
+              setCreateOpen(false);
+              setPage(1);
+              setReloadKey((value) => value + 1);
+            }}
+          />
+        )}
+      </Modal>
+      <Modal
+        className="oe-admin-modal"
         open={confirmDeactivateOpen}
         danger
         modalHeading={intl.formatMessage({
           id: "organization.management.deactivate.confirm.title",
         })}
+        iconDescription={intl.formatMessage({ id: "label.button.close" })}
         primaryButtonText={intl.formatMessage({
           id: "externalconnections.action.deactivate",
         })}

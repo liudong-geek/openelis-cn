@@ -16,7 +16,7 @@ import {
 } from "@carbon/react";
 import {
   getFromOpenElisServer,
-  postToOpenElisServerJsonResponse,
+  postToOpenElisServerFullResponse,
 } from "../../utils/Utils";
 import { NotificationContext } from "../../layout/Layout";
 import {
@@ -27,6 +27,8 @@ import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import { useLocation } from "react-router-dom";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import { navigateToInternalPath } from "../../utils/NavigationUtils";
+import "../AdminFormWorkspace.css";
+import "./ExternalConnectionMenu.css";
 
 let breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -37,7 +39,12 @@ let breadcrumbs = [
   },
 ];
 
-function ExternalConnectionAddModify() {
+function ExternalConnectionAddModify({
+  embedded = false,
+  connectionId,
+  onRequestClose,
+  onSaved,
+} = {}) {
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
 
@@ -59,14 +66,26 @@ function ExternalConnectionAddModify() {
   const [authTypeOptions, setAuthTypeOptions] = useState([]);
 
   const location = useLocation();
-  const ID = (() => {
-    const search = location.search;
-    if (search) {
-      const urlParams = new URLSearchParams(search);
-      return urlParams.get("ID");
+  const ID =
+    connectionId ||
+    (() => {
+      const search = location.search;
+      if (search) {
+        const urlParams = new URLSearchParams(search);
+        return urlParams.get("ID");
+      }
+      return "0";
+    })();
+
+  const closeEditor = () => {
+    if (onRequestClose) {
+      onRequestClose();
+      return;
     }
-    return "0";
-  })();
+    navigateToInternalPath("/MasterListsPage/externalConnections", {
+      replace: true,
+    });
+  };
 
   useEffect(() => {
     componentMounted.current = true;
@@ -90,9 +109,16 @@ function ExternalConnectionAddModify() {
 
   const handleFormData = (res) => {
     if (!res) {
-      setLoading(true);
+      setLoading(false);
+      setNotificationVisible(true);
+      addNotification({
+        kind: NotificationKinds.error,
+        title: intl.formatMessage({ id: "notification.title" }),
+        message: intl.formatMessage({ id: "server.error.msg" }),
+      });
     } else {
       setFormData(res);
+      setLoading(false);
     }
   };
 
@@ -183,7 +209,7 @@ function ExternalConnectionAddModify() {
       externalConnectionContacts: [],
     };
 
-    postToOpenElisServerJsonResponse(
+    postToOpenElisServerFullResponse(
       `/rest/ExternalConnection`,
       JSON.stringify(payload),
       submitCallback,
@@ -192,22 +218,27 @@ function ExternalConnectionAddModify() {
 
   const submitCallback = (res) => {
     setLoading(false);
+    const failed = !res || !res.ok;
     addNotification({
       title: intl.formatMessage({ id: "notification.title" }),
       message: intl.formatMessage({
-        id: "externalconnections.save.success",
+        id: failed ? "server.error.msg" : "externalconnections.save.success",
       }),
-      kind: NotificationKinds.success,
+      kind: failed ? NotificationKinds.error : NotificationKinds.success,
     });
     setNotificationVisible(true);
-    setTimeout(() => {
-      navigateToInternalPath("/MasterListsPage/externalConnections", {
-        replace: true,
-      });
-    }, 200);
+    if (!failed) {
+      setTimeout(() => {
+        if (onSaved) {
+          onSaved();
+        } else {
+          closeEditor();
+        }
+      }, 200);
+    }
   };
 
-  if (!loading) {
+  if (loading) {
     return (
       <>
         <Loading />
@@ -215,24 +246,41 @@ function ExternalConnectionAddModify() {
     );
   }
 
+  const saveDisabled =
+    saveButton ||
+    !connectionName.trim() ||
+    !programmedConnection ||
+    !uri.trim() ||
+    !authType ||
+    (authType === "BASIC" && (!username.trim() || !password));
+
   return (
     <>
-      {notificationVisible === true ? <AlertDialog /> : ""}
-      <div className="adminPageContent">
-        <PageBreadCrumb breadcrumbs={breadcrumbs} />
-        <Grid fullWidth={true}>
-          <Column lg={16} md={8} sm={4}>
-            <Section>
-              <Heading>
-                {ID === "0" ? (
-                  <FormattedMessage id="externalconnections.add.title" />
-                ) : (
-                  <FormattedMessage id="externalconnections.edit.title" />
-                )}
-              </Heading>
-            </Section>
-          </Column>
-        </Grid>
+      {!embedded && notificationVisible === true ? <AlertDialog /> : ""}
+      <div
+        className={`adminPageContent admin-form-workspace external-connection-editor${
+          embedded ? " external-connection-editor--modal" : ""
+        }`}
+      >
+        {!embedded && <PageBreadCrumb breadcrumbs={breadcrumbs} />}
+        {!embedded && (
+          <Grid
+            className="external-connection-editor__actions"
+            fullWidth={true}
+          >
+            <Column lg={16} md={8} sm={4}>
+              <Section>
+                <Heading>
+                  {ID === "0" ? (
+                    <FormattedMessage id="externalconnections.add.title" />
+                  ) : (
+                    <FormattedMessage id="externalconnections.edit.title" />
+                  )}
+                </Heading>
+              </Section>
+            </Column>
+          </Grid>
+        )}
         <br />
         <div className="orderLegendBody">
           <Grid fullWidth={true} className="gridBoundary">
@@ -415,23 +463,16 @@ function ExternalConnectionAddModify() {
             <Column lg={16} md={8} sm={4}>
               <Button
                 id="saveButton"
-                disabled={saveButton}
+                disabled={saveDisabled}
                 onClick={submitForm}
                 type="button"
               >
                 <FormattedMessage id="label.button.save" />
               </Button>{" "}
-              <Button
-                onClick={() =>
-                  navigateToInternalPath(
-                    "/MasterListsPage/externalConnections",
-                    { replace: true },
-                  )
-                }
-                kind="tertiary"
-                type="button"
-              >
-                <FormattedMessage id="label.button.exit" />
+              <Button onClick={closeEditor} kind="tertiary" type="button">
+                <FormattedMessage
+                  id={embedded ? "label.button.cancel" : "label.button.exit"}
+                />
               </Button>
             </Column>
           </Grid>

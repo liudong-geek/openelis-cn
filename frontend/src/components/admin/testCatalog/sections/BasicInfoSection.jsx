@@ -25,6 +25,7 @@ import {
 import { NotificationContext } from "../../../layout/Layout";
 import useDomains from "../../../common/useDomains";
 import ActivationAckModal from "./ActivationAckModal";
+import "../../AdminModal.css";
 
 /**
  * OGC-949 / OGC-1112 — Basic Info section.
@@ -70,7 +71,12 @@ const sampleTypeMatchesDomain = (type, domain) => {
   return normalized === null || normalized === domain;
 };
 
-const BasicInfoSection = ({ testId }) => {
+const BasicInfoSection = ({
+  testId,
+  embedded = false,
+  onCreated,
+  onCancel,
+}) => {
   const domains = useDomains();
   const intl = useIntl();
   const history = useHistory();
@@ -79,8 +85,10 @@ const BasicInfoSection = ({ testId }) => {
     ? "/admin"
     : "/MasterListsPage";
   const isCreate = testId === "new";
-  const { addNotification, setNotificationVisible } =
-    useContext(NotificationContext);
+  const notificationContext = useContext(NotificationContext) || {};
+  const addNotification = notificationContext.addNotification || (() => {});
+  const setNotificationVisible =
+    notificationContext.setNotificationVisible || (() => {});
 
   const [loading, setLoading] = useState(!isCreate);
   const [error, setError] = useState(false);
@@ -299,9 +307,13 @@ const BasicInfoSection = ({ testId }) => {
                 { name: createForm.name },
               ),
             });
-            history.push(
-              `${base}/TestCatalogEditor/${created.testId}/basic-info`,
-            );
+            if (onCreated) {
+              onCreated(created);
+            } else {
+              history.push(
+                `${base}/TestCatalogEditor/${created.testId}/basic-info`,
+              );
+            }
           });
         } else if (response && response.status === 409) {
           setCodeError(true);
@@ -390,8 +402,8 @@ const BasicInfoSection = ({ testId }) => {
   };
 
   if (isCreate) {
-    return (
-      <Stack gap={6}>
+    const createFields = (
+      <Stack gap={6} className="test-catalog-create-form">
         <TextInput
           id="basic-info-name"
           labelText={intl.formatMessage({ id: "label.testCatalog.testName" })}
@@ -507,23 +519,52 @@ const BasicInfoSection = ({ testId }) => {
             id: "label.testCatalog.basicInfo.createInactiveHint",
           })}
         />
-        <div style={{ display: "flex", gap: "0.5rem" }}>
-          <Button
-            kind="primary"
-            disabled={saving || !createValid}
-            onClick={handleCreate}
-          >
-            <FormattedMessage id="label.button.save" />
-          </Button>
-          <Button
-            kind="ghost"
-            onClick={() => history.push(`${base}/TestCatalogList`)}
-          >
-            <FormattedMessage id="label.button.cancel" />
-          </Button>
-        </div>
+        {!embedded && (
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <Button
+              kind="primary"
+              disabled={saving || !createValid}
+              onClick={handleCreate}
+            >
+              <FormattedMessage id="label.button.save" />
+            </Button>
+            <Button
+              kind="ghost"
+              onClick={() => history.push(`${base}/TestCatalogList`)}
+            >
+              <FormattedMessage id="label.button.cancel" />
+            </Button>
+          </div>
+        )}
       </Stack>
     );
+
+    if (embedded) {
+      return (
+        <Modal
+          className="oe-admin-modal oe-admin-modal--large test-catalog-create-modal"
+          open
+          size="lg"
+          modalHeading={intl.formatMessage({
+            id: "button.testCatalog.newTest",
+          })}
+          iconDescription={intl.formatMessage({ id: "label.button.close" })}
+          selectorPrimaryFocus="#basic-info-name"
+          primaryButtonText={intl.formatMessage({ id: "label.button.save" })}
+          secondaryButtonText={intl.formatMessage({
+            id: "label.button.cancel",
+          })}
+          primaryButtonDisabled={saving || !createValid}
+          onRequestSubmit={handleCreate}
+          onRequestClose={onCancel}
+          preventCloseOnClickOutside
+        >
+          {createFields}
+        </Modal>
+      );
+    }
+
+    return createFields;
   }
 
   if (loading) {

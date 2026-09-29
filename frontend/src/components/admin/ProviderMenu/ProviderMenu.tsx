@@ -36,6 +36,7 @@ import ProductPageHeader from "../../common/ProductPageHeader";
 import { getPhoneFormatHint } from "../../patient/phoneFormatHint";
 import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 import "../AdminListWorkspace.css";
+import "../AdminModal.css";
 
 interface ProviderPerson {
   lastName?: string;
@@ -518,11 +519,13 @@ function ProviderMenu() {
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
       <Modal
+        className="oe-admin-modal"
         open={confirmDeactivateOpen}
         danger
         modalHeading={intl.formatMessage({
           id: "provider.management.deactivate.confirm.title",
         })}
+        iconDescription={intl.formatMessage({ id: "label.button.close" })}
         primaryButtonText={intl.formatMessage({
           id: "externalconnections.action.deactivate",
         })}
@@ -796,10 +799,13 @@ function ProviderMenu() {
         </section>
       </div>
       <Modal
+        className="oe-admin-modal oe-admin-modal--large"
         open={isAddModalOpen}
         modalHeading={intl.formatMessage({
           id: "provider.modal.add.heading",
         })}
+        iconDescription={intl.formatMessage({ id: "label.button.close" })}
+        selectorPrimaryFocus="#provider-add-last-name"
         primaryButtonText={intl.formatMessage({ id: "label.button.add" })}
         secondaryButtonText={intl.formatMessage({
           id: "label.button.cancel",
@@ -807,6 +813,7 @@ function ProviderMenu() {
         primaryButtonDisabled={!formValid || saving}
         onRequestSubmit={handleAddProvider}
         onRequestClose={closeAddModal}
+        preventCloseOnClickOutside
       >
         <div className="provider-editor-form">
           <TextInput
@@ -877,10 +884,13 @@ function ProviderMenu() {
       </Modal>
 
       <Modal
+        className="oe-admin-modal oe-admin-modal--large"
         open={isUpdateModalOpen}
         modalHeading={intl.formatMessage({
           id: "provider.modal.update.heading",
         })}
+        iconDescription={intl.formatMessage({ id: "label.button.close" })}
+        selectorPrimaryFocus="#provider-update-last-name"
         primaryButtonText={intl.formatMessage({ id: "label.button.update" })}
         secondaryButtonText={intl.formatMessage({
           id: "label.button.cancel",
@@ -888,6 +898,7 @@ function ProviderMenu() {
         primaryButtonDisabled={!formValid || saving}
         onRequestSubmit={handleUpdateProvider}
         onRequestClose={closeUpdateModal}
+        preventCloseOnClickOutside
       >
         <div className="provider-editor-form">
           <TextInput

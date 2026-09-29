@@ -14,6 +14,7 @@ import {
   Search,
   Button,
   Tag,
+  Modal,
 } from "@carbon/react";
 import {
   getFromOpenElisServer,
@@ -27,12 +28,11 @@ import {
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import ProductPageHeader from "../../common/ProductPageHeader";
-import {
-  navigateToInternalPath,
-  refreshCurrentRoute,
-} from "../../utils/NavigationUtils";
+import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 import ExternalConnectionSimulation from "./ExternalConnectionSimulation";
+import ExternalConnectionAddModify from "./ExternalConnectionAddModify";
 import "../AdminListWorkspace.css";
+import "../AdminModal.css";
 import "./ExternalConnectionMenu.css";
 
 let breadcrumbs = [
@@ -63,6 +63,8 @@ function ExternalConnectionMenu() {
   const [connectionList, setConnectionList] = useState();
   const [connectionListShow, setConnectionListShow] = useState([]);
   const [simulationOpen, setSimulationOpen] = useState(false);
+  const [editorConnectionId, setEditorConnectionId] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   function deactivateConnection(event) {
     event.preventDefault();
@@ -121,7 +123,7 @@ function ExternalConnectionMenu() {
         )}`
       : `/rest/ExternalConnectionMenu?paging=${paging}&startingRecNo=${startingRecNo}`;
     getFromOpenElisServer(endpoint, handleMenuItems);
-  }, [paging, searchTerm, startingRecNo]);
+  }, [paging, searchTerm, startingRecNo, reloadKey]);
 
   useEffect(() => {
     if (connectionList) {
@@ -210,20 +212,49 @@ function ExternalConnectionMenu() {
   ).length;
   const selectedCount = selectedRowIds.length;
 
-  const openAddConnection = () =>
-    navigateToInternalPath("/MasterListsPage/externalConnectionEdit?ID=0");
+  const openAddConnection = () => setEditorConnectionId("0");
 
   const openSelectedConnection = () => {
     if (selectedCount === 1) {
-      navigateToInternalPath(
-        `/MasterListsPage/externalConnectionEdit?ID=${selectedRowIds[0]}&startingRecNo=1`,
-      );
+      setEditorConnectionId(selectedRowIds[0]);
     }
   };
 
   return (
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
+      <Modal
+        className="oe-admin-modal oe-admin-modal--large"
+        open={editorConnectionId !== null}
+        passiveModal
+        size="lg"
+        modalHeading={intl.formatMessage({
+          id:
+            editorConnectionId === "0"
+              ? "externalconnections.add.title"
+              : "externalconnections.edit.title",
+        })}
+        iconDescription={intl.formatMessage({ id: "label.button.close" })}
+        selectorPrimaryFocus="#connection-name"
+        onRequestClose={() => setEditorConnectionId(null)}
+        preventCloseOnClickOutside
+      >
+        {editorConnectionId !== null && (
+          <ExternalConnectionAddModify
+            embedded
+            connectionId={editorConnectionId}
+            onRequestClose={() => setEditorConnectionId(null)}
+            onSaved={() => {
+              setEditorConnectionId(null);
+              setSelectedRowIds([]);
+              setPage(1);
+              setPaging(1);
+              setStartingRecNo(1);
+              setReloadKey((value) => value + 1);
+            }}
+          />
+        )}
+      </Modal>
       <div className="adminPageContent admin-list-workspace admin-list-workspace--compact external-connections-page">
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
         <ProductPageHeader

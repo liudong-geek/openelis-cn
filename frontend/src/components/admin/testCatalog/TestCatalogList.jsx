@@ -35,6 +35,8 @@ import { getFromOpenElisServer } from "../../utils/Utils";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import useDomains from "../../common/useDomains";
 import { DEFAULT_SECTION } from "./sectionConfig";
+import BasicInfoSection from "./sections/BasicInfoSection";
+import "../AdminModal.css";
 import "./TestCatalogList.css";
 
 /**
@@ -107,6 +109,9 @@ const TestCatalogList = () => {
     initParams.get("issuesOnly") === "true",
   );
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [createOpen, setCreateOpen] = useState(
+    initParams.get("create") === "true",
+  );
 
   // Sample types for the filter dropdown — fetched once (static reference data).
   useEffect(() => {
@@ -218,8 +223,7 @@ const TestCatalogList = () => {
   };
 
   const openNewTest = () => {
-    // Create-in-place: open Basic Info blank in the editor shell (FR-1/FR-2).
-    history.push(`/MasterListsPage/TestCatalogEditor/new/${DEFAULT_SECTION}`);
+    setCreateOpen(true);
   };
 
   const openRelatedEditor = (selectedRows) => {
@@ -398,6 +402,18 @@ const TestCatalogList = () => {
 
   return (
     <div className="testCatalogList">
+      {createOpen && (
+        <BasicInfoSection
+          testId="new"
+          embedded
+          onCancel={() => setCreateOpen(false)}
+          onCreated={() => {
+            setCreateOpen(false);
+            setPage(1);
+            setReloadKey((value) => value + 1);
+          }}
+        />
+      )}
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
       <Grid fullWidth>
         <Column lg={16} md={8} sm={4}>
