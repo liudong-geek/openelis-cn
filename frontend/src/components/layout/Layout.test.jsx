@@ -64,6 +64,18 @@ vi.mock("../utils/Utils", () => ({
 const defaultGetFromServer = getFromOpenElisServer.getMockImplementation();
 
 describe("administration navigation context", () => {
+  test("keeps the primary menu while a test is being created", () => {
+    expect(
+      isAdminEditorRoute("/MasterListsPage/TestCatalogEditor/new/basic-info"),
+    ).toBe(false);
+  });
+
+  test("uses the editor section menu for an existing test", () => {
+    expect(
+      isAdminEditorRoute("/MasterListsPage/TestCatalogEditor/38/basic-info"),
+    ).toBe(true);
+  });
+
   test("keeps the primary menu while the sample type create modal is open", () => {
     expect(
       isAdminEditorRoute(

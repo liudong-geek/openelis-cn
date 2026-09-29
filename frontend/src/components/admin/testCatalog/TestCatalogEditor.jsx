@@ -37,11 +37,12 @@ import { DEFAULT_SECTION, isValidSection } from "./sectionConfig";
  *
  * SideNav-routed shell (#3504): the active section is a URL segment
  * (.../TestCatalogEditor/:testId/:section), so sections are deep-linkable and
- * back-button-friendly. The section navigation itself lives in the global
- * AdminSideNav (one sidenav, no editor-owned nav). All nine v1 sections are
- * built and URL-routed (M4–M12); an unknown/invalid section canonicalizes to
- * the default, and the final ternary branch is a defensive fallback. ADMIN-gated
- * by the SecureRoute (and the REST API 403s non-admins — see
+ * back-button-friendly. For persisted tests, section navigation lives in the
+ * global AdminSideNav. Create mode keeps the primary application menu until
+ * the basic record has been saved. All v1 sections are built and URL-routed
+ * (M4–M12); an unknown/invalid section canonicalizes to the default, and the
+ * final ternary branch is a defensive fallback. ADMIN-gated by the SecureRoute
+ * (and the REST API 403s non-admins — see
  * TestCatalogEditorRestController).
  */
 const TestCatalogEditor = () => {
@@ -189,7 +190,7 @@ const TestCatalogEditor = () => {
       {notificationVisible === true && <AlertDialog />}
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
       <Grid fullWidth>
-        <Column lg={12} md={6} sm={4}>
+        <Column lg={isCreate ? 12 : 16} md={isCreate ? 6 : 8} sm={4}>
           <Section>
             <Heading>
               {isCreate ? (
@@ -202,26 +203,28 @@ const TestCatalogEditor = () => {
             </Heading>
           </Section>
         </Column>
-        <Column
-          lg={4}
-          md={2}
-          sm={4}
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            alignItems: "flex-start",
-          }}
-        >
-          <Button
-            kind="ghost"
-            size="sm"
-            data-testid="test-editor-back-to-list"
-            renderIcon={ArrowLeft}
-            onClick={handleCancel}
+        {isCreate && (
+          <Column
+            lg={4}
+            md={2}
+            sm={4}
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              alignItems: "flex-start",
+            }}
           >
-            <FormattedMessage id="sidenav.label.admin.testCatalog.backToList" />
-          </Button>
-        </Column>
+            <Button
+              kind="ghost"
+              size="sm"
+              data-testid="test-editor-back-to-list"
+              renderIcon={ArrowLeft}
+              onClick={handleCancel}
+            >
+              <FormattedMessage id="sidenav.label.admin.testCatalog.backToList" />
+            </Button>
+          </Column>
+        )}
 
         {/* Header actions. Saving is per-section (each section owns its own Save),
             so the header exposes only cross-cutting navigation actions — no header
@@ -244,8 +247,9 @@ const TestCatalogEditor = () => {
           </Column>
         )}
 
-        {/* Section nav lives in the global AdminSideNav (URL-routed, #3504) —
-            the editor renders only the active section's content, full width. */}
+        {/* Persisted-test section nav lives in the global AdminSideNav
+            (URL-routed, #3504). Create mode keeps the primary menu and exposes
+            only Basic Info until the test has been saved. */}
         <Column lg={16} md={8} sm={4}>
           <Tile>
             <Heading>

@@ -172,13 +172,13 @@ describe("AdminSideNav — Test Catalog Management entry", () => {
     // wayfinding: list item flips to "back to list", context names the test
     expect(
       container.querySelector('[data-cy="testCatalogList"]').textContent,
-    ).toBe("← All Tests");
+    ).toBe("Back to test list");
     expect(
       container.querySelector('[data-cy="testCatalogSectionsContext"]')
         .textContent,
-    ).toBe("Current testHemoglobin");
+    ).toBe("Test configurationHemoglobin");
     expect(
-      screen.getByRole("button", { name: "Definition & results" }),
+      screen.getByRole("button", { name: "Core definition & results" }),
     ).toHaveAttribute("aria-expanded", "true");
     TEST_CATALOG_SECTION_GROUPS.slice(1).forEach((group) => {
       expect(
@@ -208,7 +208,7 @@ describe("AdminSideNav — Test Catalog Management entry", () => {
     expect(
       container.querySelector('[data-cy="testCatalogSectionsContext"]')
         .textContent,
-    ).toBe("Current testEditing test");
+    ).toBe("Test configurationLoading test details");
   });
 
   it("aborts the in-flight test-name fetch on unmount", async () => {

@@ -66,10 +66,11 @@ const getPageFamily = (pathname) => {
   return "workspace";
 };
 
-// Test and sample-type editors use the side navigation as an in-task section
-// index. Other administration routes stay in the primary management menu.
+// Persisted test and sample-type editors use the side navigation as an in-task
+// section index. Create routes keep the primary menu so the user's workspace
+// does not change before an object exists.
 export const isAdminEditorRoute = (pathname) =>
-  /^\/(?:admin|MasterListsPage)\/(?:TestCatalogEditor\/|SampleTypeManagement\/(?!new(?:[/?#]|$))[^/?#]+)/.test(
+  /^\/(?:admin|MasterListsPage)\/(?:TestCatalogEditor\/(?!new(?:[/?#]|$))|SampleTypeManagement\/(?!new(?:[/?#]|$))[^/?#]+)/.test(
     pathname,
   );
 

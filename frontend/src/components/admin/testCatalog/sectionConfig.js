@@ -32,10 +32,10 @@ export const TEST_CATALOG_SECTION_GROUPS = [
     key: "definition",
     sections: [
       "basic-info",
+      "localization",
       "sample-results",
       "methods",
       "ranges",
-      "localization",
     ],
   },
   {

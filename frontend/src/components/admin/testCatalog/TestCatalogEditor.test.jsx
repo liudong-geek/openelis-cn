@@ -182,6 +182,16 @@ describe("TestCatalogEditor shell", () => {
     renderEditor();
     expect(await screen.findByText("Glucose Panel")).toBeInTheDocument();
     expect(screen.getByTestId("basic-info-section")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("test-editor-back-to-list"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps one page-level return action while creating a test", () => {
+    mockParams = { testId: "new", section: "basic-info" };
+    renderEditor();
+    expect(screen.getByTestId("test-editor-back-to-list")).toBeVisible();
+    expect(screen.getByTestId("basic-info-section")).toBeInTheDocument();
   });
 
   // Section is driven entirely by the URL :section param — the editor owns no

@@ -6,7 +6,7 @@ import { IntlProvider } from "react-intl";
 import { MemoryRouter, Route } from "react-router-dom";
 import { vi } from "vitest";
 import userEvent from "@testing-library/user-event";
-import OEHeader from "./Header";
+import OEHeader, { resolvePrimaryNavigationPath } from "./Header";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { ConfigurationContext, NotificationContext } from "./Layout";
 import messages from "../../languages/en.json";
@@ -85,6 +85,21 @@ const mockNotificationContext = {
   addNotification: vi.fn(),
   removeNotification: vi.fn(),
 };
+
+describe("primary navigation route aliases", () => {
+  test("keeps the test list task active while creating a test", () => {
+    expect(
+      resolvePrimaryNavigationPath(
+        "/MasterListsPage/TestCatalogEditor/new/basic-info",
+      ),
+    ).toBe("/MasterListsPage/TestCatalogList");
+    expect(
+      resolvePrimaryNavigationPath(
+        "/MasterListsPage/TestCatalogEditor/38/basic-info",
+      ),
+    ).toBe("/MasterListsPage/TestCatalogEditor/38/basic-info");
+  });
+});
 
 /**
  * Realistic menu mock that matches actual database structure

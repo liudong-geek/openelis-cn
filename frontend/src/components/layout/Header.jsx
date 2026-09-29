@@ -52,8 +52,18 @@ import config from "../../config.json";
 import { buildTaskFocusedMenu, MENU_PROFILES } from "./taskFocusedMenu";
 import { resolveNavigationProfile } from "./navigationProfile";
 
+export const resolvePrimaryNavigationPath = (pathname) => {
+  const normalizedPath = pathname === "/" ? "/Dashboard" : pathname;
+  const createTestMatch = normalizedPath.match(
+    /^\/(admin|MasterListsPage)\/TestCatalogEditor\/new(?:\/|$)/,
+  );
+  return createTestMatch
+    ? `/${createTestMatch[1]}/TestCatalogList`
+    : normalizedPath;
+};
+
 const expandMenuForRoute = (items, pathname) => {
-  const currentPath = pathname === "/" ? "/Dashboard" : pathname;
+  const currentPath = resolvePrimaryNavigationPath(pathname);
 
   const visit = (menuItems) => {
     let branchMatches = false;
@@ -657,10 +667,9 @@ function OEHeader({
     };
 
     // The app serves the dashboard at both "/" and "/Dashboard"
-    const currentPath =
-      location.pathname === "/"
-        ? "/Dashboard"
-        : normalizePath(location.pathname);
+    const currentPath = normalizePath(
+      resolvePrimaryNavigationPath(location.pathname),
+    );
     const actionPath = normalizePath(menuItem.menu.actionURL);
     const itemId = menuItem.menu.elementId || "unknown";
 
@@ -1015,8 +1024,7 @@ function OEHeader({
 
   const currentWorkspace = isClinicalWorkspace
     ? menus.menu.find((item) => {
-        const currentPath =
-          location.pathname === "/" ? "/Dashboard" : location.pathname;
+        const currentPath = resolvePrimaryNavigationPath(location.pathname);
         return (
           item.menu?.actionURL?.split(/[?#]/)[0] === currentPath ||
           hasActiveDescendant(item, currentPath)
