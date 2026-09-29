@@ -37,6 +37,7 @@ import {
   refreshCurrentRoute,
 } from "../../utils/NavigationUtils";
 import "../AdminListWorkspace.css";
+import "../AdminModal.css";
 
 let breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -342,6 +343,7 @@ function UserManagement() {
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
       <Modal
+        className="oe-admin-modal"
         open={confirmDeactivateOpen}
         danger
         modalHeading={intl.formatMessage({

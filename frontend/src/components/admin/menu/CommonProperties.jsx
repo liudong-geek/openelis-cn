@@ -3,6 +3,7 @@ import {
   DataTable,
   Dropdown,
   Loading,
+  Pagination,
   Search,
   Table,
   TableBody,
@@ -79,6 +80,9 @@ export const buildPropertyRows = (properties = {}) =>
       };
     });
 
+export const paginatePropertyRows = (rows = [], page = 1, pageSize = 20) =>
+  rows.slice((page - 1) * pageSize, page * pageSize);
+
 export const CommonProperties = () => {
   const intl = useIntl();
   const { notificationVisible, addNotification, setNotificationVisible } =
@@ -86,6 +90,8 @@ export const CommonProperties = () => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const categoryItems = useMemo(
     () => [
       "all",
@@ -133,6 +139,14 @@ export const CommonProperties = () => {
         .includes(query);
     });
   }, [rows, searchText, selectedCategory]);
+  const pageRows = useMemo(
+    () => paginatePropertyRows(visibleRows, page, pageSize),
+    [page, pageSize, visibleRows],
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchText, selectedCategory]);
 
   const configuredCount = rows.filter((row) => row.configured).length;
   const booleanCount = rows.filter((row) => row.valueType === "boolean").length;
@@ -197,7 +211,7 @@ export const CommonProperties = () => {
           description={intl.formatMessage({ id: "loading.description" })}
         />
       )}
-      <div className="adminPageContent admin-list-workspace security-properties">
+      <div className="adminPageContent admin-list-workspace admin-list-workspace--compact security-properties">
         <PageBreadCrumb
           breadcrumbs={[
             { label: "home.label", link: "/" },
@@ -294,7 +308,7 @@ export const CommonProperties = () => {
           ) : (
             <div className="admin-list-workspace__table-scroll">
               <DataTable
-                rows={visibleRows}
+                rows={pageRows}
                 headers={[
                   {
                     key: "name",
@@ -351,6 +365,45 @@ export const CommonProperties = () => {
                 )}
               </DataTable>
             </div>
+          )}
+          {visibleRows.length > 0 && (
+            <Pagination
+              className="admin-list-workspace__pagination"
+              page={page}
+              pageSize={pageSize}
+              pageSizes={[20, 50, 100]}
+              totalItems={visibleRows.length}
+              onChange={({ page: nextPage, pageSize: nextPageSize }) => {
+                setPage(nextPage);
+                setPageSize(nextPageSize);
+              }}
+              forwardText={intl.formatMessage({ id: "pagination.forward" })}
+              backwardText={intl.formatMessage({ id: "pagination.backward" })}
+              itemRangeText={(min, max, total) =>
+                intl.formatMessage(
+                  { id: "pagination.item-range" },
+                  { min, max, total },
+                )
+              }
+              itemsPerPageText={intl.formatMessage({
+                id: "pagination.items-per-page",
+              })}
+              itemText={(min, max) =>
+                intl.formatMessage({ id: "pagination.item" }, { min, max })
+              }
+              pageNumberText={intl.formatMessage({
+                id: "pagination.page-number",
+              })}
+              pageRangeText={(_current, total) =>
+                intl.formatMessage({ id: "pagination.page-range" }, { total })
+              }
+              pageText={(currentPage, pagesUnknown) =>
+                intl.formatMessage(
+                  { id: "pagination.page" },
+                  { page: pagesUnknown ? "" : currentPage },
+                )
+              }
+            />
           )}
         </section>
       </div>

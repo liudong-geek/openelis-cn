@@ -10,6 +10,8 @@ const SYSTEM_ADMIN_ROUTE_ROOTS = new Set([
   "patientMenuManagement",
   "studyMenuManagement",
   "commonproperties",
+  "userManagement",
+  "userEdit",
   "SearchIndexManagement",
   "loggingManagement",
   "languageManagement",
@@ -20,7 +22,7 @@ const SYSTEM_ADMIN_ROUTE_ROOTS = new Set([
   "deliveryReadiness",
 ]);
 
-const getResolvedLabelId = (labelId, pathname) => {
+export const getResolvedLabelId = (labelId, pathname) => {
   if (labelId !== "breadcrums.admin.managment") return labelId;
 
   const routeRoot = String(pathname || "")

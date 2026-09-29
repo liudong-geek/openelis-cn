@@ -1,0 +1,116 @@
+.system-log-page__viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.system-log-page__notification {
+  max-width: none;
+  margin: 0;
+  border-radius: 0;
+}
+
+.system-log-page__log {
+  height: clamp(24rem, 56vh, 42rem);
+  overflow: auto;
+  color: #d4d4d4;
+  background: #161616;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.system-log-page__line {
+  display: grid;
+  min-width: max-content;
+  grid-template-columns: 4rem 1fr;
+  border-bottom: 1px solid #262626;
+}
+
+.system-log-page__line > span {
+  padding: 0.3rem 0.75rem;
+  color: #8d8d8d;
+  text-align: right;
+  user-select: none;
+}
+
+.system-log-page__line code {
+  padding: 0.3rem 1rem;
+  color: inherit;
+  white-space: pre-wrap;
+}
+
+.system-log-page__empty {
+  display: grid;
+  height: 100%;
+  min-height: 18rem;
+  place-items: center;
+  padding: 2rem;
+  color: #a8a8a8;
+  text-align: center;
+}
+
+.system-log-page__settings {
+  margin-top: 0.75rem;
+}
+
+.system-log-page__settings .cds--accordion__item {
+  border: 0;
+}
+
+.system-log-page__settings .cds--accordion__heading {
+  min-height: 3.5rem;
+}
+
+.system-log-page__settings-copy {
+  max-width: 52rem;
+  margin: 0 0 1rem;
+  color: var(--oe-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.system-log-page__settings-grid {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.55fr) minmax(20rem, 1fr) auto;
+  align-items: end;
+  gap: 1rem;
+  padding-bottom: 1rem;
+}
+
+.system-log-page__settings-grid .cds--select,
+.system-log-page__settings-grid .cds--select-input,
+.system-log-page__settings-grid .cds--text-input-wrapper {
+  width: 100%;
+  max-width: none;
+}
+
+@media (max-width: 66rem) {
+  .system-log-page__settings-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .system-log-page__settings-grid .cds--btn {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 42rem) {
+  .system-log-page__viewer-actions {
+    justify-content: space-between;
+  }
+
+  .system-log-page__settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .system-log-page__settings-grid .cds--btn {
+    grid-column: auto;
+    width: 100%;
+    max-width: none;
+  }
+
+  .system-log-page__line {
+    grid-template-columns: 3rem 1fr;
+  }
+}
