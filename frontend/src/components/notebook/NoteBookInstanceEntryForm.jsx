@@ -1444,7 +1444,7 @@ const NoteBookInstanceEntryForm = () => {
                       />
                     </h5>
                     <Button
-                      kind="ghost"
+                      kind="secondary"
                       size="sm"
                       onClick={() => setShowSampleCreationForm(false)}
                     >
@@ -1534,7 +1534,7 @@ const NoteBookInstanceEntryForm = () => {
                       />
                     </h5>
                     <Button
-                      kind="ghost"
+                      kind="secondary"
                       size="sm"
                       onClick={() => setShowSampleEditForm(false)}
                     >
@@ -1592,7 +1592,7 @@ const NoteBookInstanceEntryForm = () => {
                       />
                     </h5>
                     <Button
-                      kind="ghost"
+                      kind="secondary"
                       size="sm"
                       onClick={() => setShowSampleImportForm(false)}
                     >

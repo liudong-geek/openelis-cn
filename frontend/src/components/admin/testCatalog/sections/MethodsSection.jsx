@@ -394,7 +394,7 @@ export default function MethodsSection({ testId }) {
               <FormattedMessage id="admin.testCatalog.methods.inline.createAndLink" />
             </Button>
             <Button
-              kind="ghost"
+              kind="secondary"
               size="sm"
               onClick={() => setShowInlineCreate(false)}
             >

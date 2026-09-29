@@ -215,7 +215,7 @@ const ViewAuditModal = ({ open, sample, onClose }) => {
         )}
       </ModalBody>
       <ModalFooter>
-        <Button kind="primary" onClick={onClose}>
+        <Button kind="secondary" onClick={onClose}>
           <FormattedMessage id="label.button.close" defaultMessage="Close" />
         </Button>
       </ModalFooter>

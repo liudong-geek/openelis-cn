@@ -529,7 +529,7 @@ const BasicInfoSection = ({
               <FormattedMessage id="label.button.save" />
             </Button>
             <Button
-              kind="ghost"
+              kind="secondary"
               onClick={() => history.push(`${base}/TestCatalogList`)}
             >
               <FormattedMessage id="label.button.cancel" />

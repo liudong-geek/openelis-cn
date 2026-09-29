@@ -875,7 +875,7 @@ const BoxCreation = () => {
                 <FormattedMessage id="shipment.action.saveDraft" />
               </Button>
 
-              <Button kind="ghost" onClick={handleCancel}>
+              <Button kind="secondary" onClick={handleCancel}>
                 <FormattedMessage id="label.cancel" />
               </Button>
             </div>

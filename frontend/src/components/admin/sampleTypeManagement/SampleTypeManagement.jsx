@@ -1572,7 +1572,7 @@ function SampleTypeManagement({ intl }) {
                               />
                             )}
                           </Button>
-                          <Button kind="ghost" size="sm" onClick={goToList}>
+                          <Button kind="secondary" size="sm" onClick={goToList}>
                             <FormattedMessage
                               id="button.cancel"
                               defaultMessage="Cancel"

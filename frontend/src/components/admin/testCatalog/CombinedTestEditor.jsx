@@ -476,7 +476,7 @@ const CombinedTestEditor = () => {
                   <FormattedMessage id="button.testCatalog.setAllTo" />
                 </Button>
                 <Button
-                  kind="ghost"
+                  kind="secondary"
                   onClick={() => history.push(`${base}/TestCatalogList`)}
                 >
                   <FormattedMessage id="label.button.cancel" />

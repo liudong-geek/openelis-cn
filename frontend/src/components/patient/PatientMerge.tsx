@@ -338,7 +338,7 @@ function PatientMerge() {
               </div>
               <div className="navigationRight">
                 <Button
-                  kind="ghost"
+                  kind="secondary"
                   onClick={handleCancel}
                   disabled={isLoading}
                 >

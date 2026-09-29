@@ -291,7 +291,7 @@ export default function HisResultOutboxPanel() {
                                   <FormattedMessage id="his.outbox.retry" />
                                 </Button>
                                 <Button
-                                  kind="ghost"
+                                  kind="secondary"
                                   size="sm"
                                   disabled={busy || completed}
                                   onClick={() => setClosingId(original.id)}

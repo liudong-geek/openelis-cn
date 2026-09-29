@@ -595,7 +595,12 @@ const InlineNceForm = ({ resultRow, onClose, onSubmitSuccess }) => {
 
       {/* Buttons */}
       <div className="inline-nce-buttons">
-        <Button kind="ghost" size="sm" onClick={onClose} disabled={submitting}>
+        <Button
+          kind="secondary"
+          size="sm"
+          onClick={onClose}
+          disabled={submitting}
+        >
           <FormattedMessage id="label.button.cancel" />
         </Button>
         <Button

@@ -240,7 +240,7 @@ const TestCatalogEditor = () => {
               >
                 <FormattedMessage id="button.testCatalog.editRelatedFromEditor" />
               </Button>
-              <Button kind="ghost" onClick={handleCancel}>
+              <Button kind="secondary" onClick={handleCancel}>
                 <FormattedMessage id="label.button.cancel" />
               </Button>
             </div>

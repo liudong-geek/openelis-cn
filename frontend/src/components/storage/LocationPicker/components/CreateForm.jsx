@@ -445,7 +445,7 @@ export default function CreateForm({ selection, onLevelChange }) {
               defaultMessage="Create"
             />
           </Button>
-          <Button kind="ghost" size="sm" onClick={closeInlineCreate}>
+          <Button kind="secondary" size="sm" onClick={closeInlineCreate}>
             <FormattedMessage
               id="label.button.cancel"
               defaultMessage="Cancel"

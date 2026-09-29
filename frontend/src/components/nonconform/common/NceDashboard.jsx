@@ -1091,7 +1091,7 @@ export const NceDashboard = () => {
                         <FormattedMessage id="label.button.assign" />
                       </Button>
                       <Button
-                        kind="ghost"
+                        kind="secondary"
                         size="sm"
                         onClick={() => setAssignFormOpen(null)}
                       >
@@ -1124,7 +1124,7 @@ export const NceDashboard = () => {
                         <FormattedMessage id="label.button.save" />
                       </Button>
                       <Button
-                        kind="ghost"
+                        kind="secondary"
                         size="sm"
                         onClick={() => setNoteFormOpen(null)}
                       >

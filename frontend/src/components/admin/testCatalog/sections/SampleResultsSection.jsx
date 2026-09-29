@@ -830,7 +830,7 @@ const SampleResultsSection = ({ testId }) => {
                             <FormattedMessage id="label.testCatalog.sampleResults.uom.saveNew" />
                           </Button>
                           <Button
-                            kind="ghost"
+                            kind="secondary"
                             size="sm"
                             onClick={() => setUnitForm(null)}
                           >
