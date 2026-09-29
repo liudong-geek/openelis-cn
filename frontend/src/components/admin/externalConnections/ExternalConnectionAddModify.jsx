@@ -264,10 +264,7 @@ function ExternalConnectionAddModify({
       >
         {!embedded && <PageBreadCrumb breadcrumbs={breadcrumbs} />}
         {!embedded && (
-          <Grid
-            className="external-connection-editor__actions"
-            fullWidth={true}
-          >
+          <Grid fullWidth={true}>
             <Column lg={16} md={8} sm={4}>
               <Section>
                 <Heading>
@@ -296,6 +293,7 @@ function ExternalConnectionAddModify({
                   <Column lg={8} md={4} sm={4}>
                     <TextInput
                       id="connection-name"
+                      autoFocus={embedded}
                       type="text"
                       labelText=""
                       placeholder={intl.formatMessage({
@@ -459,7 +457,10 @@ function ExternalConnectionAddModify({
             </Column>
           </Grid>
           <br />
-          <Grid fullWidth={true}>
+          <Grid
+            className="external-connection-editor__actions"
+            fullWidth={true}
+          >
             <Column lg={16} md={8} sm={4}>
               <Button
                 id="saveButton"

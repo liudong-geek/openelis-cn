@@ -525,7 +525,7 @@ function ProviderMenu() {
         modalHeading={intl.formatMessage({
           id: "provider.management.deactivate.confirm.title",
         })}
-        iconDescription={intl.formatMessage({ id: "label.button.close" })}
+        closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
         primaryButtonText={intl.formatMessage({
           id: "externalconnections.action.deactivate",
         })}
@@ -804,7 +804,7 @@ function ProviderMenu() {
         modalHeading={intl.formatMessage({
           id: "provider.modal.add.heading",
         })}
-        iconDescription={intl.formatMessage({ id: "label.button.close" })}
+        closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
         selectorPrimaryFocus="#provider-add-last-name"
         primaryButtonText={intl.formatMessage({ id: "label.button.add" })}
         secondaryButtonText={intl.formatMessage({
@@ -889,7 +889,7 @@ function ProviderMenu() {
         modalHeading={intl.formatMessage({
           id: "provider.modal.update.heading",
         })}
-        iconDescription={intl.formatMessage({ id: "label.button.close" })}
+        closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
         selectorPrimaryFocus="#provider-update-last-name"
         primaryButtonText={intl.formatMessage({ id: "label.button.update" })}
         secondaryButtonText={intl.formatMessage({

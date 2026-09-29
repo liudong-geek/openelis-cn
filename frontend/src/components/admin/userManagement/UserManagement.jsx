@@ -350,7 +350,7 @@ function UserManagement() {
         modalHeading={intl.formatMessage({
           id: "unifiedSystemUser.add.user",
         })}
-        iconDescription={intl.formatMessage({ id: "label.button.close" })}
+        closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
         selectorPrimaryFocus="#login-name"
         onRequestClose={() => setCreateOpen(false)}
         preventCloseOnClickOutside
@@ -375,7 +375,7 @@ function UserManagement() {
         modalHeading={intl.formatMessage({
           id: "user.management.deactivate.confirm.title",
         })}
-        iconDescription={intl.formatMessage({ id: "label.button.close" })}
+        closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
         primaryButtonText={intl.formatMessage({
           id: "externalconnections.action.deactivate",
         })}

@@ -548,7 +548,7 @@ const BasicInfoSection = ({
           modalHeading={intl.formatMessage({
             id: "button.testCatalog.newTest",
           })}
-          iconDescription={intl.formatMessage({ id: "label.button.close" })}
+          closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
           selectorPrimaryFocus="#basic-info-name"
           primaryButtonText={intl.formatMessage({ id: "label.button.save" })}
           secondaryButtonText={intl.formatMessage({

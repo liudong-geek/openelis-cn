@@ -234,7 +234,7 @@ function ExternalConnectionMenu() {
               ? "externalconnections.add.title"
               : "externalconnections.edit.title",
         })}
-        iconDescription={intl.formatMessage({ id: "label.button.close" })}
+        closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
         selectorPrimaryFocus="#connection-name"
         onRequestClose={() => setEditorConnectionId(null)}
         preventCloseOnClickOutside

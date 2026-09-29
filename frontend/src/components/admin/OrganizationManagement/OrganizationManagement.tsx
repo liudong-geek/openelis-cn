@@ -348,7 +348,7 @@ function OrganizationManagement() {
         passiveModal
         size="lg"
         modalHeading={intl.formatMessage({ id: "organization.add.title" })}
-        iconDescription={intl.formatMessage({ id: "label.button.close" })}
+        closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
         selectorPrimaryFocus="#org-name"
         onRequestClose={() => setCreateOpen(false)}
         preventCloseOnClickOutside
@@ -373,7 +373,7 @@ function OrganizationManagement() {
         modalHeading={intl.formatMessage({
           id: "organization.management.deactivate.confirm.title",
         })}
-        iconDescription={intl.formatMessage({ id: "label.button.close" })}
+        closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
         primaryButtonText={intl.formatMessage({
           id: "externalconnections.action.deactivate",
         })}

@@ -399,6 +399,7 @@ function OrganizationAddModify({
             <div className="admin-form-workspace__fields">
               <TextInput
                 id="org-name"
+                autoFocus={embedded}
                 labelText={intl.formatMessage({
                   id: "organization.organizationName",
                 })}
