@@ -914,6 +914,7 @@ function UserAddModify({
             <div className="admin-form-workspace__fields">
               <TextInput
                 id="login-name"
+                autoFocus={embedded}
                 labelText={intl.formatMessage({ id: "login.login.name" })}
                 value={userDataShow.userLoginName || ""}
                 invalid={

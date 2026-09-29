@@ -212,7 +212,7 @@
 
 .external-connection-editor
   .external-connection-editor__actions
-  > .cds--col {
+  > .cds--css-grid-column {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
