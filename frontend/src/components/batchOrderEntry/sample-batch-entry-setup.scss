@@ -103,6 +103,38 @@
   max-width: none;
 }
 
+.batch-order-setup__card .cds--date-picker,
+.batch-order-setup__card .cds--date-picker-container,
+.batch-order-setup__card .cds--date-picker__input {
+  width: 100%;
+  margin-right: 0;
+}
+
+// Carbon's time input wrapper must shrink with its grid column. Giving only
+// the inner input 100% width leaves the wrapper's intrinsic width overflowing.
+.batch-order-setup__card .cds--css-grid-column,
+.batch-order-setup__card .cds--time-picker,
+.batch-order-setup__card .cds--time-picker__input,
+.batch-order-setup__card .cds--date-picker,
+.batch-order-setup__card .cds--date-picker-container,
+.batch-order-setup__card .cds--date-picker__input {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.batch-order-setup__card .cds--time-picker__input {
+  flex: 1 1 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+}
+
+.batch-order-setup__card .cds--time-picker__input-field {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 .batch-order-setup .batch-application-type {
   display: flex;
   align-items: center;

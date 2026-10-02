@@ -7,6 +7,12 @@
   gap: 1rem;
 }
 
+.admin-form-workspace__body {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
 .admin-form-workspace__card {
   overflow: hidden;
   border: 1px solid var(--oe-border);

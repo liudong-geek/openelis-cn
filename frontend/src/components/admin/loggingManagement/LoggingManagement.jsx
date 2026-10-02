@@ -11,7 +11,6 @@ import {
   Toggle,
 } from "@carbon/react";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
-import { getFromOpenElisServer } from "../../utils/Utils";
 import config from "../../../config.json";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import ProductPageHeader from "../../common/ProductPageHeader";
@@ -50,6 +49,8 @@ function LoggingManagement() {
   const [streaming, setStreaming] = useState(true);
   const [streamError, setStreamError] = useState(null);
   const [tailLines, setTailLines] = useState([]);
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState(false);
   const tailRef = useRef(null);
 
   useEffect(() => {
@@ -75,9 +76,18 @@ function LoggingManagement() {
     }
   }, [tailLines]);
 
-  const handleApply = () => {
-    const endpoint = `/logging?logLevel=${encodeURIComponent(logLevel)}&logger=${encodeURIComponent(logger)}`;
-    getFromOpenElisServer(endpoint, () => {
+  const handleApply = async () => {
+    if (applying || !logger.trim()) return;
+    setApplying(true);
+    setApplyError(false);
+    const endpoint = `/logging?logLevel=${encodeURIComponent(logLevel)}&logger=${encodeURIComponent(logger.trim())}`;
+    try {
+      // This legacy GET returns an empty body, so preserve its HTTP status.
+      const response = await fetch(`${config.serverBaseUrl}${endpoint}`, {
+        credentials: "include",
+        headers: { "Accept-Language": intl.locale },
+      });
+      if (!response.ok) throw new Error("Log level update failed");
       setNotificationVisible(true);
       addNotification({
         kind: NotificationKinds.success,
@@ -86,11 +96,15 @@ function LoggingManagement() {
           { id: "logging.management.success" },
           {
             level: LOG_LEVELS.find((level) => level.code === logLevel)?.label,
-            logger,
+            logger: logger.trim(),
           },
         ),
       });
-    });
+    } catch (_error) {
+      setApplyError(true);
+    } finally {
+      setApplying(false);
+    }
   };
 
   return (
@@ -234,6 +248,7 @@ function LoggingManagement() {
                     id: "logging.management.level",
                   })}
                   value={logLevel}
+                  disabled={applying}
                   onChange={(event) => setLogLevel(event.target.value)}
                 >
                   {LOG_LEVELS.map((level) => (
@@ -250,15 +265,28 @@ function LoggingManagement() {
                     id: "logging.management.logger",
                   })}
                   value={logger}
+                  disabled={applying}
                   onChange={(event) => setLogger(event.target.value)}
                   helperText={intl.formatMessage({
                     id: "logging.management.logger.helper",
                   })}
                 />
-                <Button size="sm" onClick={handleApply}>
+                <Button
+                  size="sm"
+                  disabled={applying || !logger.trim()}
+                  onClick={handleApply}
+                >
                   <FormattedMessage id="logging.management.apply" />
                 </Button>
               </div>
+              {applyError && (
+                <InlineNotification
+                  kind="error"
+                  lowContrast
+                  hideCloseButton
+                  title={intl.formatMessage({ id: "server.error.msg" })}
+                />
+              )}
             </AccordionItem>
           </Accordion>
         </section>

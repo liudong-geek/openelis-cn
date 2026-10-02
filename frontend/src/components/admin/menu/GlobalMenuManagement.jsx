@@ -31,6 +31,12 @@ import { FormattedMessage, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import ProductPageHeader from "../../common/ProductPageHeader";
 import "./SecurityConfiguration.css";
+import { ConfigurationContext } from "../../layout/Layout";
+import { resolveNavigationProfile } from "../../layout/navigationProfile";
+import { MENU_PROFILES } from "../../layout/taskFocusedMenu";
+import config from "../../../config.json";
+import ChinaMenuOverview from "./ChinaMenuOverview";
+import "../AdminModal.css";
 
 const breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -79,7 +85,7 @@ const humanizeElementId = (elementId = "") =>
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Unnamed menu";
 
-function GlobalMenuManagement() {
+export function LegacyGlobalMenuManagement() {
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
   const intl = useIntl();
@@ -428,6 +434,8 @@ function GlobalMenuManagement() {
       </div>
 
       <Modal
+        className="oe-admin-modal oe-confirm-modal"
+        closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
         open={confirmOpen}
         danger
         modalHeading={intl.formatMessage({ id: "security.menu.confirm.title" })}
@@ -446,4 +454,15 @@ function GlobalMenuManagement() {
   );
 }
 
-export default GlobalMenuManagement;
+export default function GlobalMenuManagement() {
+  const configuration = useContext(ConfigurationContext);
+  const profile = resolveNavigationProfile(
+    configuration?.configurationProperties?.NAVIGATION_PROFILE,
+    config.navigationProfile,
+  );
+  return profile === MENU_PROFILES.CHINA ? (
+    <ChinaMenuOverview />
+  ) : (
+    <LegacyGlobalMenuManagement />
+  );
+}

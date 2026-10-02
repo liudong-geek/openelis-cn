@@ -3,6 +3,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { IntlProvider } from "react-intl";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, expect, test, vi } from "vitest";
+import ChinaMenuOverview from "./ChinaMenuOverview";
+import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
 import messages from "../../../languages/zh.json";
 import { NotificationContext } from "../../layout/Layout";
 import {
@@ -10,7 +12,8 @@ import {
   buildPropertyRows,
   getPropertyCategory,
 } from "./CommonProperties";
-import GlobalMenuManagement, {
+import {
+  LegacyGlobalMenuManagement,
   flattenMenuTree,
   updateMenuTree,
 } from "./GlobalMenuManagement";
@@ -148,7 +151,7 @@ test("renders named menu rows and requires confirmation before saving", async ()
     }
   });
 
-  renderPage(<GlobalMenuManagement />);
+  renderPage(<LegacyGlobalMenuManagement />);
 
   expect(await screen.findByRole("checkbox", { name: "Home" })).toBeChecked();
   const saveButton = screen.getByRole("button", { name: "保存修改" });
@@ -162,5 +165,76 @@ test("renders named menu rows and requires confirmation before saving", async ()
   expect(
     screen.getByRole("heading", { name: "保存菜单权限配置？" }),
   ).toBeVisible();
+  expect(mocks.post).not.toHaveBeenCalled();
+});
+
+test("China menus preview real role slices without mutating permissions", async () => {
+  mocks.get.mockImplementation((_url, callback) =>
+    callback([
+      {
+        menu: {
+          elementId: "menu_home",
+          actionURL: "/Dashboard",
+          isActive: true,
+        },
+        childMenus: [],
+      },
+      {
+        menu: {
+          elementId: "menu_administration",
+          actionURL: "/MasterListsPage",
+          isActive: true,
+        },
+        childMenus: [],
+      },
+    ]),
+  );
+  renderPage(
+    <UserSessionDetailsContext.Provider
+      value={{ userSessionDetails: { roles: ["Global Administrator"] } }}
+    >
+      <ChinaMenuOverview />
+    </UserSessionDetailsContext.Provider>,
+  );
+  expect(
+    await screen.findByRole("cell", { name: "检验项目", exact: true }),
+  ).toBeVisible();
+  expect(screen.getByRole("link", { name: "分配用户权限" })).toHaveAttribute(
+    "href",
+    "/MasterListsPage/userManagement",
+  );
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "保存修改" }),
+  ).not.toBeInTheDocument();
+  fireEvent.change(screen.getByRole("combobox", { name: "查看范围" }), {
+    target: { value: "accountAdmin" },
+  });
+  expect(
+    screen.getByRole("cell", { name: "用户与权限", exact: true }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("cell", { name: "检验项目", exact: true }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText("岗位模板预览")).toBeVisible();
+  fireEvent.change(screen.getByRole("searchbox", { name: "搜索菜单" }), {
+    target: { value: "不存在的菜单" },
+  });
+  expect(screen.getByText("没有找到匹配的菜单")).toBeVisible();
+  expect(mocks.post).not.toHaveBeenCalled();
+});
+
+test("China menus expose load errors and retry without a write", async () => {
+  mocks.get
+    .mockImplementationOnce((_url, callback) => callback(null))
+    .mockImplementationOnce((_url, callback) => callback([]));
+  renderPage(<ChinaMenuOverview />);
+  const retry = await screen.findByRole("button", { name: "重新加载" });
+  expect(retry).toBeVisible();
+  fireEvent.click(retry);
+  expect(
+    screen.queryByRole("button", { name: "重新加载" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText("没有找到匹配的菜单")).toBeVisible();
   expect(mocks.post).not.toHaveBeenCalled();
 });

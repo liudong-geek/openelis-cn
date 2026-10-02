@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   Button,
   Checkbox,
@@ -22,6 +22,7 @@ import {
 } from "../../utils/Utils";
 import { normalizeName } from "./helpers";
 import "./LabelPresetWorkspace.css";
+import "../AdminModal.css";
 
 const BARCODE_TYPES = ["CODE_128", "QR", "DATAMATRIX"];
 
@@ -78,7 +79,11 @@ export default function LabelPresetEditor({ preset, onClose }) {
     [form, initialForm],
   );
 
+  const closeStateRef = useRef({ submitting, isDirty });
+  closeStateRef.current = { submitting, isDirty };
+
   const setField = (name, value) => {
+    if (closeStateRef.current.submitting) return;
     setForm((current) => ({ ...current, [name]: value }));
     setErrors((current) => ({
       ...current,
@@ -138,6 +143,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
   };
 
   const submit = () => {
+    if (closeStateRef.current.submitting) return;
     const nextErrors = validate();
     if (Object.keys(nextErrors).length) {
       setErrors(nextErrors);
@@ -185,9 +191,10 @@ export default function LabelPresetEditor({ preset, onClose }) {
   const numberValue = (name) => (_event, data) =>
     setField(name, Number(data.value));
   const requestClose = () => {
-    if (isDirty) {
+    if (closeStateRef.current.submitting) return false;
+    if (closeStateRef.current.isDirty) {
       setDiscardOpen(true);
-      return;
+      return false;
     }
     onClose(false);
   };
@@ -201,9 +208,12 @@ export default function LabelPresetEditor({ preset, onClose }) {
         onClose={requestClose}
         size="lg"
         data-testid="label-preset-editor"
-        className="label-preset-editor"
+        className="oe-admin-modal oe-admin-modal--large label-preset-editor"
+        selectorPrimaryFocus="#preset-name"
+        preventCloseOnClickOutside
       >
         <ModalHeader
+          iconDescription={intl.formatMessage({ id: "label.button.close" })}
           title={intl.formatMessage({
             id: isEdit
               ? "admin.labelPresets.editor.titleEdit"
@@ -293,11 +303,12 @@ export default function LabelPresetEditor({ preset, onClose }) {
                     value={form.name}
                     invalid={Boolean(errors.name)}
                     invalidText={errors.name}
-                    disabled={isEdit && preset?.isSystem}
+                    disabled={submitting || (isEdit && preset?.isSystem)}
                     onChange={(event) => setField("name", event.target.value)}
                   />
                   <Checkbox
                     id="preset-isActive"
+                    disabled={submitting}
                     aria-label={intl.formatMessage({
                       id: "admin.labelPresets.field.isActive",
                     })}
@@ -324,6 +335,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
                 <div className="label-preset-editor__fields label-preset-editor__fields--two">
                   <NumberInput
                     id="preset-widthMm"
+                    disabled={submitting}
                     label={intl.formatMessage({
                       id: "admin.labelPresets.field.widthMm",
                     })}
@@ -336,6 +348,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
                   />
                   <NumberInput
                     id="preset-heightMm"
+                    disabled={submitting}
                     label={intl.formatMessage({
                       id: "admin.labelPresets.field.heightMm",
                     })}
@@ -361,6 +374,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
                 <div className="label-preset-editor__fields">
                   <Select
                     id="preset-barcodeType"
+                    disabled={submitting}
                     labelText={intl.formatMessage({
                       id: "admin.labelPresets.field.barcodeType",
                     })}
@@ -408,6 +422,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
                   >
                     <Checkbox
                       id="scope-order"
+                      disabled={submitting}
                       aria-label={intl.formatMessage({
                         id: "admin.labelPresets.scope.order",
                       })}
@@ -427,7 +442,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
                         })}
                         value={form.defaultPerOrder}
                         min={0}
-                        disabled={!form.printsPerOrder}
+                        disabled={submitting || !form.printsPerOrder}
                         onChange={numberValue("defaultPerOrder")}
                       />
                       <NumberInput
@@ -437,7 +452,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
                         })}
                         value={form.maxPerOrder}
                         min={0}
-                        disabled={!form.printsPerOrder}
+                        disabled={submitting || !form.printsPerOrder}
                         invalid={Boolean(errors.maxPerOrder)}
                         invalidText={errors.maxPerOrder}
                         onChange={numberValue("maxPerOrder")}
@@ -453,6 +468,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
                   >
                     <Checkbox
                       id="scope-sample"
+                      disabled={submitting}
                       aria-label={intl.formatMessage({
                         id: "admin.labelPresets.scope.sample",
                       })}
@@ -472,7 +488,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
                         })}
                         value={form.defaultPerSample}
                         min={0}
-                        disabled={!form.printsPerSample}
+                        disabled={submitting || !form.printsPerSample}
                         onChange={numberValue("defaultPerSample")}
                       />
                       <NumberInput
@@ -482,7 +498,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
                         })}
                         value={form.maxPerSample}
                         min={0}
-                        disabled={!form.printsPerSample}
+                        disabled={submitting || !form.printsPerSample}
                         invalid={Boolean(errors.maxPerSample)}
                         invalidText={errors.maxPerSample}
                         onChange={numberValue("maxPerSample")}
@@ -517,6 +533,8 @@ export default function LabelPresetEditor({ preset, onClose }) {
       </ComposedModal>
       {discardOpen && (
         <Modal
+          className="oe-admin-modal oe-confirm-modal"
+          closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
           open
           danger
           modalHeading={intl.formatMessage({

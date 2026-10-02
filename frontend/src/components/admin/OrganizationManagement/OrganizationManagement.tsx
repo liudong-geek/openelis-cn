@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from "react";
+import React, { useContext, useState, useEffect, useRef } from "react";
 import type { ChangeEvent, ReactNode } from "react";
 import {
   Loading,
@@ -32,10 +32,7 @@ import {
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import ProductPageHeader from "../../common/ProductPageHeader";
-import {
-  navigateToInternalPath,
-  refreshCurrentRoute,
-} from "../../utils/NavigationUtils";
+import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 import OrganizationAddModify from "./OrganizationAddModify";
 import "../AdminListWorkspace.css";
 import "../AdminModal.css";
@@ -126,8 +123,14 @@ function OrganizationManagement() {
   const [appliedSearchTerm, setAppliedSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [confirmDeactivateOpen, setConfirmDeactivateOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [editingOrganizationId, setEditingOrganizationId] = useState<
+    string | null
+  >(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const editorSaving = useRef(false);
+  const setEditorSaving = (saving: boolean) => {
+    editorSaving.current = saving;
+  };
   const [totalRecordCount, setTotalRecordCount] = useState("");
   const [organizationsManagmentList, setOrganizationsManagmentList] =
     useState<OrganizationMenuResponse>();
@@ -296,11 +299,7 @@ function OrganizationManagement() {
           <Button
             kind="ghost"
             size="sm"
-            onClick={() =>
-              navigateToInternalPath(
-                `/MasterListsPage/organizationEdit?ID=${row.id}&startingRecNo=1`,
-              )
-            }
+            onClick={() => setEditingOrganizationId(row.id)}
           >
             <FormattedMessage id="externalconnections.action.edit" />
           </Button>
@@ -337,30 +336,39 @@ function OrganizationManagement() {
   );
   const selectedCount = selectedRowIds.length;
 
-  const openAddOrganization = () => setCreateOpen(true);
+  const openAddOrganization = () => setEditingOrganizationId("0");
+  const closeEditor = () => {
+    if (!editorSaving.current) setEditingOrganizationId(null);
+  };
 
   return (
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
       <Modal
         className="oe-admin-modal oe-admin-modal--large"
-        open={createOpen}
+        open={editingOrganizationId !== null}
         passiveModal
         size="lg"
-        modalHeading={intl.formatMessage({ id: "organization.add.title" })}
+        modalHeading={intl.formatMessage({
+          id:
+            editingOrganizationId === "0"
+              ? "organization.add.title"
+              : "organization.edit.title",
+        })}
         closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
         selectorPrimaryFocus="#org-name"
-        onRequestClose={() => setCreateOpen(false)}
+        onRequestClose={closeEditor}
         preventCloseOnClickOutside
       >
-        {createOpen && (
+        {editingOrganizationId !== null && (
           <OrganizationAddModify
             embedded
-            organizationId="0"
-            onRequestClose={() => setCreateOpen(false)}
+            organizationId={editingOrganizationId}
+            onSavingChange={setEditorSaving}
+            onRequestClose={closeEditor}
             onSaved={() => {
-              setCreateOpen(false);
-              setPage(1);
+              setEditingOrganizationId(null);
+              if (editingOrganizationId === "0") setPage(1);
               setReloadKey((value) => value + 1);
             }}
           />

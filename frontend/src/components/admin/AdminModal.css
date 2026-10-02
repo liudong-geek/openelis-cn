@@ -1,7 +1,7 @@
 .oe-admin-modal .cds--modal-container {
   overflow: hidden;
   border-radius: var(--oe-surface-radius, 0.5rem);
-  background: var(--cds-layer-01, #ffffff);
+  background: var(--oe-surface, #ffffff);
   box-shadow: 0 1.5rem 4rem rgb(15 23 42 / 28%);
 }
 
@@ -52,6 +52,7 @@
 }
 
 .oe-admin-modal .cds--modal-content {
+  min-block-size: 0;
   padding: 1.5rem;
 }
 
@@ -90,20 +91,95 @@
 .oe-admin-modal .cds--modal-footer {
   display: flex;
   min-height: auto;
+  block-size: auto;
+  flex-shrink: 0;
   justify-content: flex-end;
   gap: 0.75rem;
   padding: 1rem 1.5rem;
   border-top: 1px solid var(--oe-border, #dde1e6);
-  background: var(--cds-layer-01, #ffffff);
+  background: var(--oe-surface, #ffffff);
 }
 
-.oe-admin-modal .cds--modal-footer .cds--btn {
+.oe-admin-modal .cds--modal-footer .cds--btn:not(.cds--skeleton) {
   flex: 0 0 auto;
   width: auto;
   min-width: 7rem;
   max-width: 12rem;
   min-height: 2.5rem;
-  padding-inline: 1rem 3rem;
+  height: 2.5rem;
+  block-size: 2.5rem;
+  min-block-size: 2.5rem;
+  align-items: center;
+  padding: 0 1rem;
+}
+
+.oe-admin-modal
+  .cds--toggle:not(.cds--toggle--disabled):not(.cds--toggle--readonly)
+  .cds--toggle__switch--checked {
+  background-color: var(--oe-brand);
+}
+
+.oe-admin-modal .cds--number input[type="number"] {
+  border: 1px solid var(--oe-border-strong);
+  border-radius: var(--oe-control-radius);
+}
+
+/* Embedded long forms keep actions outside the scrolling fields. */
+.oe-admin-modal .cds--modal-content:has(.admin-form-workspace__body) {
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.oe-admin-modal .admin-form-workspace:has(.admin-form-workspace__body),
+.oe-admin-modal
+  .admin-form-workspace__content:has(.admin-form-workspace__body) {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  min-width: 0;
+}
+
+.oe-admin-modal .admin-form-workspace__body {
+  grid-auto-rows: max-content;
+  align-content: start;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 1.25rem 1.5rem;
+  scroll-padding-block: 1.25rem;
+}
+
+.oe-admin-modal .admin-form-workspace__body + .admin-form-workspace__actions {
+  position: static;
+  flex: 0 0 auto;
+  margin: 0;
+  background: var(--oe-surface, #ffffff);
+  backdrop-filter: none;
+}
+
+.oe-admin-modal .admin-form-workspace__actions .cds--btn {
+  align-items: center;
+  height: 2.5rem;
+  min-height: 2.5rem;
+  min-width: 7rem;
+  padding-block: 0;
+}
+
+.oe-admin-modal .admin-form-workspace__fields > *,
+.oe-admin-modal .admin-form-workspace__profile-controls > *,
+.oe-admin-modal .admin-form-workspace__permission-card > * {
+  min-width: 0;
+}
+
+@media (max-width: 66rem) {
+  .oe-admin-modal .admin-form-workspace__profile-controls,
+  .oe-admin-modal .admin-form-workspace__permission-card {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 41.9375rem) {
@@ -121,7 +197,7 @@
     flex-direction: column-reverse;
   }
 
-  .oe-admin-modal .cds--modal-footer .cds--btn {
+  .oe-admin-modal .cds--modal-footer .cds--btn:not(.cds--skeleton) {
     width: 100%;
     max-width: none;
   }

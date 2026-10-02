@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Button,
-  DataTable,
+  InlineNotification,
   Table,
   TableHead,
   TableRow,
@@ -14,6 +14,7 @@ import {
   Toggle,
   NumberInput,
   Loading,
+  Search,
   Tag,
 } from "@carbon/react";
 import { Add, Edit, TrashCan, Star, StarFilled } from "@carbon/icons-react";
@@ -24,8 +25,10 @@ import {
   putToOpenElisServerFullResponse,
   deleteFromOpenElisServerFullResponse,
 } from "../../utils/Utils";
-import { NotificationContext } from "../../layout/Layout";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import ProductPageHeader from "../../common/ProductPageHeader";
+import "../AdminListWorkspace.css";
+import "../AdminModal.css";
 
 interface SupportedLocale {
   id: string;
@@ -45,538 +48,421 @@ interface LocaleFormData {
 }
 
 type LocaleFormErrors = Partial<Record<"localeCode" | "displayName", string>>;
+type Notice = { kind: "success" | "error"; messageId: string } | null;
+const emptyForm: LocaleFormData = {
+  localeCode: "",
+  displayName: "",
+  active: true,
+  fallback: false,
+  sortOrder: 0,
+};
 
 const LanguageManagement = () => {
   const intl = useIntl();
-  const { addNotification } = useContext(NotificationContext);
-
   const [locales, setLocales] = useState<SupportedLocale[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [search, setSearch] = useState("");
+  const [notice, setNotice] = useState<Notice>(null);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const updateSaving = (value: boolean) => {
+    savingRef.current = value;
+    setSaving(value);
+  };
+  const [formError, setFormError] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [editingLocale, setEditingLocale] = useState<SupportedLocale | null>(
     null,
   );
   const [deleteTarget, setDeleteTarget] = useState<SupportedLocale | null>(
     null,
   );
-  const [formData, setFormData] = useState<LocaleFormData>({
-    localeCode: "",
-    displayName: "",
-    active: true,
-    fallback: false,
-    sortOrder: 0,
-  });
+  const [deleteError, setDeleteError] = useState(false);
+  const [formData, setFormData] = useState<LocaleFormData>(emptyForm);
   const [formErrors, setFormErrors] = useState<LocaleFormErrors>({});
-
-  useEffect(() => {
-    fetchLocales();
-  }, []);
 
   const fetchLocales = () => {
     setLoading(true);
+    setLoadError(false);
     getFromOpenElisServer(
       "/rest/supportedlocales",
       (response?: SupportedLocale[]) => {
-        if (response) {
-          setLocales(response);
-        }
+        if (Array.isArray(response)) setLocales(response);
+        else setLoadError(true);
         setLoading(false);
       },
     );
   };
 
+  useEffect(() => {
+    fetchLocales();
+  }, []);
+
+  const openEditor = (locale: SupportedLocale | null) => {
+    setEditingLocale(locale);
+    setFormData(
+      locale ? { ...locale } : { ...emptyForm, sortOrder: locales.length + 1 },
+    );
+    setFormErrors({});
+    setFormError(false);
+    setNotice(null);
+    setIsModalOpen(true);
+  };
+
   const validateForm = () => {
     const errors: LocaleFormErrors = {};
-    if (!formData.localeCode || formData.localeCode.trim() === "") {
-      errors.localeCode = intl.formatMessage({
-        id: "error.field.required",
-        defaultMessage: "This field is required",
-      });
+    if (!formData.localeCode.trim()) {
+      errors.localeCode = intl.formatMessage({ id: "error.field.required" });
     } else if (!/^[a-z]{2}(-[A-Z]{2})?$/.test(formData.localeCode)) {
-      errors.localeCode = intl.formatMessage({
-        id: "error.locale.format",
-        defaultMessage:
-          "Invalid format. Use: en, fr, es, or en-US, fr-CA, etc.",
-      });
+      errors.localeCode = intl.formatMessage({ id: "error.locale.format" });
     }
-    if (!formData.displayName || formData.displayName.trim() === "") {
-      errors.displayName = intl.formatMessage({
-        id: "error.field.required",
-        defaultMessage: "This field is required",
-      });
+    if (!formData.displayName.trim()) {
+      errors.displayName = intl.formatMessage({ id: "error.field.required" });
     }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const handleAdd = () => {
-    setEditingLocale(null);
-    setFormData({
-      localeCode: "",
-      displayName: "",
-      active: true,
-      fallback: false,
-      sortOrder: locales.length + 1,
-    });
-    setFormErrors({});
-    setIsModalOpen(true);
-  };
-
-  const handleEdit = (locale: SupportedLocale) => {
-    setEditingLocale(locale);
-    setFormData({
-      localeCode: locale.localeCode,
-      displayName: locale.displayName,
-      active: locale.active,
-      fallback: locale.fallback,
-      sortOrder: locale.sortOrder,
-    });
-    setFormErrors({});
-    setIsModalOpen(true);
-  };
-
-  const handleDelete = (locale: SupportedLocale) => {
-    if (locale.fallback) {
-      addNotification({
-        kind: "error",
-        title: intl.formatMessage({
-          id: "notification.error",
-          defaultMessage: "Error",
-        }),
-        message: intl.formatMessage({
-          id: "locale.delete.fallback.error",
-          defaultMessage:
-            "Cannot delete the fallback language. Set another language as fallback first.",
-        }),
+  const handleSave = () => {
+    if (savingRef.current || !validateForm()) return;
+    updateSaving(true);
+    setFormError(false);
+    const callback = (response?: Response) => {
+      updateSaving(false);
+      if (!response?.ok) {
+        setFormError(true);
+        return;
+      }
+      setIsModalOpen(false);
+      setNotice({
+        kind: "success",
+        messageId: editingLocale
+          ? "locale.update.success"
+          : "locale.create.success",
       });
-      return;
+      fetchLocales();
+    };
+    if (editingLocale) {
+      putToOpenElisServerFullResponse(
+        `/rest/supportedlocales/${editingLocale.id}`,
+        JSON.stringify(formData),
+        callback,
+      );
+    } else {
+      postToOpenElisServerFullResponse(
+        "/rest/supportedlocales",
+        JSON.stringify(formData),
+        callback,
+      );
     }
-    setDeleteTarget(locale);
-    setIsDeleteModalOpen(true);
   };
 
   const confirmDelete = () => {
-    if (!deleteTarget) return;
-
+    if (!deleteTarget || deleteTarget.fallback || savingRef.current) return;
+    updateSaving(true);
+    setDeleteError(false);
     deleteFromOpenElisServerFullResponse(
       `/rest/supportedlocales/${deleteTarget.id}`,
-      (response: Response) => {
-        setIsDeleteModalOpen(false);
-        setDeleteTarget(null);
-        if (response.ok) {
-          addNotification({
-            kind: "success",
-            title: intl.formatMessage({
-              id: "notification.success",
-              defaultMessage: "Success",
-            }),
-            message: intl.formatMessage({
-              id: "locale.delete.success",
-              defaultMessage: "Language deleted successfully",
-            }),
-          });
-          fetchLocales();
-        } else {
-          addNotification({
-            kind: "error",
-            title: intl.formatMessage({
-              id: "notification.error",
-              defaultMessage: "Error",
-            }),
-            message: intl.formatMessage({
-              id: "locale.delete.error",
-              defaultMessage: "Failed to delete language",
-            }),
-          });
+      (response?: Response) => {
+        updateSaving(false);
+        if (!response?.ok) {
+          setDeleteError(true);
+          return;
         }
+        setDeleteTarget(null);
+        setNotice({ kind: "success", messageId: "locale.delete.success" });
+        fetchLocales();
       },
     );
   };
 
   const handleSetFallback = (locale: SupportedLocale) => {
+    if (savingRef.current || locale.fallback) return;
+    updateSaving(true);
+    setNotice(null);
     postToOpenElisServerFullResponse(
       `/rest/supportedlocales/${locale.id}/setFallback`,
       null,
-      (response: Response) => {
-        if (response.ok) {
-          addNotification({
-            kind: "success",
-            title: intl.formatMessage({
-              id: "notification.success",
-              defaultMessage: "Success",
-            }),
-            message: intl.formatMessage({
-              id: "locale.fallback.success",
-              defaultMessage: "Fallback language updated",
-            }),
-          });
+      (response?: Response) => {
+        updateSaving(false);
+        if (response?.ok) {
+          setNotice({ kind: "success", messageId: "locale.fallback.success" });
           fetchLocales();
-        } else {
-          addNotification({
-            kind: "error",
-            title: intl.formatMessage({
-              id: "notification.error",
-              defaultMessage: "Error",
-            }),
-            message: intl.formatMessage({
-              id: "locale.fallback.error",
-              defaultMessage: "Failed to set fallback language",
-            }),
-          });
-        }
+        } else setNotice({ kind: "error", messageId: "locale.fallback.error" });
       },
     );
   };
 
-  const handleSave = () => {
-    if (!validateForm()) return;
-
-    const url = editingLocale
-      ? `/rest/supportedlocales/${editingLocale.id}`
-      : "/rest/supportedlocales";
-
-    const callback = (response: Response) => {
-      if (response.ok) {
-        addNotification({
-          kind: "success",
-          title: intl.formatMessage({
-            id: "notification.success",
-            defaultMessage: "Success",
-          }),
-          message: editingLocale
-            ? intl.formatMessage({
-                id: "locale.update.success",
-                defaultMessage: "Language updated successfully",
-              })
-            : intl.formatMessage({
-                id: "locale.create.success",
-                defaultMessage: "Language created successfully",
-              }),
-        });
-        setIsModalOpen(false);
-        fetchLocales();
-      } else {
-        addNotification({
-          kind: "error",
-          title: intl.formatMessage({
-            id: "notification.error",
-            defaultMessage: "Error",
-          }),
-          message: intl.formatMessage({
-            id: "locale.save.error",
-            defaultMessage: "Failed to save language",
-          }),
-        });
-      }
-    };
-
-    if (editingLocale) {
-      putToOpenElisServerFullResponse(url, JSON.stringify(formData), callback);
-    } else {
-      postToOpenElisServerFullResponse(url, JSON.stringify(formData), callback);
-    }
-  };
-
-  const headers = [
-    {
-      key: "localeCode",
-      header: intl.formatMessage({
-        id: "locale.code",
-        defaultMessage: "Locale Code",
-      }),
-    },
-    {
-      key: "displayName",
-      header: intl.formatMessage({
-        id: "locale.displayName",
-        defaultMessage: "Display Name",
-      }),
-    },
-    {
-      key: "status",
-      header: intl.formatMessage({
-        id: "locale.status",
-        defaultMessage: "Status",
-      }),
-    },
-    {
-      key: "sortOrder",
-      header: intl.formatMessage({
-        id: "locale.sortOrder",
-        defaultMessage: "Sort Order",
-      }),
-    },
-    {
-      key: "actions",
-      header: intl.formatMessage({
-        id: "label.actions",
-        defaultMessage: "Actions",
-      }),
-    },
-  ];
-
-  const breadcrumbs = [
-    { label: "home.label", link: "/" },
-    { label: "admin.label", link: "/admin" },
-    { label: "locale.management.title", link: "/admin/languageManagement" },
-  ];
-
-  if (loading) {
-    return <Loading />;
-  }
+  const query = search.trim().toLocaleLowerCase();
+  const visibleLocales = locales.filter((locale) =>
+    [locale.localeCode, locale.displayName].some((value) =>
+      value.toLocaleLowerCase().includes(query),
+    ),
+  );
 
   return (
-    <>
-      <PageBreadCrumb breadcrumbs={breadcrumbs} />
-      <div className="adminPageContent">
-        <div className="orderLegendBody">
-          <h2>
-            <FormattedMessage
-              id="locale.management.title"
-              defaultMessage="Language Management"
+    <div className="adminPageContent admin-list-workspace admin-list-workspace--compact language-management-page">
+      {loading && (
+        <Loading
+          description={intl.formatMessage({ id: "loading.description" })}
+        />
+      )}
+      <PageBreadCrumb
+        breadcrumbs={[
+          { label: "home.label", link: "/" },
+          { label: "breadcrums.admin.managment", link: "/MasterListsPage" },
+          {
+            label: "locale.management.title",
+            link: "/MasterListsPage/languageManagement",
+          },
+        ]}
+      />
+      <ProductPageHeader
+        title={<FormattedMessage id="locale.management.title" />}
+        subtitle={<FormattedMessage id="locale.management.description" />}
+        actions={
+          <Button
+            renderIcon={Add}
+            size="sm"
+            disabled={saving || loadError}
+            onClick={() => openEditor(null)}
+          >
+            <FormattedMessage id="locale.add" />
+          </Button>
+        }
+      />
+      {notice && (
+        <InlineNotification
+          lowContrast
+          kind={notice.kind}
+          title={intl.formatMessage({ id: notice.messageId })}
+          onCloseButtonClick={() => setNotice(null)}
+        />
+      )}
+      {loadError ? (
+        <section className="admin-list-workspace__surface">
+          <InlineNotification
+            lowContrast
+            hideCloseButton
+            kind="error"
+            title={intl.formatMessage({ id: "server.error.msg" })}
+          />
+          <Button kind="secondary" onClick={fetchLocales}>
+            <FormattedMessage id="button.retry" />
+          </Button>
+        </section>
+      ) : (
+        <section className="admin-list-workspace__surface">
+          <div className="admin-list-workspace__filters">
+            <Search
+              id="language-search"
+              size="lg"
+              labelText={intl.formatMessage({ id: "search.label" })}
+              placeholder={intl.formatMessage({ id: "search.label" })}
+              closeButtonLabelText={intl.formatMessage({
+                id: "label.button.clear",
+              })}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
             />
-          </h2>
-          <p>
-            <FormattedMessage
-              id="locale.management.description"
-              defaultMessage="Manage supported languages for metadata translations."
-            />
-          </p>
-
-          <div style={{ marginBottom: "1rem" }}>
-            <Button
-              kind="primary"
-              renderIcon={Add}
-              onClick={handleAdd}
-              size="sm"
-            >
-              <FormattedMessage id="locale.add" defaultMessage="Add Language" />
-            </Button>
           </div>
-
-          <DataTable rows={locales} headers={headers}>
-            {({ headers, getTableProps, getHeaderProps }) => (
-              <TableContainer>
-                <Table {...getTableProps()}>
-                  <TableHead>
-                    <TableRow>
-                      {headers.map((header) => (
-                        <TableHeader
-                          key={header.key}
-                          {...getHeaderProps({ header })}
-                        >
-                          {header.header}
-                        </TableHeader>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {locales.map((locale) => (
-                      <TableRow key={locale.id}>
-                        <TableCell>
-                          {locale.localeCode}
-                          {locale.fallback && (
-                            <Tag type="blue" style={{ marginLeft: "0.5rem" }}>
-                              <FormattedMessage
-                                id="locale.fallback"
-                                defaultMessage="Fallback"
-                              />
-                            </Tag>
-                          )}
-                        </TableCell>
-                        <TableCell>{locale.displayName}</TableCell>
-                        <TableCell>
-                          {locale.active ? (
-                            <Tag type="green">
-                              <FormattedMessage
-                                id="label.active"
-                                defaultMessage="Active"
-                              />
-                            </Tag>
-                          ) : (
-                            <Tag type="gray">
-                              <FormattedMessage
-                                id="label.inactive"
-                                defaultMessage="Inactive"
-                              />
-                            </Tag>
-                          )}
-                        </TableCell>
-                        <TableCell>{locale.sortOrder}</TableCell>
-                        <TableCell>
-                          <Button
-                            kind="ghost"
-                            size="sm"
-                            hasIconOnly
-                            renderIcon={Edit}
-                            iconDescription={intl.formatMessage({
-                              id: "label.edit",
-                              defaultMessage: "Edit",
-                            })}
-                            onClick={() => handleEdit(locale)}
-                          />
-                          <Button
-                            kind="ghost"
-                            size="sm"
-                            hasIconOnly
-                            renderIcon={locale.fallback ? StarFilled : Star}
-                            iconDescription={intl.formatMessage({
-                              id: "locale.setFallback",
-                              defaultMessage: "Set as Fallback",
-                            })}
-                            onClick={() => handleSetFallback(locale)}
-                            disabled={locale.fallback}
-                          />
-                          <Button
-                            kind="danger--ghost"
-                            size="sm"
-                            hasIconOnly
-                            renderIcon={TrashCan}
-                            iconDescription={intl.formatMessage({
-                              id: "label.delete",
-                              defaultMessage: "Delete",
-                            })}
-                            onClick={() => handleDelete(locale)}
-                            disabled={locale.fallback}
-                          />
-                        </TableCell>
-                      </TableRow>
+          <div className="admin-list-workspace__table-scroll">
+            <TableContainer>
+              <Table
+                aria-label={intl.formatMessage({
+                  id: "locale.management.title",
+                })}
+              >
+                <TableHead>
+                  <TableRow>
+                    {[
+                      "locale.code",
+                      "locale.displayName",
+                      "locale.status",
+                      "locale.sortOrder",
+                      "label.actions",
+                    ].map((key) => (
+                      <TableHeader key={key}>
+                        <FormattedMessage id={key} />
+                      </TableHeader>
                     ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </DataTable>
-        </div>
-      </div>
-
-      {/* Add/Edit Modal */}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {visibleLocales.map((locale) => (
+                    <TableRow key={locale.id}>
+                      <TableCell>
+                        {locale.localeCode}
+                        {locale.fallback && (
+                          <Tag type="blue" size="sm">
+                            <FormattedMessage id="locale.fallback" />
+                          </Tag>
+                        )}
+                      </TableCell>
+                      <TableCell>{locale.displayName}</TableCell>
+                      <TableCell>
+                        <Tag type={locale.active ? "green" : "gray"} size="sm">
+                          <FormattedMessage
+                            id={
+                              locale.active ? "label.active" : "label.inactive"
+                            }
+                          />
+                        </Tag>
+                      </TableCell>
+                      <TableCell>{locale.sortOrder}</TableCell>
+                      <TableCell>
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          disabled={saving}
+                          renderIcon={Edit}
+                          onClick={() => openEditor(locale)}
+                        >
+                          <FormattedMessage id="label.edit" />
+                        </Button>
+                        <Button
+                          kind="ghost"
+                          size="sm"
+                          hasIconOnly
+                          renderIcon={locale.fallback ? StarFilled : Star}
+                          iconDescription={intl.formatMessage({
+                            id: "locale.setFallback",
+                          })}
+                          onClick={() => handleSetFallback(locale)}
+                          disabled={saving || locale.fallback}
+                        />
+                        <Button
+                          kind="danger--ghost"
+                          size="sm"
+                          hasIconOnly
+                          renderIcon={TrashCan}
+                          iconDescription={intl.formatMessage({
+                            id: "label.delete",
+                          })}
+                          onClick={() => {
+                            setDeleteTarget(locale);
+                            setDeleteError(false);
+                          }}
+                          disabled={saving || locale.fallback}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {!visibleLocales.length && (
+                    <TableRow>
+                      <TableCell colSpan={5}>
+                        <FormattedMessage id="label.no.options.available" />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </div>
+        </section>
+      )}
       <Modal
         open={isModalOpen}
         size="sm"
-        modalHeading={
-          editingLocale
-            ? intl.formatMessage({
-                id: "locale.edit.title",
-                defaultMessage: "Edit Language",
-              })
-            : intl.formatMessage({
-                id: "locale.add.title",
-                defaultMessage: "Add Language",
-              })
-        }
-        primaryButtonText={intl.formatMessage({
-          id: "label.save",
-          defaultMessage: "Save",
+        className="oe-admin-modal"
+        modalHeading={intl.formatMessage({
+          id: editingLocale ? "locale.edit.title" : "locale.add.title",
         })}
-        secondaryButtonText={intl.formatMessage({
-          id: "label.cancel",
-          defaultMessage: "Cancel",
+        closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
+        primaryButtonText={intl.formatMessage({ id: "label.save" })}
+        secondaryButtonText={intl.formatMessage({ id: "label.cancel" })}
+        primaryButtonDisabled={saving}
+        loadingStatus={saving ? "active" : "inactive"}
+        loadingDescription={intl.formatMessage({
+          id: "config.workspace.saving",
         })}
-        onRequestClose={() => setIsModalOpen(false)}
+        selectorPrimaryFocus={editingLocale ? "#displayName" : "#localeCode"}
+        preventCloseOnClickOutside
+        onRequestClose={() => {
+          if (!savingRef.current) setIsModalOpen(false);
+        }}
         onRequestSubmit={handleSave}
       >
-        <TextInput
-          id="localeCode"
-          labelText={intl.formatMessage({
-            id: "locale.code",
-            defaultMessage: "Locale Code",
-          })}
-          helperText={intl.formatMessage({
-            id: "locale.code.helper",
-            defaultMessage: "e.g., en, fr, es, pt",
-          })}
-          value={formData.localeCode}
-          onChange={(e) =>
-            setFormData({ ...formData, localeCode: e.target.value })
-          }
-          invalid={!!formErrors.localeCode}
-          invalidText={formErrors.localeCode}
-          disabled={!!editingLocale}
-        />
-        <TextInput
-          id="displayName"
-          labelText={intl.formatMessage({
-            id: "locale.displayName",
-            defaultMessage: "Display Name",
-          })}
-          helperText={intl.formatMessage({
-            id: "locale.displayName.helper",
-            defaultMessage: "e.g., English, Francais, Espanol",
-          })}
-          value={formData.displayName}
-          onChange={(e) =>
-            setFormData({ ...formData, displayName: e.target.value })
-          }
-          invalid={!!formErrors.displayName}
-          invalidText={formErrors.displayName}
-          style={{ marginTop: "1rem" }}
-        />
-        <NumberInput
-          id="sortOrder"
-          label={intl.formatMessage({
-            id: "locale.sortOrder",
-            defaultMessage: "Sort Order",
-          })}
-          value={formData.sortOrder}
-          onChange={(e, { value }) =>
-            setFormData({ ...formData, sortOrder: value })
-          }
-          min={0}
-          style={{ marginTop: "1rem" }}
-        />
-        <Toggle
-          id="active"
-          labelText={intl.formatMessage({
-            id: "locale.active",
-            defaultMessage: "Active",
-          })}
-          labelA={intl.formatMessage({
-            id: "label.no",
-            defaultMessage: "No",
-          })}
-          labelB={intl.formatMessage({
-            id: "label.yes",
-            defaultMessage: "Yes",
-          })}
-          toggled={formData.active}
-          onToggle={(checked) => setFormData({ ...formData, active: checked })}
-          style={{ marginTop: "1rem" }}
-        />
+        {formError && (
+          <InlineNotification
+            lowContrast
+            hideCloseButton
+            kind="error"
+            title={intl.formatMessage({ id: "error.add.edited.msg" })}
+          />
+        )}
+        <div className="oe-admin-modal__form-grid">
+          <TextInput
+            id="localeCode"
+            labelText={intl.formatMessage({ id: "locale.code" })}
+            helperText={intl.formatMessage({ id: "locale.code.helper" })}
+            value={formData.localeCode}
+            onChange={(event) =>
+              setFormData({ ...formData, localeCode: event.target.value })
+            }
+            invalid={!!formErrors.localeCode}
+            invalidText={formErrors.localeCode}
+            disabled={saving || !!editingLocale}
+          />
+          <TextInput
+            id="displayName"
+            labelText={intl.formatMessage({ id: "locale.displayName" })}
+            helperText={intl.formatMessage({ id: "locale.displayName.helper" })}
+            value={formData.displayName}
+            onChange={(event) =>
+              setFormData({ ...formData, displayName: event.target.value })
+            }
+            invalid={!!formErrors.displayName}
+            invalidText={formErrors.displayName}
+            disabled={saving}
+          />
+          <NumberInput
+            id="sortOrder"
+            label={intl.formatMessage({ id: "locale.sortOrder" })}
+            value={formData.sortOrder}
+            onChange={(_event, { value }) =>
+              setFormData({ ...formData, sortOrder: value })
+            }
+            min={0}
+            disabled={saving}
+          />
+          <Toggle
+            id="active"
+            labelText={intl.formatMessage({ id: "locale.active" })}
+            labelA={intl.formatMessage({ id: "label.no" })}
+            labelB={intl.formatMessage({ id: "label.yes" })}
+            toggled={formData.active}
+            onToggle={(checked) =>
+              setFormData({ ...formData, active: checked })
+            }
+            disabled={saving}
+          />
+        </div>
       </Modal>
-
-      {/* Delete Confirmation Modal */}
       <Modal
-        open={isDeleteModalOpen}
+        open={deleteTarget !== null}
         alert
         danger
         size="xs"
-        className="oe-confirm-modal"
-        closeButtonLabel={intl.formatMessage({
-          id: "button.close",
-          defaultMessage: "Close",
+        className="oe-admin-modal oe-confirm-modal"
+        closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
+        modalHeading={intl.formatMessage({ id: "locale.delete.confirm.title" })}
+        primaryButtonText={intl.formatMessage({ id: "label.delete" })}
+        secondaryButtonText={intl.formatMessage({ id: "label.cancel" })}
+        primaryButtonDisabled={saving}
+        loadingStatus={saving ? "active" : "inactive"}
+        loadingDescription={intl.formatMessage({
+          id: "config.workspace.saving",
         })}
-        modalHeading={intl.formatMessage({
-          id: "locale.delete.confirm.title",
-          defaultMessage: "Delete Language",
-        })}
-        primaryButtonText={intl.formatMessage({
-          id: "label.delete",
-          defaultMessage: "Delete",
-        })}
-        secondaryButtonText={intl.formatMessage({
-          id: "label.cancel",
-          defaultMessage: "Cancel",
-        })}
-        onRequestClose={() => setIsDeleteModalOpen(false)}
+        preventCloseOnClickOutside
+        onRequestClose={() => {
+          if (!savingRef.current) setDeleteTarget(null);
+        }}
         onRequestSubmit={confirmDelete}
       >
         <p className="oe-confirm-modal__message">
-          <FormattedMessage
-            id="locale.delete.confirm.message"
-            defaultMessage="Are you sure you want to delete this language? This action cannot be undone."
-          />
+          <FormattedMessage id="locale.delete.confirm.message" />
         </p>
         {deleteTarget && (
           <p className="oe-confirm-modal__subject">
@@ -585,8 +471,16 @@ const LanguageManagement = () => {
             </strong>
           </p>
         )}
+        {deleteError && (
+          <InlineNotification
+            lowContrast
+            hideCloseButton
+            kind="error"
+            title={intl.formatMessage({ id: "locale.delete.error" })}
+          />
+        )}
       </Modal>
-    </>
+    </div>
   );
 };
 

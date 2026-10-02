@@ -42,6 +42,7 @@ import {
 import "../AdminListWorkspace.css";
 import "../AdminModal.css";
 import "./ConfigurationEntityWorkspace.css";
+import ConfigurationNameEditor from "./ConfigurationNameEditor";
 
 function PanelManagement() {
   const intl = useIntl();
@@ -57,6 +58,7 @@ function PanelManagement() {
   const [loadError, setLoadError] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [form, setForm] = useState({
@@ -289,8 +291,7 @@ function PanelManagement() {
                         </TableCell>
                         <TableCell>
                           <Button
-                            as={Link}
-                            to={`${base}/PanelRenameEntry`}
+                            onClick={() => setEditingRecord(panel)}
                             kind="ghost"
                             size="sm"
                           >
@@ -314,6 +315,26 @@ function PanelManagement() {
             </div>
           )}
         </section>
+
+        {editingRecord && (
+          <ConfigurationNameEditor
+            entity="panel"
+            record={editingRecord}
+            onClose={() => setEditingRecord(null)}
+            onSaved={() => {
+              setEditingRecord(null);
+              addNotification({
+                kind: NotificationKinds.success,
+                title: intl.formatMessage({ id: "notification.title" }),
+                message: intl.formatMessage({
+                  id: "notification.user.post.save.success",
+                }),
+              });
+              setNotificationVisible(true);
+              loadPanels();
+            }}
+          />
+        )}
 
         <ComposedModal
           open={isCreateOpen}

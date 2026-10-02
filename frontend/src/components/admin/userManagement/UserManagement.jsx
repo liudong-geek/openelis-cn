@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from "react";
+import React, { useContext, useState, useEffect, useRef } from "react";
 import {
   Loading,
   InlineLoading,
@@ -32,10 +32,7 @@ import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import CustomCheckBox from "../../common/CustomCheckBox";
 import ProductPageHeader from "../../common/ProductPageHeader";
-import {
-  navigateToInternalPath,
-  refreshCurrentRoute,
-} from "../../utils/NavigationUtils";
+import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 import UserAddModify from "./UserAddModify";
 import "../AdminListWorkspace.css";
 import "../AdminModal.css";
@@ -72,7 +69,8 @@ function UserManagement() {
   const [panelSearchTerm, setPanelSearchTerm] = useState("");
   const [appliedSearchTerm, setAppliedSearchTerm] = useState("");
   const [confirmDeactivateOpen, setConfirmDeactivateOpen] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [editorUserId, setEditorUserId] = useState(null);
+  const editorSavingRef = useRef(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [roleFilter, setRoleFilter] = useState("");
   const [filters, setFilters] = useState([]);
@@ -284,11 +282,7 @@ function UserManagement() {
           <Button
             kind="ghost"
             size="sm"
-            onClick={() =>
-              navigateToInternalPath(
-                `/MasterListsPage/userEdit?ID=${selectedUser?.combinedUserID}&startingRecNo=1&roleFilter=`,
-              )
-            }
+            onClick={() => setEditorUserId(selectedUser?.combinedUserID)}
           >
             <FormattedMessage id="externalconnections.action.edit" />
           </Button>
@@ -328,7 +322,10 @@ function UserManagement() {
   ).length;
   const selectedCount = selectedRowIds.length;
 
-  const openAddUser = () => setCreateOpen(true);
+  const openAddUser = () => setEditorUserId("0");
+  const closeEditor = () => {
+    if (!editorSavingRef.current) setEditorUserId(null);
+  };
 
   const updateFilter = (filterName, enabled) => {
     setPage(1);
@@ -344,25 +341,33 @@ function UserManagement() {
       {notificationVisible === true ? <AlertDialog /> : ""}
       <Modal
         className="oe-admin-modal oe-admin-modal--large"
-        open={createOpen}
+        open={editorUserId !== null}
         passiveModal
         size="lg"
         modalHeading={intl.formatMessage({
-          id: "unifiedSystemUser.add.user",
+          id:
+            editorUserId === "0"
+              ? "unifiedSystemUser.add.user"
+              : "unifiedSystemUser.edit.user",
         })}
         closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
         selectorPrimaryFocus="#login-name"
-        onRequestClose={() => setCreateOpen(false)}
+        onRequestClose={closeEditor}
         preventCloseOnClickOutside
       >
-        {createOpen && (
+        {editorUserId !== null && (
           <UserAddModify
+            key={editorUserId}
             embedded
-            userId="0"
-            onRequestClose={() => setCreateOpen(false)}
+            userId={editorUserId}
+            onSavingChange={(saving) => {
+              editorSavingRef.current = saving;
+            }}
+            onRequestClose={closeEditor}
             onSaved={() => {
-              setCreateOpen(false);
-              setPage(1);
+              setEditorUserId(null);
+              setSelectedRowIds([]);
+              setSelectedRowCombinedUserID([]);
               setReloadKey((value) => value + 1);
             }}
           />

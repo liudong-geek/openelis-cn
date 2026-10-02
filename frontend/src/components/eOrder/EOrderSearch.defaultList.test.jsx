@@ -127,3 +127,30 @@ test("keeps the electronic request list visible when there are no rows", () => {
   expect(screen.getByRole("status")).toHaveTextContent("未找到电子检验申请");
   expect(screen.getByRole("table")).toBeVisible();
 });
+
+test("translates list codes while a received request remains read-only", () => {
+  const order = {
+    id: "received-1",
+    electronicOrderId: "received-1",
+    externalOrderId: "SIM-EXTERNAL-1",
+    patientLastName: "张",
+    patientFirstName: "伟",
+    priority: "STAT",
+    status: "Realized",
+  };
+  render(
+    <IntlProvider locale="zh-CN" messages={messages}>
+      <EOrder
+        eOrders={[order]}
+        setEOrders={vi.fn()}
+        eOrderRef={{ current: null }}
+      />
+    </IntlProvider>,
+  );
+  expect(screen.getByRole("cell", { name: "急诊" })).toBeVisible();
+  expect(screen.getByRole("cell", { name: "已接收" })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "展开当前行" }));
+  expect(screen.getByRole("button", { name: "修改申请" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "接收申请" })).toBeDisabled();
+  expect(order.status).toBe("Realized");
+});

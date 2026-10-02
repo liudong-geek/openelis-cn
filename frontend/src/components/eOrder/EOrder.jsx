@@ -20,6 +20,10 @@ import { FormattedMessage, useIntl } from "react-intl";
 import { ChevronDown, Edit, TaskAdd } from "@carbon/icons-react";
 import { getFromOpenElisServer } from "../utils/Utils";
 import CustomLabNumberInput from "../common/CustomLabNumberInput";
+import {
+  electronicOrderStatusLabel,
+  electronicOrderPriorityLabel,
+} from "./electronicOrderLabels";
 import { ConfigurationContext, NotificationContext } from "../layout/Layout";
 import { NotificationKinds } from "../common/CustomNotification";
 
@@ -198,8 +202,14 @@ const EOrder = ({ eOrders, setEOrders, eOrderRef }) => {
     );
   };
 
-  const renderCell = (cell, row) => {
-    return <TableCell key={cell.id}>{cell.value}</TableCell>;
+  const renderCell = (cell) => {
+    const label =
+      cell.info.header === "status"
+        ? electronicOrderStatusLabel(cell.value, intl)
+        : cell.info.header === "priority"
+          ? electronicOrderPriorityLabel(cell.value, intl)
+          : cell.value;
+    return <TableCell key={cell.id}>{label}</TableCell>;
   };
 
   const handlePageChange = (pageInfo) => {
@@ -332,7 +342,7 @@ const EOrder = ({ eOrders, setEOrders, eOrderRef }) => {
                             row,
                           })}
                         >
-                          {row.cells.map((cell) => renderCell(cell, row))}
+                          {row.cells.map((cell) => renderCell(cell))}
                         </TableExpandRow>
                         <TableExpandedRow colSpan={headers.length + 1}>
                           {renderExpandedRow(row)}

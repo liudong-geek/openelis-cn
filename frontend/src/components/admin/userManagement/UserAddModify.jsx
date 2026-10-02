@@ -65,6 +65,7 @@ function UserAddModify({
   userId,
   onRequestClose,
   onSaved,
+  onSavingChange,
 } = {}) {
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
@@ -82,6 +83,8 @@ function UserAddModify({
     secondName: false,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const [copyUserPermission, setCopyUserPermission] = useState("0");
   const [copyUserPermissionList, setCopyUserPermissionList] = useState(null);
   const [userData, setUserData] = useState(null);
@@ -354,7 +357,10 @@ function UserAddModify({
   }, [selectedTestSectionLabUnits]);
 
   function userSavePostCall() {
-    setIsLoading(true);
+    if (isSaving) return;
+    setIsSaving(true);
+    setSaveError(false);
+    onSavingChange?.(true);
     postToOpenElisServerJsonResponse(
       `/rest/UnifiedSystemUser`,
       JSON.stringify(userDataPost),
@@ -365,6 +371,8 @@ function UserAddModify({
   }
 
   function userSavePostCallback(res) {
+    setIsSaving(false);
+    onSavingChange?.(false);
     const failed =
       !res ||
       Boolean(res.error) ||
@@ -381,13 +389,16 @@ function UserAddModify({
         kind: NotificationKinds.success,
       });
       setNotificationVisible(true);
-      setTimeout(() => {
+      if (onSaved) {
+        onSaved();
+      } else {
         navigateToInternalPath("/MasterListsPage/userManagement", {
           replace: true,
         });
-      }, 200);
+      }
     } else {
       setIsLoading(false);
+      setSaveError(true);
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -873,7 +884,7 @@ function UserAddModify({
     userDataShow.timeout !== undefined &&
     userDataShow.timeout !== "" &&
     passwordValid;
-  const saveDisabled = saveButton || !requiredFieldsValid;
+  const saveDisabled = isSaving || saveButton || !requiredFieldsValid;
 
   if (isLoading) return <Loading />;
 
@@ -901,515 +912,557 @@ function UserAddModify({
           />
         )}
 
-        <Form className="admin-form-workspace__content">
-          <section className="admin-form-workspace__card">
-            <div className="admin-form-workspace__card-heading">
-              <h2>
-                <FormattedMessage id="user.editor.identity.title" />
-              </h2>
-              <p>
-                <FormattedMessage id="user.editor.identity.subtitle" />
-              </p>
-            </div>
-            <div className="admin-form-workspace__fields">
-              <TextInput
-                id="login-name"
-                autoFocus={embedded}
-                labelText={intl.formatMessage({ id: "login.login.name" })}
-                value={userDataShow.userLoginName || ""}
-                invalid={
-                  Boolean(userDataShow.userLoginName) &&
-                  !loginNameRegex.test(userDataShow.userLoginName)
-                }
-                invalidText={intl.formatMessage({
-                  id: "notification.invalid.loginName",
-                })}
-                onChange={handleUserLoginNameChange}
-                required
-              />
-              <CustomDatePicker
-                id="password-expire-date"
-                labelText={intl.formatMessage({
-                  id: "login.password.expired.date",
-                })}
-                disallowPastDate
-                updateStateValue
-                value={userDataShow.expirationDate || ""}
-                onChange={handleExpirationDateChange}
-                required
-              />
-              <TextInput
-                id="first-name"
-                labelText={intl.formatMessage({ id: "login.login.first" })}
-                value={userDataShow.userFirstName || ""}
-                invalid={
-                  Boolean(userDataShow.userFirstName) &&
-                  !nameRegex.test(userDataShow.userFirstName)
-                }
-                invalidText={intl.formatMessage({
-                  id: "notification.invalid.name",
-                })}
-                onChange={handleUserFirstNameChange}
-                required
-              />
-              <TextInput
-                id="last-name"
-                labelText={intl.formatMessage({ id: "login.login.last" })}
-                value={userDataShow.userLastName || ""}
-                invalid={
-                  Boolean(userDataShow.userLastName) &&
-                  !nameRegex.test(userDataShow.userLastName)
-                }
-                invalidText={intl.formatMessage({
-                  id: "notification.invalid.name",
-                })}
-                onChange={handleUserLastNameChange}
-                required
-              />
-              <TextInput
-                id="login-timeout"
-                type="number"
-                min={0}
-                labelText={intl.formatMessage({ id: "login.timeout" })}
-                helperText={intl.formatMessage({
-                  id: "user.editor.timeout.helper",
-                })}
-                value={userDataShow.timeout ?? ""}
-                onChange={handleTimeoutChange}
-                required
-              />
-            </div>
-          </section>
-
-          <section className="admin-form-workspace__card">
-            <div className="admin-form-workspace__card-heading">
-              <h2>
-                <FormattedMessage id="user.editor.security.title" />
-              </h2>
-              <p>
-                <FormattedMessage id="user.editor.security.subtitle" />
-              </p>
-            </div>
-            <div className="admin-form-workspace__fields">
-              <div className="admin-form-workspace__hint admin-form-workspace__field--wide">
-                <strong>
-                  <FormattedMessage id="login.complexity.message" />
-                </strong>
-                <ul>
-                  <li>
-                    <FormattedMessage id="login.complexity.message.1" />
-                  </li>
-                  <li>
-                    <FormattedMessage id="login.complexity.message.2" />
-                  </li>
-                  <li>
-                    <FormattedMessage id="login.complexity.message.3" />
-                  </li>
-                  <li>
-                    <FormattedMessage id="login.complexity.message.4" />
-                  </li>
-                </ul>
-              </div>
-              <PasswordInput
-                id="login-password"
-                labelText={intl.formatMessage({ id: "login.login.password" })}
-                value={userDataShow.userPassword || ""}
-                invalid={
-                  passwordTouched.userPassword &&
-                  !passwordPatternRegex.test(userDataShow.userPassword || "")
-                }
-                invalidText={intl.formatMessage({
-                  id: "notification.invalid.password",
-                })}
-                onChange={handleUserPasswordChange}
-                required={ID === "0"}
-              />
-              <PasswordInput
-                id="login-repeat-password"
-                labelText={intl.formatMessage({
-                  id: "login.login.repeat.password",
-                })}
-                value={userDataShow.confirmPassword || ""}
-                invalid={
-                  passwordTouched.confirmPassword &&
-                  (!passwordPatternRegex.test(
-                    userDataShow.confirmPassword || "",
-                  ) ||
-                    userDataShow.confirmPassword !== userDataShow.userPassword)
-                }
-                invalidText={intl.formatMessage({
-                  id: "user.editor.passwordMismatch",
-                })}
-                onChange={handleConfirmPasswordChange}
-                required={ID === "0"}
-              />
-              <Select
-                id="account-active"
-                labelText={intl.formatMessage({ id: "systemuser.isActive" })}
-                value={userDataShow.accountActive || "N"}
-                onChange={handleAccountActiveChange}
-              >
-                <SelectItem
-                  value="Y"
-                  text={intl.formatMessage({ id: "label.yes" })}
-                />
-                <SelectItem
-                  value="N"
-                  text={intl.formatMessage({ id: "label.no" })}
-                />
-              </Select>
-              <Select
-                id="account-locked"
-                labelText={intl.formatMessage({ id: "login.account.locked" })}
-                value={userDataShow.accountLocked || "N"}
-                onChange={handleAccountLockedChange}
-              >
-                <SelectItem
-                  value="N"
-                  text={intl.formatMessage({ id: "label.no" })}
-                />
-                <SelectItem
-                  value="Y"
-                  text={intl.formatMessage({ id: "label.yes" })}
-                />
-              </Select>
-              <Select
-                id="account-disabled"
-                labelText={intl.formatMessage({ id: "login.account.disabled" })}
-                value={userDataShow.accountDisabled || "N"}
-                onChange={handleAccountDisabledChange}
-              >
-                <SelectItem
-                  value="N"
-                  text={intl.formatMessage({ id: "label.no" })}
-                />
-                <SelectItem
-                  value="Y"
-                  text={intl.formatMessage({ id: "label.yes" })}
-                />
-              </Select>
-            </div>
-          </section>
-
-          <section className="admin-form-workspace__card">
-            <div className="admin-form-workspace__card-heading">
-              <h2>
-                <FormattedMessage id="systemuser.role" />
-              </h2>
-              <p>
-                <FormattedMessage id="user.editor.permissions.subtitle" />
-              </p>
-            </div>
-            <div className="admin-form-workspace__fields">
-              <div className="admin-form-workspace__profile-panel admin-form-workspace__field--wide">
-                <div className="admin-form-workspace__profile-controls">
-                  <Select
-                    id="permission-profile"
-                    labelText={intl.formatMessage({
-                      id: "user.editor.profile.label",
-                    })}
-                    value={permissionProfileId}
-                    onChange={(event) => {
-                      const profileId = event.target.value;
-                      const profile = getPermissionProfile(profileId);
-                      setPermissionProfileId(profileId);
-                      setPermissionProfileLabUnit("");
-                      setPermissionProfileFeedback(null);
-                      if (profile?.labUnitRoleNames.length === 0) {
-                        setPermissionProfileLabUnit("");
-                      }
-                    }}
-                  >
-                    <SelectItem
-                      value=""
-                      text={intl.formatMessage({
-                        id: "user.editor.profile.placeholder",
-                      })}
-                    />
-                    {CHINA_PERMISSION_PROFILES.map((profile) => (
-                      <SelectItem
-                        key={profile.id}
-                        value={profile.id}
-                        text={intl.formatMessage({ id: profile.labelId })}
-                      />
-                    ))}
-                  </Select>
-                  <Select
-                    id="permission-profile-lab-unit"
-                    labelText={intl.formatMessage({
-                      id: "user.editor.profile.labUnit",
-                    })}
-                    value={permissionProfileLabUnit}
-                    disabled={
-                      !selectedPermissionProfile ||
-                      selectedPermissionProfile.labUnitRoleNames.length === 0
-                    }
-                    onChange={(event) => {
-                      setPermissionProfileLabUnit(event.target.value);
-                      setPermissionProfileFeedback(null);
-                    }}
-                  >
-                    <SelectItem
-                      value=""
-                      text={intl.formatMessage({
-                        id: "user.editor.profile.labUnit.placeholder",
-                      })}
-                    />
-                    {userDataShow.testSections?.map((section) => (
-                      <SelectItem
-                        key={`permission-profile-${section.id}`}
-                        value={section.id}
-                        text={section.value}
-                      />
-                    ))}
-                  </Select>
-                  <Button
-                    kind="tertiary"
-                    type="button"
-                    disabled={!selectedPermissionProfile}
-                    onClick={applyPermissionProfile}
-                  >
-                    <FormattedMessage id="user.editor.profile.apply" />
-                  </Button>
+        <Form className="admin-form-workspace__content" autoComplete="off">
+          <div
+            className="admin-form-workspace__body"
+            aria-busy={isSaving}
+            inert={isSaving ? "" : undefined}
+          >
+            <fieldset disabled={isSaving} style={{ display: "contents" }}>
+              <section className="admin-form-workspace__card">
+                <div className="admin-form-workspace__card-heading">
+                  <h2>
+                    <FormattedMessage id="user.editor.identity.title" />
+                  </h2>
+                  <p>
+                    <FormattedMessage id="user.editor.identity.subtitle" />
+                  </p>
                 </div>
-                {selectedPermissionProfile ? (
-                  <div className="admin-form-workspace__profile-preview">
+                <div className="admin-form-workspace__fields">
+                  <TextInput
+                    id="login-name"
+                    autoComplete="off"
+                    autoFocus={embedded}
+                    labelText={intl.formatMessage({ id: "login.login.name" })}
+                    value={userDataShow.userLoginName || ""}
+                    invalid={
+                      Boolean(userDataShow.userLoginName) &&
+                      !loginNameRegex.test(userDataShow.userLoginName)
+                    }
+                    invalidText={intl.formatMessage({
+                      id: "notification.invalid.loginName",
+                    })}
+                    onChange={handleUserLoginNameChange}
+                    required
+                  />
+                  <CustomDatePicker
+                    id="password-expire-date"
+                    disabled={isSaving}
+                    labelText={intl.formatMessage({
+                      id: "login.password.expired.date",
+                    })}
+                    disallowPastDate
+                    updateStateValue
+                    value={userDataShow.expirationDate || ""}
+                    onChange={handleExpirationDateChange}
+                    required
+                  />
+                  <TextInput
+                    id="first-name"
+                    labelText={intl.formatMessage({ id: "login.login.first" })}
+                    value={userDataShow.userFirstName || ""}
+                    invalid={
+                      Boolean(userDataShow.userFirstName) &&
+                      !nameRegex.test(userDataShow.userFirstName)
+                    }
+                    invalidText={intl.formatMessage({
+                      id: "notification.invalid.name",
+                    })}
+                    onChange={handleUserFirstNameChange}
+                    required
+                  />
+                  <TextInput
+                    id="last-name"
+                    labelText={intl.formatMessage({ id: "login.login.last" })}
+                    value={userDataShow.userLastName || ""}
+                    invalid={
+                      Boolean(userDataShow.userLastName) &&
+                      !nameRegex.test(userDataShow.userLastName)
+                    }
+                    invalidText={intl.formatMessage({
+                      id: "notification.invalid.name",
+                    })}
+                    onChange={handleUserLastNameChange}
+                    required
+                  />
+                  <TextInput
+                    id="login-timeout"
+                    type="number"
+                    min={0}
+                    labelText={intl.formatMessage({ id: "login.timeout" })}
+                    helperText={intl.formatMessage({
+                      id: "user.editor.timeout.helper",
+                    })}
+                    value={userDataShow.timeout ?? ""}
+                    onChange={handleTimeoutChange}
+                    required
+                  />
+                </div>
+              </section>
+
+              <section className="admin-form-workspace__card">
+                <div className="admin-form-workspace__card-heading">
+                  <h2>
+                    <FormattedMessage id="user.editor.security.title" />
+                  </h2>
+                  <p>
+                    <FormattedMessage id="user.editor.security.subtitle" />
+                  </p>
+                </div>
+                <div className="admin-form-workspace__fields">
+                  <div className="admin-form-workspace__hint admin-form-workspace__field--wide">
                     <strong>
-                      <FormattedMessage
-                        id={selectedPermissionProfile.labelId}
-                      />
+                      <FormattedMessage id="login.complexity.message" />
                     </strong>
-                    <p>
-                      <FormattedMessage
-                        id={selectedPermissionProfile.descriptionId}
+                    <ul>
+                      <li>
+                        <FormattedMessage id="login.complexity.message.1" />
+                      </li>
+                      <li>
+                        <FormattedMessage id="login.complexity.message.2" />
+                      </li>
+                      <li>
+                        <FormattedMessage id="login.complexity.message.3" />
+                      </li>
+                      <li>
+                        <FormattedMessage id="login.complexity.message.4" />
+                      </li>
+                    </ul>
+                  </div>
+                  <PasswordInput
+                    autoComplete="new-password"
+                    id="login-password"
+                    labelText={intl.formatMessage({
+                      id: "login.login.password",
+                    })}
+                    value={userDataShow.userPassword || ""}
+                    invalid={
+                      passwordTouched.userPassword &&
+                      !passwordPatternRegex.test(
+                        userDataShow.userPassword || "",
+                      )
+                    }
+                    invalidText={intl.formatMessage({
+                      id: "notification.invalid.password",
+                    })}
+                    onChange={handleUserPasswordChange}
+                    required={ID === "0"}
+                  />
+                  <PasswordInput
+                    autoComplete="new-password"
+                    id="login-repeat-password"
+                    labelText={intl.formatMessage({
+                      id: "login.login.repeat.password",
+                    })}
+                    value={userDataShow.confirmPassword || ""}
+                    invalid={
+                      passwordTouched.confirmPassword &&
+                      (!passwordPatternRegex.test(
+                        userDataShow.confirmPassword || "",
+                      ) ||
+                        userDataShow.confirmPassword !==
+                          userDataShow.userPassword)
+                    }
+                    invalidText={intl.formatMessage({
+                      id: "user.editor.passwordMismatch",
+                    })}
+                    onChange={handleConfirmPasswordChange}
+                    required={ID === "0"}
+                  />
+                  <Select
+                    id="account-active"
+                    labelText={intl.formatMessage({
+                      id: "systemuser.isActive",
+                    })}
+                    value={userDataShow.accountActive || "N"}
+                    onChange={handleAccountActiveChange}
+                  >
+                    <SelectItem
+                      value="Y"
+                      text={intl.formatMessage({ id: "label.yes" })}
+                    />
+                    <SelectItem
+                      value="N"
+                      text={intl.formatMessage({ id: "label.no" })}
+                    />
+                  </Select>
+                  <Select
+                    id="account-locked"
+                    labelText={intl.formatMessage({
+                      id: "login.account.locked",
+                    })}
+                    value={userDataShow.accountLocked || "N"}
+                    onChange={handleAccountLockedChange}
+                  >
+                    <SelectItem
+                      value="N"
+                      text={intl.formatMessage({ id: "label.no" })}
+                    />
+                    <SelectItem
+                      value="Y"
+                      text={intl.formatMessage({ id: "label.yes" })}
+                    />
+                  </Select>
+                  <Select
+                    id="account-disabled"
+                    labelText={intl.formatMessage({
+                      id: "login.account.disabled",
+                    })}
+                    value={userDataShow.accountDisabled || "N"}
+                    onChange={handleAccountDisabledChange}
+                  >
+                    <SelectItem
+                      value="N"
+                      text={intl.formatMessage({ id: "label.no" })}
+                    />
+                    <SelectItem
+                      value="Y"
+                      text={intl.formatMessage({ id: "label.yes" })}
+                    />
+                  </Select>
+                </div>
+              </section>
+
+              <section className="admin-form-workspace__card">
+                <div className="admin-form-workspace__card-heading">
+                  <h2>
+                    <FormattedMessage id="systemuser.role" />
+                  </h2>
+                  <p>
+                    <FormattedMessage id="user.editor.permissions.subtitle" />
+                  </p>
+                </div>
+                <div className="admin-form-workspace__fields">
+                  <div className="admin-form-workspace__profile-panel admin-form-workspace__field--wide">
+                    <div className="admin-form-workspace__profile-controls">
+                      <Select
+                        id="permission-profile"
+                        labelText={intl.formatMessage({
+                          id: "user.editor.profile.label",
+                        })}
+                        value={permissionProfileId}
+                        onChange={(event) => {
+                          const profileId = event.target.value;
+                          const profile = getPermissionProfile(profileId);
+                          setPermissionProfileId(profileId);
+                          setPermissionProfileLabUnit("");
+                          setPermissionProfileFeedback(null);
+                          if (profile?.labUnitRoleNames.length === 0) {
+                            setPermissionProfileLabUnit("");
+                          }
+                        }}
+                      >
+                        <SelectItem
+                          value=""
+                          text={intl.formatMessage({
+                            id: "user.editor.profile.placeholder",
+                          })}
+                        />
+                        {CHINA_PERMISSION_PROFILES.map((profile) => (
+                          <SelectItem
+                            key={profile.id}
+                            value={profile.id}
+                            text={intl.formatMessage({ id: profile.labelId })}
+                          />
+                        ))}
+                      </Select>
+                      <Select
+                        id="permission-profile-lab-unit"
+                        labelText={intl.formatMessage({
+                          id: "user.editor.profile.labUnit",
+                        })}
+                        value={permissionProfileLabUnit}
+                        disabled={
+                          !selectedPermissionProfile ||
+                          selectedPermissionProfile.labUnitRoleNames.length ===
+                            0
+                        }
+                        onChange={(event) => {
+                          setPermissionProfileLabUnit(event.target.value);
+                          setPermissionProfileFeedback(null);
+                        }}
+                      >
+                        <SelectItem
+                          value=""
+                          text={intl.formatMessage({
+                            id: "user.editor.profile.labUnit.placeholder",
+                          })}
+                        />
+                        {userDataShow.testSections?.map((section) => (
+                          <SelectItem
+                            key={`permission-profile-${section.id}`}
+                            value={section.id}
+                            text={section.value}
+                          />
+                        ))}
+                      </Select>
+                      <Button
+                        kind="tertiary"
+                        type="button"
+                        disabled={!selectedPermissionProfile}
+                        onClick={applyPermissionProfile}
+                      >
+                        <FormattedMessage id="user.editor.profile.apply" />
+                      </Button>
+                    </div>
+                    {selectedPermissionProfile ? (
+                      <div className="admin-form-workspace__profile-preview">
+                        <strong>
+                          <FormattedMessage
+                            id={selectedPermissionProfile.labelId}
+                          />
+                        </strong>
+                        <p>
+                          <FormattedMessage
+                            id={selectedPermissionProfile.descriptionId}
+                          />
+                        </p>
+                        <p>
+                          <strong>
+                            <FormattedMessage id="user.editor.profile.menus" />
+                          </strong>{" "}
+                          {selectedPermissionProfile.menuIds
+                            .map((messageId) =>
+                              intl.formatMessage({ id: messageId }),
+                            )
+                            .join("、")}
+                        </p>
+                        <p>
+                          <strong>
+                            <FormattedMessage id="user.editor.profile.boundary" />
+                          </strong>{" "}
+                          <FormattedMessage
+                            id={selectedPermissionProfile.boundaryId}
+                          />
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="admin-form-workspace__required-note">
+                        <FormattedMessage id="user.editor.profile.helper" />
+                      </p>
+                    )}
+                    {permissionProfileFeedback ? (
+                      <InlineNotification
+                        lowContrast
+                        hideCloseButton
+                        kind={permissionProfileFeedback.kind}
+                        title={intl.formatMessage(
+                          {
+                            id: permissionProfileFeedback.messageId,
+                          },
+                          permissionProfileFeedback.values,
+                        )}
                       />
-                    </p>
-                    <p>
-                      <strong>
-                        <FormattedMessage id="user.editor.profile.menus" />
-                      </strong>{" "}
-                      {selectedPermissionProfile.menuIds
-                        .map((messageId) =>
-                          intl.formatMessage({ id: messageId }),
-                        )
-                        .join("、")}
-                    </p>
-                    <p>
-                      <strong>
-                        <FormattedMessage id="user.editor.profile.boundary" />
-                      </strong>{" "}
-                      <FormattedMessage
-                        id={selectedPermissionProfile.boundaryId}
-                      />
+                    ) : null}
+                  </div>
+                  <div className="admin-form-workspace__inline-action admin-form-workspace__field--wide">
+                    <AutoComplete
+                      name="copy-permissions"
+                      id="copy-permissions"
+                      allowFreeText={
+                        configurationProperties.restrictFreeTextProviderEntry !==
+                        "true"
+                      }
+                      onChange={handleCopyUserPermissionsChange}
+                      onSelect={handleAutoCompleteCopyUserPermissionsChange}
+                      suggestions={copyUserPermissionList || []}
+                      label={intl.formatMessage({
+                        id: "systemuserrole.copypermissions",
+                      })}
+                    />
+                    <Button
+                      data-cy="apply-button"
+                      kind="tertiary"
+                      disabled={copyUserPermission === "0"}
+                      type="button"
+                      onClick={handleCopyUserPermissionsChangeClick}
+                    >
+                      <FormattedMessage id="systemuserrole.apply" />
+                    </Button>
+                  </div>
+                  <div className="admin-form-workspace__field--wide">
+                    <p className="admin-form-workspace__required-note">
+                      <FormattedMessage id="user.editor.copy.helper" />
                     </p>
                   </div>
-                ) : (
-                  <p className="admin-form-workspace__required-note">
-                    <FormattedMessage id="user.editor.profile.helper" />
-                  </p>
-                )}
-                {permissionProfileFeedback ? (
+                  <div className="admin-form-workspace__field--wide">
+                    <h3>
+                      <FormattedMessage id="systemuserrole.roles.global" />
+                    </h3>
+                    <FormGroup legendId="globalRules" legendText="">
+                      <div className="admin-form-workspace__checks">
+                        {userDataShow.globalRoles?.length > 0 ? (
+                          userDataShow.globalRoles.map((role) => (
+                            <Checkbox
+                              key={role.elementID}
+                              id={role.elementID}
+                              value={role.roleId}
+                              labelText={formatRoleName(role.roleName)}
+                              checked={selectedGlobalLabUnitRoles.includes(
+                                role.roleId,
+                              )}
+                              onChange={() => handleCheckboxChange(role.roleId)}
+                            />
+                          ))
+                        ) : (
+                          <p>
+                            <FormattedMessage id="label.no.options.available" />
+                          </p>
+                        )}
+                      </div>
+                    </FormGroup>
+                  </div>
+                </div>
+
+                {dutySeparationConflicts.length > 0 ? (
                   <InlineNotification
                     lowContrast
                     hideCloseButton
-                    kind={permissionProfileFeedback.kind}
+                    kind="warning"
                     title={intl.formatMessage(
+                      { id: "user.editor.permissions.separationWarning" },
                       {
-                        id: permissionProfileFeedback.messageId,
+                        labUnits: dutySeparationConflicts
+                          .map((id) => labUnitNameById.get(id) || id)
+                          .join("、"),
                       },
-                      permissionProfileFeedback.values,
                     )}
                   />
                 ) : null}
-              </div>
-              <div className="admin-form-workspace__inline-action admin-form-workspace__field--wide">
-                <AutoComplete
-                  name="copy-permissions"
-                  id="copy-permissions"
-                  allowFreeText={
-                    configurationProperties.restrictFreeTextProviderEntry !==
-                    "true"
-                  }
-                  onChange={handleCopyUserPermissionsChange}
-                  onSelect={handleAutoCompleteCopyUserPermissionsChange}
-                  suggestions={copyUserPermissionList || []}
-                  label={intl.formatMessage({
-                    id: "systemuserrole.copypermissions",
-                  })}
-                />
-                <Button
-                  data-cy="apply-button"
-                  kind="tertiary"
-                  disabled={copyUserPermission === "0"}
-                  type="button"
-                  onClick={handleCopyUserPermissionsChangeClick}
-                >
-                  <FormattedMessage id="systemuserrole.apply" />
-                </Button>
-              </div>
-              <div className="admin-form-workspace__field--wide">
-                <p className="admin-form-workspace__required-note">
-                  <FormattedMessage id="user.editor.copy.helper" />
-                </p>
-              </div>
-              <div className="admin-form-workspace__field--wide">
-                <h3>
-                  <FormattedMessage id="systemuserrole.roles.global" />
-                </h3>
-                <FormGroup legendId="globalRules" legendText="">
-                  <div className="admin-form-workspace__checks">
-                    {userDataShow.globalRoles?.length > 0 ? (
-                      userDataShow.globalRoles.map((role) => (
+
+                <div className="admin-form-workspace__permission-list">
+                  {selectedTestSectionList.map((key) => (
+                    <div
+                      className="admin-form-workspace__permission-card"
+                      key={key}
+                    >
+                      <Select
+                        id={`select-${key}`}
+                        labelText={intl.formatMessage({
+                          id: "user.editor.labUnit",
+                        })}
+                        value={key}
+                        onChange={(event) =>
+                          handleTestSectionsSelectChange(event, key)
+                        }
+                      >
+                        {userDataShow.testSections
+                          ?.filter(
+                            (section) =>
+                              !Object.keys(
+                                selectedTestSectionLabUnits,
+                              ).includes(section.id) || section.id === key,
+                          )
+                          .map((section) => (
+                            <SelectItem
+                              key={`${section.id}-${key}`}
+                              value={section.id}
+                              text={section.value}
+                            />
+                          ))}
+                      </Select>
+                      <FormGroup
+                        legendId={`labUnitRoles-${key}`}
+                        legendText={intl.formatMessage({
+                          id: "user.editor.permissions",
+                        })}
+                      >
                         <Checkbox
-                          key={role.elementID}
-                          id={role.elementID}
-                          value={role.roleId}
-                          labelText={formatRoleName(role.roleName)}
-                          checked={selectedGlobalLabUnitRoles.includes(
-                            role.roleId,
+                          id={`all-permissions-${key}`}
+                          labelText={intl.formatMessage({
+                            id: "user.editor.permissions.all",
+                          })}
+                          checked={["4", "5", "7", "10"].every((roleId) =>
+                            selectedTestSectionLabUnits[key]?.includes(roleId),
                           )}
-                          onChange={() => handleCheckboxChange(role.roleId)}
+                          onChange={() => {
+                            const standardRoles = ["4", "5", "7", "10"];
+                            const currentRoles = [
+                              ...(selectedTestSectionLabUnits[key] || []),
+                            ];
+                            const allSelected = standardRoles.every((roleId) =>
+                              currentRoles.includes(roleId),
+                            );
+                            setSelectedTestSectionLabUnits((current) => ({
+                              ...current,
+                              [key]: allSelected
+                                ? currentRoles.filter(
+                                    (roleId) => !standardRoles.includes(roleId),
+                                  )
+                                : [
+                                    ...new Set([
+                                      ...currentRoles,
+                                      ...standardRoles,
+                                    ]),
+                                  ],
+                            }));
+                            setSaveButton(false);
+                          }}
                         />
-                      ))
-                    ) : (
-                      <p>
-                        <FormattedMessage id="label.no.options.available" />
-                      </p>
-                    )}
-                  </div>
-                </FormGroup>
-              </div>
-            </div>
-
-            {dutySeparationConflicts.length > 0 ? (
-              <InlineNotification
-                lowContrast
-                hideCloseButton
-                kind="warning"
-                title={intl.formatMessage(
-                  { id: "user.editor.permissions.separationWarning" },
-                  {
-                    labUnits: dutySeparationConflicts
-                      .map((id) => labUnitNameById.get(id) || id)
-                      .join("、"),
-                  },
-                )}
-              />
-            ) : null}
-
-            <div className="admin-form-workspace__permission-list">
-              {selectedTestSectionList.map((key) => (
-                <div
-                  className="admin-form-workspace__permission-card"
-                  key={key}
-                >
-                  <Select
-                    id={`select-${key}`}
-                    labelText={intl.formatMessage({
-                      id: "user.editor.labUnit",
-                    })}
-                    value={key}
-                    onChange={(event) =>
-                      handleTestSectionsSelectChange(event, key)
-                    }
-                  >
-                    {userDataShow.testSections
-                      ?.filter(
-                        (section) =>
-                          !Object.keys(selectedTestSectionLabUnits).includes(
-                            section.id,
-                          ) || section.id === key,
-                      )
-                      .map((section) => (
-                        <SelectItem
-                          key={`${section.id}-${key}`}
-                          value={section.id}
-                          text={section.value}
-                        />
-                      ))}
-                  </Select>
-                  <FormGroup
-                    legendId={`labUnitRoles-${key}`}
-                    legendText={intl.formatMessage({
-                      id: "user.editor.permissions",
-                    })}
-                  >
-                    <Checkbox
-                      id={`all-permissions-${key}`}
-                      labelText={intl.formatMessage({
-                        id: "user.editor.permissions.all",
-                      })}
-                      checked={["4", "5", "7", "10"].every((roleId) =>
-                        selectedTestSectionLabUnits[key]?.includes(roleId),
-                      )}
-                      onChange={() => {
-                        const standardRoles = ["4", "5", "7", "10"];
-                        const currentRoles = [
-                          ...(selectedTestSectionLabUnits[key] || []),
-                        ];
-                        const allSelected = standardRoles.every((roleId) =>
-                          currentRoles.includes(roleId),
-                        );
-                        setSelectedTestSectionLabUnits((current) => ({
-                          ...current,
-                          [key]: allSelected
-                            ? currentRoles.filter(
-                                (roleId) => !standardRoles.includes(roleId),
-                              )
-                            : [...new Set([...currentRoles, ...standardRoles])],
-                        }));
-                        setSaveButton(false);
-                      }}
-                    />
-                    {userDataShow.labUnitRoles?.map((role) => (
-                      <Checkbox
-                        key={`${role.elementID}-${key}`}
-                        id={`${role.elementID}-${key}`}
-                        value={role.roleId}
-                        labelText={formatRoleName(role.roleName)}
-                        checked={selectedTestSectionLabUnits[key]?.includes(
-                          role.roleId,
-                        )}
-                        onChange={() => {
-                          if (
-                            selectedTestSectionLabUnits[key]?.includes(
+                        {userDataShow.labUnitRoles?.map((role) => (
+                          <Checkbox
+                            key={`${role.elementID}-${key}`}
+                            id={`${role.elementID}-${key}`}
+                            value={role.roleId}
+                            labelText={formatRoleName(role.roleName)}
+                            checked={selectedTestSectionLabUnits[key]?.includes(
                               role.roleId,
-                            )
-                          ) {
-                            removeRoleFromSelectedUnits(key, role.roleId);
-                          } else {
-                            addRoleToSelectedUnits(key, role.roleId);
-                          }
-                        }}
-                      />
-                    ))}
-                  </FormGroup>
+                            )}
+                            onChange={() => {
+                              if (
+                                selectedTestSectionLabUnits[key]?.includes(
+                                  role.roleId,
+                                )
+                              ) {
+                                removeRoleFromSelectedUnits(key, role.roleId);
+                              } else {
+                                addRoleToSelectedUnits(key, role.roleId);
+                              }
+                            }}
+                          />
+                        ))}
+                      </FormGroup>
+                      <Button
+                        data-cy="removePermission"
+                        onClick={() => removeSection(key)}
+                        kind="danger--ghost"
+                        size="sm"
+                        type="button"
+                      >
+                        <FormattedMessage id="systemuserrole.rmpermissions" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <div className="admin-form-workspace__subactions">
                   <Button
-                    data-cy="removePermission"
-                    onClick={() => removeSection(key)}
-                    kind="danger--ghost"
-                    size="sm"
+                    data-cy="addNewPermission"
+                    onClick={addNewSection}
+                    kind="tertiary"
                     type="button"
                   >
-                    <FormattedMessage id="systemuserrole.rmpermissions" />
+                    <FormattedMessage id="systemuserrole.newpermissions" />
                   </Button>
                 </div>
-              ))}
-            </div>
-            <div className="admin-form-workspace__subactions">
-              <Button
-                data-cy="addNewPermission"
-                onClick={addNewSection}
-                kind="tertiary"
-                type="button"
-              >
-                <FormattedMessage id="systemuserrole.newpermissions" />
-              </Button>
-            </div>
-          </section>
+              </section>
 
+              {saveError && (
+                <InlineNotification
+                  kind="error"
+                  lowContrast
+                  hideCloseButton
+                  title={intl.formatMessage({ id: "server.error.msg" })}
+                />
+              )}
+            </fieldset>
+          </div>
           <div className="admin-form-workspace__actions">
-            <Button kind="secondary" type="button" onClick={cancel}>
+            <Button
+              kind="secondary"
+              type="button"
+              disabled={isSaving}
+              onClick={cancel}
+            >
               <FormattedMessage id="label.button.cancel" />
             </Button>
             <Button

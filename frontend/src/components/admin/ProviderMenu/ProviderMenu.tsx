@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect } from "react";
+import React, { useContext, useState, useEffect, useRef } from "react";
 import type { ChangeEvent, ReactNode } from "react";
 import {
   Loading,
@@ -34,7 +34,6 @@ import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import ProductPageHeader from "../../common/ProductPageHeader";
 import { getPhoneFormatHint } from "../../patient/phoneFormatHint";
-import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 import "../AdminListWorkspace.css";
 import "../AdminModal.css";
 
@@ -140,7 +139,13 @@ function ProviderMenu() {
   const [appliedSearchTerm, setAppliedSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [confirmDeactivateOpen, setConfirmDeactivateOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSavingState] = useState(false);
+  const savingRef = useRef(false);
+  const setSaving = (value: boolean) => {
+    savingRef.current = value;
+    setSavingState(value);
+  };
+  const [reloadKey, setReloadKey] = useState(0);
   const [providerMenuList, setProviderMenuList] =
     useState<ProviderMenuResponse>({});
   const [providerMenuListShow, setProviderMenuListShow] = useState<
@@ -206,7 +211,7 @@ function ProviderMenu() {
         )}`
       : "/rest/ProviderMenu?paging=1&startingRecNo=1";
     getFromOpenElisServer(endpoint, handleMenuItems);
-  }, [appliedSearchTerm]);
+  }, [appliedSearchTerm, reloadKey]);
 
   useEffect(() => {
     if (providerMenuList.providers) {
@@ -244,7 +249,8 @@ function ProviderMenu() {
       setIsAddModalOpen(false);
       setIsUpdateModalOpen(false);
       reloadConfiguration();
-      setTimeout(() => refreshCurrentRoute(), 200);
+      setSelectedRowIds([]);
+      setReloadKey((value) => value + 1);
     } else {
       addNotification({
         kind: NotificationKinds.error,
@@ -271,7 +277,8 @@ function ProviderMenu() {
               id: "provider.management.deactivate.success",
             }),
           });
-          setTimeout(() => refreshCurrentRoute(), 200);
+          setSelectedRowIds([]);
+          setReloadKey((value) => value + 1);
         } else {
           addNotification({
             kind: NotificationKinds.error,
@@ -318,6 +325,7 @@ function ProviderMenu() {
   };
 
   const closeAddModal = () => {
+    if (savingRef.current) return;
     setIsAddModalOpen(false);
   };
 
@@ -341,10 +349,12 @@ function ProviderMenu() {
   };
 
   const closeUpdateModal = () => {
+    if (savingRef.current) return;
     setIsUpdateModalOpen(false);
   };
 
   const handleAddProvider = () => {
+    if (saving || !formValid) return;
     setSaving(true);
     const newProvider = {
       person: {
@@ -364,6 +374,7 @@ function ProviderMenu() {
   };
 
   const handleUpdateProvider = () => {
+    if (saving || !formValid || !currentProvider) return;
     setSaving(true);
     const updatedProvider = {
       fhirUuid: currentProvider!.fhirUuid,
@@ -818,6 +829,7 @@ function ProviderMenu() {
         <div className="provider-editor-form">
           <TextInput
             id="provider-add-last-name"
+            disabled={saving}
             labelText={intl.formatMessage({ id: "provider.providerLastName" })}
             value={lastName}
             onChange={(e) => handleLastNameChange(e)}
@@ -825,6 +837,7 @@ function ProviderMenu() {
           />
           <TextInput
             id="provider-add-first-name"
+            disabled={saving}
             labelText={intl.formatMessage({ id: "provider.providerFirstName" })}
             value={firstName}
             onChange={(e) => handleFirstNameChange(e)}
@@ -832,6 +845,7 @@ function ProviderMenu() {
           />
           <TextInput
             id="provider-add-telephone"
+            disabled={saving}
             labelText={intl.formatMessage(
               { id: "patient.label.primaryphone" },
               { PHONE_FORMAT: "" },
@@ -845,6 +859,7 @@ function ProviderMenu() {
           />
           <TextInput
             id="provider-add-email"
+            disabled={saving}
             labelText={intl.formatMessage({ id: "provider.email" })}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -854,6 +869,7 @@ function ProviderMenu() {
           />
           <Select
             id="provider-add-active"
+            disabled={saving}
             labelText={intl.formatMessage({ id: "label.active" })}
             value={isActive.id}
             onChange={(event) =>
@@ -876,6 +892,7 @@ function ProviderMenu() {
           </Select>
           <TextInput
             id="provider-add-fax"
+            disabled={saving}
             labelText={intl.formatMessage({ id: "provider.fax" })}
             value={fax}
             onChange={(e) => setFax(e.target.value)}
@@ -903,6 +920,7 @@ function ProviderMenu() {
         <div className="provider-editor-form">
           <TextInput
             id="provider-update-last-name"
+            disabled={saving}
             labelText={intl.formatMessage({ id: "provider.providerLastName" })}
             value={lastName}
             onChange={(e) => handleLastNameChange(e)}
@@ -910,6 +928,7 @@ function ProviderMenu() {
           />
           <TextInput
             id="provider-update-first-name"
+            disabled={saving}
             labelText={intl.formatMessage({ id: "provider.providerFirstName" })}
             value={firstName}
             onChange={(e) => handleFirstNameChange(e)}
@@ -917,6 +936,7 @@ function ProviderMenu() {
           />
           <TextInput
             id="provider-update-telephone"
+            disabled={saving}
             labelText={intl.formatMessage(
               { id: "patient.label.primaryphone" },
               { PHONE_FORMAT: "" },
@@ -930,6 +950,7 @@ function ProviderMenu() {
           />
           <TextInput
             id="provider-update-email"
+            disabled={saving}
             labelText={intl.formatMessage({ id: "provider.email" })}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -939,6 +960,7 @@ function ProviderMenu() {
           />
           <Select
             id="provider-update-active"
+            disabled={saving}
             labelText={intl.formatMessage({ id: "label.active" })}
             value={isActive.id}
             onChange={(event) =>
@@ -961,6 +983,7 @@ function ProviderMenu() {
           </Select>
           <TextInput
             id="provider-update-fax"
+            disabled={saving}
             labelText={intl.formatMessage({ id: "provider.fax" })}
             value={fax}
             onChange={(e) => setFax(e.target.value)}

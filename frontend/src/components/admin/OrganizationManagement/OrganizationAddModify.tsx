@@ -5,6 +5,7 @@ import {
   Checkbox,
   Form,
   Loading,
+  InlineLoading,
   Select,
   SelectItem,
   TextInput,
@@ -18,7 +19,7 @@ import {
   AlertDialog,
   NotificationKinds,
 } from "../../common/CustomNotification";
-import { FormattedMessage, injectIntl, useIntl } from "react-intl";
+import { FormattedMessage, useIntl } from "react-intl";
 import { useLocation } from "react-router-dom";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import ProductPageHeader from "../../common/ProductPageHeader";
@@ -98,6 +99,7 @@ interface OrganizationAddModifyProps {
   organizationId?: string;
   onRequestClose?: () => void;
   onSaved?: () => void;
+  onSavingChange?: (saving: boolean) => void;
 }
 
 const breadcrumbs = [
@@ -158,6 +160,7 @@ function OrganizationAddModify({
   organizationId,
   onRequestClose,
   onSaved,
+  onSavingChange,
 }: OrganizationAddModifyProps = {}) {
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext) as unknown as NotificationContextValue;
@@ -326,13 +329,15 @@ function OrganizationAddModify({
     internetAddressInvalid;
 
   const submitOrganization = () => {
-    if (saveDisabled) return;
+    if (saveDisabled || loading) return;
     setLoading(true);
+    onSavingChange?.(true);
     postToOpenElisServerJsonResponse<Record<string, unknown>>(
       `/rest/Organization?ID=${ID}&startingRecNo=1`,
       JSON.stringify(orgInfoPost),
       (response) => {
         setLoading(false);
+        onSavingChange?.(false);
         const failed =
           !response ||
           Boolean(response.error) ||
@@ -360,7 +365,7 @@ function OrganizationAddModify({
     );
   };
 
-  if (loading) return <Loading />;
+  if (loading) return embedded ? <InlineLoading /> : <Loading />;
 
   return (
     <>
@@ -387,179 +392,184 @@ function OrganizationAddModify({
         )}
 
         <Form className="admin-form-workspace__content">
-          <section className="admin-form-workspace__card">
-            <div className="admin-form-workspace__card-heading">
-              <h2>
-                <FormattedMessage id="organization.editor.basic.title" />
-              </h2>
-              <p>
-                <FormattedMessage id="organization.editor.basic.subtitle" />
-              </p>
-            </div>
-            <div className="admin-form-workspace__fields">
-              <TextInput
-                id="org-name"
-                autoFocus={embedded}
-                labelText={intl.formatMessage({
-                  id: "organization.organizationName",
-                })}
-                value={String(orgInfo.organizationName || "")}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  updateField("organizationName", event.target.value)
-                }
-                required
-              />
-              <TextInput
-                id="org-prefix"
-                labelText={intl.formatMessage({ id: "organization.short.CI" })}
-                value={String(orgInfo.shortName || "")}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  updateField("shortName", event.target.value)
-                }
-                maxLength={15}
-                required
-              />
-              <Select
-                id="org-active"
-                labelText={intl.formatMessage({ id: "organization.isActive" })}
-                value={normalizeActive(orgInfo.isActive)}
-                onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                  updateField("isActive", event.target.value)
-                }
-              >
-                <SelectItem
-                  value="Y"
-                  text={intl.formatMessage({ id: "label.yes" })}
-                />
-                <SelectItem
-                  value="N"
-                  text={intl.formatMessage({ id: "label.no" })}
-                />
-              </Select>
-              <AutoComplete
-                name="parentOrgName"
-                id="parentOrgName"
-                allowFreeText={
-                  configurationProperties.restrictFreeTextRefSiteEntry !==
-                  "true"
-                }
-                value={
-                  parentOrgPost.organizationName ||
-                  parentOrgPost.parentOrganizationName ||
-                  ""
-                }
-                onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                  setDirty(true);
-                  setParentOrgPost((current) => ({
-                    ...current,
-                    parentOrganizationName: event.target.value,
-                  }));
-                }}
-                onSelect={(selectedId: string) => {
-                  setDirty(true);
-                  setParentOrgId(selectedId);
-                }}
-                label={intl.formatMessage({
-                  id: "organization.search.parent.name",
-                })}
-                suggestions={parentOrgList}
-              />
-            </div>
-          </section>
-
-          <section className="admin-form-workspace__card">
-            <div className="admin-form-workspace__card-heading">
-              <h2>
-                <FormattedMessage id="organization.editor.contact.title" />
-              </h2>
-              <p>
-                <FormattedMessage id="organization.editor.contact.subtitle" />
-              </p>
-            </div>
-            <div className="admin-form-workspace__fields">
-              <TextInput
-                id="org-internet-address"
-                labelText={intl.formatMessage({
-                  id: "organization.internetaddress",
-                })}
-                value={String(orgInfo.internetAddress || "")}
-                invalid={internetAddressInvalid}
-                invalidText={intl.formatMessage({
-                  id: "notification.organization.post.internetAddress",
-                })}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  updateField("internetAddress", event.target.value.trim())
-                }
-              />
-              <TextInput
-                id="org-street-address"
-                labelText={intl.formatMessage({
-                  id: "organization.streetAddress",
-                })}
-                value={String(orgInfo.streetAddress || "")}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  updateField("streetAddress", event.target.value)
-                }
-              />
-              <TextInput
-                id="org-city"
-                labelText={intl.formatMessage({ id: "organization.city" })}
-                value={String(orgInfo.city || "")}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  updateField("city", event.target.value)
-                }
-              />
-              <TextInput
-                id="org-clia-number"
-                labelText={intl.formatMessage({
-                  id: "organization.clia.number",
-                })}
-                value={String(orgInfo.cliaNum || "")}
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  updateField("cliaNum", event.target.value)
-                }
-              />
-            </div>
-          </section>
-
-          <section className="admin-form-workspace__card">
-            <div className="admin-form-workspace__card-heading">
-              <h2>
-                <FormattedMessage id="organization.editor.types.title" />
-              </h2>
-              <p>
-                <FormattedMessage id="organization.editor.types.subtitle" />
-              </p>
-            </div>
-            {organizationTypes.length > 0 ? (
-              <div className="admin-form-workspace__checks admin-form-workspace__checks--types">
-                {organizationTypes.map((type) => (
-                  <div
-                    className="admin-form-workspace__check-card"
-                    key={type.id}
-                  >
-                    <Checkbox
-                      id={`organization-type-${type.id}`}
-                      labelText={localizedType(type).name}
-                      checked={selectedTypeIds.includes(type.id)}
-                      onChange={() => toggleType(type.id)}
-                    />
-                    {localizedType(type).description ? (
-                      <p>{localizedType(type).description}</p>
-                    ) : null}
-                  </div>
-                ))}
+          <div className="admin-form-workspace__body">
+            <section className="admin-form-workspace__card">
+              <div className="admin-form-workspace__card-heading">
+                <h2>
+                  <FormattedMessage id="organization.editor.basic.title" />
+                </h2>
+                <p>
+                  <FormattedMessage id="organization.editor.basic.subtitle" />
+                </p>
               </div>
-            ) : (
-              <div className="admin-form-workspace__empty" role="status">
-                <div aria-hidden="true">0</div>
-                <h3>
-                  <FormattedMessage id="organization.editor.types.empty" />
-                </h3>
+              <div className="admin-form-workspace__fields">
+                <TextInput
+                  id="org-name"
+                  autoFocus={embedded}
+                  labelText={intl.formatMessage({
+                    id: "organization.organizationName",
+                  })}
+                  value={String(orgInfo.organizationName || "")}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    updateField("organizationName", event.target.value)
+                  }
+                  required
+                />
+                <TextInput
+                  id="org-prefix"
+                  labelText={intl.formatMessage({
+                    id: "organization.short.CI",
+                  })}
+                  value={String(orgInfo.shortName || "")}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    updateField("shortName", event.target.value)
+                  }
+                  maxLength={15}
+                  required
+                />
+                <Select
+                  id="org-active"
+                  labelText={intl.formatMessage({
+                    id: "organization.isActive",
+                  })}
+                  value={normalizeActive(orgInfo.isActive)}
+                  onChange={(event: ChangeEvent<HTMLSelectElement>) =>
+                    updateField("isActive", event.target.value)
+                  }
+                >
+                  <SelectItem
+                    value="Y"
+                    text={intl.formatMessage({ id: "label.yes" })}
+                  />
+                  <SelectItem
+                    value="N"
+                    text={intl.formatMessage({ id: "label.no" })}
+                  />
+                </Select>
+                <AutoComplete
+                  name="parentOrgName"
+                  id="parentOrgName"
+                  allowFreeText={
+                    configurationProperties.restrictFreeTextRefSiteEntry !==
+                    "true"
+                  }
+                  value={
+                    parentOrgPost.organizationName ||
+                    parentOrgPost.parentOrganizationName ||
+                    ""
+                  }
+                  onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                    setDirty(true);
+                    setParentOrgPost((current) => ({
+                      ...current,
+                      parentOrganizationName: event.target.value,
+                    }));
+                  }}
+                  onSelect={(selectedId: string) => {
+                    setDirty(true);
+                    setParentOrgId(selectedId);
+                  }}
+                  label={intl.formatMessage({
+                    id: "organization.search.parent.name",
+                  })}
+                  suggestions={parentOrgList}
+                />
               </div>
-            )}
-          </section>
+            </section>
 
+            <section className="admin-form-workspace__card">
+              <div className="admin-form-workspace__card-heading">
+                <h2>
+                  <FormattedMessage id="organization.editor.contact.title" />
+                </h2>
+                <p>
+                  <FormattedMessage id="organization.editor.contact.subtitle" />
+                </p>
+              </div>
+              <div className="admin-form-workspace__fields">
+                <TextInput
+                  id="org-internet-address"
+                  labelText={intl.formatMessage({
+                    id: "organization.internetaddress",
+                  })}
+                  value={String(orgInfo.internetAddress || "")}
+                  invalid={internetAddressInvalid}
+                  invalidText={intl.formatMessage({
+                    id: "notification.organization.post.internetAddress",
+                  })}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    updateField("internetAddress", event.target.value.trim())
+                  }
+                />
+                <TextInput
+                  id="org-street-address"
+                  labelText={intl.formatMessage({
+                    id: "organization.streetAddress",
+                  })}
+                  value={String(orgInfo.streetAddress || "")}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    updateField("streetAddress", event.target.value)
+                  }
+                />
+                <TextInput
+                  id="org-city"
+                  labelText={intl.formatMessage({ id: "organization.city" })}
+                  value={String(orgInfo.city || "")}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    updateField("city", event.target.value)
+                  }
+                />
+                <TextInput
+                  id="org-clia-number"
+                  labelText={intl.formatMessage({
+                    id: "organization.clia.number",
+                  })}
+                  value={String(orgInfo.cliaNum || "")}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    updateField("cliaNum", event.target.value)
+                  }
+                />
+              </div>
+            </section>
+
+            <section className="admin-form-workspace__card">
+              <div className="admin-form-workspace__card-heading">
+                <h2>
+                  <FormattedMessage id="organization.editor.types.title" />
+                </h2>
+                <p>
+                  <FormattedMessage id="organization.editor.types.subtitle" />
+                </p>
+              </div>
+              {organizationTypes.length > 0 ? (
+                <div className="admin-form-workspace__checks admin-form-workspace__checks--types">
+                  {organizationTypes.map((type) => (
+                    <div
+                      className="admin-form-workspace__check-card"
+                      key={type.id}
+                    >
+                      <Checkbox
+                        id={`organization-type-${type.id}`}
+                        labelText={localizedType(type).name}
+                        checked={selectedTypeIds.includes(type.id)}
+                        onChange={() => toggleType(type.id)}
+                      />
+                      {localizedType(type).description ? (
+                        <p>{localizedType(type).description}</p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="admin-form-workspace__empty" role="status">
+                  <div aria-hidden="true">0</div>
+                  <h3>
+                    <FormattedMessage id="organization.editor.types.empty" />
+                  </h3>
+                </div>
+              )}
+            </section>
+          </div>
           <div className="admin-form-workspace__actions">
             <Button kind="secondary" type="button" onClick={cancel}>
               <FormattedMessage id="label.button.cancel" />
@@ -579,4 +589,4 @@ function OrganizationAddModify({
   );
 }
 
-export default injectIntl(OrganizationAddModify);
+export default OrganizationAddModify;

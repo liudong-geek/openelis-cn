@@ -1,5 +1,6 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act } from "react-dom/test-utils";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { waitFor } from "@testing-library/dom";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
@@ -255,4 +256,80 @@ describe("LabelPresetEditor", () => {
     ).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
+});
+
+test("Escape checks current unsaved edits instead of the opening form state", async () => {
+  const onClose = vi.fn();
+  renderEditor(null, onClose);
+  fireEvent.change(
+    screen.getByLabelText(messages["admin.labelPresets.field.name"]),
+    { target: { value: "Unsaved label" } },
+  );
+  fireEvent.keyDown(
+    screen.getByLabelText(messages["admin.labelPresets.field.name"]),
+    { key: "Escape", code: "Escape", keyCode: 27 },
+  );
+  expect(
+    await screen.findByText(
+      messages["admin.labelPresets.editor.discardConfirm"],
+    ),
+  ).toBeInTheDocument();
+  expect(onClose).not.toHaveBeenCalled();
+  expect(screen.getByTestId("label-preset-editor")).toHaveClass("is-visible");
+  const confirmation = screen.getByRole("dialog", {
+    name: messages["admin.labelPresets.editor.discardTitle"],
+  });
+  fireEvent.click(
+    within(confirmation).getByRole("button", {
+      name: messages["label.button.cancel"],
+      exact: true,
+    }),
+  );
+  expect(screen.getByTestId("label-preset-editor")).toHaveClass("is-visible");
+  expect(
+    screen.getByLabelText(messages["admin.labelPresets.field.name"]),
+  ).toHaveValue("Unsaved label");
+});
+
+test("pending label save locks fields and Escape; a failed save restores the entered values", () => {
+  const onClose = vi.fn();
+  renderEditor(null, onClose);
+  fireEvent.change(
+    screen.getByLabelText(messages["admin.labelPresets.field.name"]),
+    { target: { value: "Pending label" } },
+  );
+  let complete;
+  postToOpenElisServerFullResponse.mockImplementation(
+    (_url, _body, callback) => {
+      complete = callback;
+    },
+  );
+  fireEvent.click(screen.getByText(messages["label.button.save"]));
+  fireEvent.keyDown(
+    screen.getByLabelText(messages["admin.labelPresets.field.name"]),
+    { key: "Escape", code: "Escape", keyCode: 27 },
+  );
+  expect(onClose).not.toHaveBeenCalled();
+  expect(
+    screen.queryByText(messages["admin.labelPresets.editor.discardConfirm"]),
+  ).not.toBeInTheDocument();
+  expect(screen.getByTestId("label-preset-editor")).toHaveClass("is-visible");
+  screen
+    .getAllByRole("textbox")
+    .forEach((field) => expect(field).toBeDisabled());
+  screen
+    .getAllByRole("spinbutton")
+    .forEach((field) => expect(field).toBeDisabled());
+  screen
+    .getAllByRole("checkbox")
+    .forEach((field) => expect(field).toBeDisabled());
+  expect(screen.getByRole("combobox")).toBeDisabled();
+  act(() => complete({ status: 503 }));
+  expect(
+    screen.getByLabelText(messages["admin.labelPresets.field.name"]),
+  ).toHaveValue("Pending label");
+  expect(
+    screen.getByLabelText(messages["admin.labelPresets.field.name"]),
+  ).toBeEnabled();
+  expect(screen.getByRole("combobox")).toBeEnabled();
 });

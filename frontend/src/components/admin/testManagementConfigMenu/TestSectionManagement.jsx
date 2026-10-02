@@ -40,6 +40,7 @@ import {
 import "../AdminListWorkspace.css";
 import "../AdminModal.css";
 import "./ConfigurationEntityWorkspace.css";
+import ConfigurationNameEditor from "./ConfigurationNameEditor";
 
 function TestSectionManagement() {
   const intl = useIntl();
@@ -55,6 +56,7 @@ function TestSectionManagement() {
   const [loadError, setLoadError] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [name, setName] = useState("");
@@ -273,8 +275,7 @@ function TestSectionManagement() {
                         </TableCell>
                         <TableCell>
                           <Button
-                            as={Link}
-                            to={`${base}/TestSectionRenameEntry`}
+                            onClick={() => setEditingRecord(section)}
                             kind="ghost"
                             size="sm"
                           >
@@ -298,6 +299,26 @@ function TestSectionManagement() {
             </div>
           )}
         </section>
+
+        {editingRecord && (
+          <ConfigurationNameEditor
+            entity="testSection"
+            record={editingRecord}
+            onClose={() => setEditingRecord(null)}
+            onSaved={() => {
+              setEditingRecord(null);
+              addNotification({
+                kind: NotificationKinds.success,
+                title: intl.formatMessage({ id: "notification.title" }),
+                message: intl.formatMessage({
+                  id: "notification.user.post.save.success",
+                }),
+              });
+              setNotificationVisible(true);
+              loadSections();
+            }}
+          />
+        )}
 
         <ComposedModal
           open={isCreateOpen}
