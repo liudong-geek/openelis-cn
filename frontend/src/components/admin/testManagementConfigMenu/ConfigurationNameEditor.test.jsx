@@ -8,7 +8,11 @@ import PanelManagement from "./PanelManagement";
 import TestSectionManagement from "./TestSectionManagement";
 import ConfigurationNameEditor from "./ConfigurationNameEditor";
 import chineseMessages from "../../../languages/zh.json";
-const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+const api = vi.hoisted(() => ({
+  get: vi.fn(),
+  post: vi.fn(),
+  addNotification: vi.fn(),
+}));
 vi.mock("../../utils/Utils", () => ({
   getFromOpenElisServer: api.get,
   postToOpenElisServerJsonResponse: api.post,
@@ -17,7 +21,7 @@ vi.mock("../../layout/Layout", async () => {
   const { createContext } = await import("react");
   return {
     NotificationContext: createContext({
-      addNotification: vi.fn(),
+      addNotification: api.addNotification,
       notificationVisible: false,
       setNotificationVisible: vi.fn(),
     }),
@@ -35,7 +39,12 @@ const cases = [
     post: "PanelRenameEntry",
     idField: "panelId",
     label: "english.label",
+    success: "configuration.panel.name.save.success",
+    createSuccess: "configuration.panel.create.success",
+    createTitle: "configuration.panel.create",
+    createLabel: "panel.panelName",
     payload: {
+      existingSampleTypeList: [{ id: "2", value: "Serum" }],
       existingPanelList: [
         {
           typeOfSampleName: "Serum",
@@ -55,6 +64,10 @@ const cases = [
     post: "TestSectionRenameEntry",
     idField: "testSectionId",
     label: "english.label",
+    success: "configuration.testUnit.name.save.success",
+    createSuccess: "configuration.testUnit.create.success",
+    createTitle: "configuration.testUnit.create",
+    createLabel: "systemAudit.field.testSectionName",
     payload: {
       existingTestUnitList: [
         { id: "42", value: "Chemistry" },
@@ -142,6 +155,7 @@ for (const item of cases)
       );
       expect(input).toHaveValue("Chemistry revised");
       expect(screen.getByRole("dialog")).toBeInTheDocument();
+      expect(api.addNotification).not.toHaveBeenCalled();
       expect(api.post).toHaveBeenCalledWith(
         `/rest/${item.post}`,
         JSON.stringify({
@@ -165,30 +179,100 @@ for (const item of cases)
       expect(screen.getByTestId("path")).toHaveTextContent(
         `/MasterListsPage/${item.route}`,
       );
+      expect(api.addNotification).toHaveBeenCalledTimes(1);
+      expect(api.addNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ message: messages[item.success] }),
+      );
+      expect(api.addNotification).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: messages["notification.user.post.save.success"],
+        }),
+      );
     });
-    test("failed detail load disables save without substituting the row display name", async () => {
+    test("reports creation using the selected configuration entity", async () => {
       setup(item);
-      api.get.mockImplementationOnce((_url, cb) =>
-        cb({ status: 500, error: "failed" }),
-      );
       fireEvent.click(
-        screen.getAllByRole("button", {
-          name: messages["button.edit"],
-          exact: true,
-        })[0],
-      );
-      const dialog = await screen.findByRole("dialog");
-      expect(
-        within(dialog).getByRole("button", {
-          name: messages["label.button.save"],
+        screen.getByRole("button", {
+          name: messages[item.createTitle],
           exact: true,
         }),
-      ).toBeDisabled();
-      expect(within(dialog).getByLabelText(messages[item.label])).toHaveValue(
-        "",
       );
-      expect(api.post).not.toHaveBeenCalled();
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.change(
+        within(dialog).getByLabelText(messages[item.createLabel]),
+        {
+          target: { value: "New chemistry" },
+        },
+      );
+      if (item.entity === "panel") {
+        fireEvent.change(
+          within(dialog).getByLabelText(messages["order.specimenLookup.type"]),
+          {
+            target: { value: "2" },
+          },
+        );
+        fireEvent.change(
+          within(dialog).getByLabelText(messages["label.loinc"]),
+          {
+            target: { value: "24331-1" },
+          },
+        );
+      }
+      api.post.mockImplementationOnce((_url, _body, callback) => callback({}));
+      fireEvent.click(
+        within(dialog).getByRole("button", {
+          name: messages["button.save"],
+          exact: true,
+        }),
+      );
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+      );
+      expect(api.addNotification).toHaveBeenCalledTimes(1);
+      expect(api.addNotification).toHaveBeenCalledWith(
+        expect.objectContaining({ message: messages[item.createSuccess] }),
+      );
     });
+    test.each([
+      [
+        500,
+        { status: 500, error: "failed" },
+        "configuration.entityName.loadFailed",
+      ],
+      [
+        404,
+        { statusCode: 404, error: "missing" },
+        "configuration.entityName.notFound",
+      ],
+      [0, undefined, "configuration.entityName.loadFailed"],
+    ])(
+      "failed detail load %s keeps save disabled and shows formal feedback",
+      async (_status, failure, messageId) => {
+        setup(item);
+        api.get.mockImplementationOnce((_url, cb) => cb(failure));
+        fireEvent.click(
+          screen.getAllByRole("button", {
+            name: messages["button.edit"],
+            exact: true,
+          })[0],
+        );
+        const dialog = await screen.findByRole("dialog");
+        expect(
+          within(dialog).getByRole("button", {
+            name: messages["label.button.save"],
+            exact: true,
+          }),
+        ).toBeDisabled();
+        expect(within(dialog).getByLabelText(messages[item.label])).toHaveValue(
+          "",
+        );
+        expect(within(dialog).getByText(messages[messageId])).toBeVisible();
+        expect(
+          within(dialog).queryByText(messages["server.error.msg"]),
+        ).not.toBeInTheDocument();
+        expect(api.post).not.toHaveBeenCalled();
+      },
+    );
   });
 
 function setupChineseEditor(entity, response) {
@@ -260,36 +344,58 @@ for (const item of cases)
       ).toBeDisabled();
       expect(api.post).not.toHaveBeenCalled();
     });
-    test("retains Chinese drafts on a failed save and unlocks retry", async () => {
-      const callbacks = setupChineseEditor(item.entity);
-      const input = screen.getByLabelText(
-        chineseMessages["configuration.entityName.chinese"],
-      );
-      fireEvent.change(input, { target: { value: "生化检验修订" } });
-      api.post.mockImplementationOnce((_url, _body, cb) =>
-        cb({ status: 500, error: "failed" }),
-      );
-      fireEvent.click(
-        screen.getByRole("button", {
-          name: chineseMessages["label.button.save"],
-          exact: true,
-        }),
-      );
-      expect(
-        screen.getByText(chineseMessages["server.error.msg"]),
-      ).toBeVisible();
-      expect(input).toHaveValue("生化检验修订");
-      expect(input).toBeEnabled();
-      expect(callbacks.onSaved).not.toHaveBeenCalled();
-      api.post.mockImplementationOnce((_url, _body, cb) => cb({}));
-      fireEvent.click(
-        screen.getByRole("button", {
-          name: chineseMessages["label.button.save"],
-          exact: true,
-        }),
-      );
-      expect(callbacks.onSaved).toHaveBeenCalledTimes(1);
-    });
+    test.each([
+      [
+        400,
+        { status: 400, error: "invalid" },
+        "configuration.entityName.invalid",
+      ],
+      [
+        404,
+        { statusCode: 404, error: "missing" },
+        "configuration.entityName.notFound",
+      ],
+      [
+        500,
+        { status: 500, error: "failed" },
+        "configuration.entityName.saveFailed",
+      ],
+    ])(
+      "reports save failure %s and retains Chinese drafts for retry",
+      async (status, failure, messageId) => {
+        const callbacks = setupChineseEditor(item.entity);
+        const input = screen.getByLabelText(
+          chineseMessages["configuration.entityName.chinese"],
+        );
+        const draft = status === 400 ? "<b>生化检验修订</b>" : "生化检验修订";
+        fireEvent.change(input, { target: { value: draft } });
+        api.post.mockImplementationOnce((_url, _body, cb) => cb(failure));
+        fireEvent.click(
+          screen.getByRole("button", {
+            name: chineseMessages["label.button.save"],
+            exact: true,
+          }),
+        );
+        expect(screen.getByText(chineseMessages[messageId])).toBeVisible();
+        expect(input).toHaveValue(draft);
+        expect(input).toBeEnabled();
+        expect(callbacks.onSaved).not.toHaveBeenCalled();
+        expect(
+          screen.queryByText(chineseMessages["server.error.msg"]),
+        ).not.toBeInTheDocument();
+        if (status === 400) {
+          fireEvent.change(input, { target: { value: "生化检验修订" } });
+        }
+        api.post.mockImplementationOnce((_url, _body, cb) => cb({}));
+        fireEvent.click(
+          screen.getByRole("button", {
+            name: chineseMessages["label.button.save"],
+            exact: true,
+          }),
+        );
+        expect(callbacks.onSaved).toHaveBeenCalledTimes(1);
+      },
+    );
     test("blocks duplicate submission, field changes and dismissal while saving", async () => {
       const callbacks = setupChineseEditor(item.entity);
       const input = screen.getByLabelText(

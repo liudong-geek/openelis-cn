@@ -125,7 +125,7 @@ function TestSectionManagement() {
           kind: NotificationKinds.success,
           title: intl.formatMessage({ id: "notification.title" }),
           message: intl.formatMessage({
-            id: "notification.user.post.save.success",
+            id: "configuration.testUnit.create.success",
           }),
         });
         setNotificationVisible(true);
@@ -311,7 +311,7 @@ function TestSectionManagement() {
                 kind: NotificationKinds.success,
                 title: intl.formatMessage({ id: "notification.title" }),
                 message: intl.formatMessage({
-                  id: "notification.user.post.save.success",
+                  id: "configuration.testUnit.name.save.success",
                 }),
               });
               setNotificationVisible(true);

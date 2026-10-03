@@ -23,6 +23,15 @@ const failedResponse = (response) =>
   response.error ||
   Number(response.status || response.statusCode || 0) >= 400;
 
+const failureMessageId = (response, operation) => {
+  const status = Number(response?.status || response?.statusCode || 0);
+  if (status === 400) return "configuration.entityName.invalid";
+  if (status === 404) return "configuration.entityName.notFound";
+  return operation === "load"
+    ? "configuration.entityName.loadFailed"
+    : "configuration.entityName.saveFailed";
+};
+
 /** Edits the row's names without leaving or resetting its parent list. */
 export default function ConfigurationNameEditor({
   entity,
@@ -50,7 +59,9 @@ export default function ConfigurationNameEditor({
         if (!active) return;
         setLoading(false);
         if (failedResponse(response) || !response.name) {
-          setError(intl.formatMessage({ id: "server.error.msg" }));
+          setError(
+            intl.formatMessage({ id: failureMessageId(response, "load") }),
+          );
           return;
         }
         const translations = response.translations || {};
@@ -99,7 +110,9 @@ export default function ConfigurationNameEditor({
         savingRef.current = false;
         setSaving(false);
         if (failedResponse(response)) {
-          setError(intl.formatMessage({ id: "server.error.msg" }));
+          setError(
+            intl.formatMessage({ id: failureMessageId(response, "save") }),
+          );
         } else {
           onSaved();
         }

@@ -148,7 +148,7 @@ function PanelManagement() {
           kind: NotificationKinds.success,
           title: intl.formatMessage({ id: "notification.title" }),
           message: intl.formatMessage({
-            id: "notification.user.post.save.success",
+            id: "configuration.panel.create.success",
           }),
         });
         setNotificationVisible(true);
@@ -327,7 +327,7 @@ function PanelManagement() {
                 kind: NotificationKinds.success,
                 title: intl.formatMessage({ id: "notification.title" }),
                 message: intl.formatMessage({
-                  id: "notification.user.post.save.success",
+                  id: "configuration.panel.name.save.success",
                 }),
               });
               setNotificationVisible(true);
