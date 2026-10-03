@@ -32,6 +32,13 @@ import {
 } from "./sampleEditPayload";
 import { modifyPatientName } from "./modifyOrderDisplay";
 
+const progressMessageIds = {
+  "carbon.progress-step.current": "modify.order.step.current",
+  "carbon.progress-step.complete": "modify.order.step.complete",
+  "carbon.progress-step.incomplete": "modify.order.step.incomplete",
+  "carbon.progress-step.invalid": "modify.order.step.invalid",
+};
+
 const breadcrumbs = [
   { label: "home.label", link: "/" },
   { label: "sidenav.label.order.active", link: "/order" },
@@ -378,10 +385,16 @@ const ModifyOrder = () => {
               >
                 <ProgressStep
                   disabled={isSubmitting}
+                  translateWithId={(id) =>
+                    intl.formatMessage({ id: progressMessageIds[id] })
+                  }
                   label={intl.formatMessage({ id: "modify.order.samples" })}
                 />
                 <ProgressStep
                   disabled={isSubmitting}
+                  translateWithId={(id) =>
+                    intl.formatMessage({ id: progressMessageIds[id] })
+                  }
                   label={intl.formatMessage({ id: "modify.order.information" })}
                 />
               </ProgressIndicator>

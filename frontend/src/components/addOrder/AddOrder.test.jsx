@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import messages from "../../languages/en.json";
+import zhMessages from "../../languages/zh.json";
 
 // ---------------------------------------------------------------------------
 // OGC-285 M5b — AddOrder mounts ONE order-level LabelsSection (API mode), fed by
@@ -621,4 +622,36 @@ describe("AddOrder late asynchronous field responses", () => {
       );
     },
   );
+});
+
+test("modification displays Chinese priorities while preserving the legacy wire values", () => {
+  utilsMock.getFromOpenElisServer.mockReset();
+  utilsMock.getFromOpenElisServer.mockImplementation(() => {});
+  const setOrderFormValues = vi.fn();
+  const values = baseOrderFormValues();
+  values.sampleOrderItems.priority = "STAT";
+  render(
+    <IntlProvider locale="zh" messages={zhMessages}>
+      <AddOrder
+        orderFormValues={values}
+        setOrderFormValues={setOrderFormValues}
+        samples={[]}
+        error={() => null}
+        isModifyOrder
+        changed={{}}
+        setChanged={vi.fn()}
+      />
+    </IntlProvider>,
+  );
+  const select = screen.getByLabelText("优先级");
+  expect(
+    within(select)
+      .getAllByRole("option")
+      .map((option) => option.textContent),
+  ).toEqual(["常规", "尽快处理", "急诊", "指定时间", "预定急诊"]);
+  expect(select).toHaveValue("STAT");
+  fireEvent.change(select, { target: { value: "Timed" } });
+  expect(
+    setOrderFormValues.mock.calls.at(-1)[0].sampleOrderItems.priority,
+  ).toBe("Timed");
 });

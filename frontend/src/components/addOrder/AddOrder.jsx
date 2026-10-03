@@ -901,7 +901,13 @@ const AddOrder = (props) => {
                   return (
                     <SelectItem
                       key={index}
-                      text={priority.label}
+                      text={
+                        isModifyOrder
+                          ? intl.formatMessage({
+                              id: `order.priority.option.${priority.value.toUpperCase()}`,
+                            })
+                          : priority.label
+                      }
                       value={priority.value}
                     />
                   );

@@ -10280,5 +10280,10 @@
   "modify.order.readonly": "当前申请为只读，不能保存修改。",
   "modify.order.new.number": "新实验室编号（选填）",
   "modify.order.new.number.placeholder": "留空保留原编号",
-  "modify.order.new.number.helper": "仅需更换申请编号时填写，留空不改号。"
+  "modify.order.new.number.helper": "仅需更换申请编号时填写，留空不改号。",
+  "modify.order.step.current": "当前步骤",
+  "modify.order.step.complete": "已查看",
+  "modify.order.step.incomplete": "待查看",
+  "modify.order.step.invalid": "需修正",
+  "modify.order.tests.helper": "核对已有标本和项目。只有状态与权限允许时才能移除标本、取消或加做项目；禁用项仍保留显示。"
 }

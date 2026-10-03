@@ -256,6 +256,9 @@ const EditSample = (props) => {
             {({ rows, headers, getHeaderProps, getTableProps }) => (
               <TableContainer
                 title={intl.formatMessage({ id: "currentests.title" })}
+                description={intl.formatMessage({
+                  id: "modify.order.tests.helper",
+                })}
               >
                 <Table {...getTableProps()}>
                   <TableHead>

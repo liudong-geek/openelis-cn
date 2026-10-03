@@ -2,11 +2,11 @@ package org.openelisglobal.sample.controller.rest;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.InvocationTargetException;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -84,16 +84,9 @@ public class SampleEditRestController extends BaseSampleEntryController {
 
     // private ObservationHistory paymentObservation = null;
     private static final SampleEditItemComparator testComparator = new SampleEditItemComparator();
-    private static final Set<String> excludedAnalysisStatusList;
-    private static final Set<String> ENTERED_STATUS_SAMPLE_LIST = new HashSet<>();
     private static final Collection<String> ABLE_TO_CANCEL_ROLE_NAMES = new ArrayList<>();
 
     static {
-        excludedAnalysisStatusList = new HashSet<>();
-        excludedAnalysisStatusList
-                .add(SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.Canceled));
-
-        ENTERED_STATUS_SAMPLE_LIST.add(SpringContext.getBean(IStatusService.class).getStatusID(SampleStatus.Entered));
         ABLE_TO_CANCEL_ROLE_NAMES.add("Validator");
         ABLE_TO_CANCEL_ROLE_NAMES.add("Validation");
         ABLE_TO_CANCEL_ROLE_NAMES.add("Biologist");
@@ -162,14 +155,7 @@ public class SampleEditRestController extends BaseSampleEntryController {
                 setAddableSampleTypes(form, request);
                 setSampleOrderInfo(form, sample);
                 form.setAbleToCancelResults(hasResults(currentTestList, allowedToCancelResults));
-                String maxAccessionNumber;
-                if (sampleItemList.size() > 0) {
-                    maxAccessionNumber = accessionNumber + "-"
-                            + sampleItemList.get(sampleItemList.size() - 1).getSortOrder();
-                } else {
-                    maxAccessionNumber = accessionNumber + "-0";
-                }
-                form.setMaxAccessionNumber(maxAccessionNumber);
+                form.setMaxAccessionNumber(getMaxAccessionNumber(sampleItemList, accessionNumber));
                 form.setIsConfirmationSample(sampleService.isConfirmationSample(sample));
             } else {
                 form.setNoSampleFound(Boolean.TRUE);
@@ -338,8 +324,17 @@ public class SampleEditRestController extends BaseSampleEntryController {
     }
 
     private List<SampleItem> getSampleItems(Sample sample) {
+        // Read every persisted tube so its current analyses remain visible, even when
+        // the tube's state no longer permits editing.
+        List<SampleItem> sampleItems = new ArrayList<>(sampleItemService.getSampleItemsBySampleId(sample.getId()));
+        sampleItems.sort(Comparator.comparing(item -> new BigInteger(item.getSortOrder())));
+        return sampleItems;
+    }
 
-        return sampleItemService.getSampleItemsBySampleIdAndStatus(sample.getId(), ENTERED_STATUS_SAMPLE_LIST);
+    private String getMaxAccessionNumber(List<SampleItem> sampleItems, String accessionNumber) {
+        BigInteger maxSortOrder = sampleItems.stream().map(item -> new BigInteger(item.getSortOrder()))
+                .max(Comparator.naturalOrder()).orElse(BigInteger.ZERO);
+        return accessionNumber + "-" + maxSortOrder;
     }
 
     private void setPatientInfo(SampleEditForm form, Sample sample)
@@ -374,14 +369,16 @@ public class SampleEditRestController extends BaseSampleEntryController {
 
         TypeOfSample typeOfSample = typeOfSampleService.get(sampleItem.getTypeOfSampleId());
 
+        IStatusService statuses = SpringContext.getBean(IStatusService.class);
         List<Analysis> analysisList = analysisService.getAnalysesBySampleItemsExcludingByStatusIds(sampleItem,
-                excludedAnalysisStatusList);
+                Set.of(statuses.getStatusID(AnalysisStatus.Canceled)));
 
         List<SampleEditItem> analysisSampleItemList = new ArrayList<>();
 
         String collectionDate = DateUtil.convertTimestampToStringDate(sampleItem.getCollectionDate());
         String collectionTime = DateUtil.convertTimestampToStringTime(sampleItem.getCollectionDate());
-        boolean canRemove = true;
+        boolean tubeEntered = statuses.matches(sampleItem.getStatusId(), SampleStatus.Entered);
+        boolean canRemove = tubeEntered;
         for (Analysis analysis : analysisList) {
             SampleEditItem sampleEditItem = new SampleEditItem();
 
@@ -389,10 +386,9 @@ public class SampleEditRestController extends BaseSampleEntryController {
             sampleEditItem.setTestName(TestServiceImpl.getUserLocalizedTestName(analysis.getTest()));
             sampleEditItem.setSampleItemId(sampleItem.getId());
 
-            boolean canCancel = allowedToCancelAll || (!SpringContext.getBean(IStatusService.class)
-                    .matches(analysis.getStatusId(), AnalysisStatus.Canceled)
-                    && SpringContext.getBean(IStatusService.class).matches(analysis.getStatusId(),
-                            AnalysisStatus.NotStarted));
+            boolean canCancel = tubeEntered
+                    && (allowedToCancelAll || (!statuses.matches(analysis.getStatusId(), AnalysisStatus.Canceled)
+                            && statuses.matches(analysis.getStatusId(), AnalysisStatus.NotStarted)));
 
             if (!canCancel) {
                 canRemove = false;
@@ -440,6 +436,9 @@ public class SampleEditRestController extends BaseSampleEntryController {
 
     private void addPossibleTestsToList(SampleItem sampleItem, List<SampleEditItem> possibleTestList,
             String accessionNumber) {
+        if (!SpringContext.getBean(IStatusService.class).matches(sampleItem.getStatusId(), SampleStatus.Entered)) {
+            return;
+        }
 
         TypeOfSample typeOfSample = typeOfSampleService.get(sampleItem.getTypeOfSampleId());
 

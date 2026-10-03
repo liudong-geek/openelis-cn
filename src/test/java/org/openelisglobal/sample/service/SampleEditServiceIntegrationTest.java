@@ -34,6 +34,7 @@ import org.openelisglobal.role.service.RoleService;
 import org.openelisglobal.role.valueholder.Role;
 import org.openelisglobal.sample.bean.SampleEditItem;
 import org.openelisglobal.sample.bean.SampleOrderItem;
+import org.openelisglobal.sample.controller.rest.SampleEditRestController;
 import org.openelisglobal.sample.form.SampleEditForm;
 import org.openelisglobal.sample.valueholder.OrderPriority;
 import org.openelisglobal.sample.valueholder.Sample;
@@ -46,6 +47,7 @@ import org.openelisglobal.systemuser.valueholder.SystemUser;
 import org.openelisglobal.systemusermodule.service.PermissionModuleService;
 import org.openelisglobal.systemusermodule.valueholder.PermissionModule;
 import org.openelisglobal.systemusermodule.valueholder.SystemUserModule;
+import org.openelisglobal.typeofsample.valueholder.TypeOfSampleTest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -67,7 +69,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class SampleEditServiceIntegrationTest extends BaseWebContextSensitiveTest {
 
     @Configuration(proxyBeanMethods = false)
-    @Import({ HisResultOutboxServiceImpl.class, HisResultOutboxRepositoryImpl.class })
+    @Import({ HisResultOutboxServiceImpl.class, HisResultOutboxRepositoryImpl.class, SampleEditRestController.class })
     static class OutboxTestConfig {
     }
 
@@ -80,6 +82,9 @@ public class SampleEditServiceIntegrationTest extends BaseWebContextSensitiveTes
 
     @Autowired
     private SampleEditService sampleEditService;
+
+    @Autowired
+    private SampleEditRestController sampleEditController;
 
     @Autowired
     private SampleService sampleService;
@@ -314,6 +319,161 @@ public class SampleEditServiceIntegrationTest extends BaseWebContextSensitiveTes
                     persistedAnalysis.getStatusId());
             return null;
         });
+    }
+
+    @Test
+    public void nonEnteredTubeRejectsCancellationAndPreservesPersistedOrderAndAnalysis() {
+        IStatusService statuses = SpringContext.getBean(IStatusService.class);
+        String nonEnteredTubeStatus = statuses.getStatusID(SampleStatus.Canceled);
+        assertNotNull("The fixture must provide a real non-Entered tube status", nonEnteredTubeStatus);
+        assertFalse("The forbidden tube status must differ from SampleEntered",
+                statuses.matches(nonEnteredTubeStatus, SampleStatus.Entered));
+
+        TransactionTemplate setup = new TransactionTemplate(transactions);
+        Boolean[] previousOrderable = new Boolean[1];
+        String[] createdMappingId = new String[1];
+        setup.execute(status -> {
+            entityManager.clear();
+            org.openelisglobal.test.valueholder.Test test = entityManager
+                    .find(org.openelisglobal.test.valueholder.Test.class, TEST_ID);
+            assertNotNull(test);
+            previousOrderable[0] = test.getOrderable();
+            test.setOrderable(true);
+            SampleItem tube = entityManager.find(SampleItem.class, EXISTING_SAMPLE_ITEM_ID);
+            List<TypeOfSampleTest> mappings = entityManager
+                    .createQuery("FROM TypeOfSampleTest m WHERE m.typeOfSampleId = :sampleType AND m.testId = :test",
+                            TypeOfSampleTest.class)
+                    .setParameter("sampleType", tube.getTypeOfSampleId()).setParameter("test", TEST_ID).getResultList();
+            if (mappings.isEmpty()) {
+                TypeOfSampleTest mapping = new TypeOfSampleTest();
+                mapping.setTypeOfSampleId(tube.getTypeOfSampleId());
+                mapping.setTestId(TEST_ID);
+                entityManager.persist(mapping);
+                entityManager.flush();
+                createdMappingId[0] = mapping.getId();
+            }
+            entityManager.flush();
+            entityManager.clear();
+            return null;
+        });
+        try {
+            MockHttpServletRequest request = authenticatedRequest();
+            TransactionTemplate freshRead = new TransactionTemplate(transactions);
+            freshRead.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            freshRead.setReadOnly(true);
+            freshRead.execute(status -> {
+                entityManager.clear();
+                SampleEditForm displayed;
+                try {
+                    displayed = sampleEditController.showSampleEdit(request, ACCESSION_NUMBER, null);
+                } catch (ReflectiveOperationException exception) {
+                    throw new AssertionError("The persisted Entered tube must be readable before its state changes",
+                            exception);
+                }
+                assertEquals("The Entered tube analysis must be visible", 1, displayed.getExistingTests().size());
+                SampleEditItem displayedAnalysis = displayed.getExistingTests().get(0);
+                assertEquals(EXISTING_SAMPLE_ITEM_ID, displayedAnalysis.getSampleItemId());
+                assertEquals(EXISTING_ANALYSIS_ID, displayedAnalysis.getAnalysisId());
+                assertTrue("The Entered tube must allow cancellation of its unstarted analysis",
+                        displayedAnalysis.isCanCancel());
+                assertTrue("The Entered tube must allow removal while all analyses are unstarted",
+                        displayedAnalysis.isCanRemoveSample());
+                assertFalse("The Entered tube must offer its active orderable mapped test",
+                        displayed.getPossibleTests().isEmpty());
+                assertTrue("The add-on test must retain the original tube and test identity",
+                        displayed.getPossibleTests().stream()
+                                .anyMatch(item -> EXISTING_SAMPLE_ITEM_ID.equals(item.getSampleItemId())
+                                        && TEST_ID.equals(item.getTestId())));
+                return null;
+            });
+
+            String originalOrderStatus = setup.execute(status -> {
+                entityManager.clear();
+                SampleItem tube = entityManager.find(SampleItem.class, EXISTING_SAMPLE_ITEM_ID);
+                assertNotNull(tube);
+                tube.setStatusId(nonEnteredTubeStatus);
+                tube.setSysUserId(SYS_USER_ID);
+                entityManager.flush();
+                String orderStatus = tube.getSample().getStatusId();
+                entityManager.clear();
+                return orderStatus;
+            });
+
+            freshRead.execute(status -> {
+                entityManager.clear();
+                SampleEditForm displayed;
+                try {
+                    displayed = sampleEditController.showSampleEdit(request, ACCESSION_NUMBER, null);
+                } catch (ReflectiveOperationException exception) {
+                    throw new AssertionError("The persisted non-Entered tube must remain visible in the edit response",
+                            exception);
+                }
+                assertEquals("The existing tube analysis must remain visible", 1, displayed.getExistingTests().size());
+                SampleEditItem displayedAnalysis = displayed.getExistingTests().get(0);
+                assertEquals(EXISTING_SAMPLE_ITEM_ID, displayedAnalysis.getSampleItemId());
+                assertEquals(EXISTING_ANALYSIS_ID, displayedAnalysis.getAnalysisId());
+                assertFalse("A visible non-Entered tube must not allow cancellation", displayedAnalysis.isCanCancel());
+                assertFalse("A visible non-Entered tube must not allow removal", displayedAnalysis.isCanRemoveSample());
+                assertTrue("A non-Entered tube must not offer add-on tests", displayed.getPossibleTests().isEmpty());
+                assertEquals("All persisted tubes must participate in the maximum tube number", ACCESSION_NUMBER + "-1",
+                        displayed.getMaxAccessionNumber());
+                return null;
+            });
+
+            SampleEditForm form = createBaseForm();
+            form.setNewAccessionNumber("24-00002");
+            form.getSampleOrderItems().setPriority(OrderPriority.STAT);
+            SampleEditItem cancellation = new SampleEditItem();
+            cancellation.setCanceled(true);
+            cancellation.setSampleItemId(EXISTING_SAMPLE_ITEM_ID);
+            cancellation.setAnalysisId(EXISTING_ANALYSIS_ID);
+            form.getExistingTests().add(cancellation);
+
+            LIMSRuntimeException rejection = assertThrows(LIMSRuntimeException.class,
+                    () -> sampleEditService.editSample(form, request, null, true, SYS_USER_ID));
+            assertEquals("标本状态已变化，请刷新申请后重试。", rejection.getMessage());
+
+            freshRead.execute(status -> {
+                entityManager.clear();
+                Sample persistedOrder = sampleService.getSampleByAccessionNumber(ACCESSION_NUMBER);
+                assertNotNull("The rejected save must retain the original accession", persistedOrder);
+                assertNull("The rejected save must not persist the requested new accession",
+                        sampleService.getSampleByAccessionNumber("24-00002"));
+                assertEquals("The rejected save must preserve order priority", OrderPriority.ROUTINE,
+                        persistedOrder.getPriority());
+                assertEquals("The rejected save must preserve order status", originalOrderStatus,
+                        persistedOrder.getStatusId());
+                SampleItem persistedTube = sampleItemService.get(EXISTING_SAMPLE_ITEM_ID);
+                assertEquals("The tube must retain the non-Entered status committed before the request",
+                        nonEnteredTubeStatus, persistedTube.getStatusId());
+                assertEquals("The tube must remain attached to the original order", persistedOrder.getId(),
+                        persistedTube.getSample().getId());
+                Analysis persistedAnalysis = analysisService.get(EXISTING_ANALYSIS_ID);
+                assertEquals("The forbidden cancellation must leave the analysis NotStarted",
+                        statuses.getStatusID(AnalysisStatus.NotStarted), persistedAnalysis.getStatusId());
+                assertEquals("The analysis must remain on its original tube", EXISTING_SAMPLE_ITEM_ID,
+                        persistedAnalysis.getSampleItem().getId());
+                assertEquals("The forbidden save must not create any additional analyses", 1,
+                        analysisService.getAnalysesBySampleItem(persistedTube).size());
+                return null;
+            });
+        } finally {
+            setup.execute(status -> {
+                entityManager.clear();
+                if (createdMappingId[0] != null) {
+                    TypeOfSampleTest mapping = entityManager.find(TypeOfSampleTest.class, createdMappingId[0]);
+                    if (mapping != null) {
+                        entityManager.remove(mapping);
+                    }
+                }
+                org.openelisglobal.test.valueholder.Test test = entityManager
+                        .find(org.openelisglobal.test.valueholder.Test.class, TEST_ID);
+                test.setOrderable(previousOrderable[0]);
+                entityManager.flush();
+                entityManager.clear();
+                return null;
+            });
+        }
     }
 
     @Test

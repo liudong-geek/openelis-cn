@@ -777,3 +777,24 @@ test("read-only readers can expand original questionnaire information without en
   expect(details).toHaveAttribute("aria-expanded", "true");
   expect(saveButton()).toBeNull();
 });
+
+test("renders Chinese workflow state text on both real Carbon steps", async () => {
+  setup();
+  await loaded();
+  const samplesStep = screen.getByRole("button", {
+    name: "标本与检验项目",
+    exact: true,
+  });
+  const informationStep = screen.getByRole("button", {
+    name: "送检信息",
+    exact: true,
+  });
+  expect(within(samplesStep).getByText("当前步骤")).toBeInTheDocument();
+  expect(within(informationStep).getByText("待查看")).toBeInTheDocument();
+  nextStep();
+  expect(within(samplesStep).getByText("已查看")).toBeInTheDocument();
+  expect(within(informationStep).getByText("当前步骤")).toBeInTheDocument();
+  expect(screen.queryByText("Current")).toBeNull();
+  expect(screen.queryByText("Incomplete")).toBeNull();
+  expect(screen.queryByText("Complete")).toBeNull();
+});

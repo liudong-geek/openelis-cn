@@ -10075,5 +10075,10 @@
   "modify.order.readonly": "This order is read-only. Changes cannot be saved.",
   "modify.order.new.number": "New laboratory number (optional)",
   "modify.order.new.number.placeholder": "Leave blank to keep the current number",
-  "modify.order.new.number.helper": "Only enter this to change the order number; leave blank to keep it."
+  "modify.order.new.number.helper": "Only enter this to change the order number; leave blank to keep it.",
+  "modify.order.step.current": "Current step",
+  "modify.order.step.complete": "Viewed",
+  "modify.order.step.incomplete": "Not viewed",
+  "modify.order.step.invalid": "Needs correction",
+  "modify.order.tests.helper": "Review existing samples and tests. Removing, canceling or adding tests requires the current state and permission to allow it; disabled items remain visible."
 }

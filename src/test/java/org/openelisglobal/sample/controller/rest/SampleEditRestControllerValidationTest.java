@@ -40,8 +40,14 @@ import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.util.AccessionNumberUtil;
 import org.openelisglobal.sample.validator.SampleEditFormValidator;
 import org.openelisglobal.sample.valueholder.OrderPriority;
+import org.openelisglobal.sample.valueholder.Sample;
+import org.openelisglobal.sampleitem.service.SampleItemService;
+import org.openelisglobal.sampleitem.valueholder.SampleItem;
 import org.openelisglobal.siteinformation.service.SiteInformationService;
 import org.openelisglobal.spring.util.SpringContext;
+import org.openelisglobal.test.service.TestService;
+import org.openelisglobal.typeofsample.service.TypeOfSampleService;
+import org.openelisglobal.typeofsample.service.TypeOfSampleTestService;
 import org.openelisglobal.userrole.service.UserRoleService;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.context.support.StaticMessageSource;
@@ -69,6 +75,7 @@ public class SampleEditRestControllerValidationTest {
     private static IAccessionNumberGenerator accessionValidator;
 
     private MockMvc mvc;
+    private SampleEditRestController controller;
     private ObjectMapper mapper;
     private SampleEditService edits;
     private SampleEditAuthorizationService authorization;
@@ -129,7 +136,7 @@ public class SampleEditRestControllerValidationTest {
         validator = spy(new SampleEditFormValidator());
         SampleUtil util = new SampleUtil();
         ReflectionTestUtils.setField(util, "sampleService", samples);
-        SampleEditRestController controller = new SampleEditRestController();
+        controller = new SampleEditRestController();
         ReflectionTestUtils.setField(controller, "formValidator", validator);
         ReflectionTestUtils.setField(controller, "sampleUtil", util);
         ReflectionTestUtils.setField(controller, "sampleService", samples);
@@ -315,6 +322,59 @@ public class SampleEditRestControllerValidationTest {
         form.setSampleOrderItems(null);
         perform(400);
         assertNoWrites();
+    }
+
+    @Test
+    public void allTubesRemainVisibleInNumericOrderWithHighestNonEnteredTubeReserved() {
+        Sample sample = new Sample();
+        sample.setId("9400001");
+        SampleItem entered = persistedTube("9600012", "2", "entered");
+        SampleItem otherState = persistedTube("9600011", "10", "order-test-entered");
+        SampleItem canceled = persistedTube("9600013", "1", "canceled");
+        List<SampleItem> persisted = List.of(otherState, entered, canceled);
+        SampleItemService tubes = mock(SampleItemService.class);
+        when(tubes.getSampleItemsBySampleId(sample.getId())).thenReturn(persisted);
+        ReflectionTestUtils.setField(controller, "sampleItemService", tubes);
+
+        List<SampleItem> displayed = ReflectionTestUtils.invokeMethod(controller, "getSampleItems", sample);
+
+        assertEquals("Reading must retain every real tube, regardless of state", 3, displayed.size());
+        assertEquals(List.of(canceled, entered, otherState), displayed);
+        assertEquals("The read must not rearrange the service's returned collection",
+                List.of(otherState, entered, canceled), persisted);
+        assertEquals("New tube numbering must reserve the largest persisted number, including non-Entered tubes",
+                ACCESSION + "-10",
+                ReflectionTestUtils.invokeMethod(controller, "getMaxAccessionNumber", persisted, ACCESSION));
+        verify(tubes).getSampleItemsBySampleId(sample.getId());
+        verify(tubes, never()).getSampleItemsBySampleIdAndStatus(anyString(), anySet());
+        assertNoWrites();
+    }
+
+    @Test
+    public void nonEnteredTubeDoesNotLoadOrOfferAddOnTests() {
+        SampleItem tube = persistedTube("9600011", "1", "order-test-entered");
+        TypeOfSampleService sampleTypes = mock(TypeOfSampleService.class);
+        TypeOfSampleTestService mappings = mock(TypeOfSampleTestService.class);
+        TestService tests = mock(TestService.class);
+        ReflectionTestUtils.setField(controller, "typeOfSampleService", sampleTypes);
+        ReflectionTestUtils.setField(controller, "typeOfSampleTestService", mappings);
+        ReflectionTestUtils.setField(controller, "testService", tests);
+        when(SpringContext.getBean(IStatusService.class).matches(tube.getStatusId(), SampleStatus.Entered))
+                .thenReturn(false);
+
+        ReflectionTestUtils.invokeMethod(controller, "setAddableTestInfo", form, List.of(tube), ACCESSION);
+
+        assertTrue("A persisted non-Entered tube must have no add-on choices", form.getPossibleTests().isEmpty());
+        verifyZeroInteractions(sampleTypes, mappings, tests);
+        assertNoWrites();
+    }
+
+    private SampleItem persistedTube(String id, String sortOrder, String status) {
+        SampleItem tube = new SampleItem();
+        tube.setId(id);
+        tube.setSortOrder(sortOrder);
+        tube.setStatusId(status);
+        return tube;
     }
 
     private void perform(int status) throws Exception {
