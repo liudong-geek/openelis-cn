@@ -117,9 +117,8 @@ describe("Modify Order search by patient ", function () {
     modifyOrderPage.clickRespectivePatient();
     cy.wait(1000);
   });
-  it("Validate program dropdown button not visible and click next", function () {
-    modifyOrderPage.checkProgramButton();
-    modifyOrderPage.clickNextButton();
+  it("Opens the existing tests workspace without a program selection step", function () {
+    modifyOrderPage.checkExistingTestsWorkspace();
   });
 
   it("should be able to record", function () {
@@ -163,9 +162,8 @@ describe("Modify Order search by accession Number", function () {
     cy.wait(10000);
   });
 
-  it("Validate program dropdown button not visible and click next", function () {
-    modifyOrderPage.checkProgramButton();
-    modifyOrderPage.clickNextButton();
+  it("Opens the existing tests workspace without a program selection step", function () {
+    modifyOrderPage.checkExistingTestsWorkspace();
   });
 
   it("Add Sample", function () {

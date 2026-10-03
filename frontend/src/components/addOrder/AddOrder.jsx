@@ -462,10 +462,11 @@ const AddOrder = (props) => {
   }
 
   function fetchPractitioner(data) {
-    setOrderFormValues({
-      ...orderFormValues,
+    if (!componentMounted.current || !data?.person) return;
+    setOrderFormValues((current) => ({
+      ...current,
       sampleOrderItems: {
-        ...orderFormValues.sampleOrderItems,
+        ...current.sampleOrderItems,
         providerFirstName: data.person.firstName,
         providerLastName: data.person.lastName,
         providerWorkPhone: data.person.workPhone,
@@ -475,7 +476,7 @@ const AddOrder = (props) => {
         providerPersonId: data.person.id,
         referringSiteName: "",
       },
-    });
+    }));
   }
 
   function handleRequesterDept(e) {
@@ -639,22 +640,30 @@ const AddOrder = (props) => {
   }
 
   useEffect(() => {
-    if (!initializedRef.current) {
+    if (!isModifyOrder && !initializedRef.current) {
       setOrderFormValues({
         ...orderFormValues,
         sampleOrderItems: {
           ...orderFormValues.sampleOrderItems,
-          requestDate: configurationProperties.currentDateAsText,
-          receivedDateForDisplay: configurationProperties.currentDateAsText,
-          nextVisitDate: configurationProperties.currentDateAsText,
-          receivedTime: configurationProperties.currentTimeAsText,
+          requestDate: isModifyOrder
+            ? ""
+            : configurationProperties.currentDateAsText,
+          receivedDateForDisplay: isModifyOrder
+            ? ""
+            : configurationProperties.currentDateAsText,
+          nextVisitDate: isModifyOrder
+            ? ""
+            : configurationProperties.currentDateAsText,
+          receivedTime: isModifyOrder
+            ? ""
+            : configurationProperties.currentTimeAsText,
         },
       });
     }
     if (orderFormValues.sampleOrderItems.requestDate != "") {
       initializedRef.current = true;
     }
-  }, [orderFormValues]);
+  }, [orderFormValues, isModifyOrder]);
 
   useEffect(() => {
     getFromOpenElisServer(
@@ -675,24 +684,19 @@ const AddOrder = (props) => {
   }
 
   function fetchGeneratedAccessionNo(res) {
-    if (res.status) {
-      if (isModifyOrder) {
-        setOrderFormValues({
-          ...orderFormValues,
-          newAccessionNumber: res.body,
-        });
-      } else {
-        setOrderFormValues({
-          ...orderFormValues,
-          sampleOrderItems: {
-            ...orderFormValues.sampleOrderItems,
-            labNo: res.body,
+    if (!componentMounted.current || !res?.status) return;
+    setOrderFormValues((current) =>
+      isModifyOrder
+        ? { ...current, newAccessionNumber: res.body }
+        : {
+            ...current,
+            sampleOrderItems: {
+              ...current.sampleOrderItems,
+              labNo: res.body,
+            },
           },
-        });
-      }
-
-      setNotificationVisible(false);
-    }
+    );
+    setNotificationVisible(false);
   }
 
   // OGC-285 M5b — the samples that actually reach the backend, in the SAME order
@@ -723,7 +727,7 @@ const AddOrder = (props) => {
   // filtered samples (each carrying its positional sample_id_local). Renders via
   // LabelsSection's API mode. Clears when no sample carries tests.
   useEffect(() => {
-    if (orderLabelSamples.length === 0) {
+    if (isModifyOrder || orderLabelSamples.length === 0) {
       setLabelRequest(null);
       return;
     }
@@ -751,7 +755,7 @@ const AddOrder = (props) => {
       },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderLabelSignature]);
+  }, [orderLabelSignature, isModifyOrder]);
 
   // Human-facing row label for the sample table: the sample type name, falling
   // back to "Sample N" (the filtered position the backend correlates by).
@@ -800,7 +804,11 @@ const AddOrder = (props) => {
           <Grid>
             <Column lg={16} md={8} sm={4}>
               <h3>
-                <FormattedMessage id="order.title" />
+                <FormattedMessage
+                  id={
+                    isModifyOrder ? "modify.order.information" : "order.title"
+                  }
+                />
               </h3>
             </Column>
             {configurationProperties.ACCEPT_EXTERNAL_ORDERS === "true" && (
@@ -828,7 +836,9 @@ const AddOrder = (props) => {
                 <CustomLabNumberInput
                   name="labNo"
                   placeholder={intl.formatMessage({
-                    id: "input.placeholder.labNo",
+                    id: isModifyOrder
+                      ? "modify.order.new.number.placeholder"
+                      : "input.placeholder.labNo",
                   })}
                   value={
                     isModifyOrder
@@ -841,8 +851,16 @@ const AddOrder = (props) => {
                   onKeyPress={handleKeyPress}
                   labelText={
                     <>
-                      <FormattedMessage id="sample.label.labnumber" />{" "}
-                      <span className="requiredlabel">*</span>
+                      <FormattedMessage
+                        id={
+                          isModifyOrder
+                            ? "modify.order.new.number"
+                            : "sample.label.labnumber"
+                        }
+                      />{" "}
+                      {!isModifyOrder && (
+                        <span className="requiredlabel">*</span>
+                      )}
                     </>
                   }
                   id="labNo"
@@ -855,7 +873,11 @@ const AddOrder = (props) => {
                   invalidText={error("sampleOrderItems.labNo")}
                 />
                 <div>
-                  <FormattedMessage id="label.order.scan.text" />{" "}
+                  {isModifyOrder ? (
+                    <FormattedMessage id="modify.order.new.number.helper" />
+                  ) : (
+                    <FormattedMessage id="label.order.scan.text" />
+                  )}{" "}
                   <Link
                     data-cy="generate-labNumber"
                     href="#"
@@ -894,11 +916,13 @@ const AddOrder = (props) => {
               <CustomDatePicker
                 id={"order_requestDate"}
                 labelText={intl.formatMessage({ id: "sample.requestDate" })}
-                autofillDate={true}
+                autofillDate={!isModifyOrder}
                 value={
                   orderFormValues.sampleOrderItems.requestDate
                     ? orderFormValues.sampleOrderItems.requestDate
-                    : configurationProperties.currentDateAsText
+                    : isModifyOrder
+                      ? ""
+                      : configurationProperties.currentDateAsText
                 }
                 disallowFutureDate={true}
                 onChange={(date) => handleDatePickerChange("requestDate", date)}
@@ -908,11 +932,13 @@ const AddOrder = (props) => {
               <CustomDatePicker
                 id={"order_receivedDate"}
                 labelText={intl.formatMessage({ id: "sample.receivedDate" })}
-                autofillDate={true}
+                autofillDate={!isModifyOrder}
                 value={
                   orderFormValues.sampleOrderItems.receivedDateForDisplay
                     ? orderFormValues.sampleOrderItems.receivedDateForDisplay
-                    : configurationProperties.currentDateAsText
+                    : isModifyOrder
+                      ? ""
+                      : configurationProperties.currentDateAsText
                 }
                 disallowFutureDate={true}
                 onChange={(date) =>
@@ -932,7 +958,9 @@ const AddOrder = (props) => {
                 value={
                   orderFormValues.sampleOrderItems.receivedTime
                     ? orderFormValues.sampleOrderItems.receivedTime
-                    : configurationProperties.currentTimeAsText
+                    : isModifyOrder
+                      ? ""
+                      : configurationProperties.currentTimeAsText
                 }
               />
             </Column>
@@ -1579,28 +1607,30 @@ const AddOrder = (props) => {
             </Stack>
           </div>
         )}
-        <div className="orderLegendBody">
-          <h3>
-            <FormattedMessage id="order.result.reporting.heading" />
-          </h3>
-          {samples.map((sample, index) => {
-            if (sample.tests.length > 0) {
-              return (
-                <div key={index}>
-                  <h4>
-                    {" "}
-                    <FormattedMessage id="label.button.sample" /> {index + 1}
-                  </h4>
-                  <OrderResultReporting
-                    selectedTests={sample.tests}
-                    reportingNotifications={reportingNotifications}
-                  />
-                </div>
-              );
-            }
-          })}
-        </div>
-        {labelRequest && (
+        {!isModifyOrder && (
+          <div className="orderLegendBody">
+            <h3>
+              <FormattedMessage id="order.result.reporting.heading" />
+            </h3>
+            {samples.map((sample, index) => {
+              if (sample.tests.length > 0) {
+                return (
+                  <div key={index}>
+                    <h4>
+                      {" "}
+                      <FormattedMessage id="label.button.sample" /> {index + 1}
+                    </h4>
+                    <OrderResultReporting
+                      selectedTests={sample.tests}
+                      reportingNotifications={reportingNotifications}
+                    />
+                  </div>
+                );
+              }
+            })}
+          </div>
+        )}
+        {!isModifyOrder && labelRequest && (
           <div className="orderLegendBody">
             <h3>
               <FormattedMessage id="orderEntry.labels.heading" />

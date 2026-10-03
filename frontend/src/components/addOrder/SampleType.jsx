@@ -36,8 +36,15 @@ const SampleType = (props) => {
 
   const componentMounted = useRef(false);
   const sampleTypesRef = useRef(null);
+  const sampleTypeTestsRequestScope = useRef(0);
 
-  const { index, rejectSampleReasons, removeSample, sample } = props;
+  const {
+    index,
+    rejectSampleReasons,
+    removeSample,
+    sample,
+    showLabelControls = true,
+  } = props;
 
   const [sampleTypes, setSampleTypes] = useState([]);
   const [selectedSampleType, setSelectedSampleType] = useState({
@@ -339,9 +346,19 @@ const SampleType = (props) => {
   }
 
   const handleFetchSampleTypeTests = (e, index) => {
-    setSelectedTests([]);
-    setReferralRequests([]);
     const { value } = e.target;
+    // Invalidate the previous type before the next effect starts its request.
+    sampleTypeTestsRequestScope.current += 1;
+    setSelectedTests([]);
+    setSelectedPanels([]);
+    setReferralRequests([]);
+    setTestSearchTerm("");
+    setPanelSearchTerm("");
+    setSearchBoxTests([]);
+    setSearchBoxPanels([]);
+    setSampleTypeTests({ sampleTypeId: value, tests: [], panels: [] });
+    props.sampleTypeObject({ selectedTests: [], sampleObjectIndex: index });
+    props.sampleTypeObject({ selectedPanels: [], sampleObjectIndex: index });
     const selectedSampleTypeOption =
       sampleTypesRef.current.options[sampleTypesRef.current.selectedIndex].text;
     setSelectedSampleType({
@@ -361,12 +378,6 @@ const SampleType = (props) => {
     if (componentMounted.current) {
       setSampleTypes(res);
       setLoading(false);
-    }
-  };
-
-  const fetchSampleTypeTests = (res) => {
-    if (componentMounted.current) {
-      setSampleTypeTests(res);
     }
   };
 
@@ -476,14 +487,33 @@ const SampleType = (props) => {
 
   useEffect(() => {
     componentMounted.current = true;
+    const requestScope = ++sampleTypeTestsRequestScope.current;
+    let active = true;
+    const controller = new AbortController();
     if (selectedSampleType.id !== "" && selectedSampleType.id != null) {
       getFromOpenElisServer(
-        `/rest/sample-type-tests?sampleType=${selectedSampleType.id}`,
-        fetchSampleTypeTests,
+        `/rest/sample-type-tests?sampleType=${encodeURIComponent(selectedSampleType.id)}`,
+        (response) => {
+          if (
+            active &&
+            componentMounted.current &&
+            requestScope === sampleTypeTestsRequestScope.current
+          ) {
+            setSampleTypeTests(
+              response ?? {
+                sampleTypeId: selectedSampleType.id,
+                tests: [],
+                panels: [],
+              },
+            );
+          }
+        },
+        controller.signal,
       );
     }
     return () => {
-      componentMounted.current = false;
+      active = false;
+      controller.abort();
     };
   }, [selectedSampleType.id]);
 
@@ -760,30 +790,32 @@ const SampleType = (props) => {
             }}
           />
         </div>
-        <div className="inlineDiv">
-          <div className="cds--col">
-            <h4>
-              <FormattedMessage id="barcode.labels.section.title" />
-            </h4>
-            <LabelsSection
-              orderQuantity={sampleXml?.numOrderLabels ?? 1}
-              specimenQuantities={[sampleXml?.numSpecimenLabels ?? 1]}
-              onChange={handleLabelsSectionChange}
-              orderLabelText={intl.formatMessage({
-                id: "barcode.labels.order.row",
-              })}
-              specimenLabelFormatter={(sampleNumber) =>
-                intl.formatMessage(
-                  { id: "barcode.labels.sample.row" },
-                  { sampleNumber },
-                )
-              }
-              runningTotalLabel={intl.formatMessage({
-                id: "barcode.labels.running.total",
-              })}
-            />
+        {showLabelControls && (
+          <div className="inlineDiv">
+            <div className="cds--col">
+              <h4>
+                <FormattedMessage id="barcode.labels.section.title" />
+              </h4>
+              <LabelsSection
+                orderQuantity={sampleXml?.numOrderLabels ?? 1}
+                specimenQuantities={[sampleXml?.numSpecimenLabels ?? 1]}
+                onChange={handleLabelsSectionChange}
+                orderLabelText={intl.formatMessage({
+                  id: "barcode.labels.order.row",
+                })}
+                specimenLabelFormatter={(sampleNumber) =>
+                  intl.formatMessage(
+                    { id: "barcode.labels.sample.row" },
+                    { sampleNumber },
+                  )
+                }
+                runningTotalLabel={intl.formatMessage({
+                  id: "barcode.labels.running.total",
+                })}
+              />
+            </div>
           </div>
-        </div>
+        )}
         <div className="testPanels">
           <div className="cds--col">
             <h4>

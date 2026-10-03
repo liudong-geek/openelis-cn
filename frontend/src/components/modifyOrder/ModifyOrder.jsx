@@ -1,16 +1,21 @@
-import React, { useContext, useEffect, useState, useRef } from "react";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Accordion,
+  AccordionItem,
   Button,
+  InlineLoading,
+  InlineNotification,
+  Modal,
   ProgressIndicator,
   ProgressStep,
-  Stack,
-  Grid,
-  Column,
 } from "@carbon/react";
+import { ArrowLeft } from "@carbon/icons-react";
+import { FormattedMessage, useIntl } from "react-intl";
+import { useHistory, useLocation } from "react-router-dom";
 import EditSample from "./EditSample";
 import AddOrder from "../addOrder/AddOrder";
 import "../addOrder/add-order.scss";
-import { ModifyOrderFormValues } from "../formModel/innitialValues/OrderEntryFormValues";
+import "./modify-order.scss";
 import { NotificationContext } from "../layout/Layout";
 import { AlertDialog, NotificationKinds } from "../common/CustomNotification";
 import {
@@ -18,415 +23,488 @@ import {
   getFromOpenElisServer,
 } from "../utils/Utils";
 import EditOrderEntryAdditionalQuestions from "./EditOrderEntryAdditionalQuestions";
-import OrderSuccessMessage from "../addOrder/OrderSuccessMessage";
-import { FormattedMessage, useIntl } from "react-intl";
-import PatientHeader from "../common/PatientHeader";
 import PageBreadCrumb from "../common/PageBreadCrumb";
-import ListReturnButton from "../common/ListReturnButton";
-import ModifyOrderEntryValidationSchema from "../formModel/validationSchema/ModifyOrderEntryValidationSchema";
-import { sampleObject } from "../addOrder/Index";
-let breadcrumbs = [
+import { listReturnLocation } from "../common/listWorkspace";
+import { createModifyOrderEntryValidationSchema } from "../formModel/validationSchema/ModifyOrderEntryValidationSchema";
+import {
+  buildSampleEditPayload,
+  hasIncompleteAddedSamples,
+} from "./sampleEditPayload";
+import { modifyPatientName } from "./modifyOrderDisplay";
+
+const breadcrumbs = [
   { label: "home.label", link: "/" },
   { label: "sidenav.label.order.active", link: "/order" },
+  { label: "modify.order.title", link: "" },
 ];
 
 const ModifyOrder = () => {
-  const componentMounted = useRef(false);
-
   const intl = useIntl();
-
-  const firstPageNumber = 0;
-  const lastPageNumber = 3;
-  const programPageNumber = firstPageNumber + 0;
-  const samplePageNumber = firstPageNumber + 1;
-  const orderPageNumber = firstPageNumber + 2;
-  const successMsgPageNumber = lastPageNumber;
-
-  const [page, setPage] = useState(firstPageNumber);
-  const [orderFormValues, setOrderFormValues] = useState(ModifyOrderFormValues);
-  const [samples, setSamples] = useState([sampleObject]);
-  const [errors, setErrors] = useState([]);
+  const history = useHistory();
+  const location = useLocation();
+  const [orderFormValues, setOrderFormValues] = useState(null);
+  const [samples, setSamples] = useState([]);
+  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [errors, setErrors] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [patientId, setPatientId] = useState("");
-  const [patientHeaderInfo, setPatientHeaderInfo] = useState({
-    patientName: "",
-    gender: "",
-    dob: "",
-    nationalId: "",
-    patientId: "",
-    subjectNumber: "",
-    accessionNumber: "",
-  });
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const [changed, setChanged] = useState({
     "sampleOrderItems.providerFirstName": false,
     "sampleOrderItems.providerLastName": false,
     "sampleOrderItems.labNo": false,
   });
+  const baseline = useRef("");
+  const saving = useRef(false);
+  const requestScope = useRef(0);
+  const mounted = useRef(true);
+  const schema = useMemo(
+    () => createModifyOrderEntryValidationSchema(intl),
+    [intl],
+  );
+  const { notificationVisible, setNotificationVisible, addNotification } =
+    useContext(NotificationContext);
 
   useEffect(() => {
-    componentMounted.current = true;
-    let patientIdParam = new URLSearchParams(window.location.search).get(
-      "patientId",
-    );
-    let accessionNumber = new URLSearchParams(window.location.search).get(
-      "accessionNumber",
-    );
-    accessionNumber = accessionNumber ? accessionNumber : "";
-    patientIdParam = patientIdParam ? patientIdParam : "";
-
-    // If searching by accession number and no patientId, fetch patient from accession number
-    if (!patientIdParam && accessionNumber) {
-      getFromOpenElisServer(
-        "/rest/patientByLabNumer?accessionNumber=" + accessionNumber,
-        (response) => {
-          if (componentMounted.current && response && response.id) {
-            setPatientId(response.id);
-          }
-        },
-      );
-    } else {
-      setPatientId(patientIdParam);
-    }
-
-    getFromOpenElisServer(
-      "/rest/SampleEdit?patientId=" +
-        patientIdParam +
-        "&accessionNumber=" +
-        accessionNumber,
-      loadOrderValues,
-    );
+    mounted.current = true;
     return () => {
-      componentMounted.current = false;
+      mounted.current = false;
     };
   }, []);
 
   useEffect(() => {
-    ModifyOrderEntryValidationSchema.validate(orderFormValues, {
-      abortEarly: false,
-    })
-      .then((validData) => {
-        setErrors([]);
-        console.debug("Valid Data:", validData);
-      })
-      .catch((errors) => {
-        setErrors(errors);
-        console.error("Validation Errors:", errors.errors);
-      });
-  }, [changed, orderFormValues]);
-
-  const loadOrderValues = (data) => {
-    if (componentMounted.current) {
-      if (data.sampleOrderItems) {
-        data.sampleOrderItems.referringSiteName = "";
-        setOrderFormValues(data);
-        setPatientHeaderInfo({
-          patientName: data.patientName || "",
-          gender: data.gender || "",
-          dob: data.dob || "",
-          nationalId: data.nationalId || "",
-          patientId: data.patientId || "",
-          subjectNumber: data.subjectNumber || "",
-          accessionNumber: data.accessionNumber || "",
-        });
-      }
-    }
-  };
-
-  const { notificationVisible, setNotificationVisible, addNotification } =
-    useContext(NotificationContext);
-
-  const showAlertMessage = (msg, kind) => {
-    setNotificationVisible(true);
-    addNotification({
-      kind: kind,
-      title: intl.formatMessage({ id: "notification.title" }),
-      message: msg,
-    });
-  };
-
-  // Advance to the success page only after the backend confirms. On 4xx/5xx,
-  // surface the actual reason from the response body (the SampleEdit endpoint
-  // returns {"message":"..."} on errors like "Position B12 is already
-  // occupied") instead of the generic server.error.msg.
-  const handlePost = async (response) => {
+    let active = true;
+    requestScope.current += 1;
+    saving.current = false;
     setIsSubmitting(false);
-    if (response && response.ok) {
-      showAlertMessage(
-        <FormattedMessage id="save.order.success.msg" />,
-        NotificationKinds.success,
+    setErrors(null);
+    const controller = new AbortController();
+    setLoading(true);
+    setLoadFailed(false);
+    setOrderFormValues(null);
+    setSamples([]);
+    setPage(0);
+    setSaved(false);
+    setConfirmLeave(false);
+    setSaveError("");
+    const params = new URLSearchParams(location.search);
+    const accessionNumber = params.get("accessionNumber") || "";
+    const patientId = params.get("patientId") || "";
+    const editMode =
+      params.get("type") === "readonly" ? "readonly" : "readwrite";
+    if (!accessionNumber && !patientId) {
+      setLoadFailed(true);
+      setLoading(false);
+    } else {
+      getFromOpenElisServer(
+        `/rest/SampleEdit?patientId=${encodeURIComponent(patientId)}&accessionNumber=${encodeURIComponent(accessionNumber)}&type=${editMode}`,
+        (data) => {
+          if (!active) return;
+          if (
+            !data?.noSampleFound &&
+            data?.sampleOrderItems?.labNo &&
+            Array.isArray(data.existingTests) &&
+            Array.isArray(data.possibleTests)
+          ) {
+            const loaded = {
+              ...data,
+              sampleOrderItems: { ...data.sampleOrderItems },
+            };
+            baseline.current = JSON.stringify(loaded);
+            setOrderFormValues(loaded);
+          } else {
+            setLoadFailed(true);
+          }
+          setLoading(false);
+        },
+        controller.signal,
       );
-      setPage(page + 1);
-      return;
     }
-    let backendMessage;
-    if (response) {
-      try {
-        const body = await response.json();
-        backendMessage = body?.message || body?.error;
-      } catch (_) {
-        // Body wasn't JSON — fall through to the generic key.
-      }
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [location.search, reloadKey]);
+
+  useEffect(() => {
+    let active = true;
+    if (orderFormValues) {
+      schema
+        .validate(orderFormValues, { abortEarly: false })
+        .then(() => {
+          if (active) setErrors(null);
+        })
+        .catch((error) => {
+          if (active) setErrors(error);
+        });
     }
-    showAlertMessage(
-      backendMessage || <FormattedMessage id="server.error.msg" />,
-      NotificationKinds.error,
-    );
+    return () => {
+      active = false;
+    };
+  }, [orderFormValues, schema]);
+
+  const readOnly =
+    new URLSearchParams(location.search).get("type") === "readonly" ||
+    orderFormValues?.isEditable === false;
+  const dirty =
+    !saved &&
+    !!orderFormValues &&
+    (JSON.stringify(orderFormValues) !== baseline.current ||
+      samples.length > 0);
+  const returnToList = () =>
+    history.push(listReturnLocation(location.state, "/order"));
+  const requestLeave = () => {
+    if (saving.current) return;
+    if (dirty) setConfirmLeave(true);
+    else returnToList();
   };
-  const handleSubmitOrderForm = (e) => {
-    e.preventDefault();
-    if (isSubmitting) {
+  const updateOrder = (value) => {
+    if (!saving.current && !readOnly) setOrderFormValues(value);
+  };
+  const updateSamples = (value) => {
+    if (!saving.current && !readOnly) setSamples(value);
+  };
+  const elementError = (path) =>
+    errors?.inner?.find((error) => error.path === path)?.message || null;
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (saving.current || !orderFormValues || saved || readOnly) return;
+    setSaveError("");
+    if (hasIncompleteAddedSamples(samples)) {
+      setPage(0);
+      setSaveError(
+        intl.formatMessage({ id: "modify.order.incomplete.sample" }),
+      );
       return;
     }
+    // Lock synchronously, including the asynchronous validation interval.
+    const scope = requestScope.current;
+    saving.current = true;
     setIsSubmitting(true);
-    orderFormValues.sampleOrderItems.modified = true;
-    //remove display Lists rom the form
-    orderFormValues.sampleOrderItems.priorityList = [];
-    orderFormValues.sampleOrderItems.programList = [];
-    orderFormValues.sampleOrderItems.referringSiteList = [];
-    orderFormValues.initialSampleConditionList = [];
-    orderFormValues.testSectionList = [];
-    orderFormValues.sampleOrderItems.providersList = [];
-    orderFormValues.sampleOrderItems.paymentOptions = [];
-    orderFormValues.sampleOrderItems.testLocationCodeList = [];
+    try {
+      await schema.validate(orderFormValues, { abortEarly: false });
+    } catch (error) {
+      if (!mounted.current || requestScope.current !== scope) return;
+      setErrors(error);
+      setSaveError(intl.formatMessage({ id: "modify.order.invalid" }));
+      saving.current = false;
+      setIsSubmitting(false);
+      return;
+    }
+    if (!mounted.current || requestScope.current !== scope) return;
+    let payload;
+    try {
+      payload = buildSampleEditPayload(orderFormValues, samples);
+    } catch (_) {
+      saving.current = false;
+      setIsSubmitting(false);
+      setSaveError(
+        intl.formatMessage({ id: "modify.order.incomplete.sample" }),
+      );
+      return;
+    }
     postToOpenElisServerFullResponse(
       "/rest/SampleEdit",
-      JSON.stringify(orderFormValues),
-      handlePost,
+      JSON.stringify(payload),
+      async (response) => {
+        if (!mounted.current || requestScope.current !== scope) return;
+        if (response?.ok) {
+          setSaved(true);
+          setNotificationVisible(true);
+          addNotification({
+            kind: NotificationKinds.success,
+            title: intl.formatMessage({ id: "notification.title" }),
+            message: intl.formatMessage({ id: "modify.order.saved" }),
+          });
+        } else {
+          const key =
+            response?.status === 403
+              ? "modify.order.forbidden"
+              : response?.status === 409
+                ? "modify.order.conflict"
+                : response?.status === 400 || response?.status === 422
+                  ? "modify.order.invalid"
+                  : "modify.order.save.failed";
+          let serverMessage = "";
+          if (
+            (response?.status === 400 ||
+              response?.status === 409 ||
+              response?.status === 422) &&
+            typeof response.json === "function"
+          ) {
+            try {
+              const body = await response.json();
+              // Legacy endpoints may return English diagnostics. Keep Chinese
+              // business errors readable; other bodies use the localized fallback.
+              if (
+                typeof body?.message === "string" &&
+                /[\u3400-\u9fff]/.test(body.message)
+              )
+                serverMessage = body.message.slice(0, 300);
+            } catch (_) {
+              /* The localized status message remains available. */
+            }
+          }
+          if (!mounted.current || requestScope.current !== scope) return;
+          setSaveError(serverMessage || intl.formatMessage({ id: key }));
+        }
+        saving.current = false;
+        setIsSubmitting(false);
+      },
     );
-  };
-
-  const elementError = (path) => {
-    if (errors?.errors?.length > 0) {
-      let error = errors.inner?.find((e) => e.path === path);
-      if (error) {
-        return error.message;
-      } else {
-        return null;
-      }
-    }
-  };
-  useEffect(() => {
-    if (page === samplePageNumber + 1) {
-      attacheSamplesToFormValues();
-    }
-  }, [page]);
-
-  const attacheSamplesToFormValues = () => {
-    let sampleXmlString = "";
-    let referralItems = [];
-    if (samples.length > 0) {
-      if (samples[0].tests.length > 0) {
-        sampleXmlString = '<?xml version="1.0" encoding="utf-8"?>';
-        sampleXmlString += "<samples>";
-        let tests = null;
-        samples.map((sampleItem) => {
-          if (sampleItem.tests.length > 0) {
-            tests = Object.keys(sampleItem.tests)
-              .map(function (i) {
-                return sampleItem.tests[i].id;
-              })
-              .join(",");
-
-            // Extract storage location data if present
-            const storageLocation = sampleItem.sampleXML?.storageLocation;
-            const storageLocationId = storageLocation?.id || "";
-            const storageLocationType = storageLocation?.type || "";
-            const storagePositionCoordinate =
-              storageLocation?.positionCoordinate || "";
-
-            sampleXmlString += `<sample sampleID='${sampleItem.sampleTypeId}' date='${sampleItem.sampleXML.collectionDate}' time='${sampleItem.sampleXML.collectionTime}' collector='${sampleItem.sampleXML.collector}' tests='${tests}' testSectionMap='' testSampleTypeMap='' panels='' rejected='${sampleItem.sampleXML.rejected}' rejectReasonId='${sampleItem.sampleXML.rejectionReason}' initialConditionIds='' storageLocationId='${storageLocationId}' storageLocationType='${storageLocationType}' storagePositionCoordinate='${storagePositionCoordinate}' />`;
-          }
-          if (sampleItem.referralItems.length > 0) {
-            const referredInstitutes = Object.keys(sampleItem.referralItems)
-              .map(function (i) {
-                return sampleItem.referralItems[i].institute;
-              })
-              .join(",");
-
-            const sentDates = Object.keys(sampleItem.referralItems)
-              .map(function (i) {
-                return sampleItem.referralItems[i].sentDate;
-              })
-              .join(",");
-
-            const referralReasonIds = Object.keys(sampleItem.referralItems)
-              .map(function (i) {
-                return sampleItem.referralItems[i].reasonForReferral;
-              })
-              .join(",");
-
-            const referrers = Object.keys(sampleItem.referralItems)
-              .map(function (i) {
-                return sampleItem.referralItems[i].referrer;
-              })
-              .join(",");
-            referralItems.push({
-              referrer: referrers,
-              referredInstituteId: referredInstitutes,
-              referredTestId: tests,
-              referredSendDate: sentDates,
-              referralReasonId: referralReasonIds,
-            });
-          }
-        });
-        sampleXmlString += "</samples>";
-      }
-    }
-    setOrderFormValues({
-      ...orderFormValues,
-      // useReferral: true,
-      sampleXML: sampleXmlString,
-      // referralItems: referralItems,
-    });
-  };
-
-  const navigateForward = () => {
-    if (page <= lastPageNumber && page >= firstPageNumber) {
-      setPage(page + 1);
-    }
-  };
-
-  const navigateBackWards = () => {
-    if (page > firstPageNumber) {
-      setPage(page + -1);
-    }
-  };
-  const handleTabClickHandler = (e) => {
-    setPage(e);
   };
 
   return (
-    <>
+    <div className="modify-order-workspace">
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
-      <ListReturnButton fallback="/order" />
-
-      <PatientHeader
-        id={patientId}
-        patientName={patientHeaderInfo.patientName}
-        gender={patientHeaderInfo.gender}
-        dob={patientHeaderInfo.dob}
-        nationalId={patientHeaderInfo.nationalId}
-        patientId={patientHeaderInfo.patientId}
-        subjectNumber={patientHeaderInfo.subjectNumber}
-        accesionNumber={patientHeaderInfo.accessionNumber}
-        className="patient-header2"
-        isOrderPage={true}
-      >
-        {" "}
-      </PatientHeader>
-      <Grid>
-        <Column lg={16} md={8} sm={4}>
-          <Stack gap={10}>
-            <div className="pageContent">
-              {notificationVisible === true ? <AlertDialog /> : ""}
-              {orderFormValues?.sampleOrderItems && (
-                <div className="orderWorkFlowDiv">
-                  <h2>
-                    <FormattedMessage id="order.test.request.heading" />
-                  </h2>
-                  {page <= orderPageNumber && (
-                    <ProgressIndicator
-                      currentIndex={page}
-                      className="ProgressIndicator"
-                      spaceEqually={true}
-                      onChange={(e) => handleTabClickHandler(e)}
-                    >
-                      <ProgressStep
-                        disabled={orderFormValues.sampleOrderItems.labNo == ""}
-                        label={intl.formatMessage({
-                          id: "order.step.program.selection",
-                        })}
-                      />
-                      <ProgressStep
-                        disabled={orderFormValues.sampleOrderItems.labNo == ""}
-                        label={intl.formatMessage({ id: "sample.add.action" })}
-                      />
-                      <ProgressStep
-                        disabled={orderFormValues.sampleOrderItems.labNo == ""}
-                        label={intl.formatMessage({ id: "order.label.add" })}
-                      />
-                    </ProgressIndicator>
-                  )}
-                  {page === programPageNumber && (
-                    <EditOrderEntryAdditionalQuestions
-                      orderFormValues={orderFormValues}
-                      setOrderFormValues={setOrderFormValues}
-                    />
-                  )}
-                  {page === samplePageNumber && (
-                    <EditSample
-                      orderFormValues={orderFormValues}
-                      setOrderFormValues={setOrderFormValues}
-                      setSamples={setSamples}
-                      samples={samples}
-                      error={elementError}
-                    />
-                  )}
-                  {page === orderPageNumber && (
+      <header className="modify-order-heading">
+        <div>
+          <h1>
+            <FormattedMessage id="modify.order.title" />
+          </h1>
+          <p>
+            <FormattedMessage id="modify.order.helper" />
+          </p>
+        </div>
+        <Button
+          kind="tertiary"
+          size="sm"
+          renderIcon={ArrowLeft}
+          disabled={isSubmitting}
+          onClick={requestLeave}
+        >
+          <FormattedMessage id="button.back" />
+        </Button>
+      </header>
+      {notificationVisible && <AlertDialog />}
+      {loading && (
+        <InlineLoading
+          description={intl.formatMessage({ id: "modify.order.loading" })}
+        />
+      )}
+      {loadFailed && (
+        <div className="modify-order-load-error">
+          <InlineNotification
+            kind="error"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({ id: "modify.order.load.failed" })}
+          />
+          <Button
+            kind="tertiary"
+            onClick={() => setReloadKey((key) => key + 1)}
+          >
+            <FormattedMessage id="modify.order.retry" />
+          </Button>
+        </div>
+      )}
+      {orderFormValues && !loading && !loadFailed && (
+        <>
+          <section
+            className="modify-order-summary"
+            aria-label={intl.formatMessage({ id: "modify.order.summary" })}
+          >
+            <div className="modify-order-patient">
+              <strong>
+                {modifyPatientName(orderFormValues.patientName, intl.locale) ||
+                  intl.formatMessage({ id: "modify.order.unknown.patient" })}
+              </strong>
+              <span>
+                {orderFormValues.gender === "M"
+                  ? intl.formatMessage({ id: "patient.male" })
+                  : orderFormValues.gender === "F"
+                    ? intl.formatMessage({ id: "patient.female" })
+                    : "—"}
+              </span>
+              <span>{orderFormValues.dob || "—"}</span>
+            </div>
+            <dl>
+              <div>
+                <dt>
+                  <FormattedMessage id="sample.label.labnumber" />
+                </dt>
+                <dd>
+                  {orderFormValues.accessionNumber ||
+                    orderFormValues.sampleOrderItems.labNo}
+                </dd>
+              </div>
+              <div>
+                <dt>
+                  <FormattedMessage id="patient.id" />
+                </dt>
+                <dd>
+                  {orderFormValues.patientId ||
+                    new URLSearchParams(location.search).get("patientId") ||
+                    "—"}
+                </dd>
+              </div>
+              <div>
+                <dt>
+                  <FormattedMessage
+                    id="patient.natioanalid"
+                    defaultMessage="Identity number"
+                  />
+                </dt>
+                <dd>{orderFormValues.nationalId || "—"}</dd>
+              </div>
+            </dl>
+          </section>
+          {saved ? (
+            <section className="modify-order-success">
+              <h2>
+                <FormattedMessage id="modify.order.saved" />
+              </h2>
+              <p>
+                <FormattedMessage id="modify.order.saved.helper" />
+              </p>
+              <Button onClick={returnToList}>
+                <FormattedMessage id="button.back" />
+              </Button>
+            </section>
+          ) : (
+            <>
+              <ProgressIndicator
+                currentIndex={page}
+                spaceEqually
+                className="modify-order-progress"
+                onChange={(index) => {
+                  if (!saving.current) setPage(index);
+                }}
+              >
+                <ProgressStep
+                  disabled={isSubmitting}
+                  label={intl.formatMessage({ id: "modify.order.samples" })}
+                />
+                <ProgressStep
+                  disabled={isSubmitting}
+                  label={intl.formatMessage({ id: "modify.order.information" })}
+                />
+              </ProgressIndicator>
+              {readOnly && (
+                <InlineNotification
+                  kind="info"
+                  lowContrast
+                  hideCloseButton
+                  title={intl.formatMessage({ id: "modify.order.readonly" })}
+                />
+              )}
+              {saveError && (
+                <InlineNotification
+                  kind="error"
+                  lowContrast
+                  hideCloseButton
+                  title={saveError}
+                />
+              )}
+              <fieldset
+                className="modify-order-fields"
+                disabled={isSubmitting || readOnly}
+                {...(isSubmitting ? { inert: "" } : {})}
+              >
+                {page === 0 ? (
+                  <EditSample
+                    orderFormValues={orderFormValues}
+                    setOrderFormValues={updateOrder}
+                    setSamples={updateSamples}
+                    samples={samples}
+                    error={elementError}
+                    disabled={isSubmitting || readOnly}
+                  />
+                ) : (
+                  <>
                     <AddOrder
                       orderFormValues={orderFormValues}
-                      setOrderFormValues={setOrderFormValues}
+                      setOrderFormValues={updateOrder}
                       samples={samples}
                       error={elementError}
-                      isModifyOrder={true}
+                      isModifyOrder
                       changed={changed}
                       setChanged={setChanged}
                     />
-                  )}
-
-                  {page === successMsgPageNumber && (
-                    <OrderSuccessMessage
+                  </>
+                )}
+              </fieldset>
+              {page === 1 && orderFormValues.sampleOrderItems.programId && (
+                <Accordion className="modify-order-additional">
+                  <AccordionItem
+                    disabled={isSubmitting}
+                    title={intl.formatMessage({
+                      id: "modify.order.additional",
+                    })}
+                  >
+                    <EditOrderEntryAdditionalQuestions
                       orderFormValues={orderFormValues}
-                      setOrderFormValues={setOrderFormValues}
-                      setSamples={setSamples}
-                      setPage={setPage}
                     />
-                  )}
-                  <div className="navigationButtonsLayout">
-                    {page !== firstPageNumber && page <= orderPageNumber && (
-                      <Button
-                        kind="tertiary"
-                        onClick={() => navigateBackWards()}
-                      >
-                        <FormattedMessage id="back.action.button" />
-                      </Button>
-                    )}
-
-                    {page < orderPageNumber && (
-                      <Button
-                        data-cy="next-button"
-                        kind="primary"
-                        className="forwardButton"
-                        onClick={() => navigateForward()}
-                      >
-                        <FormattedMessage id="next.action.button" />
-                      </Button>
-                    )}
-
-                    {page === orderPageNumber && (
-                      <Button
-                        data-cy="submit-order"
-                        kind="primary"
-                        className="forwardButton"
-                        onClick={handleSubmitOrderForm}
-                        disabled={
-                          isSubmitting || errors?.errors?.length > 0
-                            ? true
-                            : false
-                        }
-                      >
-                        <FormattedMessage id="label.button.submit" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
+                  </AccordionItem>
+                </Accordion>
               )}
-            </div>
-          </Stack>
-        </Column>
-      </Grid>
-    </>
+              <footer className="modify-order-actions">
+                <Button
+                  kind="secondary"
+                  disabled={isSubmitting}
+                  onClick={requestLeave}
+                >
+                  <FormattedMessage id="label.button.cancel" />
+                </Button>
+                {page === 1 && (
+                  <Button
+                    kind="tertiary"
+                    disabled={isSubmitting}
+                    onClick={() => setPage(0)}
+                  >
+                    <FormattedMessage id="modify.order.back.samples" />
+                  </Button>
+                )}
+                {page === 0 ? (
+                  <Button data-cy="next-button" onClick={() => setPage(1)}>
+                    <FormattedMessage id="modify.order.next.information" />
+                  </Button>
+                ) : (
+                  !readOnly && (
+                    <Button
+                      data-cy="submit-order"
+                      disabled={isSubmitting}
+                      onClick={submit}
+                    >
+                      {isSubmitting ? (
+                        <FormattedMessage id="modify.order.saving" />
+                      ) : (
+                        <FormattedMessage id="modify.order.save" />
+                      )}
+                    </Button>
+                  )
+                )}
+              </footer>
+            </>
+          )}
+        </>
+      )}
+      {confirmLeave && (
+        <Modal
+          open
+          className="oe-admin-modal"
+          modalHeading={intl.formatMessage({ id: "workspace.leave.title" })}
+          primaryButtonText={intl.formatMessage({
+            id: "workspace.leave.confirm",
+          })}
+          secondaryButtonText={intl.formatMessage({
+            id: "workspace.leave.cancel",
+          })}
+          closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
+          onRequestClose={() => setConfirmLeave(false)}
+          onRequestSubmit={returnToList}
+        >
+          <p>
+            <FormattedMessage id="workspace.leave.helper" />
+          </p>
+        </Modal>
+      )}
+    </div>
   );
 };
-
 export default ModifyOrder;

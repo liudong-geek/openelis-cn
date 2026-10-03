@@ -4,11 +4,15 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import org.apache.commons.validator.GenericValidator;
+import org.hibernate.ObjectNotFoundException;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
+import org.openelisglobal.common.exception.LIMSRuntimeException;
 import org.openelisglobal.common.formfields.FormFields;
 import org.openelisglobal.common.formfields.FormFields.Field;
 import org.openelisglobal.common.services.DisplayListService;
@@ -26,6 +30,7 @@ import org.openelisglobal.common.services.registration.interfaces.IResultUpdate;
 import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.dataexchange.orderresult.OrderResponseWorker.Event;
+import org.openelisglobal.login.dao.UserModuleService;
 import org.openelisglobal.note.service.NoteService;
 import org.openelisglobal.note.service.NoteServiceImpl.NoteType;
 import org.openelisglobal.note.valueholder.Note;
@@ -43,6 +48,7 @@ import org.openelisglobal.result.action.util.ResultSet;
 import org.openelisglobal.result.action.util.ResultsUpdateDataSet;
 import org.openelisglobal.result.service.ResultService;
 import org.openelisglobal.result.valueholder.Result;
+import org.openelisglobal.sample.action.util.SampleUtil;
 import org.openelisglobal.sample.bean.SampleEditItem;
 import org.openelisglobal.sample.form.SampleEditForm;
 import org.openelisglobal.sample.valueholder.Sample;
@@ -61,8 +67,11 @@ import org.openelisglobal.userrole.service.UserRoleService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.validation.BindException;
 
 @Service
 public class SampleEditServiceImpl implements SampleEditService {
@@ -73,14 +82,8 @@ public class SampleEditServiceImpl implements SampleEditService {
     private EntityManager entityManager;
 
     private static final String DEFAULT_ANALYSIS_TYPE = "MANUAL";
-    private static final String CANCELED_TEST_STATUS_ID;
-    private static final String CANCELED_SAMPLE_STATUS_ID;
+    private static final List<String> ABLE_TO_CANCEL_ROLE_NAMES = List.of("Validator", "Validation", "Biologist");
     private final String SAMPLE_SUBJECT = "Sample Note";
-
-    static {
-        CANCELED_TEST_STATUS_ID = SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.Canceled);
-        CANCELED_SAMPLE_STATUS_ID = SpringContext.getBean(IStatusService.class).getStatusID(SampleStatus.Canceled);
-    }
 
     @Autowired
     private SampleItemService sampleItemService;
@@ -116,13 +119,49 @@ public class SampleEditServiceImpl implements SampleEditService {
     NoteService noteService;
     @Autowired
     private SampleStorageService sampleStorageService;
+    @Autowired
+    private UserModuleService userModuleService;
+    @Autowired
+    private SampleUtil sampleUtil;
+    @Autowired
+    private SampleEditAuthorizationService authorization;
     private List<String> analysisList = new ArrayList<>();
 
     @Transactional
     @Override
     public void editSample(SampleEditForm form, HttpServletRequest request, Sample updatedSample, boolean sampleChanged,
             String sysUserId) {
+        authorization.requireWrite(request, sysUserId);
 
+        // The legacy MVC caller may have renamed this managed entity outside this
+        // transaction. Reload the original order before validating or changing it.
+        boolean accessionChanged = sampleChanged && !GenericValidator.isBlankOrNull(form.getNewAccessionNumber())
+                && !Objects.equals(form.getAccessionNumber(), form.getNewAccessionNumber());
+        if (sampleChanged && updatedSample == null && GenericValidator.isBlankOrNull(form.getNewAccessionNumber())) {
+            throw new LIMSRuntimeException("新的申请编号不能为空。");
+        }
+        if (updatedSample != null && !Objects.equals(form.getAccessionNumber(), updatedSample.getAccessionNumber())
+                && entityManager.contains(updatedSample)) {
+            entityManager.detach(updatedSample);
+        }
+        Sample currentSample = sampleService.getSampleByAccessionNumber(form.getAccessionNumber());
+        if (currentSample == null || GenericValidator.isBlankOrNull(currentSample.getId())) {
+            throw new LIMSRuntimeException("未找到检验申请，请刷新列表后重试。");
+        }
+        if (updatedSample != null && !Objects.equals(currentSample.getId(), updatedSample.getId())) {
+            throw new LIMSRuntimeException("检验申请已变化，不能保存其他申请的资料。");
+        }
+        updatedSample = currentSample;
+        validateEditActions(form, currentSample, request, sysUserId);
+        if (accessionChanged) {
+            validateAccessionChange(form);
+        }
+
+        // All action and accession guards must pass before any entity is changed.
+        if (accessionChanged) {
+            updatedSample.setAccessionNumber(form.getNewAccessionNumber());
+            updatedSample.setSysUserId(sysUserId);
+        }
         List<SampleEditItem> existingTests = form.getExistingTests() != null ? form.getExistingTests()
                 : new ArrayList<>();
         List<Analysis> cancelAnalysisList = createRemoveList(existingTests, sysUserId);
@@ -134,9 +173,6 @@ public class SampleEditServiceImpl implements SampleEditService {
         List<IResultUpdate> updaters = ResultUpdateRegister.getRegisteredUpdaters();
         ResultsUpdateDataSet actionDataSet = new ResultsUpdateDataSet(sysUserId);
 
-        if (updatedSample == null) {
-            updatedSample = sampleService.getSampleByAccessionNumber(form.getAccessionNumber());
-        }
         updatedSample.setPriority(form.getSampleOrderItems().getPriority());
         String receivedDateForDisplay = updatedSample.getReceivedDateForDisplay();
         String collectionDateFromRecieveDate = null;
@@ -378,6 +414,114 @@ public class SampleEditServiceImpl implements SampleEditService {
         analysisList = analysisIds;
     }
 
+    private void validateAccessionChange(SampleEditForm form) {
+        if (GenericValidator.isBlankOrNull(form.getNewAccessionNumber())) {
+            throw new LIMSRuntimeException("新的申请编号不能为空。");
+        }
+        BindException errors = new BindException(form, "form");
+        sampleUtil.validateNewAccessionNumber(form.getNewAccessionNumber(), errors);
+        if (errors.hasErrors()) {
+            throw new LIMSRuntimeException("新的申请编号格式不正确或已被使用。");
+        }
+    }
+
+    private void validateEditActions(SampleEditForm form, Sample sample, HttpServletRequest request, String sysUserId) {
+        if (GenericValidator.isBlankOrNull(sysUserId)) {
+            throw new LIMSRuntimeException("登录状态已失效，请重新登录后修改申请。");
+        }
+        List<SampleEditItem> existingTests = form.getExistingTests() != null ? form.getExistingTests() : List.of();
+        boolean cancellationRequested = existingTests.stream()
+                .anyMatch(item -> item != null && (item.isCanceled() || item.isRemoveSample()));
+        boolean hasSecurityContext = request != null && request.getSession(false) != null
+                && request.getSession(false).getAttribute(
+                        HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY) instanceof SecurityContext;
+        boolean allowedToCancelAll = cancellationRequested
+                && ((hasSecurityContext && userModuleService.isUserAdmin(request))
+                        || userRoleService.userInRole(sysUserId, ABLE_TO_CANCEL_ROLE_NAMES));
+        IStatusService statuses = SpringContext.getBean(IStatusService.class);
+        for (SampleEditItem editItem : existingTests) {
+            if (editItem == null) {
+                throw new LIMSRuntimeException("检验项目资料不完整，请刷新申请后重试。");
+            }
+            SampleItem item = getOwnedSampleItem(editItem.getSampleItemId(), sample);
+            Analysis analysis = null;
+            if (!GenericValidator.isBlankOrNull(editItem.getAnalysisId())) {
+                try {
+                    analysis = analysisService.get(editItem.getAnalysisId());
+                } catch (ObjectNotFoundException missingAnalysis) {
+                    throw new LIMSRuntimeException("检验项目不存在，请刷新申请后重试。", missingAnalysis);
+                }
+                if (analysis == null || analysis.getSampleItem() == null
+                        || !Objects.equals(item.getId(), analysis.getSampleItem().getId())) {
+                    throw new LIMSRuntimeException("检验项目不属于当前标本，不能保存。");
+                }
+            }
+            if (editItem.isCanceled() || editItem.isRemoveSample() || editItem.isSampleItemChanged()) {
+                requireEnteredSampleItem(item, statuses);
+            }
+            if (editItem.isCanceled()) {
+                requireCancelableAnalysis(analysis, allowedToCancelAll, statuses);
+            }
+            if (editItem.isRemoveSample()) {
+                // Reload every analysis on the tube; omitted client rows cannot hide a
+                // completed analysis or reduce the scope of a tube cancellation.
+                for (Analysis tubeAnalysis : analysisService.getAnalysesBySampleItem(item)) {
+                    if (!statuses.matches(tubeAnalysis.getStatusId(), AnalysisStatus.Canceled)) {
+                        requireCancelableAnalysis(tubeAnalysis, allowedToCancelAll, statuses);
+                    }
+                }
+            }
+        }
+        List<SampleEditItem> possibleTests = form.getPossibleTests() != null ? form.getPossibleTests() : List.of();
+        for (SampleEditItem editItem : possibleTests) {
+            if (editItem == null) {
+                throw new LIMSRuntimeException("检验项目资料不完整，请刷新申请后重试。");
+            }
+            if (editItem.isAdd()) {
+                SampleItem item = getOwnedSampleItem(editItem.getSampleItemId(), sample);
+                requireEnteredSampleItem(item, statuses);
+                Test test;
+                try {
+                    test = GenericValidator.isBlankOrNull(editItem.getTestId()) ? null
+                            : testService.get(editItem.getTestId());
+                } catch (ObjectNotFoundException missingTest) {
+                    throw new LIMSRuntimeException("待添加的检验项目不存在，请重新选择。", missingTest);
+                }
+                if (test == null) {
+                    throw new LIMSRuntimeException("待添加的检验项目不存在，请重新选择。");
+                }
+            }
+        }
+    }
+
+    private SampleItem getOwnedSampleItem(String sampleItemId, Sample sample) {
+        SampleItem item;
+        try {
+            item = GenericValidator.isBlankOrNull(sampleItemId) ? null : sampleItemService.get(sampleItemId);
+        } catch (ObjectNotFoundException missingItem) {
+            throw new LIMSRuntimeException("标本不存在，请刷新申请后重试。", missingItem);
+        }
+        if (item == null || item.getSample() == null || !Objects.equals(sample.getId(), item.getSample().getId())) {
+            throw new LIMSRuntimeException("标本不属于当前检验申请，不能保存。");
+        }
+        return item;
+    }
+
+    private void requireEnteredSampleItem(SampleItem item, IStatusService statuses) {
+        if (!statuses.matches(item.getStatusId(), SampleStatus.Entered)) {
+            throw new LIMSRuntimeException("标本状态已变化，请刷新申请后重试。");
+        }
+    }
+
+    private void requireCancelableAnalysis(Analysis analysis, boolean allowedToCancelAll, IStatusService statuses) {
+        if (analysis == null || statuses.matches(analysis.getStatusId(), AnalysisStatus.Canceled)) {
+            throw new LIMSRuntimeException("检验项目已取消或不存在，请刷新申请后重试。");
+        }
+        if (!allowedToCancelAll && !statuses.matches(analysis.getStatusId(), AnalysisStatus.NotStarted)) {
+            throw new LIMSRuntimeException("检验项目已有结果或已开始处理，当前账号无权取消。");
+        }
+    }
+
     private void addExternalResultsToDeleteList(Analysis analysis, Patient patient, Sample updatedSample,
             ResultsUpdateDataSet actionDataSet) {
         List<ResultSet> deletedResults = new ArrayList<>();
@@ -463,40 +607,50 @@ public class SampleEditServiceImpl implements SampleEditService {
 
         String maxAccessionNumber = form.getMaxAccessionNumber();
         if (!GenericValidator.isBlankOrNull(maxAccessionNumber)) {
-            sampleAddService.setInitialSampleItemOrderValue(Integer.parseInt(maxAccessionNumber.split("-")[1]));
+            sampleAddService.setInitialSampleItemOrderValue(
+                    parseSampleItemOrder(form.getAccessionNumber(), maxAccessionNumber));
         }
 
         return sampleAddService.createSampleTestCollection();
     }
 
+    private int parseSampleItemOrder(String accessionNumber, String maxAccessionNumber) {
+        int separator = maxAccessionNumber.lastIndexOf('-');
+        if (separator < 1 || separator == maxAccessionNumber.length() - 1
+                || !Objects.equals(accessionNumber, maxAccessionNumber.substring(0, separator))) {
+            throw new LIMSRuntimeException("标本管编号格式不正确，请刷新申请后重试。");
+        }
+        String order = maxAccessionNumber.substring(separator + 1);
+        if (!order.matches("[0-9]+")) {
+            throw new LIMSRuntimeException("标本管序号格式不正确，请刷新申请后重试。");
+        }
+        try {
+            return Integer.parseInt(order);
+        } catch (NumberFormatException e) {
+            throw new LIMSRuntimeException("标本管序号超出有效范围，请刷新申请后重试。", e);
+        }
+    }
+
     private List<SampleItem> createCancelSampleList(List<SampleEditItem> list, List<Analysis> cancelAnalysisList,
             String sysUserId) {
         List<SampleItem> cancelList = new ArrayList<>();
-
-        boolean cancelTest = false;
-
+        Set<String> removedSampleItemIds = new HashSet<>();
+        IStatusService statuses = SpringContext.getBean(IStatusService.class);
         for (SampleEditItem editItem : list) {
-            if (editItem.getAccessionNumber() != null) {
-                cancelTest = false;
+            if (!editItem.isRemoveSample() || !removedSampleItemIds.add(editItem.getSampleItemId())) {
+                continue;
             }
-            if (cancelTest && !cancelAnalysisListContainsId(editItem.getAnalysisId(), cancelAnalysisList)) {
-                Analysis analysis = getCancelableAnalysis(editItem, sysUserId);
-                cancelAnalysisList.add(analysis);
-            }
-
-            if (editItem.isRemoveSample()) {
-                cancelTest = true;
-                SampleItem sampleItem = getCancelableSampleItem(editItem, sysUserId);
-                if (sampleItem != null) {
-                    cancelList.add(sampleItem);
-                }
-                if (!cancelAnalysisListContainsId(editItem.getAnalysisId(), cancelAnalysisList)) {
-                    Analysis analysis = getCancelableAnalysis(editItem, sysUserId);
-                    cancelAnalysisList.add(analysis);
+            SampleItem item = sampleItemService.get(editItem.getSampleItemId());
+            for (Analysis analysis : analysisService.getAnalysesBySampleItem(item)) {
+                if (!statuses.matches(analysis.getStatusId(), AnalysisStatus.Canceled)
+                        && !cancelAnalysisListContainsId(analysis.getId(), cancelAnalysisList)) {
+                    SampleEditItem analysisItem = new SampleEditItem();
+                    analysisItem.setAnalysisId(analysis.getId());
+                    cancelAnalysisList.add(getCancelableAnalysis(analysisItem, sysUserId));
                 }
             }
+            cancelList.add(getCancelableSampleItem(editItem, sysUserId));
         }
-
         return cancelList;
     }
 
@@ -535,8 +689,9 @@ public class SampleEditServiceImpl implements SampleEditService {
     }
 
     private Analysis newOrExistingCanceledAnalysis(SampleEditItem sampleEditItem) {
-        List<Analysis> canceledAnalysis = analysisService
-                .getAnalysesBySampleItemIdAndStatusId(sampleEditItem.getSampleItemId(), CANCELED_TEST_STATUS_ID);
+        List<Analysis> canceledAnalysis = analysisService.getAnalysesBySampleItemIdAndStatusId(
+                sampleEditItem.getSampleItemId(),
+                SpringContext.getBean(IStatusService.class).getStatusID(AnalysisStatus.Canceled));
 
         for (Analysis analysis : canceledAnalysis) {
             if (sampleEditItem.getTestId().equals(analysis.getTest().getId())) {
@@ -575,7 +730,7 @@ public class SampleEditServiceImpl implements SampleEditService {
         SampleItem item = sampleItemService.get(sampleItemId);
 
         if (item.getId() != null) {
-            item.setStatusId(CANCELED_SAMPLE_STATUS_ID);
+            item.setStatusId(SpringContext.getBean(IStatusService.class).getStatusID(SampleStatus.Canceled));
             item.setSysUserId(sysUserId);
             return item;
         }

@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.apache.commons.validator.GenericValidator;
 import org.openelisglobal.analysis.service.AnalysisService;
@@ -22,7 +23,6 @@ import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.SampleOrderService;
 import org.openelisglobal.common.services.StatusService.AnalysisStatus;
 import org.openelisglobal.common.services.StatusService.SampleStatus;
-import org.openelisglobal.common.util.ControllerUtills;
 import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.dataexchange.fhir.service.FhirTransformService;
 import org.openelisglobal.internationalization.MessageUtil;
@@ -35,6 +35,7 @@ import org.openelisglobal.sample.bean.SampleEditItem;
 import org.openelisglobal.sample.controller.BaseSampleEntryController;
 import org.openelisglobal.sample.form.SampleEditForm;
 import org.openelisglobal.sample.form.SampleEditForm.SampleEdit;
+import org.openelisglobal.sample.service.SampleEditAuthorizationService;
 import org.openelisglobal.sample.service.SampleEditService;
 import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.validator.SampleEditFormValidator;
@@ -56,9 +57,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
+import org.springframework.validation.ObjectError;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -115,6 +120,8 @@ public class SampleEditRestController extends BaseSampleEntryController {
     @Autowired
     private SampleEditService sampleEditService;
     @Autowired
+    private SampleEditAuthorizationService authorization;
+    @Autowired
     private UserService userService;
 
     @GetMapping(value = "SampleEdit", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -123,6 +130,7 @@ public class SampleEditRestController extends BaseSampleEntryController {
             @RequestParam(required = false) String accessionNumber, @RequestParam(required = false) String patientId)
             throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
 
+        authorization.requireRead(request, getSysUserId(request));
         SampleEditForm form = new SampleEditForm();
         form.setFormAction("SampleEdit");
 
@@ -130,8 +138,8 @@ public class SampleEditRestController extends BaseSampleEntryController {
 
         boolean allowedToCancelResults = userModuleService.isUserAdmin(request)
                 || userRoleService.userInRole(getSysUserId(request), ABLE_TO_CANCEL_ROLE_NAMES);
-        boolean isEditable = "readwrite".equals(request.getSession().getAttribute(SAMPLE_EDIT_WRITABLE))
-                || "readwrite".equals(request.getParameter("type"));
+        boolean isEditable = !"readonly".equals(request.getParameter("type"))
+                && authorization.canWrite(request, getSysUserId(request));
         form.setIsEditable(isEditable);
 
         if (GenericValidator.isBlankOrNull(accessionNumber) && !GenericValidator.isBlankOrNull(patientId)) {
@@ -196,6 +204,7 @@ public class SampleEditRestController extends BaseSampleEntryController {
     @ResponseBody
     public ResponseEntity<Patient> getPatientByLabNumber(HttpServletRequest request,
             @RequestParam(required = false) String accessionNumber) {
+        authorization.requireRead(request, getSysUserId(request));
         if (GenericValidator.isBlankOrNull(accessionNumber)) {
             return ResponseEntity.badRequest().build();
         }
@@ -218,25 +227,36 @@ public class SampleEditRestController extends BaseSampleEntryController {
     public ResponseEntity<?> saveSampleEdit(HttpServletRequest request,
             @Validated(SampleEdit.class) @RequestBody SampleEditForm form, BindingResult result)
             throws InvocationTargetException, NoSuchMethodException, IllegalAccessException {
+        try {
+            authorization.requireWrite(request, getSysUserId(request));
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
+        }
+        if (result.hasErrors()) {
+            return invalidSampleEdit(result);
+        }
+        // Old clients send an empty XML string when only the order information changes.
+        if (GenericValidator.isBlankOrNull(form.getSampleXML())) {
+            form.setSampleXML("<samples/>");
+        }
         formValidator.validate(form, result);
         if (result.hasErrors()) {
-            saveErrors(result);
+            return invalidSampleEdit(result);
         }
         boolean sampleChanged = sampleUtil.accessionNumberChanged(form);
-        Sample updatedSample = null;
-
         if (sampleChanged) {
             sampleUtil.validateNewAccessionNumber(form.getNewAccessionNumber(), result);
             if (result.hasErrors()) {
-                saveErrors(result);
-            } else {
-                // updatedSample = updateAccessionNumberInSample(form);
+                return invalidSampleEdit(result);
             }
-            updatedSample = sampleUtil.updateAccessionNumberInSample(form, ControllerUtills.getSysUserId(request));
         }
 
         try {
-            sampleEditService.editSample(form, request, updatedSample, sampleChanged, getSysUserId(request));
+            // Loading and changing the accession number belongs to the service transaction,
+            // after the current sample and analysis permissions have been checked.
+            sampleEditService.editSample(form, request, null, sampleChanged, getSysUserId(request));
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
         } catch (LIMSRuntimeException e) {
             // Surface the actual reason (e.g. "Position B12 is already occupied") instead
             // of letting it fall through to the global advice's "Check server logs".
@@ -252,6 +272,23 @@ public class SampleEditRestController extends BaseSampleEntryController {
             LogEvent.logError(e);
         }
         return ResponseEntity.ok().build();
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<?> permissionDenied(AccessDeniedException exception) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", exception.getMessage()));
+    }
+
+    private ResponseEntity<?> invalidSampleEdit(BindingResult result) {
+        List<Map<String, String>> errors = new ArrayList<>();
+        for (ObjectError error : result.getAllErrors()) {
+            String code = error.getCode() == null ? "error.field.format.invalid" : error.getCode();
+            String message = MessageUtil.getMessageOrDefault(code, error.getArguments(),
+                    error.getDefaultMessage() == null ? code : error.getDefaultMessage());
+            String field = error instanceof FieldError ? ((FieldError) error).getField() : "";
+            errors.add(Map.of("field", field, "code", code, "message", message));
+        }
+        return ResponseEntity.badRequest().body(Map.of("message", errors.get(0).get("message"), "errors", errors));
     }
 
     @Override

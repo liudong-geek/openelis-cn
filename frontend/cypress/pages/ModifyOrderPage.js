@@ -25,6 +25,7 @@ class ModifyOrderPage {
   }
 
   selectSerumSample() {
+    cy.get(".modify-order-workspace").contains("button", "Add Sample").click();
     cy.get("#sampleId_0").scrollIntoView().select("Serum", { force: true });
   }
 
@@ -32,8 +33,10 @@ class ModifyOrderPage {
     cy.contains("span", "Remember site and requester").click();
   }
 
-  checkProgramButton() {
-    return cy.get("#additionalQuestionsSelect").should("be.disabled");
+  checkExistingTestsWorkspace() {
+    cy.get(".modify-order-workspace").should("be.visible");
+    cy.get("#additionalQuestionsSelect").should("not.exist");
+    return cy.get(".modify-order-workspace table").should("be.visible");
   }
 
   assignValues() {

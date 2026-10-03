@@ -14,7 +14,6 @@ import {
   TableCell,
   Pagination,
   Column,
-  TextInput,
   Checkbox,
 } from "@carbon/react";
 import { Add } from "@carbon/react/icons";
@@ -26,140 +25,116 @@ import {
   OrderPossibleTestsHeaders,
 } from "../data/orderCurrentTestsHeaders";
 const EditSample = (props) => {
-  const { samples, setSamples, orderFormValues, setOrderFormValues, error } =
-    props;
-
-  const componentMounted = useRef(false);
-
+  const {
+    samples = [],
+    setSamples,
+    orderFormValues,
+    setOrderFormValues,
+    error,
+    disabled = false,
+  } = props;
   const intl = useIntl();
-
-  const [elementsCounter, setElementsCounter] = useState(0);
+  const nextSampleIndex = useRef(
+    Math.max(0, ...samples.map((sample) => Number(sample.index) || 0)),
+  );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
   const [page2, setPage2] = useState(1);
   const [pageSize2, setPageSize2] = useState(5);
-
   const [rejectSampleReasons, setRejectSampleReasons] = useState([]);
+  const existingTests = orderFormValues.existingTests ?? [];
+  const possibleTests = orderFormValues.possibleTests ?? [];
+
+  const existingRowId = (test, index) =>
+    test.analysisId != null && test.analysisId !== ""
+      ? `analysis:${test.analysisId}`
+      : `existing-readonly:${index}`;
+  const possibleRowId = (test, index) =>
+    test.sampleItemId != null &&
+    test.sampleItemId !== "" &&
+    test.testId != null &&
+    test.testId !== ""
+      ? `possible:${test.sampleItemId}:${test.testId}`
+      : `possible-readonly:${index}`;
+
+  // Render copies: null accession numbers delimit tubes in the save contract.
+  const formatTestsObject = (tests, rowId) =>
+    tests.map((test, index) => ({
+      ...test,
+      id: rowId(test, index),
+      accessionNumber: test.accessionNumber ?? "",
+      sampleType: test.sampleType ?? "",
+      collectionDate: test.collectionDate ?? "",
+      collectionTime: test.collectionTime ?? "",
+    }));
 
   const handleAddNewSample = () => {
-    let updateSamples = [...samples];
-    let count = elementsCounter + 1;
-    updateSamples.push({
-      index: count,
-      sampleRejected: false,
-      rejectionReason: "",
-      requestReferralEnabled: false,
-      referralItems: [],
-      sampleTypeId: "",
-      sampleXML: null,
-      panels: [],
-      tests: [],
-    });
-    setSamples(updateSamples);
-    setElementsCounter(count);
+    if (disabled) return;
+    const index = ++nextSampleIndex.current;
+    setSamples((current) => [
+      ...current,
+      {
+        index,
+        sampleRejected: false,
+        rejectionReason: "",
+        requestReferralEnabled: false,
+        referralItems: [],
+        sampleTypeId: "",
+        sampleXML: null,
+        panels: [],
+        tests: [],
+      },
+    ]);
   };
-  const formatTestsObject = (tests) => {
-    return tests.map((test) => {
-      test.id = test.testId;
-      if (!test.accessionNumber) {
-        test.accessionNumber = "";
-      }
-      if (!test.sampleType) {
-        test.sampleType = "";
-      }
-      if (!test.collectionDate) {
-        test.collectionDate = "";
-      }
-      if (!test.collectionTime) {
-        test.collectionTime = "";
-      }
-      return test;
-    });
-  };
-  const handleChecked = (e, testId) => {
-    var tests = [];
-    var updatedTests = [];
-    if (e.currentTarget.name === "add") {
-      tests = orderFormValues.possibleTests;
-      updatedTests = tests.map((test) => {
-        if (test.testId === testId) {
-          return { ...test, add: e.currentTarget.checked };
-        } else {
-          return test;
-        }
-      });
-      setOrderFormValues({
-        ...orderFormValues,
-        possibleTests: updatedTests,
-      });
-    } else if (e.currentTarget.name === "removeSample") {
-      tests = orderFormValues.existingTests;
-      updatedTests = tests.map((test) => {
-        if (test.testId === testId) {
-          return { ...test, removeSample: e.currentTarget.checked };
-        }
-        {
-          return test;
-        }
-      });
-      setOrderFormValues({
-        ...orderFormValues,
-        existingTests: updatedTests,
-      });
-    } else if (e.currentTarget.name === "canceled") {
-      tests = orderFormValues.existingTests;
-      updatedTests = tests.map((test) => {
-        if (test.testId === testId) {
-          return { ...test, canceled: e.currentTarget.checked };
-        }
-        {
-          return test;
-        }
-      });
-      setOrderFormValues({
-        ...orderFormValues,
-        existingTests: updatedTests,
-      });
-    }
+
+  const handleChecked = (name, checked, rowId) => {
+    if (disabled) return;
+    const isAddition = name === "add";
+    const listName = isAddition ? "possibleTests" : "existingTests";
+    const identity = isAddition ? possibleRowId : existingRowId;
+    setOrderFormValues((current) => ({
+      ...current,
+      [listName]: (current[listName] ?? []).map((test, index) => {
+        if (identity(test, index) !== rowId) return test;
+        const hasIdentity = isAddition
+          ? test.sampleItemId != null &&
+            test.sampleItemId !== "" &&
+            test.testId != null &&
+            test.testId !== ""
+          : test.analysisId != null && test.analysisId !== "";
+        const permitted =
+          isAddition ||
+          (name === "removeSample"
+            ? test.canRemoveSample === true
+            : test.canCancel === true);
+        return hasIdentity && permitted ? { ...test, [name]: checked } : test;
+      }),
+    }));
   };
 
   const sampleTypeObject = (object) => {
-    let newState = [...samples];
-    switch (true) {
-      case object.sampleTypeId !== undefined && object.sampleTypeId !== "":
-        newState[object.sampleObjectIndex].sampleTypeId = object.sampleTypeId;
-        break;
-      case object.sampleRejected:
-        newState[object.sampleObjectIndex].sampleRejected =
-          object.sampleRejected;
-        break;
-      case object.rejectionReason !== undefined &&
-        object.rejectionReason !== null:
-        newState[object.sampleObjectIndex].rejectionReason =
-          object.rejectionReason;
-        break;
-      case object.selectedTests !== undefined &&
-        object.selectedTests.length > 0:
-        newState[object.sampleObjectIndex].tests = object.selectedTests;
-        break;
-      case object.selectedPanels !== undefined &&
-        object.selectedPanels.length > 0:
-        newState[object.sampleObjectIndex].panels = object.selectedPanels;
-        break;
-      case object.sampleXML !== undefined && object.sampleXML !== null:
-        newState[object.sampleObjectIndex].sampleXML = object.sampleXML;
-        break;
-      case object.requestReferralEnabled:
-        newState[object.sampleObjectIndex].requestReferralEnabled =
-          object.requestReferralEnabled;
-        break;
-      case object.referralItems !== undefined &&
-        object.referralItems.length > 0:
-        newState[object.sampleObjectIndex].referralItems = object.referralItems;
-        break;
-      default:
-        props.setSamples(newState);
-    }
+    if (disabled) return;
+    const fields = {
+      sampleTypeId: "sampleTypeId",
+      sampleRejected: "sampleRejected",
+      rejectionReason: "rejectionReason",
+      selectedTests: "tests",
+      selectedPanels: "panels",
+      sampleXML: "sampleXML",
+      requestReferralEnabled: "requestReferralEnabled",
+      referralItems: "referralItems",
+    };
+    const updates = {};
+    Object.entries(fields).forEach(([source, target]) => {
+      if (Object.prototype.hasOwnProperty.call(object, source)) {
+        updates[target] = object[source];
+      }
+    });
+    setSamples((current) =>
+      current.map((sample, index) =>
+        index === object.sampleObjectIndex ? { ...sample, ...updates } : sample,
+      ),
+    );
   };
 
   const handlePageChange = (pageInfo) => {
@@ -183,132 +158,90 @@ const EditSample = (props) => {
   };
 
   const removeSample = (index) => {
-    let updateSamples = samples.splice(index, 1);
-    setSamples(updateSamples);
+    if (disabled) return;
+    setSamples((current) =>
+      current.filter((_, position) => position !== index),
+    );
   };
 
-  const fetchRejectSampleReasons = (res) => {
-    if (componentMounted.current) {
-      setRejectSampleReasons(res);
-    }
-  };
-
-  const handleRemoveSample = (e, sample) => {
-    e.preventDefault();
-    let filtered = samples.filter(function (element) {
-      return element !== sample;
+  useEffect(() => {
+    let active = true;
+    getFromOpenElisServer("/rest/displayList/REJECTION_REASONS", (response) => {
+      if (active) setRejectSampleReasons(response ?? []);
     });
-    setSamples(filtered);
-  };
-
-  useEffect(() => {
-    componentMounted.current = true;
-    getFromOpenElisServer(
-      "/rest/displayList/REJECTION_REASONS",
-      fetchRejectSampleReasons,
-    );
-    window.scrollTo(0, 0);
     return () => {
-      componentMounted.current = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    getFromOpenElisServer(
-      "/rest/displayList/REJECTION_REASONS",
-      fetchRejectSampleReasons,
-    );
-    window.scrollTo(0, 0);
-    return () => {
-      componentMounted.current = false;
+      active = false;
     };
   }, []);
 
   const renderCell = (cell, row) => {
-    var accession = row.cells.find(
-      (e) => e.info.header === "accessionNumber",
-    ).value;
-    if (cell.info.header === "accessionNumber") {
-      return <TableCell key={cell.id}>{cell.value}</TableCell>;
-    } else if (cell.info.header === "sampleType") {
-      return <TableCell key={cell.id}>{cell.value}</TableCell>;
-    } else if (cell.info.header === "collectionDate") {
-      return (
-        <TableCell key={cell.id}>
-          <TextInput
-            id={cell.id + cell.info.header}
-            labelText=""
-            value={cell.value}
-          ></TextInput>
-        </TableCell>
-      );
-    } else if (cell.info.header === "collectionTime") {
-      return (
-        <TableCell key={cell.id}>
-          <TextInput
-            id={cell.id + cell.info.header}
-            labelText=""
-            value={cell.value}
-          ></TextInput>
-        </TableCell>
-      );
-    } else if (cell.info.header === "removeSample") {
-      return (
-        <>
-          {accession !== "" ? (
-            <TableCell key={cell.id}>
-              <Checkbox
-                id={cell.id + cell.info.header}
-                labelText=""
-                name="removeSample"
-                checked={cell.value}
-                onChange={(e) => handleChecked(e, row.id)}
-              ></Checkbox>
-            </TableCell>
-          ) : (
-            <TableCell key={cell.id}></TableCell>
-          )}
-        </>
-      );
-    } else if (cell.info.header === "testName") {
-      return <TableCell key={cell.id}>{cell.value}</TableCell>;
-    } else if (cell.info.header === "hasResults") {
+    const name = cell.info.header;
+    const isAddition = name === "add";
+    const source = isAddition ? possibleTests : existingTests;
+    const identity = isAddition ? possibleRowId : existingRowId;
+    const test = source.find(
+      (entry, index) => identity(entry, index) === row.id,
+    );
+    const hasIdentity =
+      test &&
+      (isAddition
+        ? test.sampleItemId != null &&
+          test.sampleItemId !== "" &&
+          test.testId != null &&
+          test.testId !== ""
+        : test.analysisId != null && test.analysisId !== "");
+    const header = (
+      isAddition ? OrderPossibleTestsHeaders : OrderCurrentTestsHeaders
+    ).find((entry) => entry.key === name)?.header;
+    if (name === "hasResults") {
       return (
         <TableCell key={cell.id}>
           <Checkbox
-            id={cell.id + cell.info.header}
-            labelText=""
-            checked={cell.value}
-          ></Checkbox>
+            id={cell.id}
+            labelText={header}
+            aria-label={intl.formatMessage({ id: "header.results.recorded" })}
+            hideLabel
+            checked={Boolean(cell.value)}
+            disabled
+            readOnly
+          />
         </TableCell>
       );
-    } else if (cell.info.header === "canceled") {
-      return (
-        <TableCell key={cell.id}>
-          <Checkbox
-            id={cell.id + cell.info.header}
-            labelText=""
-            name="canceled"
-            checked={cell.value}
-            onChange={(e) => handleChecked(e, row.id)}
-          ></Checkbox>
-        </TableCell>
-      );
-    } else if (cell.info.header === "add") {
-      return (
-        <TableCell key={cell.id}>
-          <Checkbox
-            id={cell.id + cell.info.header}
-            labelText=""
-            name="add"
-            checked={cell.value}
-            onChange={(e) => handleChecked(e, row.id)}
-          ></Checkbox>
-        </TableCell>
-      );
-    } else {
-      return <TableCell key={cell.id}></TableCell>;
     }
+    if (["removeSample", "canceled", "add"].includes(name)) {
+      if (name === "removeSample" && !test?.accessionNumber) {
+        return <TableCell key={cell.id} />;
+      }
+      const permitted =
+        isAddition ||
+        (name === "removeSample"
+          ? test?.canRemoveSample === true
+          : test?.canCancel === true);
+      return (
+        <TableCell key={cell.id}>
+          <Checkbox
+            id={cell.id}
+            labelText={header}
+            aria-label={intl.formatMessage({
+              id: {
+                removeSample: "sample.remove.action",
+                canceled: "header.cancel.test",
+                add: "header.assign",
+              }[name],
+            })}
+            hideLabel
+            name={name}
+            checked={Boolean(cell.value)}
+            disabled={disabled || !hasIdentity || !permitted}
+            onChange={(event, data) =>
+              handleChecked(name, data.checked, row.id)
+            }
+          />
+        </TableCell>
+      );
+    }
+    // Existing collection timestamps are descriptive, not editable inputs.
+    return <TableCell key={cell.id}>{cell.value}</TableCell>;
   };
 
   return (
@@ -316,7 +249,7 @@ const EditSample = (props) => {
       <div className="orderLegendBody">
         <Column lg={16}>
           <DataTable
-            rows={formatTestsObject(orderFormValues.existingTests)}
+            rows={formatTestsObject(existingTests, existingRowId)}
             headers={OrderCurrentTestsHeaders}
             isSortable
           >
@@ -358,7 +291,7 @@ const EditSample = (props) => {
             page={page}
             pageSize={pageSize}
             pageSizes={[5, 10, 20, 30]}
-            totalItems={orderFormValues.existingTests.length}
+            totalItems={existingTests.length}
             forwardText={intl.formatMessage({ id: "pagination.forward" })}
             backwardText={intl.formatMessage({ id: "pagination.backward" })}
             itemRangeText={(min, max, total) =>
@@ -397,7 +330,7 @@ const EditSample = (props) => {
       <div className="orderLegendBody">
         <Column lg={16}>
           <DataTable
-            rows={formatTestsObject(orderFormValues.possibleTests)}
+            rows={formatTestsObject(possibleTests, possibleRowId)}
             headers={OrderPossibleTestsHeaders}
             isSortable
           >
@@ -439,7 +372,7 @@ const EditSample = (props) => {
             page={page2}
             pageSize={pageSize2}
             pageSizes={[5, 10, 20, 30]}
-            totalItems={orderFormValues.possibleTests.length}
+            totalItems={possibleTests.length}
             forwardText={intl.formatMessage({ id: "pagination.forward" })}
             backwardText={intl.formatMessage({ id: "pagination.backward" })}
             itemRangeText={(min, max, total) =>
@@ -482,32 +415,58 @@ const EditSample = (props) => {
           </h3>
           {samples.map((sample, i) => {
             return (
-              <div className="sampleType" key={i}>
+              <fieldset
+                className="sampleType"
+                key={sample.index ?? i}
+                disabled={disabled}
+              >
                 <h4>
                   <FormattedMessage id="label.button.sample" /> {i + 1}
                 </h4>
-                <Link href="#" onClick={(e) => handleRemoveSample(e, sample)}>
+                <Link
+                  href="#"
+                  aria-disabled={disabled}
+                  tabIndex={disabled ? -1 : undefined}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    removeSample(i);
+                  }}
+                >
                   {<FormattedMessage id="sample.remove.action" />}
                 </Link>
                 <SampleType
+                  showLabelControls={false}
                   index={i}
                   rejectSampleReasons={rejectSampleReasons}
                   removeSample={removeSample}
-                  sample={sample}
+                  sample={{
+                    ...sample,
+                    tests: (sample.tests ?? []).map((test) => ({ ...test })),
+                    panels: (sample.panels ?? []).map((panel) => ({
+                      ...panel,
+                    })),
+                    referralItems: (sample.referralItems ?? []).map(
+                      (referral) => ({ ...referral }),
+                    ),
+                  }}
+                  disabled={disabled}
                   setSample={(newSample) => {
-                    let newSamples = [...samples];
-                    newSamples[i] = newSample;
-                    setSamples(newSamples);
+                    if (disabled) return;
+                    setSamples((current) =>
+                      current.map((entry, position) =>
+                        position === i ? newSample : entry,
+                      ),
+                    );
                   }}
                   sampleTypeObject={sampleTypeObject}
                   error={error}
                 />
-              </div>
+              </fieldset>
             );
           })}
           <Row>
             <div className="inlineDiv">
-              <Button onClick={handleAddNewSample}>
+              <Button onClick={handleAddNewSample} disabled={disabled}>
                 {<FormattedMessage id="sample.add.action" />}
                 &nbsp; &nbsp;
                 <Add size={16} />

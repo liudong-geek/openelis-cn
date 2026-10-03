@@ -28,12 +28,18 @@ public class SampleEditFormValidator implements Validator {
     @Override
     public void validate(Object target, Errors errors) {
         SampleEditForm form = (SampleEditForm) target;
+        if (form.getSampleOrderItems() == null) {
+            errors.rejectValue("sampleOrderItems", "error.field.required", new Object[] { "sampleOrderItems" },
+                    "Sample order information is required");
+        }
 
         // maxAccessionNumber
-        String[] maxAccessionNumberArray = form.getMaxAccessionNumber().split("-");
-        if (!ValidationResults.SUCCESS.equals(AccessionNumberUtil.correctFormat(maxAccessionNumberArray[0], false))) {
-            errors.rejectValue("maxAccessionNumber", "error.field.accession.format");
-        } else if (!GenericValidator.isInt(maxAccessionNumberArray[1])) {
+        String maxAccessionNumber = form.getMaxAccessionNumber();
+        int separator = maxAccessionNumber == null ? -1 : maxAccessionNumber.lastIndexOf('-');
+        if (separator <= 0 || separator == maxAccessionNumber.length() - 1
+                || !ValidationResults.SUCCESS
+                        .equals(AccessionNumberUtil.correctFormat(maxAccessionNumber.substring(0, separator), false))
+                || !GenericValidator.isInt(maxAccessionNumber.substring(separator + 1))) {
             errors.rejectValue("maxAccessionNumber", "error.field.accession.format");
         }
 
@@ -60,7 +66,15 @@ public class SampleEditFormValidator implements Validator {
     @SuppressWarnings("unchecked")
     private void validateSampleXML(String sampleXML, Errors errors) {
         try {
+            if (GenericValidator.isBlankOrNull(sampleXML)) {
+                errors.reject("batchentry.error.sampleXML.invalid");
+                return;
+            }
             Document sampleDom = DocumentHelper.parseText(sampleXML);
+            if (!"samples".equals(sampleDom.getRootElement().getName())) {
+                errors.reject("batchentry.error.sampleXML.invalid");
+                return;
+            }
             for (Iterator<Element> iter = sampleDom.getRootElement().elementIterator("sample"); iter.hasNext();) {
                 Element sampleItem = iter.next();
                 validateSampleItem(sampleItem, errors);
@@ -74,6 +88,12 @@ public class SampleEditFormValidator implements Validator {
     }
 
     private void validateSampleItem(Element sampleItem, Errors errors) {
+        for (String attribute : new String[] { "tests", "panels", "date", "time", "sampleID" }) {
+            if (sampleItem.attributeValue(attribute) == null) {
+                errors.reject("batchentry.error.sampleXML.invalid");
+                return;
+            }
+        }
         // validate test ids
         String[] testIDs = sampleItem.attributeValue("tests").split(",");
         for (int j = 0; j < testIDs.length; ++j) {

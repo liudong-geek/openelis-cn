@@ -28,44 +28,27 @@ const AddSample = (props) => {
   };
 
   const sampleTypeObject = (object) => {
-    let newState = [...samples];
-    switch (true) {
-      case object.sampleTypeId !== undefined && object.sampleTypeId !== "":
-        newState[object.sampleObjectIndex].sampleTypeId = object.sampleTypeId;
-        break;
-      case object.sampleRejected:
-        newState[object.sampleObjectIndex].sampleRejected =
-          object.sampleRejected;
-        break;
-      case object.rejectionReason !== undefined &&
-        object.rejectionReason !== null:
-        newState[object.sampleObjectIndex].rejectionReason =
-          object.rejectionReason;
-        break;
-      case object.selectedTests !== undefined &&
-        object.selectedTests.length > 0:
-        newState[object.sampleObjectIndex].tests = object.selectedTests;
-        break;
-      case object.selectedPanels !== undefined &&
-        object.selectedPanels.length > 0:
-        newState[object.sampleObjectIndex].panels = object.selectedPanels;
-        break;
-      case object.sampleXML !== undefined && object.sampleXML !== null:
-        newState[object.sampleObjectIndex].sampleXML = object.sampleXML;
-        break;
-      case object.requestReferralEnabled:
-        newState[object.sampleObjectIndex].requestReferralEnabled =
-          object.requestReferralEnabled;
-        break;
-      case object.referralItems !== undefined &&
-        object.referralItems.length > 0:
-        newState[object.sampleObjectIndex].referralItems = object.referralItems;
-        break;
-      default:
-        console.debug(JSON.stringify(newState));
-        props.setSamples(newState);
-    }
-    props.setSamples(newState);
+    const fields = {
+      sampleTypeId: "sampleTypeId",
+      sampleRejected: "sampleRejected",
+      rejectionReason: "rejectionReason",
+      selectedTests: "tests",
+      selectedPanels: "panels",
+      sampleXML: "sampleXML",
+      requestReferralEnabled: "requestReferralEnabled",
+      referralItems: "referralItems",
+    };
+    const updates = {};
+    Object.entries(fields).forEach(([source, target]) => {
+      if (Object.prototype.hasOwnProperty.call(object, source)) {
+        updates[target] = object[source];
+      }
+    });
+    setSamples((current) =>
+      current.map((sample, index) =>
+        index === object.sampleObjectIndex ? { ...sample, ...updates } : sample,
+      ),
+    );
   };
 
   const removeSample = (index) => {

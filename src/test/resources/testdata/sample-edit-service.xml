@@ -53,6 +53,12 @@
         last_name="Doe" first_name="John" initials="JD" is_active="Y"
         is_employee="Y" lastupdated="2024-01-01 00:00:00" />
 
+    <!-- Persisted administrator used by authenticated SampleEdit service tests. -->
+    <login_user id="1" login_name="admin" password="test-only"
+        password_expired_dt="2030-01-01" account_locked="N"
+        account_disabled="N" is_admin="Y" user_time_out="30"
+        last_updated="2024-01-01 00:00:00" />
+
     <!-- Patient -->
     <patient id="1" person_id="1" lastupdated="2024-01-01 00:00:00" />
 

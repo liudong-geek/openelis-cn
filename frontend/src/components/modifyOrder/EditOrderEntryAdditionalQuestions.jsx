@@ -1,169 +1,127 @@
 import React, { useEffect, useState } from "react";
-import { Stack, InlineLoading } from "@carbon/react";
-import { FormattedMessage } from "react-intl";
-import "../../index.css";
-import "../Style.css";
+import { InlineLoading } from "@carbon/react";
+import { FormattedMessage, useIntl } from "react-intl";
 import { getFromOpenElisServer } from "../utils/Utils";
-import { ProgramSelect } from "../addOrder/OrderEntryAdditionalQuestions";
-import Questionnaire from "../common/Questionnaire";
+import { modifyProgramName } from "./modifyOrderDisplay";
 
-const EditOrderEntryAdditionalQuestions = ({
-  orderFormValues,
-  setOrderFormValues = () => {
-    console.debug("default setOrderFormValues change function does nothing");
-  },
-}) => {
-  const [questionnaire, setQuestionnaire] = useState({});
-  const [questionnaireResponse, setQuestionnaireResponse] = useState({});
-  const [loading, setLoading] = useState(true);
-
+// Existing program and answers are read-only here. Do not mount the creation
+// selector: its default program effect would change an existing order.
+const EditOrderEntryAdditionalQuestions = ({ orderFormValues }) => {
+  const intl = useIntl();
+  const programId = orderFormValues.sampleOrderItems.programId;
+  const [programs, setPrograms] = useState(
+    orderFormValues.sampleOrderItems.programList || [],
+  );
+  const [questionnaire, setQuestionnaire] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const response = orderFormValues.sampleOrderItems.additionalQuestions;
   useEffect(() => {
-    if (orderFormValues?.sampleOrderItems?.programId) {
+    let active = true;
+    const controller = new AbortController();
+    setLoading(true);
+    setFailed(false);
+    setQuestionnaire(null);
+    if (programs.length === 0)
       getFromOpenElisServer(
-        "/rest/program/" +
-          orderFormValues.sampleOrderItems.programId +
-          "/questionnaire",
-        setDefaultAdditionalQuestions,
+        "/rest/user-programs",
+        (data) => {
+          if (active && Array.isArray(data)) setPrograms(data);
+        },
+        controller.signal,
       );
-    }
-    if (orderFormValues?.sampleOrderItems?.labNo) {
-      if (!orderFormValues.sampleOrderItems.programId) {
+    getFromOpenElisServer(
+      `/rest/program/${encodeURIComponent(programId)}/questionnaire`,
+      (data) => {
+        if (!active) return;
+        if (!data || data === "Check server logs" || data.message || data.error)
+          setFailed(true);
+        else setQuestionnaire(data);
         setLoading(false);
-      }
-    }
-  }, [orderFormValues]);
-
-  const handleProgramSelection = (event) => {
-    if (!event.target.value) {
-      setAdditionalQuestions(null);
-      setOrderFormValues({
-        ...orderFormValues,
-        sampleOrderItems: {
-          ...orderFormValues.sampleOrderItems,
-          programId: "",
-        },
-      });
-    } else {
-      getFromOpenElisServer(
-        "/rest/program/" + event.target.value + "/questionnaire",
-        setAdditionalQuestions,
-      );
-      setOrderFormValues({
-        ...orderFormValues,
-        sampleOrderItems: {
-          ...orderFormValues.sampleOrderItems,
-          programId: event.target.value,
-        },
-      });
-    }
-  };
-
-  function convertQuestionnaireToResponse(questionnaire) {
-    var items = [];
-    if (questionnaire && "item" in questionnaire) {
-      for (let i = 0; i < questionnaire.item.length; i++) {
-        let currentItem = questionnaire.item[i];
-        items.push({
-          linkId: currentItem.linkId,
-          definition: currentItem.definition,
-          text: currentItem.text,
-          answer: [],
-        });
-      }
-
-      var convertedQuestionnaireResponse = {
-        resourceType: "QuestionnaireResponse",
-        id: "",
-        questionnaire: "Questionnaire/" + questionnaire.id,
-        status: "in-progress",
-        item: items,
-      };
-      return convertedQuestionnaireResponse;
-    }
-    return null;
-  }
-
-  function setAdditionalQuestions(res) {
-    console.debug(res);
-    if (res !== "Check server logs") {
-      setQuestionnaire(res);
-      var convertedQuestionnaireResponse = convertQuestionnaireToResponse(res);
-      setQuestionnaireResponse(convertedQuestionnaireResponse);
-    }
-  }
-
-  function setDefaultAdditionalQuestions(res) {
-    console.debug(res);
-    if (res !== "Check server logs") {
-      setQuestionnaire(res);
-      setQuestionnaireResponse(
-        orderFormValues.sampleOrderItems.additionalQuestions,
-      );
-    }
-    if (loading) {
-      setLoading(false);
-    }
-  }
-
-  const getAnswer = (linkId) => {
-    var responseItem = questionnaireResponse?.item?.find(
-      (item) => item.linkId === linkId,
+      },
+      controller.signal,
     );
-    var questionnaireItem = questionnaire?.item?.find(
-      (item) => item.linkId === linkId,
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [programId]);
+  const program = programs.find(
+    (item) => String(item.id) === String(programId),
+  );
+  const name = modifyProgramName(
+    program?.value || orderFormValues.sampleOrderItems.program,
+    intl,
+  );
+  const formatAnswer = (answer) => {
+    if (answer.valueCoding)
+      return answer.valueCoding.display || answer.valueCoding.code;
+    if (answer.valueBoolean != null)
+      return intl.formatMessage({
+        id: answer.valueBoolean ? "label.yes" : "label.no",
+      });
+    if (answer.valueQuantity)
+      return [
+        answer.valueQuantity.value,
+        answer.valueQuantity.unit || answer.valueQuantity.code,
+      ]
+        .filter((part) => part != null && part !== "")
+        .join(" ");
+    return (
+      answer.valueDecimal ??
+      answer.valueInteger ??
+      answer.valueDate ??
+      answer.valueTime ??
+      answer.valueString ??
+      "—"
     );
-    switch (questionnaireItem.type) {
-      case "boolean":
-        return responseItem?.answer?.[0]?.valueBoolean ?? "";
-      case "decimal":
-        return responseItem?.answer?.[0]?.valueDecimal ?? "";
-      case "integer":
-        return responseItem?.answer?.[0]?.valueInteger ?? "";
-      case "date":
-        return responseItem?.answer?.[0]?.valueDate ?? "";
-      case "time":
-        return responseItem?.answer?.[0]?.valueTime ?? "";
-      case "string":
-      case "text":
-        return responseItem?.answer?.[0]?.valueString ?? "";
-      case "quantity":
-        return responseItem?.answer?.[0]?.valueQuantity ?? "";
-      case "choice":
-        if (responseItem?.answer?.[0]) {
-          const firstAnswer = responseItem.answer[0];
-          return (
-            firstAnswer?.valueCoding?.code ?? firstAnswer?.valueString ?? ""
-          );
-        }
-        return "";
-    }
   };
-
-  return (
-    <>
-      <Stack gap={10}>
-        <div className="orderLegendBody">
-          <h3>
-            <FormattedMessage id="label.program" />
-          </h3>
-          <ProgramSelect
-            orderFormValues={orderFormValues}
-            programChange={handleProgramSelection}
-            editable={true}
-          />
-          <Questionnaire questionnaire={questionnaire} getAnswer={getAnswer} />
-          {questionnaireResponse && (
-            <input
-              type="hidden"
-              name="additionalQuestions"
-              value={questionnaireResponse}
-            />
-          )}
-          {loading && <InlineLoading />}
+  const renderItems = (items, responses = []) =>
+    items.map((item) => {
+      const matches = responses.filter((entry) => entry.linkId === item.linkId);
+      const answers = matches.flatMap((entry) => entry.answer || []);
+      const childResponses = matches.flatMap((entry) => [
+        ...(entry.item || []),
+        ...(entry.answer || []).flatMap((answer) => answer.item || []),
+      ]);
+      return (
+        <div key={item.linkId}>
+          <dt>{item.text || item.linkId}</dt>
+          <dd>
+            {answers.length
+              ? answers.map(formatAnswer).join("、")
+              : item.item?.length
+                ? null
+                : "—"}
+            {item.item?.length ? (
+              <dl>{renderItems(item.item, childResponses)}</dl>
+            ) : null}
+          </dd>
         </div>
-      </Stack>
-    </>
+      );
+    });
+  return (
+    <div className="modify-order-program">
+      <p>
+        <strong>
+          <FormattedMessage id="modify.order.program" />：
+        </strong>
+        {name || intl.formatMessage({ id: "modify.order.program.unavailable" })}
+      </p>
+      {loading ? (
+        <InlineLoading />
+      ) : failed ? (
+        <p>
+          <FormattedMessage id="modify.order.questionnaire.failed" />
+        </p>
+      ) : questionnaire?.item?.length ? (
+        <dl>{renderItems(questionnaire.item, response?.item)}</dl>
+      ) : (
+        <p>
+          <FormattedMessage id="modify.order.questionnaire.empty" />
+        </p>
+      )}
+    </div>
   );
 };
-
 export default EditOrderEntryAdditionalQuestions;
