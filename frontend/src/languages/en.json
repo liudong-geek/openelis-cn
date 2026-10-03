@@ -10080,5 +10080,7 @@
   "modify.order.step.complete": "Viewed",
   "modify.order.step.incomplete": "Not viewed",
   "modify.order.step.invalid": "Needs correction",
-  "modify.order.tests.helper": "Review existing samples and tests. Removing, canceling or adding tests requires the current state and permission to allow it; disabled items remain visible."
+  "modify.order.tests.helper": "Review existing samples and tests. Removing, canceling or adding tests requires the current state and permission to allow it; disabled items remain visible.",
+  "modify.order.new.number.invalid": "The new number does not meet the numbering rules or is already in use. Enter it again, or leave it blank to keep the current number.",
+  "modify.order.sampling.other": "Other"
 }

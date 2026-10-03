@@ -1,5 +1,5 @@
-import React from "react";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import React, { useState } from "react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import messages from "../../languages/en.json";
@@ -76,10 +76,25 @@ vi.mock("../common/CustomTimePicker", () => ({
     );
   },
 }));
-vi.mock("../common/CustomLabNumberInput", () => ({ default: () => <div /> }));
+vi.mock("../common/CustomLabNumberInput", () => ({
+  default: (props) => {
+    utilsMock.labNumberProps = props;
+    return (
+      <label>
+        {props.labelText}
+        <input
+          id={props.id}
+          value={props.value ?? ""}
+          onChange={props.onChange}
+        />
+      </label>
+    );
+  },
+}));
 vi.mock("./OrderResultReporting", () => ({ default: () => <div /> }));
 
 import AddOrder from "./AddOrder";
+import { NotificationContext } from "../layout/Layout";
 
 // Mirrors the POST /api/orderEntry/labelRequest response shape (snake_case wire
 // keys). sample_id_local "0"/"1" are the positional keys AddOrder sends.
@@ -654,4 +669,303 @@ test("modification displays Chinese priorities while preserving the legacy wire 
   expect(
     setOrderFormValues.mock.calls.at(-1)[0].sampleOrderItems.priority,
   ).toBe("Timed");
+});
+
+describe("AddOrder accession number validation feedback", () => {
+  const notifications = {
+    setNotificationVisible: vi.fn(),
+    addNotification: vi.fn(),
+  };
+  const originalNumber = "HMC26092800001";
+  const invalidResponse = {
+    status: false,
+    body: "The accession number has an invalid format or has already been used.",
+  };
+  const entryOptions = {
+    providersList: [],
+    referringSiteList: [],
+    paymentOptions: [
+      { id: "payment-1", value: "normalCash" },
+      { id: "payment-2", value: "normalInsurance" },
+      { id: "payment-3", value: "reducedCash" },
+      { id: "payment-4", value: "reducedInsurance" },
+      { id: "payment-custom", value: "院内自定义费用" },
+    ],
+    testLocationCodeList: [
+      { id: "1310", value: "Other" },
+      { id: "location-b1", value: "B1" },
+      { id: "location-custom", value: "院内采样编码" },
+    ],
+  };
+  const NumberHarness = ({
+    isModifyOrder = true,
+    accessionNumber = originalNumber,
+  }) => {
+    const [values, setValues] = useState({
+      ...baseOrderFormValues(),
+      accessionNumber: originalNumber,
+      newAccessionNumber: "",
+      sampleOrderItems: {
+        ...baseOrderFormValues().sampleOrderItems,
+        labNo: originalNumber,
+        requestDate: "2026/09/28",
+        receivedDateForDisplay: "2026/09/29",
+        receivedTime: "08:30",
+        priority: "Routine",
+        paymentOptionSelection: "payment-1",
+        testLocationCode: "location-b1",
+      },
+    });
+    const form = isModifyOrder
+      ? {
+          ...values,
+          accessionNumber,
+          sampleOrderItems: {
+            ...values.sampleOrderItems,
+            labNo: accessionNumber,
+          },
+        }
+      : values;
+    return (
+      <IntlProvider locale="zh" messages={zhMessages}>
+        <NotificationContext.Provider value={notifications}>
+          <AddOrder
+            orderFormValues={form}
+            setOrderFormValues={setValues}
+            samples={[]}
+            error={() => null}
+            isModifyOrder={isModifyOrder}
+            changed={{}}
+            setChanged={vi.fn()}
+          />
+          <output data-testid="number-form">{JSON.stringify(form)}</output>
+        </NotificationContext.Provider>
+      </IntlProvider>
+    );
+  };
+  const draft = () => JSON.parse(screen.getByTestId("number-form").textContent);
+  const enterNumber = (value) =>
+    fireEvent.change(document.getElementById("labNo"), { target: { value } });
+  const validations = () =>
+    utilsMock.getFromOpenElisServer.mock.calls.filter(([url]) =>
+      url.startsWith("/rest/SampleEntryAccessionNumberValidation?"),
+    );
+  const respond = (call, response) => act(() => call[1](response));
+
+  beforeEach(() => {
+    notifications.addNotification.mockReset();
+    notifications.setNotificationVisible.mockReset();
+    utilsMock.dateProps.clear();
+    utilsMock.timeProps.clear();
+    utilsMock.getFromOpenElisServer.mockReset();
+    utilsMock.postToOpenElisServerJsonResponse.mockReset();
+    utilsMock.getFromOpenElisServer.mockImplementation((url, callback) => {
+      if (url === "/rest/SamplePatientEntry")
+        callback({ sampleOrderItems: entryOptions });
+    });
+  });
+
+  test("shows a Chinese modification message and keeps the old and replacement numbers distinct", () => {
+    render(<NumberHarness />);
+    const replacement = "CHG066-CANCEL-CHECK +/中文&?";
+    enterNumber(replacement);
+    const request = validations()[0];
+    expect(request[0]).toBe(
+      "/rest/SampleEntryAccessionNumberValidation?ignoreYear=false&ignoreUsage=false&field=labNo&accessionNumber=" +
+        encodeURIComponent(replacement),
+    );
+    respond(request, invalidResponse);
+    expect(notifications.addNotification).toHaveBeenCalledWith({
+      kind: "error",
+      title: zhMessages["notification.title"],
+      message: "新编号不符合编号规则或已使用，请重新输入；留空保留原编号。",
+    });
+    expect(notifications.setNotificationVisible).toHaveBeenLastCalledWith(true);
+    expect(draft().newAccessionNumber).toBe(replacement);
+    expect(draft().sampleOrderItems.labNo).toBe(originalNumber);
+  });
+
+  test("retains the creation response message and raw-number storage contract", () => {
+    render(<NumberHarness isModifyOrder={false} />);
+    act(() =>
+      utilsMock.labNumberProps.onChange(
+        { target: { value: "ABC-001" } },
+        "ABC001",
+      ),
+    );
+    expect(draft().sampleOrderItems.labNo).toBe("ABC001");
+    expect(draft().newAccessionNumber).toBe("");
+    expect(validations()[0][0]).toContain("accessionNumber=ABC-001");
+    respond(validations()[0], invalidResponse);
+    expect(notifications.addNotification.mock.calls.at(-1)[0].message).toBe(
+      invalidResponse.body,
+    );
+  });
+
+  test("handles an undefined validation response without discarding the input or notifying", () => {
+    render(<NumberHarness />);
+    enterNumber("HMC26100400010");
+    expect(() => respond(validations()[0], undefined)).not.toThrow();
+    expect(notifications.addNotification).not.toHaveBeenCalled();
+    expect(draft().newAccessionNumber).toBe("HMC26100400010");
+    expect(draft().sampleOrderItems.labNo).toBe(originalNumber);
+  });
+
+  test("ignores an older invalid response after a newer input has been validated", () => {
+    render(<NumberHarness />);
+    enterNumber("旧输入");
+    const old = validations()[0];
+    enterNumber("HMC26100400010");
+    respond(validations()[1], { status: true });
+    respond(old, invalidResponse);
+    expect(notifications.addNotification).not.toHaveBeenCalled();
+    expect(notifications.setNotificationVisible).not.toHaveBeenCalledWith(true);
+    expect(draft().newAccessionNumber).toBe("HMC26100400010");
+  });
+
+  test("invalidates pending validation when the replacement input is cleared", () => {
+    render(<NumberHarness />);
+    enterNumber("旧输入");
+    const old = validations()[0];
+    enterNumber("");
+    respond(old, invalidResponse);
+    expect(validations()).toHaveLength(1);
+    expect(notifications.addNotification).not.toHaveBeenCalled();
+    expect(draft().newAccessionNumber).toBe("");
+    expect(draft().sampleOrderItems.labNo).toBe(originalNumber);
+  });
+
+  test("ignores validation responses after leaving the information step", () => {
+    const view = render(<NumberHarness />);
+    enterNumber("旧输入");
+    const request = validations()[0];
+    view.unmount();
+    notifications.setNotificationVisible.mockClear();
+    respond(request, invalidResponse);
+    expect(notifications.addNotification).not.toHaveBeenCalled();
+    expect(notifications.setNotificationVisible).not.toHaveBeenCalled();
+  });
+
+  test("does not notify for another application even if the field component remains mounted", () => {
+    const view = render(<NumberHarness />);
+    enterNumber("旧输入");
+    const request = validations()[0];
+    view.rerender(<NumberHarness accessionNumber="HMC26092800002" />);
+    respond(request, invalidResponse);
+    expect(notifications.addNotification).not.toHaveBeenCalled();
+    expect(draft().sampleOrderItems.labNo).toBe("HMC26092800002");
+  });
+
+  test("does not reuse an old validation when the mounted form moves A to B and back to A", () => {
+    const view = render(<NumberHarness />);
+    enterNumber("旧A输入");
+    const oldA = validations()[0];
+    view.rerender(<NumberHarness accessionNumber="HMC26092800002" />);
+    view.rerender(<NumberHarness accessionNumber={originalNumber} />);
+    respond(oldA, invalidResponse);
+    expect(notifications.addNotification).not.toHaveBeenCalled();
+    expect(notifications.setNotificationVisible).not.toHaveBeenCalledWith(true);
+    expect(draft().sampleOrderItems.labNo).toBe(originalNumber);
+  });
+
+  test("ignores generated numbers across applications and preserves the current application's validation", () => {
+    const view = render(<NumberHarness />);
+    fireEvent.click(document.querySelector('[data-cy="generate-labNumber"]'));
+    fireEvent.click(document.querySelector('[data-cy="generate-labNumber"]'));
+    const generated = utilsMock.getFromOpenElisServer.mock.calls.filter(
+      ([url]) => url === "/rest/SampleEntryGenerateScanProvider",
+    );
+    view.rerender(<NumberHarness accessionNumber="HMC26092800002" />);
+    enterNumber("当前B输入");
+    const currentB = validations()[0];
+    respond(generated[0], { status: true, body: "来自旧A的生成号" });
+    expect(draft().newAccessionNumber).toBe("当前B输入");
+    expect(draft().sampleOrderItems.labNo).toBe("HMC26092800002");
+    respond(currentB, invalidResponse);
+    expect(notifications.addNotification).toHaveBeenCalledTimes(1);
+    expect(notifications.addNotification.mock.calls[0][0].message).toBe(
+      zhMessages["modify.order.new.number.invalid"],
+    );
+    view.rerender(<NumberHarness accessionNumber={originalNumber} />);
+    enterNumber("重新打开A的输入");
+    respond(generated[1], { status: true, body: "来自旧A的另一生成号" });
+    expect(draft().newAccessionNumber).toBe("重新打开A的输入");
+    expect(draft().sampleOrderItems.labNo).toBe(originalNumber);
+    expect(notifications.addNotification).toHaveBeenCalledTimes(1);
+  });
+
+  test("invalidates earlier validation both while requesting and after applying a generated number", () => {
+    render(<NumberHarness />);
+    enterNumber("生成前输入");
+    const old = validations()[0];
+    fireEvent.click(document.querySelector('[data-cy="generate-labNumber"]'));
+    respond(old, invalidResponse);
+    expect(notifications.addNotification).not.toHaveBeenCalled();
+    enterNumber("生成期间输入");
+    const intermediate = validations()[1];
+    const generated = utilsMock.getFromOpenElisServer.mock.calls.find(
+      ([url]) => url === "/rest/SampleEntryGenerateScanProvider",
+    );
+    respond(generated, { status: true, body: "HMC26100400010" });
+    respond(intermediate, invalidResponse);
+    expect(notifications.addNotification).not.toHaveBeenCalled();
+    expect(draft().newAccessionNumber).toBe("HMC26100400010");
+    expect(draft().sampleOrderItems.labNo).toBe(originalNumber);
+  });
+
+  test("localizes known modification options while preserving configured IDs, custom labels and creation labels", () => {
+    const view = render(<NumberHarness />);
+    const payment = document.getElementById("paymentOptionSelectionId");
+    const sampling = document.getElementById("testLocationCodeId");
+    expect(
+      within(payment)
+        .getAllByRole("option")
+        .map((option) => ({ label: option.textContent, value: option.value })),
+    ).toEqual([
+      { label: "", value: "" },
+      { label: "普通自费", value: "payment-1" },
+      { label: "普通医保", value: "payment-2" },
+      { label: "减免自费", value: "payment-3" },
+      { label: "减免医保", value: "payment-4" },
+      { label: "院内自定义费用", value: "payment-custom" },
+    ]);
+    expect(
+      within(sampling)
+        .getAllByRole("option")
+        .map((option) => ({ label: option.textContent, value: option.value })),
+    ).toEqual([
+      { label: "", value: "" },
+      { label: "其他", value: "1310" },
+      { label: "B1", value: "location-b1" },
+      { label: "院内采样编码", value: "location-custom" },
+    ]);
+    expect(payment).toHaveValue("payment-1");
+    expect(sampling).toHaveValue("location-b1");
+    fireEvent.change(payment, { target: { value: "payment-4" } });
+    fireEvent.change(sampling, { target: { value: "1310" } });
+    expect(draft().sampleOrderItems).toMatchObject({
+      paymentOptionSelection: "payment-4",
+      testLocationCode: "1310",
+    });
+    view.rerender(<NumberHarness isModifyOrder={false} />);
+    expect(
+      within(payment)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual([
+      "",
+      "normalCash",
+      "normalInsurance",
+      "reducedCash",
+      "reducedInsurance",
+      "院内自定义费用",
+    ]);
+    expect(within(sampling).getByRole("option", { name: "Other" })).toHaveValue(
+      "1310",
+    );
+    expect(draft().sampleOrderItems).toMatchObject({
+      paymentOptionSelection: "payment-4",
+      testLocationCode: "1310",
+    });
+  });
 });

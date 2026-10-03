@@ -10285,5 +10285,7 @@
   "modify.order.step.complete": "已查看",
   "modify.order.step.incomplete": "待查看",
   "modify.order.step.invalid": "需修正",
-  "modify.order.tests.helper": "核对已有标本和项目。只有状态与权限允许时才能移除标本、取消或加做项目；禁用项仍保留显示。"
+  "modify.order.tests.helper": "核对已有标本和项目。只有状态与权限允许时才能移除标本、取消或加做项目；禁用项仍保留显示。",
+  "modify.order.new.number.invalid": "新编号不符合编号规则或已使用，请重新输入；留空保留原编号。",
+  "modify.order.sampling.other": "其他"
 }

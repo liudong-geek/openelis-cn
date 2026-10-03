@@ -41,6 +41,13 @@ import OrderResultReporting from "./OrderResultReporting";
 import LabelsSection from "../barcodeWorkflow/LabelsSection";
 import { FormattedMessage, useIntl } from "react-intl";
 import { ConfigurationContext } from "../layout/Layout";
+const knownPaymentValues = new Set([
+  "normalCash",
+  "normalInsurance",
+  "reducedCash",
+  "reducedInsurance",
+]);
+
 const AddOrder = (props) => {
   const { setNotificationVisible, addNotification } =
     useContext(NotificationContext);
@@ -49,6 +56,9 @@ const AddOrder = (props) => {
   const intl = useIntl();
 
   const componentMounted = useRef(false);
+  const accessionNumberValidationRequest = useRef(0);
+  const currentOrderIdentity = useRef(null);
+  const orderIdentityRequestScope = useRef(0);
 
   const {
     orderFormValues,
@@ -61,6 +71,14 @@ const AddOrder = (props) => {
     stagedAttachments,
     setStagedAttachments,
   } = props;
+  const orderIdentity = isModifyOrder
+    ? orderFormValues.accessionNumber || orderFormValues.sampleOrderItems.labNo
+    : null;
+  if (currentOrderIdentity.current !== orderIdentity) {
+    currentOrderIdentity.current = orderIdentity;
+    orderIdentityRequestScope.current += 1;
+    accessionNumberValidationRequest.current += 1;
+  }
   const [otherSamplingVisible, setOtherSamplingVisible] = useState(false);
   const [providers, setProviders] = useState([]);
   const [paymentOptions, setPaymentOptions] = useState([]);
@@ -281,6 +299,8 @@ const AddOrder = (props) => {
     window.scrollTo(0, 0);
     return () => {
       componentMounted.current = false;
+      accessionNumberValidationRequest.current += 1;
+      orderIdentityRequestScope.current += 1;
     };
   }, []);
 
@@ -429,19 +449,38 @@ const AddOrder = (props) => {
     if (e) {
       e.preventDefault();
     }
+    accessionNumberValidationRequest.current += 1;
+    const identity = currentOrderIdentity.current;
+    const scope = orderIdentityRequestScope.current;
     getFromOpenElisServer(
       "/rest/SampleEntryGenerateScanProvider",
-      fetchGeneratedAccessionNo,
+      (response) => {
+        if (
+          !componentMounted.current ||
+          identity !== currentOrderIdentity.current ||
+          scope !== orderIdentityRequestScope.current
+        )
+          return;
+        fetchGeneratedAccessionNo(response);
+      },
     );
   };
 
-  function accessionNumberValidationResults(res) {
-    if (res.status === false) {
+  function accessionNumberValidationResults(res, requestId, orderIdentity) {
+    if (
+      !componentMounted.current ||
+      requestId !== accessionNumberValidationRequest.current ||
+      orderIdentity !== currentOrderIdentity.current
+    )
+      return;
+    if (res?.status === false) {
       setNotificationVisible(true);
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
-        message: res.body,
+        message: isModifyOrder
+          ? intl.formatMessage({ id: "modify.order.new.number.invalid" })
+          : res.body,
       });
     }
   }
@@ -555,11 +594,15 @@ const AddOrder = (props) => {
   }
 
   const handleLabNoValidationOnChange = (value) => {
+    // Clearing the input also supersedes any validation still in flight.
+    const requestId = ++accessionNumberValidationRequest.current;
+    const orderIdentity = currentOrderIdentity.current;
     if (value) {
       getFromOpenElisServer(
         "/rest/SampleEntryAccessionNumberValidation?ignoreYear=false&ignoreUsage=false&field=labNo&accessionNumber=" +
-          value,
-        accessionNumberValidationResults,
+          encodeURIComponent(value),
+        (response) =>
+          accessionNumberValidationResults(response, requestId, orderIdentity),
       );
     }
   };
@@ -685,6 +728,7 @@ const AddOrder = (props) => {
 
   function fetchGeneratedAccessionNo(res) {
     if (!componentMounted.current || !res?.status) return;
+    accessionNumberValidationRequest.current += 1;
     setOrderFormValues((current) =>
       isModifyOrder
         ? { ...current, newAccessionNumber: res.body }
@@ -1242,7 +1286,13 @@ const AddOrder = (props) => {
                       <SelectItem
                         key={option.id}
                         value={option.id}
-                        text={option.value}
+                        text={
+                          isModifyOrder && knownPaymentValues.has(option.value)
+                            ? intl.formatMessage({
+                                id: `order.paymentStatus.${option.value}`,
+                              })
+                            : option.value
+                        }
                       />
                     );
                   })}
@@ -1269,7 +1319,13 @@ const AddOrder = (props) => {
                     <SelectItem
                       key={option.id}
                       value={option.id}
-                      text={option.value}
+                      text={
+                        isModifyOrder && option.value === "Other"
+                          ? intl.formatMessage({
+                              id: "modify.order.sampling.other",
+                            })
+                          : option.value
+                      }
                     />
                   );
                 })}
