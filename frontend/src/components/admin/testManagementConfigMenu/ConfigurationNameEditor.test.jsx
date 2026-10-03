@@ -6,6 +6,8 @@ import { MemoryRouter, useLocation } from "react-router-dom";
 import messages from "../../../languages/en.json";
 import PanelManagement from "./PanelManagement";
 import TestSectionManagement from "./TestSectionManagement";
+import ConfigurationNameEditor from "./ConfigurationNameEditor";
+import chineseMessages from "../../../languages/zh.json";
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock("../../utils/Utils", () => ({
   getFromOpenElisServer: api.get,
@@ -188,3 +190,205 @@ for (const item of cases)
       expect(api.post).not.toHaveBeenCalled();
     });
   });
+
+function setupChineseEditor(entity, response) {
+  const callbacks = { onClose: vi.fn(), onSaved: vi.fn() };
+  api.get.mockImplementation((_url, cb) =>
+    cb(
+      response || {
+        name: { english: "Chemistry", french: "Chimie", chinese: "旧显示值" },
+        translations: { en: "Chemistry", fr: "Chimie", zh: "生化检验" },
+      },
+    ),
+  );
+  render(
+    <IntlProvider locale="zh-CN" messages={chineseMessages}>
+      <ConfigurationNameEditor
+        entity={entity}
+        record={{ id: "42", name: "生化检验" }}
+        {...callbacks}
+      />
+    </IntlProvider>,
+  );
+  return callbacks;
+}
+for (const item of cases)
+  describe(`${item.entity} Chinese names`, () => {
+    test("saves the real Chinese translation by business ID and preserves English and French", async () => {
+      const callbacks = setupChineseEditor(item.entity);
+      const input = screen.getByLabelText(
+        chineseMessages["configuration.entityName.chinese"],
+      );
+      expect(input).toHaveValue("生化检验");
+      fireEvent.change(input, {
+        target: { value: "  生化检验组合（常规）  " },
+      });
+      api.post.mockImplementation((_url, _body, cb) => cb({}));
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: chineseMessages["label.button.save"],
+          exact: true,
+        }),
+      );
+      expect(api.post).toHaveBeenCalledWith(
+        `/rest/${item.post}`,
+        JSON.stringify({
+          [item.idField]: "42",
+          nameEnglish: "Chemistry",
+          nameFrench: "Chimie",
+          nameChinese: "生化检验组合（常规）",
+        }),
+        expect.any(Function),
+      );
+      expect(callbacks.onSaved).toHaveBeenCalledTimes(1);
+    });
+    test("does not substitute the English fallback for a missing Chinese translation", async () => {
+      setupChineseEditor(item.entity, {
+        name: { english: "Chemistry", french: "Chimie" },
+        translations: { en: "Chemistry", fr: "Chimie" },
+      });
+      expect(
+        screen.getByLabelText(
+          chineseMessages["configuration.entityName.chinese"],
+        ),
+      ).toHaveValue("");
+      expect(
+        screen.getByRole("button", {
+          name: chineseMessages["label.button.save"],
+          exact: true,
+        }),
+      ).toBeDisabled();
+      expect(api.post).not.toHaveBeenCalled();
+    });
+    test("retains Chinese drafts on a failed save and unlocks retry", async () => {
+      const callbacks = setupChineseEditor(item.entity);
+      const input = screen.getByLabelText(
+        chineseMessages["configuration.entityName.chinese"],
+      );
+      fireEvent.change(input, { target: { value: "生化检验修订" } });
+      api.post.mockImplementationOnce((_url, _body, cb) =>
+        cb({ status: 500, error: "failed" }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: chineseMessages["label.button.save"],
+          exact: true,
+        }),
+      );
+      expect(
+        screen.getByText(chineseMessages["server.error.msg"]),
+      ).toBeVisible();
+      expect(input).toHaveValue("生化检验修订");
+      expect(input).toBeEnabled();
+      expect(callbacks.onSaved).not.toHaveBeenCalled();
+      api.post.mockImplementationOnce((_url, _body, cb) => cb({}));
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: chineseMessages["label.button.save"],
+          exact: true,
+        }),
+      );
+      expect(callbacks.onSaved).toHaveBeenCalledTimes(1);
+    });
+    test("blocks duplicate submission, field changes and dismissal while saving", async () => {
+      const callbacks = setupChineseEditor(item.entity);
+      const input = screen.getByLabelText(
+        chineseMessages["configuration.entityName.chinese"],
+      );
+      fireEvent.change(input, { target: { value: "生化检验修订" } });
+      let finish;
+      api.post.mockImplementation((_url, _body, cb) => {
+        finish = cb;
+      });
+      const save = screen.getByRole("button", {
+        name: chineseMessages["label.button.save"],
+        exact: true,
+      });
+      fireEvent.click(save);
+      fireEvent.click(save);
+      expect(input).toBeDisabled();
+      expect(save).toBeDisabled();
+      fireEvent.keyDown(document, { key: "Escape", code: "Escape" });
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: chineseMessages["label.button.cancel"],
+          exact: true,
+        }),
+      );
+      expect(callbacks.onClose).not.toHaveBeenCalled();
+      expect(api.post).toHaveBeenCalledTimes(1);
+      finish({ status: 500, error: "failed" });
+      await waitFor(() => expect(input).toBeEnabled());
+    });
+  });
+
+for (const item of cases) {
+  test(`${item.entity}: raw locale map does not inherit a displayed English fallback`, () => {
+    setupChineseEditor(item.entity, {
+      name: { english: "Chemistry", french: "Chimie", chinese: "Chemistry" },
+      translations: { en: "Chemistry", fr: "Chimie" },
+    });
+    expect(
+      screen.getByLabelText(
+        chineseMessages["configuration.entityName.chinese"],
+      ),
+    ).toHaveValue("");
+  });
+  test(`${item.entity}: missing required French translation expands its validation`, () => {
+    setupChineseEditor(item.entity, {
+      name: { english: "Chemistry", chinese: "生化" },
+      translations: { en: "Chemistry", zh: "生化" },
+    });
+    expect(
+      screen.getByLabelText(
+        chineseMessages["configuration.entityName.secondary"],
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByLabelText(
+        chineseMessages["configuration.entityName.secondary"],
+      ),
+    ).toHaveAttribute("aria-invalid", "true");
+    expect(
+      screen.getByRole("button", {
+        name: chineseMessages["label.button.save"],
+        exact: true,
+      }),
+    ).toBeDisabled();
+  });
+  test(`${item.entity}: English UI cannot silently discard an existing Chinese translation`, () => {
+    api.get.mockImplementation((_url, callback) =>
+      callback({
+        name: { english: "Chemistry", french: "Chimie", chinese: "生化" },
+        translations: { en: "Chemistry", fr: "Chimie", zh: "生化" },
+      }),
+    );
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <ConfigurationNameEditor
+          entity={item.entity}
+          record={{ id: "42", name: "Chemistry" }}
+          onClose={vi.fn()}
+          onSaved={vi.fn()}
+        />
+      </IntlProvider>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: messages["configuration.entityName.translations"],
+      }),
+    );
+    const input = screen.getByLabelText(
+      messages["configuration.entityName.chinese"],
+    );
+    fireEvent.change(input, { target: { value: "" } });
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(
+      screen.getByRole("button", {
+        name: messages["label.button.save"],
+        exact: true,
+      }),
+    ).toBeDisabled();
+    expect(api.post).not.toHaveBeenCalled();
+  });
+}

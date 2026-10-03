@@ -21,6 +21,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.apache.commons.validator.GenericValidator;
@@ -116,14 +117,15 @@ public class DisplayListService implements LocaleChangeListener {
     /**
      * Short-lived cache for {@link #getFreshList(ListType)}: repeated REST calls
      * for the same list type within this TTL reuse the in-memory list instead of
-     * rebuilding it from the database on every request (each rebuild re-queries
-     * the reference tables and previously happened on every single call).
-     * Explicit {@link #refreshList(ListType)} / {@link #refreshLists()} calls
-     * (dictionary admin edits, startup) and locale changes clear the timestamps,
-     * which is the invalidation exit for updated data.
+     * rebuilding it from the database on every request (each rebuild re-queries the
+     * reference tables and previously happened on every single call). Explicit
+     * {@link #refreshList(ListType)} / {@link #refreshLists()} calls (dictionary
+     * admin edits, startup) and locale changes clear the timestamps, which is the
+     * invalidation exit for updated data.
      */
     private static final long FRESH_LIST_CACHE_TTL_MS = 60_000L;
     private static final Map<ListType, Long> freshListCacheTimes = new ConcurrentHashMap<>();
+    private static final Set<ListType> invalidatedLists = ConcurrentHashMap.newKeySet();
 
     @Autowired
     private TypeOfSampleService typeOfSampleService;
@@ -339,7 +341,10 @@ public class DisplayListService implements LocaleChangeListener {
                 .map(e -> new IdValuePair(e.name(), e.getDisplay())).collect(Collectors.toList());
     }
 
-    public List<IdValuePair> getList(ListType listType) {
+    public synchronized List<IdValuePair> getList(ListType listType) {
+        if (invalidatedLists.contains(listType)) {
+            refreshList(listType);
+        }
         if (listType == ListType.ELECTRONIC_ORDER_STATUSES) {
             // 该列表依赖当前请求 locale 的本地化值（getLocalizedName），
             // 而 typeToListMap 是进程级静态缓存、不区分 locale，会导致首启后
@@ -483,9 +488,10 @@ public class DisplayListService implements LocaleChangeListener {
         return dictionaryList;
     }
 
-    public List<IdValuePair> getFreshList(ListType listType) {
+    public synchronized List<IdValuePair> getFreshList(ListType listType) {
         Long cachedAt = freshListCacheTimes.get(listType);
-        if (cachedAt == null || System.currentTimeMillis() - cachedAt >= FRESH_LIST_CACHE_TTL_MS) {
+        if (invalidatedLists.contains(listType) || cachedAt == null
+                || System.currentTimeMillis() - cachedAt >= FRESH_LIST_CACHE_TTL_MS) {
             refreshList(listType);
             freshListCacheTimes.put(listType, System.currentTimeMillis());
         }
@@ -494,6 +500,7 @@ public class DisplayListService implements LocaleChangeListener {
 
     public synchronized void refreshLists() {
         freshListCacheTimes.clear();
+        invalidatedLists.clear();
         typeToListMap = new HashMap<>();
         typeToListMap.put(ListType.NOTEBOOK_STATUS, createNoteBookStatusList());
         typeToListMap.put(ListType.CYTOLOGY_STATUS, createCytologyStatusList());
@@ -599,7 +606,15 @@ public class DisplayListService implements LocaleChangeListener {
         typeToListMap.put(ListType.ACTIVE_ORG_LIST, createActiveOrganizationsList());
     }
 
-    public void refreshList(ListType listType) {
+    /** Mark only the affected lists stale after a committed configuration write. */
+    public synchronized void invalidateLists(ListType... listTypes) {
+        for (ListType listType : listTypes) {
+            invalidatedLists.add(listType);
+            freshListCacheTimes.remove(listType);
+        }
+    }
+
+    public synchronized void refreshList(ListType listType) {
 
         // Any explicit refresh invalidates the short-TTL cache for this list.
         freshListCacheTimes.remove(listType);
@@ -657,6 +672,10 @@ public class DisplayListService implements LocaleChangeListener {
         case METHODS_INACTIVE: {
             methodService.refreshNames();
             typeToListMap.put(ListType.METHODS_INACTIVE, createInactiveMethod());
+            break;
+        }
+        case TEST_SECTION_BY_NAME: {
+            typeToListMap.put(ListType.TEST_SECTION_BY_NAME, createTestSectionByNameList());
             break;
         }
         case TEST_SECTION_INACTIVE: {
@@ -729,6 +748,7 @@ public class DisplayListService implements LocaleChangeListener {
             typeToListMap.put(ListType.RESULT_TYPE_CODES, createResultTypeCodesList());
         }
         }
+        invalidatedLists.remove(listType);
     }
 
     private List<IdValuePair> createActivePractitionerPersonsList() {

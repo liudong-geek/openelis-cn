@@ -16,12 +16,12 @@
 package org.openelisglobal.common.provider.query.rest;
 
 import java.util.Locale;
+import java.util.Map;
 import org.apache.commons.validator.GenericValidator;
 import org.json.simple.JSONObject;
 import org.openelisglobal.localization.valueholder.Localization;
-import org.openelisglobal.panel.service.PanelService;
 import org.openelisglobal.renamemethod.service.RenameMethodService;
-import org.openelisglobal.renametestsection.service.RenameTestSectionService;
+import org.openelisglobal.testconfiguration.service.ConfigurationNameService;
 import org.openelisglobal.typeofsample.service.TypeOfSampleService;
 import org.openelisglobal.unitofmeasure.service.UnitOfMeasureService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,10 +37,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class EntityNamesProviderRestController {
 
     @Autowired
-    private PanelService panelService;
-
-    @Autowired
-    private RenameTestSectionService renameTestSectionService;
+    private ConfigurationNameService configurationNames;
 
     @Autowired
     private TypeOfSampleService typeOfSampleService;
@@ -72,6 +69,13 @@ public class EntityNamesProviderRestController {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorJson);
         }
 
+        if ((PANEL.equals(entityName) || TEST_SECTION.equals(entityName)) && !id.matches("[0-9]+")) {
+            JSONObject errorJson = new JSONObject();
+            errorJson.put("status", INVALID);
+            errorJson.put("message", "Invalid configuration rename request");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorJson);
+        }
+
         JSONObject jsonResult = new JSONObject();
         String status = createJsonTestNames(id, entityName, jsonResult);
 
@@ -91,12 +95,40 @@ public class EntityNamesProviderRestController {
 
         Localization localization = null;
 
-        if (PANEL.equals(entityName)) {
-            localization = getLocalizationForPanel(id);
+        if (PANEL.equals(entityName) || TEST_SECTION.equals(entityName)) {
+            Map<String, String> translations = PANEL.equals(entityName) ? configurationNames.getPanelTranslations(id)
+                    : configurationNames.getTestSectionTranslations(id);
+            if (translations == null) {
+                return INVALID;
+            }
+            JSONObject names = new JSONObject();
+            for (Map.Entry<String, String> value : translations.entrySet()) {
+                Locale locale = Locale.forLanguageTag(value.getKey().replace('_', '-'));
+                if (!"zh".equals(locale.getLanguage()) && !"en".equals(locale.getLanguage())
+                        && !"fr".equals(locale.getLanguage())) {
+                    names.put(locale.getDisplayLanguage(Locale.ENGLISH).toLowerCase(Locale.ROOT), value.getValue());
+                }
+            }
+            // Canonical fields must not be overwritten by regional translations.
+            if (translations.get("en") != null) {
+                names.put("english", translations.get("en"));
+            }
+            if (translations.get("fr") != null) {
+                names.put("french", translations.get("fr"));
+            }
+            // Preserve the legacy name.chinese key without English fallback.
+            String chinese = translations.get("zh");
+            if (chinese == null) {
+                chinese = translations.getOrDefault("zh_CN", translations.get("zh-CN"));
+            }
+            if (chinese != null) {
+                names.put("chinese", chinese);
+            }
+            jsonResult.put("name", names);
+            jsonResult.put("translations", translations);
+            return VALID;
         } else if (SAMPLE_TYPE.equals(entityName)) {
             localization = getLocalizationForSampleType(id);
-        } else if (TEST_SECTION.equals(entityName)) {
-            localization = getLocalizationForRenameTestSection(id);
         } else if (UNIT_OF_MEASURE.equals(entityName)) {
             localization = getLocalizationForUnitOfMeasure(id);
         } else if (METHOD.equals(entityName)) {
@@ -126,16 +158,8 @@ public class EntityNamesProviderRestController {
         }
     }
 
-    private Localization getLocalizationForPanel(String id) {
-        return panelService.getLocalizationForPanel(id);
-    }
-
     private Localization getLocalizationForSampleType(String id) {
         return typeOfSampleService.getLocalizationForSampleType(id);
-    }
-
-    private Localization getLocalizationForRenameTestSection(String id) {
-        return renameTestSectionService.getLocalizationForRenameTestSection(id);
     }
 
     private Localization getLocalizationForUnitOfMeasure(String id) {

@@ -10027,5 +10027,10 @@
   "eorder.status.realized": "Received",
   "eorder.status.nonConforming": "Non-conforming",
   "eorder.status.awaitingSpecimen": "Awaiting specimen",
-  "configuration.entityName.scope": "This dialog edits English and French names. Editing the Chinese display name is not yet available."
+  "configuration.entityName.scope": "Localized names are used in lists and item selection. Maintain other language names below.",
+  "configuration.entityName.chinese": "Chinese display name",
+  "systemAudit.entityType.LOCALIZATION": "Configuration names",
+  "systemAudit.field.en": "English name",
+  "systemAudit.field.fr": "French name",
+  "systemAudit.field.zh": "Chinese name"
 }

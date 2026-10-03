@@ -17,7 +17,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
+import java.util.Map;
 import java.util.Set;
 import java.util.Vector;
 import org.hibernate.proxy.HibernateProxy;
@@ -218,6 +220,41 @@ public class AuditTrailServiceImpl implements AuditTrailService {
             LogEvent.logError(e);
             throw new LIMSRuntimeException("Error in AuditTrail saveHistory()", e);
         }
+    }
+
+    @Override
+    public void saveNamedChanges(String referenceId, String tableName, String sysUserId, Map<String, String> changes) {
+        if (referenceId == null || referenceId.isBlank() || tableName == null || tableName.isBlank()
+                || sysUserId == null || sysUserId.isBlank() || changes == null) {
+            throw new LIMSRuntimeException("Missing explicit audit change context");
+        }
+        if (changes.isEmpty()) {
+            return;
+        }
+        ReferenceTables reference = referenceTablesService.getReferenceTableByName(tableName);
+        if (reference == null) {
+            throw new LIMSRuntimeException("Reference Table is null for explicit audit changes");
+        }
+        if (!IActionConstants.YES.equals(reference.getKeepHistory())) {
+            return;
+        }
+        StringBuilder xml = new StringBuilder();
+        for (Map.Entry<String, String> change : changes.entrySet()) {
+            if (change.getKey() == null || !change.getKey().matches("[A-Za-z_][A-Za-z0-9_.-]*")) {
+                throw new LIMSRuntimeException("Invalid explicit audit field name");
+            }
+            String value = change.getValue() == null ? "" : change.getValue();
+            xml.append(XMLUtil.makeStartTag(change.getKey())).append(Encode.forXmlContent(value))
+                    .append(XMLUtil.makeEndTag(change.getKey())).append("\n");
+        }
+        History history = new History();
+        history.setReferenceId(referenceId);
+        history.setReferenceTable(reference.getId());
+        history.setSysUserId(sysUserId);
+        history.setActivity(IActionConstants.AUDIT_TRAIL_UPDATE);
+        history.setTimestamp(new Timestamp(System.currentTimeMillis()));
+        history.setChanges(xml.toString().getBytes(StandardCharsets.UTF_8));
+        insertData(history);
     }
 
     /**

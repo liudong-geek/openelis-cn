@@ -18,6 +18,7 @@ const ENTITY_TYPE_MESSAGE_IDS = new Set([
   "QA_OBSERVATION",
   "PATIENT",
   "PERSON",
+  "LOCALIZATION",
 ]);
 
 const FIELD_MESSAGE_IDS = new Set([
@@ -37,6 +38,9 @@ const FIELD_MESSAGE_IDS = new Set([
   "name",
   "value",
   "birthDateForDisplay",
+  "en",
+  "fr",
+  "zh",
 ]);
 
 export const getAuditEntityTypeMessageId = (entityType) =>
@@ -63,4 +67,19 @@ export const getAuditActionMessageId = (action) => {
     return "systemAudit.action.delete";
   }
   return "systemAudit.action.other";
+};
+
+/** Named translation history retains its reference ID but displays the business object. */
+export const getAuditBusinessContext = (event) => {
+  const type = { panel: "PANEL", testSection: "TEST_SECTION" }[
+    event.configurationType
+  ];
+  if (
+    event.entityType === "LOCALIZATION" &&
+    type &&
+    /^[0-9]+$/.test(String(event.businessId || ""))
+  ) {
+    return { entityType: type, entityId: String(event.businessId) };
+  }
+  return { entityType: event.entityType, entityId: event.entityId };
 };

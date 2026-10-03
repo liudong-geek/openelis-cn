@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dataset>
+    <localization lastupdated="2026-10-03 00:00:00.000000"
+        id="990141" description="Configuration-name test panel" />
+    <localization lastupdated="2026-10-03 00:00:00.000000"
+        id="990173" description="Configuration-name test group" />
+    <localization_value
+        last_updated="2026-10-03 00:00:00.000000" id="990041"
+        localization_id="990141" locale="en" value="Panel English" />
+    <localization_value
+        last_updated="2026-10-03 00:00:00.000000" id="990042"
+        localization_id="990141" locale="fr" value="Panel French" />
+    <localization_value
+        last_updated="2026-10-03 00:00:00.000000" id="990043"
+        localization_id="990141" locale="zh" value="原组合名称" />
+    <localization_value
+        last_updated="2026-10-03 00:00:00.000000" id="990071"
+        localization_id="990173" locale="en" value="Group English" />
+    <localization_value
+        last_updated="2026-10-03 00:00:00.000000" id="990072"
+        localization_id="990173" locale="fr" value="Group French" />
+    <localization_value
+        last_updated="2026-10-03 00:00:00.000000" id="990073"
+        localization_id="990173" locale="zh" value="原专业组名称" />
+    <panel id="990041" name="Configuration-name panel"
+        description="Synthetic test panel" is_active="Y"
+        name_localization_id="990141" sort_order="1" />
+    <test_section id="990073" name="Config name group"
+        description="Synthetic test group" is_active="Y" is_external="N"
+        name_localization_id="990173" sort_order="1" />
+</dataset>

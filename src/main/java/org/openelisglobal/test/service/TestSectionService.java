@@ -35,4 +35,6 @@ public interface TestSectionService extends BaseObjectService<TestSection, Strin
     String getUserLocalizedTesSectionName(TestSection testSection);
 
     void refreshNames();
+
+    void invalidateNames();
 }

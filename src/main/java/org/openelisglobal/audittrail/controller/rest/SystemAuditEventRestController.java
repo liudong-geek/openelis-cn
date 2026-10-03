@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.commons.text.StringEscapeUtils;
 import org.openelisglobal.audittrail.service.AuditEntitySnapshotService;
 import org.openelisglobal.audittrail.util.AuditFieldStringifier;
 import org.openelisglobal.audittrail.valueholder.History;
@@ -54,9 +55,9 @@ public class SystemAuditEventRestController {
     private static final int MAX_EXPORT_ROWS = 10000;
 
     private static final List<String> SYSTEM_ENTITY_TABLE_NAMES = Arrays.asList("TEST", "PANEL", "METHOD",
-            "TEST_SECTION", "TYPE_OF_SAMPLE", "RESULT_LIMITS", "SYSTEM_USER", "SYSTEM_ROLE", "SYSTEM_USER_ROLE",
-            "DICTIONARY", "DICTIONARY_CATEGORY", "analyzer", "site_information", "QA_EVENT", "ANALYSIS_QAEVENT",
-            "ANALYSIS_QAEVENT_ACTION", "QA_OBSERVATION", "PATIENT", "PERSON");
+            "TEST_SECTION", "TYPE_OF_SAMPLE", "LOCALIZATION", "RESULT_LIMITS", "SYSTEM_USER", "SYSTEM_ROLE",
+            "SYSTEM_USER_ROLE", "DICTIONARY", "DICTIONARY_CATEGORY", "analyzer", "site_information", "QA_EVENT",
+            "ANALYSIS_QAEVENT", "ANALYSIS_QAEVENT_ACTION", "QA_OBSERVATION", "PATIENT", "PERSON");
 
     private static final String PATIENT_ENTITY_NAME = "PATIENT";
     private static final String PERSON_ENTITY_NAME = "PERSON";
@@ -177,6 +178,8 @@ public class SystemAuditEventRestController {
      * paired with the entity's current persisted value when available
      * (patient-scoped queries pre-load the patient + linked person); older
      * occurrences chain to the next-newer row's old value for the same field.
+     * Explicit configuration-name snapshots carry their own before/after values and
+     * never use the current entity or this reverse chain.
      */
     private List<Map<String, Object>> buildItemsWithOldNew(List<History> events, String patientId,
             Map<String, String> userCache) {
@@ -204,7 +207,7 @@ public class SystemAuditEventRestController {
         for (History h : events) {
             Map<String, String> parsed = parseChanges(h);
             parsedByHistory.put(h, parsed);
-            if (!parsed.isEmpty()) {
+            if (!parsed.isEmpty() && !isConfigurationNameSnapshot(h, parsed)) {
                 fieldsByEntityKey.computeIfAbsent(entityKey(h.getReferenceTable(), h.getReferenceId()),
                         k -> new java.util.HashSet<>()).addAll(parsed.keySet());
             }
@@ -235,6 +238,22 @@ public class SystemAuditEventRestController {
             item.put("action", mapActivity(h.getActivity()));
 
             Map<String, String> oldByField = parsedByHistory.getOrDefault(h, Collections.emptyMap());
+            if (isConfigurationNameSnapshot(h, oldByField)) {
+                item.put("configurationType", oldByField.get("configurationType"));
+                item.put("businessId", oldByField.get("businessId"));
+                Map<String, Map<String, String>> changes = new LinkedHashMap<>();
+                for (String locale : new String[] { "en", "fr", "zh" }) {
+                    if (oldByField.containsKey(locale + "Before")) {
+                        Map<String, String> pair = new LinkedHashMap<>();
+                        pair.put("old", StringEscapeUtils.unescapeXml(oldByField.get(locale + "Before")));
+                        pair.put("new", StringEscapeUtils.unescapeXml(oldByField.get(locale + "After")));
+                        changes.put(locale, pair);
+                    }
+                }
+                item.put("changes", changes);
+                items.add(item);
+                continue;
+            }
             String key = entityKey(h.getReferenceTable(), h.getReferenceId());
             Map<String, String> entityCurrent = lastKnownNewByEntity.computeIfAbsent(key, k -> new HashMap<>());
             Map<String, Map<String, String>> changesWithBoth = new LinkedHashMap<>();
@@ -267,6 +286,47 @@ public class SystemAuditEventRestController {
             items.add(item);
         }
         return items;
+    }
+
+    /**
+     * Only the explicit name-change format is self-contained; legacy XML still
+     * chains.
+     */
+    private boolean isConfigurationNameSnapshot(History history, Map<String, String> values) {
+        if (!"U".equals(history.getActivity())
+                || !"LOCALIZATION".equals(refTableIdToName.get(history.getReferenceTable()))) {
+            return false;
+        }
+        String type = values.get("configurationType");
+        String businessId = values.get("businessId");
+        if (!("panel".equals(type) || "testSection".equals(type)) || businessId == null
+                || !businessId.matches("[0-9]+")) {
+            return false;
+        }
+        boolean hasPair = false;
+        for (String locale : new String[] { "en", "fr", "zh" }) {
+            boolean before = values.containsKey(locale + "Before");
+            boolean after = values.containsKey(locale + "After");
+            if (before != after) {
+                return false;
+            }
+            hasPair |= before;
+        }
+        return hasPair;
+    }
+
+    private String exportEntityType(Map<String, Object> item) {
+        if ("panel".equals(item.get("configurationType"))) {
+            return "PANEL";
+        }
+        if ("testSection".equals(item.get("configurationType"))) {
+            return "TEST_SECTION";
+        }
+        return (String) item.get("entityType");
+    }
+
+    private String exportEntityId(Map<String, Object> item) {
+        return item.containsKey("businessId") ? (String) item.get("businessId") : (String) item.get("entityId");
     }
 
     private String entityKey(String refTableId, String refId) {
@@ -317,6 +377,7 @@ public class SystemAuditEventRestController {
             HttpServletResponse response) throws IOException {
 
         response.setContentType("text/csv");
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         response.setHeader("Content-Disposition", "attachment; filename=\"system-audit-events.csv\"");
 
         Timestamp start = parseStartDate(startDate);
@@ -346,8 +407,8 @@ public class SystemAuditEventRestController {
             Map<String, Map<String, String>> changes = (Map<String, Map<String, String>>) item.get("changes");
             Timestamp ts = (Timestamp) item.get("timestamp");
             writer.printf("%s,%s,%s,%s,%s,%s,%s%n", csvEscape(ts != null ? sdf.format(ts) : ""),
-                    csvEscape((String) item.get("user")), csvEscape((String) item.get("entityType")),
-                    csvEscape((String) item.get("entityId")), csvEscape((String) item.get("action")),
+                    csvEscape((String) item.get("user")), csvEscape(exportEntityType(item)),
+                    csvEscape(exportEntityId(item)), csvEscape((String) item.get("action")),
                     csvEscape(formatChangesColumn(changes, "old")), csvEscape(formatChangesColumn(changes, "new")));
         }
         writer.flush();
@@ -439,8 +500,8 @@ public class SystemAuditEventRestController {
                 Timestamp ts = (Timestamp) item.get("timestamp");
                 table.addCell(new Phrase(ts != null ? sdf.format(ts) : "", cellFont));
                 table.addCell(new Phrase((String) item.get("user"), cellFont));
-                table.addCell(new Phrase((String) item.get("entityType"), cellFont));
-                String entityId = (String) item.get("entityId");
+                table.addCell(new Phrase(exportEntityType(item), cellFont));
+                String entityId = exportEntityId(item);
                 table.addCell(new Phrase(entityId == null ? "" : entityId, cellFont));
                 table.addCell(new Phrase((String) item.get("action"), cellFont));
                 table.addCell(new Phrase(formatChangesColumn(changes, "old"), cellFont));

@@ -36,8 +36,11 @@ export default function ConfigurationNameEditor({
   const savingRef = useRef(false);
   savingRef.current = saving;
   const [error, setError] = useState("");
-  const [names, setNames] = useState({ english: "", french: "" });
+  const chineseInterface = intl.locale.toLowerCase().startsWith("zh");
+  const primaryName = chineseInterface ? "chinese" : "english";
+  const [names, setNames] = useState({ chinese: "", english: "", french: "" });
   const [original, setOriginal] = useState(null);
+  const [translationsOpen, setTranslationsOpen] = useState(false);
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -50,23 +53,37 @@ export default function ConfigurationNameEditor({
           setError(intl.formatMessage({ id: "server.error.msg" }));
           return;
         }
+        const translations = response.translations || {};
         const loaded = {
-          english: response.name.english || "",
-          french: response.name.french || "",
+          chinese: response.translations
+            ? (translations.zh ??
+              translations.zh_CN ??
+              translations["zh-CN"] ??
+              "")
+            : (response.name.chinese ?? ""),
+          english: translations.en ?? response.name.english ?? "",
+          french: translations.fr ?? response.name.french ?? "",
         };
         setNames(loaded);
         setOriginal(loaded);
+        setTranslationsOpen(
+          !loaded.french.trim() || (chineseInterface && !loaded.english.trim()),
+        );
       },
     );
     return () => {
       active = false;
     };
-  }, [entity, record.id, intl]);
+  }, [entity, record.id, intl, chineseInterface]);
   const changed =
-    original &&
-    (names.english !== original.english || names.french !== original.french);
+    original && Object.keys(names).some((key) => names[key] !== original[key]);
+  const valid =
+    names.english.trim() &&
+    names.french.trim() &&
+    (!(chineseInterface || original?.chinese?.trim()) || names.chinese.trim());
   const submit = () => {
-    if (loading || saving || !changed || !names.english.trim()) return;
+    if (loading || savingRef.current || !changed || !valid) return;
+    savingRef.current = true;
     setSaving(true);
     setError("");
     const contract = contracts[entity];
@@ -75,9 +92,11 @@ export default function ConfigurationNameEditor({
       JSON.stringify({
         [contract.idField]: String(record.id),
         nameEnglish: names.english.trim(),
-        nameFrench: names.french.trim() || names.english.trim(),
+        nameFrench: names.french.trim(),
+        ...(names.chinese.trim() ? { nameChinese: names.chinese.trim() } : {}),
       }),
       (response) => {
+        savingRef.current = false;
         setSaving(false);
         if (failedResponse(response)) {
           setError(intl.formatMessage({ id: "server.error.msg" }));
@@ -98,9 +117,7 @@ export default function ConfigurationNameEditor({
       closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
       primaryButtonText={intl.formatMessage({ id: "label.button.save" })}
       secondaryButtonText={intl.formatMessage({ id: "label.button.cancel" })}
-      primaryButtonDisabled={
-        loading || saving || !changed || !names.english.trim()
-      }
+      primaryButtonDisabled={loading || saving || !changed || !valid}
       onRequestSubmit={submit}
       onRequestClose={() => {
         if (!savingRef.current) onClose();
@@ -121,40 +138,70 @@ export default function ConfigurationNameEditor({
         <div className="configuration-entity-workspace__form">
           <TextInput
             id="configuration-name"
-            labelText={intl.formatMessage({ id: "english.label" })}
+            labelText={intl.formatMessage({
+              id: chineseInterface
+                ? "configuration.entityName.chinese"
+                : "english.label",
+            })}
             helperText={intl.formatMessage({
               id: "configuration.entityName.scope",
             })}
-            value={names.english}
+            value={names[primaryName]}
             disabled={saving || !original}
+            maxLength={255}
             required
+            invalid={!!original && !names[primaryName].trim()}
+            invalidText={intl.formatMessage({ id: "error.field.required" })}
             onChange={(event) =>
               setNames((current) => ({
                 ...current,
-                english: event.target.value,
+                [primaryName]: event.target.value,
               }))
             }
           />
           <Accordion>
             <AccordionItem
+              open={translationsOpen}
+              onHeadingClick={() => setTranslationsOpen((current) => !current)}
               title={intl.formatMessage({
                 id: "configuration.entityName.translations",
               })}
             >
-              <TextInput
-                id="configuration-name-french"
-                labelText={intl.formatMessage({
-                  id: "configuration.entityName.secondary",
-                })}
-                value={names.french}
-                disabled={saving || !original}
-                onChange={(event) =>
-                  setNames((current) => ({
-                    ...current,
-                    french: event.target.value,
-                  }))
-                }
-              />
+              {(chineseInterface
+                ? ["english", "french"]
+                : ["chinese", "french"]
+              ).map((key) => (
+                <TextInput
+                  key={key}
+                  id={`configuration-name-${key}`}
+                  labelText={intl.formatMessage({
+                    id:
+                      key === "english"
+                        ? "english.label"
+                        : key === "chinese"
+                          ? "configuration.entityName.chinese"
+                          : "configuration.entityName.secondary",
+                  })}
+                  value={names[key]}
+                  disabled={saving || !original}
+                  maxLength={255}
+                  required={key !== "chinese" || !!original?.chinese?.trim()}
+                  invalid={
+                    !!original &&
+                    (key !== "chinese" || !!original.chinese.trim()) &&
+                    !names[key].trim()
+                  }
+                  invalidText={intl.formatMessage({
+                    id: "error.field.required",
+                  })}
+                  onChange={(event) =>
+                    setNames((current) => ({
+                      ...current,
+                      [key]: event.target.value,
+                    }))
+                  }
+                />
+              ))}
             </AccordionItem>
           </Accordion>
           {saving && <InlineLoading />}

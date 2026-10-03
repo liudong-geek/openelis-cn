@@ -13,6 +13,7 @@
  */
 package org.openelisglobal.audittrail.dao;
 
+import java.util.Map;
 import org.openelisglobal.common.exception.LIMSRuntimeException;
 import org.openelisglobal.common.valueholder.BaseObject;
 
@@ -26,6 +27,12 @@ public interface AuditTrailService {
             throws LIMSRuntimeException;
 
     void saveNewHistory(BaseObject newObject, String sysUserId, String tableName) throws LIMSRuntimeException;
+
+    /**
+     * Persist an explicit, fully captured change snapshot in the existing history
+     * trail.
+     */
+    void saveNamedChanges(String referenceId, String tableName, String sysUserId, Map<String, String> changes);
 
     String getXML(String table, String id) throws LIMSRuntimeException;
 

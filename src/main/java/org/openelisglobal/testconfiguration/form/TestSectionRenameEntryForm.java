@@ -19,6 +19,10 @@ public class TestSectionRenameEntryForm extends BaseForm {
     @SafeHtml(level = SafeHtml.SafeListLevel.NONE)
     private String nameFrench = "";
 
+    @SafeHtml(level = SafeHtml.SafeListLevel.NONE)
+    @Pattern(regexp = "(?s).*\\S.*")
+    private String nameChinese;
+
     @NotBlank
     @Pattern(regexp = ValidationHelper.ID_REGEX)
     private String testSectionId = "";
@@ -49,6 +53,14 @@ public class TestSectionRenameEntryForm extends BaseForm {
 
     public void setNameFrench(String nameFrench) {
         this.nameFrench = nameFrench;
+    }
+
+    public String getNameChinese() {
+        return nameChinese;
+    }
+
+    public void setNameChinese(String nameChinese) {
+        this.nameChinese = nameChinese;
     }
 
     public String getTestSectionId() {

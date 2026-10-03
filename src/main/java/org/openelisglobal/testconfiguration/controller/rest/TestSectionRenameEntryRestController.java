@@ -1,17 +1,14 @@
 package org.openelisglobal.testconfiguration.controller.rest;
 
 import jakarta.servlet.http.HttpServletRequest;
-import javax.validation.Valid;
-import org.hibernate.HibernateException;
+import jakarta.validation.Valid;
+import java.util.NoSuchElementException;
 import org.openelisglobal.common.controller.BaseController;
-import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.services.DisplayListService;
-import org.openelisglobal.localization.service.LocalizationService;
-import org.openelisglobal.localization.valueholder.Localization;
-import org.openelisglobal.test.service.TestSectionService;
-import org.openelisglobal.test.valueholder.TestSection;
 import org.openelisglobal.testconfiguration.form.TestSectionRenameEntryForm;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.openelisglobal.testconfiguration.service.ConfigurationNameService;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.WebDataBinder;
@@ -21,18 +18,23 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/rest")
 @PreAuthorize("hasRole('ADMIN')")
 public class TestSectionRenameEntryRestController extends BaseController {
 
-    private static final String[] ALLOWED_FIELDS = new String[] { "testSectionId", "nameEnglish", "nameFrench" };
+    private static final String[] ALLOWED_FIELDS = new String[] { "testSectionId", "nameEnglish", "nameFrench",
+            "nameChinese" };
 
-    @Autowired
-    LocalizationService localizationService;
-    @Autowired
-    TestSectionService testSectionService;
+    private final ConfigurationNameService names;
+    private final DisplayListService displayLists;
+
+    public TestSectionRenameEntryRestController(ConfigurationNameService names, DisplayListService displayLists) {
+        this.names = names;
+        this.displayLists = displayLists;
+    }
 
     @InitBinder
     public void initBinder(WebDataBinder binder) {
@@ -43,8 +45,7 @@ public class TestSectionRenameEntryRestController extends BaseController {
     public TestSectionRenameEntryForm showTestSectionRenameEntry(HttpServletRequest request) {
         TestSectionRenameEntryForm form = new TestSectionRenameEntryForm();
 
-        form.setTestSectionList(
-                DisplayListService.getInstance().getList(DisplayListService.ListType.TEST_SECTION_ACTIVE));
+        form.setTestSectionList(displayLists.getList(DisplayListService.ListType.TEST_SECTION_ACTIVE));
 
         // return findForward(FWD_SUCCESS, form);
         return form;
@@ -67,43 +68,20 @@ public class TestSectionRenameEntryRestController extends BaseController {
     public TestSectionRenameEntryForm updateTestSectionRenameEntry(HttpServletRequest request,
             @RequestBody @Valid TestSectionRenameEntryForm form, BindingResult result) {
         if (result.hasErrors()) {
-            saveErrors(result);
-            form.setTestSectionList(
-                    DisplayListService.getInstance().getList(DisplayListService.ListType.TEST_SECTION_ACTIVE));
-            // return findForward(FWD_FAIL_INSERT, form);
-            return form;
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid configuration rename request");
         }
-
-        String testSectionId = form.getTestSectionId();
-        String nameEnglish = form.getNameEnglish();
-        String nameFrench = form.getNameFrench();
-        String userId = getSysUserId(request);
-
-        updateTestSectionNames(testSectionId, nameEnglish, nameFrench, userId);
-
-        // return findForward(FWD_SUCCESS_INSERT, form);
+        try {
+            names.renameTestSection(form, getSysUserId(request));
+        } catch (NoSuchElementException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Configuration name not found", e);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid configuration rename request", e);
+        } catch (AccessDeniedException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Unable to save configuration name", e);
+        }
         return form;
-    }
-
-    private void updateTestSectionNames(String testSectionId, String nameEnglish, String nameFrench, String userId) {
-        TestSection testSection = testSectionService.getTestSectionById(testSectionId);
-
-        if (testSection != null) {
-
-            Localization name = testSection.getLocalization();
-            name.setEnglish(nameEnglish.trim());
-            name.setFrench(nameFrench.trim());
-            name.setSysUserId(userId);
-
-            try {
-                localizationService.update(name);
-            } catch (HibernateException e) {
-                LogEvent.logDebug(e);
-            }
-        }
-
-        // Refresh Test Section names
-        DisplayListService.getInstance().refreshList(DisplayListService.ListType.TEST_SECTION_ACTIVE);
     }
 
     @Override

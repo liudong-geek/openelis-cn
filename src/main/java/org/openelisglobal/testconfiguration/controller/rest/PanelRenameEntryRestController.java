@@ -1,17 +1,14 @@
 package org.openelisglobal.testconfiguration.controller.rest;
 
 import jakarta.servlet.http.HttpServletRequest;
-import javax.validation.Valid;
+import jakarta.validation.Valid;
+import java.util.NoSuchElementException;
 import org.openelisglobal.common.controller.BaseController;
-import org.openelisglobal.common.exception.LIMSRuntimeException;
-import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.services.DisplayListService;
-import org.openelisglobal.localization.service.LocalizationService;
-import org.openelisglobal.localization.valueholder.Localization;
-import org.openelisglobal.panel.service.PanelService;
-import org.openelisglobal.panel.valueholder.Panel;
 import org.openelisglobal.testconfiguration.form.PanelRenameEntryForm;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.openelisglobal.testconfiguration.service.ConfigurationNameService;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.WebDataBinder;
@@ -21,18 +18,23 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/rest")
 @PreAuthorize("hasRole('ADMIN')")
 public class PanelRenameEntryRestController extends BaseController {
 
-    private static final String[] ALLOWED_FIELDS = new String[] { "panelId", "nameEnglish", "nameFrench" };
+    private static final String[] ALLOWED_FIELDS = new String[] { "panelId", "nameEnglish", "nameFrench",
+            "nameChinese" };
 
-    @Autowired
-    PanelService panelService;
-    @Autowired
-    LocalizationService localizationService;
+    private final ConfigurationNameService names;
+    private final DisplayListService displayLists;
+
+    public PanelRenameEntryRestController(ConfigurationNameService names, DisplayListService displayLists) {
+        this.names = names;
+        this.displayLists = displayLists;
+    }
 
     @InitBinder
     public void initBinder(WebDataBinder binder) {
@@ -42,7 +44,7 @@ public class PanelRenameEntryRestController extends BaseController {
     @GetMapping(value = "/PanelRenameEntry")
     public PanelRenameEntryForm showPanelRenameEntry(HttpServletRequest request) {
         PanelRenameEntryForm form = new PanelRenameEntryForm();
-        form.setPanelList(DisplayListService.getInstance().getList(DisplayListService.ListType.PANELS));
+        form.setPanelList(displayLists.getList(DisplayListService.ListType.PANELS));
 
         // return findForward(FWD_SUCCESS, form);
         return form;
@@ -65,40 +67,20 @@ public class PanelRenameEntryRestController extends BaseController {
     public PanelRenameEntryForm updatePanelRenameEntry(HttpServletRequest request,
             @RequestBody @Valid PanelRenameEntryForm form, BindingResult result) {
         if (result.hasErrors()) {
-            saveErrors(result);
-            form.setPanelList(DisplayListService.getInstance().getList(DisplayListService.ListType.PANELS));
-            // return findForward(FWD_FAIL_INSERT, form);
-            return form;
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid configuration rename request");
         }
-
-        String panelId = form.getPanelId();
-        String nameEnglish = form.getNameEnglish();
-        String nameFrench = form.getNameFrench();
-        String userId = getSysUserId(request);
-
-        updatePanelNames(panelId, nameEnglish, nameFrench, userId);
-
-        // return findForward(FWD_SUCCESS_INSERT, form);
+        try {
+            names.renamePanel(form, getSysUserId(request));
+        } catch (NoSuchElementException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Configuration name not found", e);
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid configuration rename request", e);
+        } catch (AccessDeniedException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Unable to save configuration name", e);
+        }
         return form;
-    }
-
-    private void updatePanelNames(String panelId, String nameEnglish, String nameFrench, String userId) {
-        Panel panel = panelService.getPanelById(panelId);
-
-        if (panel != null) {
-
-            Localization name = panel.getLocalization();
-            name.setEnglish(nameEnglish.trim());
-            name.setFrench(nameFrench.trim());
-            name.setSysUserId(userId);
-
-            try {
-                localizationService.update(name);
-            } catch (LIMSRuntimeException e) {
-                LogEvent.logDebug(e);
-            }
-        }
-        DisplayListService.getInstance().refreshList(DisplayListService.ListType.PANELS);
     }
 
     @Override

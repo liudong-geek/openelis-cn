@@ -154,4 +154,37 @@ describe("中国版操作日志查询", () => {
     expect(screen.getByText("每页显示")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "下一页" })).toBeInTheDocument();
   });
+  test("名称变更显示业务对象及中文前后值，不显示翻译记录编号", async () => {
+    getFromOpenElisServer.mockImplementation((url, callback) => {
+      if (url === "/rest/systemAuditEvents/entityTypes")
+        callback([{ id: "50", name: "LOCALIZATION" }]);
+      else if (url === "/rest/users") callback([]);
+      else
+        callback({
+          events: [
+            {
+              timestamp: "2026-10-03T01:00:00Z",
+              entityType: "LOCALIZATION",
+              entityId: "132",
+              configurationType: "panel",
+              businessId: "1",
+              action: "UPDATE",
+              user: "管理员",
+              changes: { zh: { old: "原组合名称", new: "新组合名称" } },
+            },
+          ],
+          totalItems: 1,
+        });
+    });
+    renderPage();
+    expect(
+      await screen.findByText("中文名称：原组合名称 → 新组合名称"),
+    ).toBeInTheDocument();
+    const row = screen.getByRole("row", { name: /原组合名称/ });
+    expect(row).toHaveTextContent("组合项目");
+    expect(row).not.toHaveTextContent("132");
+    fireEvent.click(screen.getByRole("button", { name: /高级筛选/ }));
+    fireEvent.click(screen.getByRole("combobox", { name: "业务对象" }));
+    expect(screen.getByText("名称配置")).toBeInTheDocument();
+  });
 });

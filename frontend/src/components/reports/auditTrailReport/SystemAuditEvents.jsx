@@ -39,6 +39,7 @@ import {
 } from "../reportDateUtils";
 import {
   getAuditActionMessageId,
+  getAuditBusinessContext,
   getAuditEntityTypeMessageId,
   getAuditFieldMessageId,
 } from "./auditLocalization";
@@ -219,6 +220,7 @@ const SystemAuditEvents = () => {
           if (generation !== requestGeneration.current) return;
           if (data && data.events) {
             const formatted = data.events.map((e, idx) => {
+              const context = getAuditBusinessContext(e);
               const changesObj = e.changes || {};
               const changesStr =
                 Object.keys(changesObj).length > 0
@@ -255,7 +257,8 @@ const SystemAuditEvents = () => {
                       hour12: false,
                     })
                   : "",
-                entityType: localizeEntityType(e.entityType),
+                entityType: localizeEntityType(context.entityType),
+                entityId: context.entityId,
                 action: intl.formatMessage({
                   id: getAuditActionMessageId(e.action),
                 }),

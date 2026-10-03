@@ -10232,5 +10232,10 @@
   "eorder.status.realized": "已接收",
   "eorder.status.nonConforming": "不符合",
   "eorder.status.awaitingSpecimen": "待确定标本",
-  "configuration.entityName.scope": "本窗口维护英文和法语名称，中文显示名称暂不支持修改。"
+  "configuration.entityName.scope": "中文名称用于列表和项目选择；英文、法语名称在下方展开维护。",
+  "configuration.entityName.chinese": "中文显示名称",
+  "systemAudit.entityType.LOCALIZATION": "名称配置",
+  "systemAudit.field.en": "英文名称",
+  "systemAudit.field.fr": "法文名称",
+  "systemAudit.field.zh": "中文名称"
 }

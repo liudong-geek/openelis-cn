@@ -27,6 +27,7 @@ public class TestSectionServiceImpl extends AuditableBaseObjectServiceImpl<TestS
         implements TestSectionService, LocaleChangeListener {
 
     private Map<String, String> testUnitIdToNameMap;
+    private boolean namesInvalidated;
 
     @Autowired
     private TestSectionDAO baseObjectDAO;
@@ -73,6 +74,11 @@ public class TestSectionServiceImpl extends AuditableBaseObjectServiceImpl<TestS
         testNamesChanged();
     }
 
+    @Override
+    public synchronized void invalidateNames() {
+        namesInvalidated = true;
+    }
+
     public void testNamesChanged() {
         createTestIdToNameMap();
     }
@@ -101,6 +107,9 @@ public class TestSectionServiceImpl extends AuditableBaseObjectServiceImpl<TestS
     }
 
     public synchronized String getUserLocalizedTestSectionName(String testSectionId) {
+        if (namesInvalidated) {
+            createTestIdToNameMap();
+        }
         String name = testUnitIdToNameMap.get(testSectionId);
         return name == null ? "" : name;
     }
@@ -113,6 +122,7 @@ public class TestSectionServiceImpl extends AuditableBaseObjectServiceImpl<TestS
         for (TestSection testSection : testSections) {
             testUnitIdToNameMap.put(testSection.getId(), buildTestSectionName(testSection).replace("\n", " "));
         }
+        namesInvalidated = false;
     }
 
     private String buildTestSectionName(TestSection testSection) {
