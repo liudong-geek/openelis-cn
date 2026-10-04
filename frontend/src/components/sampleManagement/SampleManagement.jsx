@@ -1,4 +1,10 @@
-import React, { useCallback, useState, useMemo } from "react";
+import React, {
+  useCallback,
+  useState,
+  useMemo,
+  useRef,
+  useContext,
+} from "react";
 import {
   Grid,
   Column,
@@ -16,6 +22,12 @@ import SampleResultsTable from "./SampleResultsTable";
 import CreateAliquotModal from "./CreateAliquotModal";
 import AddTestsModal from "./AddTestsModal";
 import config from "../../config.json";
+import UserSessionDetailsContext from "../../UserSessionDetailsContext";
+import {
+  entrySession,
+  sessionReady,
+} from "../resultPage/unified/resultEntryState";
+import { reconcileCancellations } from "./sampleCancelPending";
 
 /**
  * SampleManagement - Main container component for Sample Management feature.
@@ -33,6 +45,28 @@ import config from "../../config.json";
  * Related: Feature 001-sample-management, User Story 1, Task T035
  */
 export default function SampleManagement() {
+  const context = useContext(UserSessionDetailsContext);
+  const latest = useRef(context);
+  latest.current = context;
+  const stamp = entrySession(context);
+  const key = stamp
+    ? JSON.stringify([context.userSessionDetails?.userId, stamp.identity])
+    : "unavailable";
+  const stampKey = JSON.stringify(stamp);
+  const requestContext = useMemo(
+    () => ({ stamp, current: () => sessionReady(latest.current, stamp) }),
+    [stampKey],
+  );
+  return (
+    <SampleManagementContent
+      key={key}
+      actorId={context.userSessionDetails?.userId}
+      requestContext={requestContext}
+    />
+  );
+}
+
+function SampleManagementContent({ actorId, requestContext }) {
   const intl = useIntl();
 
   // Breadcrumb navigation
@@ -44,7 +78,17 @@ export default function SampleManagement() {
   // Search results state
   const [searchResponse, setSearchResponse] = useState(null);
   const [searchError, setSearchError] = useState(null);
+  const [resultSessionStamp, setResultSessionStamp] = useState(null);
   const [selectedSampleIds, setSelectedSampleIds] = useState([]);
+  const [queryEpoch, setQueryEpoch] = useState(0);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const [isSearching, setIsSearching] = useState(false);
+  const queryEpochRef = useRef(0);
+  const handleSearchStart = useCallback(() => {
+    setIsSearching(true);
+    queryEpochRef.current += 1;
+    setQueryEpoch(queryEpochRef.current);
+  }, []);
 
   // Modal state for aliquoting
   const [isAliquotModalOpen, setIsAliquotModalOpen] = useState(false);
@@ -119,13 +163,20 @@ export default function SampleManagement() {
    * @param {Object} response - SearchSamplesResponse from backend
    * @param {Object} error - Error object if search failed
    */
-  const handleSearchResults = useCallback((response, error) => {
-    setSearchResponse(response);
-    setSearchError(error);
+  const handleSearchResults = useCallback(
+    (response, error) => {
+      if (requestContext.current() !== true) return;
+      if (response) reconcileCancellations(actorId, response);
+      setIsSearching(false);
+      setResultSessionStamp(JSON.stringify(requestContext.stamp));
+      setSearchResponse(response);
+      setSearchError(error);
 
-    // Clear selection when new search results arrive
-    setSelectedSampleIds([]);
-  }, []);
+      // Clear selection when new search results arrive
+      setSelectedSampleIds([]);
+    },
+    [actorId, requestContext],
+  );
 
   /**
    * Handle row selection changes from SampleResultsTable component.
@@ -307,36 +358,34 @@ export default function SampleManagement() {
     }
   };
 
-  /**
-   * Handle test removal/cancellation from expanded row.
-   * Updates local state to remove the test from the sample item.
-   */
-  const handleTestRemoved = (sampleItemId, analysisId, testName) => {
-    // Update local state to remove the cancelled test
-    if (searchResponse && searchResponse.sampleItems) {
-      const updatedSampleItems = searchResponse.sampleItems.map((item) => {
-        if (item.id === sampleItemId) {
-          return {
-            ...item,
-            orderedTests: item.orderedTests.filter(
-              (test) => test.analysisId !== analysisId,
-            ),
-          };
-        }
-        return item;
-      });
-
-      setSearchResponse({
-        ...searchResponse,
-        sampleItems: updatedSampleItems,
-      });
-    }
-
-    // Show success notification
+  const handleTestCanceled = (sampleItemId, analysisId, updatedTest) => {
+    const originatingEpoch = queryEpoch;
+    if (
+      requestContext.current() !== true ||
+      queryEpochRef.current !== originatingEpoch
+    )
+      return;
+    setSearchResponse((current) => {
+      if (queryEpochRef.current !== originatingEpoch || !current?.sampleItems)
+        return current;
+      return {
+        ...current,
+        sampleItems: current.sampleItems.map((item) =>
+          item.id === sampleItemId
+            ? {
+                ...item,
+                orderedTests: item.orderedTests.map((test) =>
+                  test.analysisId === analysisId ? updatedTest : test,
+                ),
+              }
+            : item,
+        ),
+      };
+    });
     setSearchError({
       message: intl.formatMessage(
         { id: "sample.management.cancelTest.success" },
-        { testName: testName },
+        { testName: updatedTest.testName },
       ),
       kind: "success",
     });
@@ -399,6 +448,9 @@ export default function SampleManagement() {
           <Column lg={16} md={8} sm={4}>
             <SampleSearch
               onSearchResults={handleSearchResults}
+              onSearchStart={handleSearchStart}
+              requestContext={requestContext}
+              refreshVersion={refreshVersion}
               includeTests={true}
             />
           </Column>
@@ -639,9 +691,24 @@ export default function SampleManagement() {
               <Grid fullWidth={true}>
                 <Column lg={16} md={8} sm={4}>
                   <SampleResultsTable
+                    key={queryEpoch}
                     sampleItems={searchResponse.sampleItems}
                     onSelectionChange={handleSelectionChange}
-                    onTestRemoved={handleTestRemoved}
+                    canCancelTests={
+                      !isSearching &&
+                      resultSessionStamp ===
+                        JSON.stringify(requestContext.stamp) &&
+                      searchResponse.canCancelTests === true
+                    }
+                    checkingStatus={
+                      isSearching ||
+                      resultSessionStamp !==
+                        JSON.stringify(requestContext.stamp)
+                    }
+                    onTestCanceled={handleTestCanceled}
+                    actorId={actorId}
+                    requestContext={requestContext}
+                    onRecheck={() => setRefreshVersion((value) => value + 1)}
                   />
                 </Column>
               </Grid>

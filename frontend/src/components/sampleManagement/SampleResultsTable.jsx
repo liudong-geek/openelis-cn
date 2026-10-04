@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useRef, useLayoutEffect } from "react";
 import {
   DataTable,
   Table,
@@ -15,10 +15,29 @@ import {
   Tag,
   Button,
   InlineLoading,
+  InlineNotification,
+  ComposedModal,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
 } from "@carbon/react";
 import { useIntl, FormattedMessage } from "react-intl";
 import { Folder, Document, TrashCan, Chemistry } from "@carbon/icons-react";
 import { postToOpenElisServerFullResponse } from "../utils/Utils";
+import {
+  statusPresentation,
+  canCancelTest,
+  cancellationMatches,
+  validSampleId,
+} from "./sampleStatus";
+import {
+  cancellationPendingKey,
+  cancellationPending,
+  rememberCancellation,
+  clearCancellation,
+  canceledTestConfirmed,
+} from "./sampleCancelPending";
+import "../admin/AdminModal.css";
 
 /**
  * SampleResultsTable - Display search results for sample items in a data table.
@@ -36,19 +55,43 @@ import { postToOpenElisServerFullResponse } from "../utils/Utils";
  * Props:
  * - sampleItems: Array<SampleItemDTO> - array of sample items to display
  * - onSelectionChange: (selectedIds) => void - callback when selection changes
- * - onTestRemoved: (sampleItemId, testId, testName) => void - callback when a test is removed
+ * - canCancelTests: explicit current-user cancellation permission from the API
+ * - onTestCanceled: (sampleItemId, analysisId, test) => void - apply confirmed returned state
  *
  * Related: Feature 001-sample-management, User Story 1, Task T034
  */
 function SampleResultsTable({
   sampleItems = [],
   onSelectionChange,
-  onTestRemoved,
+  canCancelTests = false,
+  checkingStatus = false,
+  onTestCanceled,
+  actorId,
+  requestContext,
+  onRecheck,
 }) {
   const intl = useIntl();
 
   // Track which tests are being cancelled (loading state)
   const [cancellingTests, setCancellingTests] = useState({});
+  const [uncertainTests, setUncertainTests] = useState({});
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancelErrorKey, setCancelErrorKey] = useState("");
+  const mounted = useRef(true);
+  const submitting = useRef(false);
+  const current = useRef({
+    sampleItems,
+    canCancelTests,
+    actorId,
+    requestContext,
+  });
+  current.current = { sampleItems, canCancelTests, actorId, requestContext };
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   /**
    * Table headers configuration.
@@ -129,6 +172,7 @@ function SampleResultsTable({
           ? `${displayRemaining} ${item.unitOfMeasure || ""}`
           : "-",
         statusId: item.statusId,
+        statusCode: item.statusCode,
         isAliquot: item.isAliquot,
         nestingLevel: item.nestingLevel || 0,
         hasRemainingQuantity: item.hasRemainingQuantity,
@@ -141,62 +185,183 @@ function SampleResultsTable({
     });
   }, [sampleItems]);
 
-  /**
-   * Handle test cancellation/removal.
-   */
-  const handleCancelTest = useCallback(
-    (sampleItemId, analysisId, testName) => {
-      // Set loading state for this specific test
-      setCancellingTests((prev) => ({ ...prev, [analysisId]: true }));
-
-      const payload = JSON.stringify({
-        analysisId: analysisId,
-        sampleItemId: sampleItemId,
-      });
-
-      postToOpenElisServerFullResponse(
-        "/rest/sample-management/cancel-test",
-        payload,
-        (response) => {
-          setCancellingTests((prev) => ({ ...prev, [analysisId]: false }));
-
-          if (response.ok) {
-            // Notify parent to refresh data
-            if (onTestRemoved) {
-              onTestRemoved(sampleItemId, analysisId, testName);
-            }
-          } else {
-            // Handle error - could show notification
-            console.error("Failed to cancel test");
-          }
-        },
-      );
-    },
-    [onTestRemoved],
-  );
-
-  /**
-   * Render status tag based on statusId and remaining quantity.
-   * Finds the original row data to access all properties.
-   */
-  const renderStatusTag = (dataTableRow) => {
-    // Find the original row data by ID
-    const originalRow = rows.find((r) => r.id === dataTableRow.id);
-    if (!originalRow) return null;
-
-    // Only show a tag if there's no remaining quantity
-    if (!originalRow.hasRemainingQuantity) {
+  const message = (id) => intl.formatMessage({ id });
+  const pendingKey = (sampleId, analysisId) =>
+    cancellationPendingKey(current.current.actorId, sampleId, analysisId);
+  const pendingTest = (sampleId, test) => {
+    const key = pendingKey(sampleId, test.analysisId);
+    return (
+      uncertainTests[test.analysisId] ||
+      (key && cancellationPending(key) && !canceledTestConfirmed(test))
+    );
+  };
+  const sessionCurrent = () => {
+    try {
       return (
-        <Tag type="red">
-          {intl.formatMessage({
-            id: "sample.management.status.allVolumeDispensed",
-          })}
-        </Tag>
+        validSampleId(current.current.actorId) &&
+        current.current.requestContext?.current?.() === true
       );
+    } catch {
+      return false;
     }
+  };
 
-    // If there's remaining quantity, don't show a status tag
-    return null;
+  const openCancelConfirmation = (sampleId, test) => {
+    const sample = current.current.sampleItems.find(
+      (item) => item.id === sampleId,
+    );
+    if (
+      submitting.current ||
+      !sessionCurrent() ||
+      pendingTest(sampleId, test) ||
+      !canCancelTest(sample, test, current.current.canCancelTests)
+    )
+      return;
+    setCancelErrorKey("");
+    setCancelTarget({
+      sampleId,
+      test,
+      accessionNumber: sample.sampleAccessionNumber,
+      externalId: sample.externalId,
+    });
+  };
+
+  const closeCancelConfirmation = () => {
+    if (submitting.current) return false;
+    setCancelTarget(null);
+    setCancelErrorKey("");
+    return true;
+  };
+
+  const confirmCancel = () => {
+    if (
+      !cancelTarget ||
+      submitting.current ||
+      !sessionCurrent() ||
+      pendingTest(cancelTarget.sampleId, cancelTarget.test)
+    )
+      return;
+    const target = cancelTarget;
+    const sample = current.current.sampleItems.find(
+      (item) => item.id === target.sampleId,
+    );
+    const test = sample?.orderedTests?.find(
+      (entry) => entry.analysisId === target.test.analysisId,
+    );
+    if (!canCancelTest(sample, test, current.current.canCancelTests)) {
+      setCancelErrorKey("sample.management.cancelTest.error.changed");
+      return;
+    }
+    const marker = pendingKey(target.sampleId, test.analysisId);
+    const originatingSession = current.current.requestContext;
+    try {
+      rememberCancellation(marker, originatingSession);
+    } catch (_error) {
+      setUncertainTests((previous) => ({
+        ...previous,
+        [test.analysisId]: true,
+      }));
+      setCancelErrorKey("sample.management.cancelTest.error.unconfirmed");
+      return;
+    }
+    submitting.current = true;
+    setCancelErrorKey("");
+    setCancellingTests((previous) => ({
+      ...previous,
+      [test.analysisId]: true,
+    }));
+    const finishUnconfirmed = () => {
+      setUncertainTests((previous) => ({
+        ...previous,
+        [test.analysisId]: true,
+      }));
+      setCancelErrorKey("sample.management.cancelTest.error.unconfirmed");
+    };
+    postToOpenElisServerFullResponse(
+      "/rest/sample-management/cancel-test",
+      JSON.stringify({
+        analysisId: test.analysisId,
+        sampleItemId: target.sampleId,
+      }),
+      async (response) => {
+        if (!mounted.current || originatingSession.current() !== true) return;
+        try {
+          if ([400, 401, 403, 404, 409].includes(response?.status)) {
+            let rejected;
+            try {
+              rejected = await response.json();
+            } catch {
+              finishUnconfirmed();
+              return;
+            }
+            if (!mounted.current || originatingSession.current() !== true)
+              return;
+            if (
+              !rejected ||
+              !(
+                typeof rejected.error === "string" ||
+                typeof rejected.errorKey === "string" ||
+                typeof rejected.messageKey === "string"
+              )
+            ) {
+              finishUnconfirmed();
+              return;
+            }
+            clearCancellation(marker);
+            setCancelErrorKey(
+              [401, 403].includes(response.status)
+                ? "sample.management.cancelTest.error.permission"
+                : response.status === 404
+                  ? "sample.management.cancelTest.error.missing"
+                  : "sample.management.cancelTest.error.changed",
+            );
+            return;
+          }
+          if (response?.ok !== true) {
+            finishUnconfirmed();
+            return;
+          }
+          const body = await response.json();
+          if (!mounted.current || originatingSession.current() !== true) return;
+          if (!cancellationMatches(body, target.sampleId, test)) {
+            finishUnconfirmed();
+            return;
+          }
+          onTestCanceled?.(target.sampleId, test.analysisId, body.test);
+          setCancelTarget(null);
+        } catch (_error) {
+          if (mounted.current && originatingSession.current() === true)
+            finishUnconfirmed();
+        } finally {
+          if (mounted.current && originatingSession.current() === true) {
+            submitting.current = false;
+            setCancellingTests((previous) => ({
+              ...previous,
+              [test.analysisId]: false,
+            }));
+          }
+        }
+      },
+    );
+  };
+
+  const renderStatusTag = (dataTableRow) => {
+    const originalRow = rows.find((row) => row.id === dataTableRow.id);
+    if (!originalRow) return null;
+    const [labelKey, type] = statusPresentation(
+      originalRow.statusCode,
+      "sample",
+    );
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
+        <Tag type={type}>{message(labelKey)}</Tag>
+        {!originalRow.hasRemainingQuantity && (
+          <Tag type="gray">
+            {message("sample.management.status.allVolumeDispensed")}
+          </Tag>
+        )}
+      </div>
+    );
   };
 
   /**
@@ -310,9 +475,13 @@ function SampleResultsTable({
             gap: "0.5rem",
           }}
         >
-          {originalRow.orderedTests.map((test) => (
+          {originalRow.orderedTests.map((test, index) => (
             <div
-              key={test.analysisId}
+              key={
+                validSampleId(test.analysisId)
+                  ? test.analysisId
+                  : `invalid-test-${index}`
+              }
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -334,15 +503,18 @@ function SampleResultsTable({
                     marginTop: "0.25rem",
                   }}
                 >
-                  {test.status && (
-                    <Tag type={getTestStatusType(test.status)} size="sm">
-                      {test.status}
-                    </Tag>
-                  )}
+                  <Tag
+                    type={statusPresentation(test.statusCode, "analysis")[1]}
+                    size="sm"
+                  >
+                    {message(
+                      statusPresentation(test.statusCode, "analysis")[0],
+                    )}
+                  </Tag>
                   {test.orderedDate && (
                     <span>
                       <FormattedMessage id="sample.management.table.orderedDate" />
-                      : {new Date(test.orderedDate).toLocaleDateString()}
+                      : {intl.formatDate(new Date(test.orderedDate))}
                     </span>
                   )}
                 </div>
@@ -364,65 +536,53 @@ function SampleResultsTable({
                       id: "sample.management.table.cancelTest",
                     })}
                     hasIconOnly
-                    onClick={() =>
-                      handleCancelTest(row.id, test.analysisId, test.testName)
+                    onClick={() => openCancelConfirmation(row.id, test)}
+                    disabled={
+                      !sessionCurrent() ||
+                      pendingTest(row.id, test) ||
+                      !canCancelTest(originalRow, test, canCancelTests)
                     }
-                    disabled={!canCancelTest(test.status)}
                     tooltipPosition="left"
                   />
                 )}
+                {(!sessionCurrent() ||
+                  !canCancelTest(originalRow, test, canCancelTests)) &&
+                  !pendingTest(row.id, test) && (
+                    <p style={{ fontSize: "0.75rem", maxWidth: "18rem" }}>
+                      {message(
+                        checkingStatus
+                          ? "sample.management.cancelTest.unavailable.checking"
+                          : !sessionCurrent() || canCancelTests !== true
+                            ? "sample.management.cancelTest.unavailable.permission"
+                            : statusPresentation(
+                                  originalRow.statusCode,
+                                  "sample",
+                                )[0] === "sample.management.status.unconfirmed"
+                              ? "sample.management.cancelTest.unavailable.sample"
+                              : "sample.management.cancelTest.unavailable.state",
+                      )}
+                    </p>
+                  )}
+                {pendingTest(row.id, test) &&
+                  !cancellingTests[test.analysisId] && (
+                    <div style={{ fontSize: "0.75rem", maxWidth: "18rem" }}>
+                      <p role="status">
+                        {message(
+                          "sample.management.cancelTest.error.unconfirmed",
+                        )}
+                      </p>
+                      {onRecheck && (
+                        <Button kind="ghost" size="sm" onClick={onRecheck}>
+                          {message("sample.management.cancelTest.recheck")}
+                        </Button>
+                      )}
+                    </div>
+                  )}
               </div>
             </div>
           ))}
         </div>
       </div>
-    );
-  };
-
-  /**
-   * Get tag type based on test status.
-   */
-  const getTestStatusType = (status) => {
-    if (!status) return "gray";
-    const statusLower = status.toLowerCase();
-    if (
-      statusLower.includes("complete") ||
-      statusLower.includes("final") ||
-      statusLower.includes("validated")
-    ) {
-      return "green";
-    }
-    if (
-      statusLower.includes("cancel") ||
-      statusLower.includes("rejected") ||
-      statusLower.includes("void")
-    ) {
-      return "red";
-    }
-    if (statusLower.includes("pending") || statusLower.includes("waiting")) {
-      return "blue";
-    }
-    if (statusLower.includes("in progress") || statusLower.includes("active")) {
-      return "cyan";
-    }
-    return "gray";
-  };
-
-  /**
-   * Check if a test can be cancelled based on its status.
-   * Tests that are already completed or validated cannot be cancelled.
-   */
-  const canCancelTest = (status) => {
-    if (!status) return true;
-    const statusLower = status.toLowerCase();
-    // Cannot cancel tests that are already completed, validated, or cancelled
-    return !(
-      statusLower.includes("complete") ||
-      statusLower.includes("final") ||
-      statusLower.includes("validated") ||
-      statusLower.includes("cancel") ||
-      statusLower.includes("rejected") ||
-      statusLower.includes("void")
     );
   };
 
@@ -441,132 +601,235 @@ function SampleResultsTable({
   }
 
   return (
-    <DataTable
-      rows={rows}
-      headers={headers}
-      isSortable
-      render={({
-        rows,
-        headers,
-        getHeaderProps,
-        getRowProps,
-        getSelectionProps,
-        getTableProps,
-        getExpandHeaderProps,
-        selectedRows,
-        selectRow,
-      }) => {
-        // Notify parent of selection changes
-        const notifySelectionChange = (newSelectedRows) => {
-          if (onSelectionChange) {
-            onSelectionChange(newSelectedRows.map((r) => r.id));
-          }
-        };
+    <>
+      <DataTable
+        rows={rows}
+        headers={headers}
+        isSortable
+        render={({
+          rows,
+          headers,
+          getHeaderProps,
+          getRowProps,
+          getSelectionProps,
+          getTableProps,
+          getExpandHeaderProps,
+          selectedRows,
+          selectRow,
+        }) => {
+          // Notify parent of selection changes
+          const notifySelectionChange = (newSelectedRows) => {
+            if (onSelectionChange) {
+              onSelectionChange(newSelectedRows.map((r) => r.id));
+            }
+          };
 
-        return (
-          <Table {...getTableProps()}>
-            <TableHead>
-              <TableRow>
-                <TableExpandHeader
-                  aria-label={intl.formatMessage({
-                    id: "sampleManagement.hierarchy.expand",
-                  })}
-                  {...getExpandHeaderProps()}
-                />
-                <TableSelectAll
-                  {...getSelectionProps()}
-                  onSelect={() => {
-                    // Toggle select all
-                    if (selectedRows.length === rows.length) {
-                      // Deselect all
-                      rows.forEach((row) => {
-                        if (selectedRows.some((r) => r.id === row.id)) {
-                          selectRow(row.id);
-                        }
-                      });
-                      notifySelectionChange([]);
-                    } else {
-                      // Select all
-                      rows.forEach((row) => {
-                        if (!selectedRows.some((r) => r.id === row.id)) {
-                          selectRow(row.id);
-                        }
-                      });
-                      notifySelectionChange(rows);
-                    }
-                  }}
-                />
-                {headers.map((header) => (
-                  <TableHeader key={header.key} {...getHeaderProps({ header })}>
-                    {header.header}
-                  </TableHeader>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.map((row) => {
-                // Find original row data for styling and expansion
-                const originalRow = sampleItems.find(
-                  (item) => item.id === row.id,
-                );
-                const isAliquotRow = originalRow?.isAliquot;
-                const hasTests =
-                  originalRow?.orderedTests &&
-                  originalRow.orderedTests.length > 0;
-
-                return (
-                  <React.Fragment key={row.id}>
-                    <TableExpandRow
-                      {...getRowProps({ row })}
-                      style={{
-                        // Add subtle left border for aliquots
-                        borderLeft: isAliquotRow ? "3px solid #0f62fe" : "none",
-                        backgroundColor: isAliquotRow ? "#f0f7ff" : "inherit",
-                      }}
+          return (
+            <Table {...getTableProps()}>
+              <TableHead>
+                <TableRow>
+                  <TableExpandHeader
+                    aria-label={intl.formatMessage({
+                      id: "sampleManagement.hierarchy.expand",
+                    })}
+                    {...getExpandHeaderProps()}
+                  />
+                  <TableSelectAll
+                    {...getSelectionProps()}
+                    onSelect={() => {
+                      // Toggle select all
+                      if (selectedRows.length === rows.length) {
+                        // Deselect all
+                        rows.forEach((row) => {
+                          if (selectedRows.some((r) => r.id === row.id)) {
+                            selectRow(row.id);
+                          }
+                        });
+                        notifySelectionChange([]);
+                      } else {
+                        // Select all
+                        rows.forEach((row) => {
+                          if (!selectedRows.some((r) => r.id === row.id)) {
+                            selectRow(row.id);
+                          }
+                        });
+                        notifySelectionChange(rows);
+                      }
+                    }}
+                  />
+                  {headers.map((header) => (
+                    <TableHeader
+                      key={header.key}
+                      {...getHeaderProps({ header })}
                     >
-                      <TableSelectRow
-                        {...getSelectionProps({ row })}
-                        onSelect={() => {
-                          selectRow(row.id);
-                          // Calculate new selection after toggle
-                          const isCurrentlySelected = selectedRows.some(
-                            (r) => r.id === row.id,
-                          );
-                          const newSelection = isCurrentlySelected
-                            ? selectedRows.filter((r) => r.id !== row.id)
-                            : [...selectedRows, row];
-                          notifySelectionChange(newSelection);
+                      {header.header}
+                    </TableHeader>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {rows.map((row) => {
+                  // Find original row data for styling and expansion
+                  const originalRow = sampleItems.find(
+                    (item) => item.id === row.id,
+                  );
+                  const isAliquotRow = originalRow?.isAliquot;
+                  const hasTests =
+                    originalRow?.orderedTests &&
+                    originalRow.orderedTests.length > 0;
+
+                  return (
+                    <React.Fragment key={row.id}>
+                      <TableExpandRow
+                        {...getRowProps({ row })}
+                        style={{
+                          // Add subtle left border for aliquots
+                          borderLeft: isAliquotRow
+                            ? "3px solid #0f62fe"
+                            : "none",
+                          backgroundColor: isAliquotRow ? "#f0f7ff" : "inherit",
                         }}
-                      />
-                      {row.cells.map((cell) => (
-                        <TableCell key={cell.id}>
-                          {cell.info.header === "status"
-                            ? renderStatusTag(row)
-                            : cell.info.header === "hierarchy"
-                              ? renderHierarchyIndicator(row)
-                              : cell.info.header === "tests"
-                                ? renderTestsCount(row)
-                                : cell.value}
-                        </TableCell>
-                      ))}
-                    </TableExpandRow>
-                    <TableExpandedRow
-                      colSpan={headers.length + 2}
-                      className="sample-expanded-row"
-                      style={{
-                        backgroundColor: hasTests ? "#fafafa" : "#fff",
-                      }}
-                    >
-                      {renderExpandedContent(row)}
-                    </TableExpandedRow>
-                  </React.Fragment>
-                );
-              })}
-            </TableBody>
-          </Table>
-        );
-      }}
-    />
+                      >
+                        <TableSelectRow
+                          {...getSelectionProps({ row })}
+                          onSelect={() => {
+                            selectRow(row.id);
+                            // Calculate new selection after toggle
+                            const isCurrentlySelected = selectedRows.some(
+                              (r) => r.id === row.id,
+                            );
+                            const newSelection = isCurrentlySelected
+                              ? selectedRows.filter((r) => r.id !== row.id)
+                              : [...selectedRows, row];
+                            notifySelectionChange(newSelection);
+                          }}
+                        />
+                        {row.cells.map((cell) => (
+                          <TableCell key={cell.id}>
+                            {cell.info.header === "status"
+                              ? renderStatusTag(row)
+                              : cell.info.header === "hierarchy"
+                                ? renderHierarchyIndicator(row)
+                                : cell.info.header === "tests"
+                                  ? renderTestsCount(row)
+                                  : cell.value}
+                          </TableCell>
+                        ))}
+                      </TableExpandRow>
+                      <TableExpandedRow
+                        colSpan={headers.length + 2}
+                        className="sample-expanded-row"
+                        style={{
+                          backgroundColor: hasTests ? "#fafafa" : "#fff",
+                        }}
+                      >
+                        {renderExpandedContent(row)}
+                      </TableExpandedRow>
+                    </React.Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          );
+        }}
+      />
+      {cancelTarget && (
+        <ComposedModal
+          open
+          size="sm"
+          className="oe-admin-modal oe-confirm-modal"
+          preventCloseOnClickOutside
+          onClose={closeCancelConfirmation}
+        >
+          <ModalHeader
+            title={message("sample.management.cancelTest.confirm.title")}
+            iconDescription={message("label.button.close")}
+          />
+          <ModalBody>
+            <p className="oe-confirm-modal__message">
+              {message("sample.management.cancelTest.confirm.message")}
+            </p>
+            {cancelTarget && (
+              <div className="oe-confirm-modal__subject">
+                <p>
+                  <strong>{cancelTarget.test.testName}</strong>
+                </p>
+                <p>
+                  {[cancelTarget.accessionNumber, cancelTarget.externalId]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+                <Tag
+                  type={
+                    statusPresentation(
+                      cancelTarget.test.statusCode,
+                      "analysis",
+                    )[1]
+                  }
+                  size="sm"
+                >
+                  {message(
+                    statusPresentation(
+                      cancelTarget.test.statusCode,
+                      "analysis",
+                    )[0],
+                  )}
+                </Tag>
+              </div>
+            )}
+            {cancelErrorKey && (
+              <InlineNotification
+                role="alert"
+                kind={
+                  cancelErrorKey.endsWith("unconfirmed") ? "warning" : "error"
+                }
+                lowContrast
+                hideCloseButton
+                title={message("sample.management.error.title")}
+                subtitle={message(cancelErrorKey)}
+              />
+            )}
+            {cancelErrorKey.endsWith("unconfirmed") && onRecheck && (
+              <Button kind="ghost" size="sm" onClick={onRecheck}>
+                {message("sample.management.cancelTest.recheck")}
+              </Button>
+            )}
+            {submitting.current && (
+              <InlineLoading
+                description={message("sample.management.table.cancelling")}
+                status="active"
+              />
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              kind="secondary"
+              data-modal-primary-focus
+              disabled={submitting.current}
+              onClick={closeCancelConfirmation}
+            >
+              {message("label.cancel")}
+            </Button>
+            <Button
+              kind="danger"
+              dangerDescription={message(
+                "sample.management.cancelTest.confirm.danger",
+              )}
+              aria-label={message(
+                "sample.management.cancelTest.confirm.submit",
+              )}
+              disabled={
+                submitting.current ||
+                pendingTest(cancelTarget.sampleId, cancelTarget.test)
+              }
+              onClick={confirmCancel}
+            >
+              {message("sample.management.cancelTest.confirm.submit")}
+            </Button>
+          </ModalFooter>
+        </ComposedModal>
+      )}
+    </>
   );
 }
 

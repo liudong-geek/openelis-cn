@@ -33,6 +33,8 @@ public class TestSummaryDTO {
     private String testId;
     private String testName;
     private String status;
+    private String statusCode = "UNKNOWN";
+    private boolean canCancelByStatus;
     private Timestamp orderedDate;
 
     // ========== Constructors ==========
@@ -80,6 +82,22 @@ public class TestSummaryDTO {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getStatusCode() {
+        return statusCode;
+    }
+
+    public void setStatusCode(String statusCode) {
+        this.statusCode = statusCode;
+    }
+
+    public boolean isCanCancelByStatus() {
+        return canCancelByStatus;
+    }
+
+    public void setCanCancelByStatus(boolean canCancelByStatus) {
+        this.canCancelByStatus = canCancelByStatus;
     }
 
     public Timestamp getOrderedDate() {

@@ -31,6 +31,7 @@ public class SearchSamplesResponse {
     private String accessionNumber;
     private List<SampleItemDTO> sampleItems = new ArrayList<>();
     private int totalCount;
+    private boolean canCancelTests;
 
     // ========== Constructors ==========
 
@@ -59,6 +60,14 @@ public class SearchSamplesResponse {
 
     public void setSampleItems(List<SampleItemDTO> sampleItems) {
         this.sampleItems = sampleItems;
+    }
+
+    public boolean isCanCancelTests() {
+        return canCancelTests;
+    }
+
+    public void setCanCancelTests(boolean canCancelTests) {
+        this.canCancelTests = canCancelTests;
     }
 
     public int getTotalCount() {

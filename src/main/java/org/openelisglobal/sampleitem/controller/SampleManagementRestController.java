@@ -13,9 +13,11 @@
  */
 package org.openelisglobal.sampleitem.controller;
 
+import jakarta.persistence.OptimisticLockException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import org.hibernate.StaleStateException;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.rest.BaseRestController;
 import org.openelisglobal.sampleitem.dto.AddTestsResponse;
@@ -25,11 +27,17 @@ import org.openelisglobal.sampleitem.dto.SearchSamplesResponse;
 import org.openelisglobal.sampleitem.form.AddTestsForm;
 import org.openelisglobal.sampleitem.form.CancelTestForm;
 import org.openelisglobal.sampleitem.form.CreateAliquotForm;
+import org.openelisglobal.sample.service.SampleEditAuthorizationService;
+import org.openelisglobal.sampleitem.service.SampleManagementConflictException;
 import org.openelisglobal.sampleitem.service.SampleManagementService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -61,6 +69,9 @@ public class SampleManagementRestController extends BaseRestController {
     @Autowired
     private SampleManagementService sampleManagementService;
 
+    @Autowired
+    private SampleEditAuthorizationService authorization;
+
     /**
      * Search for sample items by accession number.
      *
@@ -82,7 +93,7 @@ public class SampleManagementRestController extends BaseRestController {
     @ResponseBody
     public ResponseEntity<SearchSamplesResponse> searchSamplesByAccessionNumber(
             @RequestParam @NotBlank(message = "Accession number is required") String accessionNumber,
-            @RequestParam(defaultValue = "false") boolean includeTests) {
+            @RequestParam(defaultValue = "false") boolean includeTests, HttpServletRequest request) {
 
         try {
             LogEvent.logInfo(this.getClass().getName(), "searchSamplesByAccessionNumber",
@@ -90,7 +101,7 @@ public class SampleManagementRestController extends BaseRestController {
 
             SearchSamplesResponse response = sampleManagementService.searchByAccessionNumber(accessionNumber,
                     includeTests);
-
+            response.setCanCancelTests(authorization.canWrite(request, getSysUserId(request)));
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
@@ -107,8 +118,10 @@ public class SampleManagementRestController extends BaseRestController {
     @ResponseBody
     public ResponseEntity<SearchSamplesResponse> listRecentSampleItems(
             @RequestParam(defaultValue = "50") int limit,
-            @RequestParam(defaultValue = "false") boolean includeTests) {
-        return ResponseEntity.ok(sampleManagementService.listRecentSampleItems(limit, includeTests));
+            @RequestParam(defaultValue = "false") boolean includeTests, HttpServletRequest request) {
+        SearchSamplesResponse response = sampleManagementService.listRecentSampleItems(limit, includeTests);
+        response.setCanCancelTests(authorization.canWrite(request, getSysUserId(request)));
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -217,8 +230,8 @@ public class SampleManagementRestController extends BaseRestController {
      * Cancel/remove a test from a sample item.
      *
      * <p>
-     * Sets the analysis status to "Canceled" for the specified analysis. Only tests
-     * that have not been completed or finalized can be cancelled.
+     * Cancels a NotStarted or TechnicalAcceptance analysis on an Entered sample
+     * item. The current actor must have SampleEdit write permission.
      *
      * <p>
      * Example: POST /rest/sample-management/cancel-test Body: {"analysisId": "123",
@@ -230,8 +243,10 @@ public class SampleManagementRestController extends BaseRestController {
      * @return CancelTestResponse with cancellation result
      * @throws IllegalArgumentException if analysis not found or doesn't belong to
      *                                  sample item (400 BAD REQUEST)
-     * @throws IllegalStateException    if analysis cannot be cancelled (400 BAD
-     *                                  REQUEST)
+     * @throws SampleManagementConflictException if current tube/analysis state or
+     *                                          cancellation configuration forbids
+     *                                          the change (409 CONFLICT)
+     * @throws AccessDeniedException if the current actor cannot write (403 FORBIDDEN)
      */
     @PostMapping(value = "/cancel-test", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
@@ -241,14 +256,15 @@ public class SampleManagementRestController extends BaseRestController {
         try {
             String sysUserId = getSysUserId(request);
             if (sysUserId == null) {
-                throw new IllegalStateException("User not authenticated");
+                throw new AccessDeniedException("User not authenticated");
             }
 
             LogEvent.logInfo(this.getClass().getName(), "cancelTest",
                     String.format("Cancelling test - analysisId: %s, sampleItemId: %s", form.getAnalysisId(),
                             form.getSampleItemId()));
 
-            CancelTestResponse response = sampleManagementService.cancelTest(form, sysUserId);
+            authorization.requireWrite(request, sysUserId);
+            CancelTestResponse response = sampleManagementService.cancelTest(form, sysUserId, request);
 
             LogEvent.logInfo(this.getClass().getName(), "cancelTest",
                     String.format("Test cancelled successfully: %s", response.getTestName()));
@@ -276,7 +292,8 @@ public class SampleManagementRestController extends BaseRestController {
     public ResponseEntity<ErrorResponse> handleValidationException(jakarta.validation.ConstraintViolationException e) {
         LogEvent.logWarn(this.getClass().getName(), "handleValidationException", e.getMessage());
 
-        ErrorResponse error = new ErrorResponse("Validation Error", e.getMessage());
+        ErrorResponse error = new ErrorResponse("Validation Error", "查询或操作参数不完整，请检查后重试。",
+                "SAMPLE_MANAGEMENT_INVALID_REQUEST");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
@@ -286,11 +303,18 @@ public class SampleManagementRestController extends BaseRestController {
      * @param e the exception
      * @return error response with 400 BAD REQUEST
      */
+    @ExceptionHandler({ MethodArgumentNotValidException.class, HttpMessageNotReadableException.class })
+    public ResponseEntity<ErrorResponse> handleInvalidBody(Exception e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse("Invalid Request",
+                "操作参数不完整或格式无效，请检查后重试。", "SAMPLE_MANAGEMENT_INVALID_REQUEST"));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgumentException(IllegalArgumentException e) {
         LogEvent.logWarn(this.getClass().getName(), "handleIllegalArgumentException", e.getMessage());
 
-        ErrorResponse error = new ErrorResponse("Invalid Request", e.getMessage());
+        ErrorResponse error = new ErrorResponse("Invalid Request", "操作资料无效，请刷新标本后重试。",
+                "SAMPLE_MANAGEMENT_INVALID_REQUEST");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
@@ -304,7 +328,8 @@ public class SampleManagementRestController extends BaseRestController {
     public ResponseEntity<ErrorResponse> handleIllegalStateException(IllegalStateException e) {
         LogEvent.logWarn(this.getClass().getName(), "handleIllegalStateException", e.getMessage());
 
-        ErrorResponse error = new ErrorResponse("Invalid State", e.getMessage());
+        ErrorResponse error = new ErrorResponse("Invalid State", "当前标本状态不允许此操作，请刷新后重试。",
+                "SAMPLE_MANAGEMENT_INVALID_STATE");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
@@ -314,12 +339,42 @@ public class SampleManagementRestController extends BaseRestController {
      * @param e the exception
      * @return error response with 500 INTERNAL SERVER ERROR
      */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDeniedException(AccessDeniedException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorResponse("Forbidden",
+                "当前账号无权取消检验项目。", "SAMPLE_MANAGEMENT_FORBIDDEN"));
+    }
+
+    @ExceptionHandler(SampleManagementConflictException.class)
+    public ResponseEntity<ErrorResponse> handleConflict(SampleManagementConflictException e) {
+        return cancellationConflict();
+    }
+
+    @ExceptionHandler({ OptimisticLockException.class, OptimisticLockingFailureException.class,
+            StaleStateException.class })
+    public ResponseEntity<ErrorResponse> handleOptimisticConflict(Exception e) {
+        return cancellationConflict();
+    }
+
+    private ResponseEntity<ErrorResponse> cancellationConflict() {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse("Conflict",
+                "标本或检验项目状态已变化，或取消状态配置不可用，请刷新后重试。", "SAMPLE_MANAGEMENT_CONFLICT"));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneralException(Exception e) {
+        // Auditable DAO/service layers can wrap Hibernate optimistic conflicts.
+        Throwable cause = e;
+        for (int depth = 0; cause != null && depth < 20; depth++, cause = cause.getCause()) {
+            if (cause instanceof OptimisticLockException || cause instanceof OptimisticLockingFailureException
+                    || cause instanceof StaleStateException) {
+                return cancellationConflict();
+            }
+        }
         LogEvent.logError(this.getClass().getName(), "handleGeneralException", "Unexpected error: " + e.getMessage());
 
-        ErrorResponse error = new ErrorResponse("Internal Server Error",
-                "An unexpected error occurred. Please contact support if the problem persists.");
+        ErrorResponse error = new ErrorResponse("Internal Server Error", "操作未完成，请稍后重试。",
+                "SAMPLE_MANAGEMENT_ERROR");
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
     }
 
@@ -329,10 +384,24 @@ public class SampleManagementRestController extends BaseRestController {
     public static class ErrorResponse {
         private String error;
         private String message;
+        private String code;
 
         public ErrorResponse(String error, String message) {
+            this(error, message, null);
+        }
+
+        public ErrorResponse(String error, String message, String code) {
             this.error = error;
             this.message = message;
+            this.code = code;
+        }
+
+        public String getCode() {
+            return code;
+        }
+
+        public void setCode(String code) {
+            this.code = code;
         }
 
         public String getError() {

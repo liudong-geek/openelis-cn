@@ -46,6 +46,7 @@ public class SampleItemDTO {
     private String unitOfMeasureId;
     private String status;
     private String statusId;
+    private String statusCode = "UNKNOWN";
     private Timestamp collectionDate;
 
     // Parent-child relationship fields
@@ -171,6 +172,14 @@ public class SampleItemDTO {
 
     public void setStatusId(String statusId) {
         this.statusId = statusId;
+    }
+
+    public String getStatusCode() {
+        return statusCode;
+    }
+
+    public void setStatusCode(String statusCode) {
+        this.statusCode = statusCode;
     }
 
     public Timestamp getCollectionDate() {

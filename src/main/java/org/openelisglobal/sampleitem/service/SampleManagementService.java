@@ -13,6 +13,7 @@
  */
 package org.openelisglobal.sampleitem.service;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.openelisglobal.sampleitem.dto.AddTestsResponse;
 import org.openelisglobal.sampleitem.dto.CancelTestResponse;
 import org.openelisglobal.sampleitem.dto.CreateAliquotResponse;
@@ -114,8 +115,9 @@ public interface SampleManagementService {
      * Cancel/remove a test from a sample item.
      *
      * <p>
-     * Sets the analysis status to "Canceled" for the specified analysis. Only tests
-     * that have not been started or completed can be cancelled.
+     * Sets the analysis status to "Canceled" for the specified analysis. The
+     * sample item must be Entered and analysis status must be NotStarted or
+     * TechnicalAcceptance. Current persisted write permission is rechecked.
      *
      * <p>
      * Related: Feature 001-sample-management
@@ -129,5 +131,5 @@ public interface SampleManagementService {
      * @throws IllegalStateException    if analysis cannot be cancelled (already
      *                                  completed)
      */
-    CancelTestResponse cancelTest(CancelTestForm form, String sysUserId);
+    CancelTestResponse cancelTest(CancelTestForm form, String sysUserId, HttpServletRequest request);
 }

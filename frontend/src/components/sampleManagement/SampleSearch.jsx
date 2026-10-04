@@ -1,4 +1,10 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+} from "react";
 import { Search, Loading, Button } from "@carbon/react";
 import { Search as SearchIcon } from "@carbon/icons-react";
 import { useIntl } from "react-intl";
@@ -19,15 +25,28 @@ import { getFromOpenElisServer } from "../utils/Utils";
  *
  * Related: Feature 001-sample-management, User Story 1, Task T033
  */
-function SampleSearch({ onSearchResults, includeTests = false }) {
+function SampleSearch({
+  onSearchResults,
+  onSearchStart,
+  requestContext,
+  refreshVersion = 0,
+  includeTests = false,
+}) {
   const intl = useIntl();
   const [searchValue, setSearchValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const debounceTimerRef = useRef(null);
+  const activeRequest = useRef(0);
+  const mounted = useRef(true);
+  const lastSubmitted = useRef("");
+  const lastRefresh = useRef(refreshVersion);
 
-  // Cleanup debounce timer on unmount
-  useEffect(() => {
+  // Invalidate callbacks before the component leaves the screen.
+  useLayoutEffect(() => {
+    mounted.current = true;
     return () => {
+      mounted.current = false;
+      activeRequest.current += 1;
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
@@ -39,9 +58,12 @@ function SampleSearch({ onSearchResults, includeTests = false }) {
    */
   const performSearch = useCallback(
     (accessionNumber) => {
+      const requestNumber = ++activeRequest.current;
+      onSearchStart?.();
       setIsLoading(true);
 
       const normalizedValue = accessionNumber?.trim() || "";
+      lastSubmitted.current = normalizedValue;
       const endpoint = normalizedValue
         ? `/rest/sample-management/search?accessionNumber=${encodeURIComponent(
             normalizedValue,
@@ -49,9 +71,24 @@ function SampleSearch({ onSearchResults, includeTests = false }) {
         : `/rest/sample-management/recent?limit=50&includeTests=${includeTests}`;
 
       getFromOpenElisServer(endpoint, (response) => {
+        if (
+          !mounted.current ||
+          requestNumber !== activeRequest.current ||
+          (requestContext && requestContext.current() !== true)
+        )
+          return;
         setIsLoading(false);
 
-        if (response) {
+        const responseMatches =
+          response &&
+          Array.isArray(response.sampleItems) &&
+          (normalizedValue
+            ? response.accessionNumber === normalizedValue &&
+              response.sampleItems.every(
+                (item) => item?.sampleAccessionNumber === normalizedValue,
+              )
+            : response.accessionNumber === "");
+        if (responseMatches) {
           // Successful response
           onSearchResults(response, null);
         } else {
@@ -64,12 +101,19 @@ function SampleSearch({ onSearchResults, includeTests = false }) {
         }
       });
     },
-    [includeTests, onSearchResults, intl],
+    [includeTests, onSearchResults, onSearchStart, requestContext, intl],
   );
 
   useEffect(() => {
-    performSearch("");
+    performSearch(lastSubmitted.current);
   }, [performSearch]);
+
+  useEffect(() => {
+    if (lastRefresh.current !== refreshVersion) {
+      lastRefresh.current = refreshVersion;
+      performSearch(lastSubmitted.current);
+    }
+  }, [refreshVersion, performSearch]);
 
   /**
    * Handle search input change - no longer auto-triggers search.

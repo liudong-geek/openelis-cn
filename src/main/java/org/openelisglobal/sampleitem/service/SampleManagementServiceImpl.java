@@ -13,6 +13,10 @@
  */
 package org.openelisglobal.sampleitem.service;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
+import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,7 +24,9 @@ import java.util.stream.Collectors;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.services.IStatusService;
-import org.openelisglobal.common.services.StatusService;
+import org.openelisglobal.common.services.StatusService.AnalysisStatus;
+import org.openelisglobal.common.services.StatusService.SampleStatus;
+import org.openelisglobal.sample.service.SampleEditAuthorizationService;
 import org.openelisglobal.sample.service.SampleService;
 import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.sampleitem.dao.SampleItemDAO;
@@ -73,6 +79,15 @@ public class SampleManagementServiceImpl implements SampleManagementService {
 
     @Autowired
     private TestService testService;
+
+    @Autowired
+    private IStatusService statusService;
+
+    @Autowired
+    private SampleEditAuthorizationService authorization;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Override
     @Transactional(readOnly = true)
@@ -257,10 +272,9 @@ public class SampleManagementServiceImpl implements SampleManagementService {
         }
 
         // Status
-        if (sampleItem.getStatusId() != null) {
-            dto.setStatusId(sampleItem.getStatusId());
-            // Status description would come from status service if needed
-        }
+        dto.setStatusId(sampleItem.getStatusId());
+        SampleStatus sampleStatus = statusService.getSampleStatusForID(sampleItem.getStatusId());
+        dto.setStatusCode(sampleStatus == null ? "UNKNOWN" : sampleStatus.name());
 
         // Collection date
         dto.setCollectionDate(sampleItem.getCollectionDate());
@@ -283,16 +297,11 @@ public class SampleManagementServiceImpl implements SampleManagementService {
         dto.setAliquot(sampleItem.isAliquot());
         dto.setNestingLevel(sampleItem.getNestingLevel());
 
-        // Ordered tests (if requested) - exclude cancelled tests
+        // Keep cancelled analyses visible so cancellation remains traceable.
         if (includeTests) {
             List<Analysis> analyses = analysisService.getAnalysesBySampleItem(sampleItem);
             if (analyses != null && !analyses.isEmpty()) {
-                // Filter out cancelled tests
-                IStatusService statusService = StatusService.getInstance();
-                String cancelledStatusId = statusService.getStatusID(StatusService.AnalysisStatus.Canceled);
-
-                List<TestSummaryDTO> testDtos = analyses.stream()
-                        .filter(a -> !cancelledStatusId.equals(a.getStatusId())).map(this::convertToTestSummary)
+                List<TestSummaryDTO> testDtos = analyses.stream().map(this::convertToTestSummary)
                         .collect(Collectors.toList());
                 dto.setOrderedTests(testDtos);
             }
@@ -338,9 +347,10 @@ public class SampleManagementServiceImpl implements SampleManagementService {
             dto.setTestName(testName);
         }
 
-        if (analysis.getStatusId() != null) {
-            dto.setStatus(analysis.getStatusId());
-        }
+        dto.setStatus(analysis.getStatusId());
+        AnalysisStatus analysisStatus = statusService.getAnalysisStatusForID(analysis.getStatusId());
+        dto.setStatusCode(analysisStatus == null ? "UNKNOWN" : analysisStatus.name());
+        dto.setCanCancelByStatus(canCancelByStatus(analysis));
 
         // StartedDate is java.sql.Date, but TestSummaryDTO expects Timestamp
         // Convert Date to Timestamp
@@ -428,50 +438,72 @@ public class SampleManagementServiceImpl implements SampleManagementService {
         return new AddTestsResponse(successCount, results);
     }
 
+    /**
+     * Categories come from the status service; numeric identifiers and client
+     * labels never establish cancellation eligibility.
+     */
+    private boolean canCancelByStatus(Analysis analysis) {
+        if (analysis == null || analysis.getSampleItem() == null
+                || statusService.getSampleStatusForID(analysis.getSampleItem().getStatusId()) != SampleStatus.Entered) {
+            return false;
+        }
+        AnalysisStatus status = statusService.getAnalysisStatusForID(analysis.getStatusId());
+        return status == AnalysisStatus.NotStarted || status == AnalysisStatus.TechnicalAcceptance;
+    }
+
+    private void requirePersistedId(String id) {
+        if (id == null || !id.matches("[1-9][0-9]{0,9}")) {
+            throw new IllegalArgumentException("A canonical positive database identifier is required");
+        }
+        try {
+            Integer.parseInt(id);
+        } catch (NumberFormatException invalid) {
+            throw new IllegalArgumentException("Database identifier exceeds the supported range", invalid);
+        }
+    }
+
     @Override
     @Transactional
-    public CancelTestResponse cancelTest(CancelTestForm form, String sysUserId) {
-        // Step 1: Load the analysis
+    public CancelTestResponse cancelTest(CancelTestForm form, String sysUserId, HttpServletRequest request) {
+        authorization.requireWrite(request, sysUserId);
+        if (form == null) {
+            throw new IllegalArgumentException("A cancellation request is required");
+        }
+        requirePersistedId(form.getAnalysisId());
+        requirePersistedId(form.getSampleItemId());
         Analysis analysis = analysisService.getAnalysisById(form.getAnalysisId());
         if (analysis == null) {
             throw new IllegalArgumentException("Analysis not found: " + form.getAnalysisId());
         }
-
-        // Step 2: Validate analysis belongs to the specified sample item
-        if (analysis.getSampleItem() == null || !analysis.getSampleItem().getId().equals(form.getSampleItemId())) {
+        SampleItem sampleItem = analysis.getSampleItem();
+        if (sampleItem == null || !sampleItem.getId().equals(form.getSampleItemId())) {
             throw new IllegalArgumentException("Analysis does not belong to specified sample item");
         }
-
-        // Step 3: Check if analysis can be cancelled (not already completed/finalized)
-        IStatusService statusService = StatusService.getInstance();
-        String currentStatusId = analysis.getStatusId();
-
-        // Analysis can only be cancelled if status is NotStarted or TechnicalAcceptance
-        boolean canCancel = statusService.matches(currentStatusId, StatusService.AnalysisStatus.NotStarted)
-                || statusService.matches(currentStatusId, StatusService.AnalysisStatus.TechnicalAcceptance);
-
-        if (!canCancel) {
-            String statusName = statusService.getStatusNameFromId(currentStatusId);
-            throw new IllegalStateException(String.format("Cannot cancel test: analysis is already %s",
-                    statusName != null ? statusName : "in a non-cancellable state"));
+        if (!canCancelByStatus(analysis)) {
+            throw new SampleManagementConflictException("Sample item or analysis is no longer cancellable");
+        }
+        String canceledStatusId = statusService.getStatusID(AnalysisStatus.Canceled);
+        if (canceledStatusId == null || canceledStatusId.isBlank()
+                || statusService.getAnalysisStatusForID(canceledStatusId) != AnalysisStatus.Canceled) {
+            throw new SampleManagementConflictException("The analysis cancellation status is not configured");
         }
 
-        // Step 4: Get test name for response before updating
-        String testName = analysis.getTest() != null
-                ? (analysis.getTest().getName() != null ? analysis.getTest().getName()
-                        : analysis.getTest().getDescription())
-                : "Unknown Test";
-
-        // Step 5: Set status to Canceled
-        String canceledStatusId = statusService.getStatusID(StatusService.AnalysisStatus.Canceled);
+        // The unchanged tube must retain the version whose state was checked.
+        // Analysis.merge already enforces its own optimistic version. Detach the
+        // analysis before mutation so the existing audit service can load its real
+        // before-state, rather than compare the same already-mutated managed row.
+        entityManager.lock(sampleItem, LockModeType.OPTIMISTIC);
+        entityManager.detach(analysis);
+        authorization.requireWrite(request, sysUserId);
         analysis.setStatusId(canceledStatusId);
         analysis.setSysUserId(sysUserId);
+        Analysis updated = analysisService.update(analysis);
 
-        // Step 6: Update the analysis
-        analysisService.update(analysis);
-
-        // Step 7: Return success response
-        return new CancelTestResponse(analysis.getId(), testName, true,
-                String.format("Test '%s' has been cancelled successfully", testName));
+        TestSummaryDTO test = convertToTestSummary(updated);
+        CancelTestResponse response = new CancelTestResponse(updated.getId(), test.getTestName(), true,
+                "检验项目已取消。");
+        response.setSampleItemId(sampleItem.getId());
+        response.setTest(test);
+        return response;
     }
 }

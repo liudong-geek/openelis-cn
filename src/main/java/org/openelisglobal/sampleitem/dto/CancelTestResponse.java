@@ -29,6 +29,8 @@ public class CancelTestResponse {
     private String testName;
     private boolean success;
     private String message;
+    private String sampleItemId;
+    private TestSummaryDTO test;
 
     // ========== Constructors ==========
 
@@ -66,6 +68,22 @@ public class CancelTestResponse {
 
     public void setSuccess(boolean success) {
         this.success = success;
+    }
+
+    public String getSampleItemId() {
+        return sampleItemId;
+    }
+
+    public void setSampleItemId(String sampleItemId) {
+        this.sampleItemId = sampleItemId;
+    }
+
+    public TestSummaryDTO getTest() {
+        return test;
+    }
+
+    public void setTest(TestSummaryDTO test) {
+        this.test = test;
     }
 
     public String getMessage() {
