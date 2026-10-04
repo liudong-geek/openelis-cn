@@ -25,8 +25,11 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Predicate;
 import org.apache.commons.text.StringEscapeUtils;
 import org.openelisglobal.audittrail.service.AuditEntitySnapshotService;
 import org.openelisglobal.audittrail.util.AuditFieldStringifier;
@@ -116,15 +119,14 @@ public class SystemAuditEventRestController {
         if (patientId != null && !patientId.isEmpty()) {
             List<History> merged = fetchPatientScopedHistory(start, end, userId, action, search, patientId);
             totalItems = merged.size();
-            int from = Math.min((safePage - 1) * safePageSize, merged.size());
+            int from = (int) Math.min((safePage - 1L) * safePageSize, merged.size());
             int to = Math.min(from + safePageSize, merged.size());
             events = merged.subList(from, to);
         } else {
-            List<String> refTableIds = resolveReferenceTableIds(entityType);
-            events = historyService.getSystemEventHistory(start, end, userId, refTableIds, action, search, null,
-                    safePage, safePageSize);
-            totalItems = historyService.getSystemEventHistoryCount(start, end, userId, refTableIds, action, search,
-                    null);
+            HistoryService.HistorySelection selection = selectSystemHistory(start, end, userId, entityType, action,
+                    search, safePage, safePageSize, true);
+            events = selection.events;
+            totalItems = selection.total;
         }
 
         Map<String, String> userCache = new HashMap<>();
@@ -299,7 +301,8 @@ public class SystemAuditEventRestController {
         String table = refTableIdToName.get(history.getReferenceTable());
         String type = values.get("configurationType");
         String businessId = values.get("businessId");
-        if (businessId == null || !businessId.matches("[0-9]+"))
+        if (businessId == null || !businessId.matches("[1-9][0-9]*") || history.getReferenceId() == null
+                || !history.getReferenceId().matches("[1-9][0-9]*"))
             return false;
         List<String> fields;
         if ("LOCALIZATION".equals(table)
@@ -406,8 +409,8 @@ public class SystemAuditEventRestController {
             List<History> merged = fetchPatientScopedHistory(start, end, userId, action, search, patientId);
             events = merged.size() > MAX_EXPORT_ROWS ? merged.subList(0, MAX_EXPORT_ROWS) : merged;
         } else {
-            events = historyService.getSystemEventHistory(start, end, userId, resolveReferenceTableIds(entityType),
-                    action, search, null, 1, MAX_EXPORT_ROWS);
+            events = selectSystemHistory(start, end, userId, entityType, action, search, 1, MAX_EXPORT_ROWS,
+                    false).events;
         }
         Map<String, String> userCache = new HashMap<>();
         List<Map<String, Object>> items = buildItemsWithOldNew(events, patientId, userCache);
@@ -475,8 +478,8 @@ public class SystemAuditEventRestController {
             List<History> merged = fetchPatientScopedHistory(start, end, userId, action, search, patientId);
             events = merged.size() > MAX_EXPORT_ROWS ? merged.subList(0, MAX_EXPORT_ROWS) : merged;
         } else {
-            events = historyService.getSystemEventHistory(start, end, userId, resolveReferenceTableIds(entityType),
-                    action, search, null, 1, MAX_EXPORT_ROWS);
+            events = selectSystemHistory(start, end, userId, entityType, action, search, 1, MAX_EXPORT_ROWS,
+                    false).events;
         }
         Map<String, String> userCache = new HashMap<>();
         List<Map<String, Object>> items = buildItemsWithOldNew(events, patientId, userCache);
@@ -533,6 +536,96 @@ public class SystemAuditEventRestController {
             LogEvent.logError(e);
             throw new IOException("Error generating PDF", e);
         }
+    }
+
+    /** Filter by the same stored business identity used by the UI and exports. */
+    private HistoryService.HistorySelection selectSystemHistory(Timestamp start, Timestamp end, String userId,
+            String entityType, String action, String search, int page, int limit, boolean countAll) {
+        List<String> registeredIds = resolveReferenceTableIds(null);
+        if (registeredIds.isEmpty())
+            return new HistoryService.HistorySelection(List.of(), 0);
+        boolean hasType = entityType != null && !entityType.isBlank();
+        boolean hasSearch = search != null && !search.isEmpty();
+        if (!hasType && !hasSearch) {
+            long offset = (page - 1L) * limit;
+            List<History> rows = offset > Integer.MAX_VALUE ? List.of()
+                    : historyService.getSystemEventHistory(start, end, userId, registeredIds, action, null, null, page,
+                            limit);
+            long total = countAll
+                    ? historyService.getSystemEventHistoryCount(start, end, userId, registeredIds, action, null, null)
+                    : rows.size();
+            return new HistoryService.HistorySelection(rows, total);
+        }
+        Set<String> requestedTypes = new LinkedHashSet<>();
+        if (hasType) {
+            for (String type : entityType.split(",")) {
+                String name = type.trim();
+                if (refTableNameToId.containsKey(name))
+                    requestedTypes.add(name);
+            }
+            if (requestedTypes.isEmpty())
+                return new HistoryService.HistorySelection(List.of(), 0);
+        }
+        Predicate<String> searchMatcher = hasSearch ? sqlLikeSearchMatcher(search) : null;
+        return historyService.scanSystemEventHistory(start, end, userId, registeredIds, action, history -> {
+            Map<String, String> stored = parseChanges(history);
+            String type = refTableIdToName.getOrDefault(history.getReferenceTable(), history.getReferenceTable());
+            String id = history.getReferenceId();
+            if (isExplicitConfigurationSnapshot(history, stored)) {
+                type = configurationEntityType(stored.get("configurationType"));
+                id = stored.get("businessId");
+            }
+            return (!hasType || requestedTypes.contains(type))
+                    && (searchMatcher == null || id != null && searchMatcher.test(id));
+        }, (page - 1L) * limit, limit, countAll);
+    }
+
+    private String configurationEntityType(String type) {
+        if ("panel".equals(type))
+            return "PANEL";
+        if ("testSection".equals(type))
+            return "TEST_SECTION";
+        if ("sampleType".equals(type))
+            return "TYPE_OF_SAMPLE";
+        return "TEST";
+    }
+
+    /** Preserve the existing SQL LIKE %/_ and backslash escape search contract. */
+    private Predicate<String> sqlLikeSearchMatcher(String search) {
+        String like = "%" + search + "%";
+        List<Integer> tokens = new ArrayList<>();
+        boolean escaped = false;
+        for (int i = 0; i < like.length(); i++) {
+            char c = like.charAt(i);
+            if (escaped) {
+                tokens.add((int) c);
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '%') {
+                if (tokens.isEmpty() || tokens.get(tokens.size() - 1) != -1)
+                    tokens.add(-1);
+            } else {
+                tokens.add(c == '_' ? -2 : (int) c);
+            }
+        }
+        // Dynamic programming avoids regex backtracking for long wildcard input.
+        return value -> {
+            boolean[] previous = new boolean[tokens.size() + 1];
+            previous[0] = true;
+            for (int j = 1; j <= tokens.size(); j++)
+                previous[j] = tokens.get(j - 1) == -1 && previous[j - 1];
+            for (int i = 0; i < value.length(); i++) {
+                boolean[] current = new boolean[tokens.size() + 1];
+                for (int j = 1; j <= tokens.size(); j++) {
+                    int token = tokens.get(j - 1);
+                    current[j] = token == -1 ? current[j - 1] || previous[j]
+                            : previous[j - 1] && (token == -2 || token == value.charAt(i));
+                }
+                previous = current;
+            }
+            return previous[tokens.size()];
+        };
     }
 
     private List<String> resolveReferenceTableIds(String entityType) {

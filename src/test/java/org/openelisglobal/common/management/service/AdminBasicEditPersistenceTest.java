@@ -2,12 +2,16 @@ package org.openelisglobal.common.management.service;
 
 import static org.junit.Assert.*;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -52,6 +56,8 @@ public class AdminBasicEditPersistenceTest extends BaseWebContextSensitiveTest {
     private HistoryService histories;
     @Autowired
     private ReferenceTablesService references;
+    @PersistenceContext
+    private EntityManager entityManager;
     private Object sampleTarget, catalogTarget;
     private AuditTrailService previousSampleAudit, previousCatalogAudit;
 
@@ -310,6 +316,119 @@ public class AdminBasicEditPersistenceTest extends BaseWebContextSensitiveTest {
         activate.active = true;
         catalog.save("985201", activate, TEST_SYS_USER_ID);
         assertFalse(catalog.read("985201").active);
+    }
+
+    @Test
+    public void auditCandidateScanUsesReadOnlyRepeatableReadDetachesRowsAndStableNumericTies() {
+        insertAuditCandidates(601);
+        var checked = new AtomicBoolean();
+        var result = histories.scanSystemEventHistory(auditStart(), auditEnd(), TEST_SYS_USER_ID, List.of(auditTable()),
+                "U", history -> {
+                    assertFalse("Candidate scan must not accumulate managed history", entityManager.contains(history));
+                    if (checked.compareAndSet(false, true)) {
+                        var settings = entityManager.unwrap(org.hibernate.Session.class).doReturningWork(connection -> {
+                            try (var statement = connection.createStatement()) {
+                                String isolation;
+                                String readOnly;
+                                try (var settingsRow = statement.executeQuery("SHOW transaction_isolation")) {
+                                    assertTrue(settingsRow.next());
+                                    isolation = settingsRow.getString(1);
+                                }
+                                try (var settingsRow = statement.executeQuery("SHOW transaction_read_only")) {
+                                    assertTrue(settingsRow.next());
+                                    readOnly = settingsRow.getString(1);
+                                }
+                                return Map.of("isolation", isolation, "readOnly", readOnly);
+                            }
+                        });
+                        assertEquals("repeatable read", settings.get("isolation"));
+                        assertEquals("on", settings.get("readOnly"));
+                    }
+                    return true;
+                }, 499L, 3, true);
+        assertTrue(checked.get());
+        assertEquals(601L, result.total);
+        assertEquals(List.of("9000102", "9000101", "9000100"), result.events.stream().map(h -> h.getId()).toList());
+    }
+
+    @Test
+    public void auditCandidatesKeepDatabaseDateUserActionAndRegisteredTableFilters() {
+        insertAuditCandidates(2);
+        jdbcTemplate.update(
+                "INSERT INTO clinlims.history(id,sys_user_id,reference_id,reference_table,timestamp,activity) VALUES(9000003,1,985101,?,'2026-10-03 10:00:00','U')",
+                Integer.valueOf(auditTable()));
+        jdbcTemplate.update(
+                "INSERT INTO clinlims.history(id,sys_user_id,reference_id,reference_table,timestamp,activity) VALUES(9000004,1,985101,?,'2026-10-04 10:00:00','I')",
+                Integer.valueOf(auditTable()));
+        jdbcTemplate.update(
+                "INSERT INTO clinlims.history(id,sys_user_id,reference_id,reference_table,timestamp,activity) VALUES(9000005,1,985101,?,'2026-10-04 10:00:00','U')",
+                Integer.valueOf(references.getReferenceTableByName("TEST").getId()));
+        var selected = histories.scanSystemEventHistory(auditStart(), auditEnd(), TEST_SYS_USER_ID,
+                List.of(auditTable()), "U", h -> true, 0, 30, true);
+        assertEquals(2L, selected.total);
+        assertEquals(List.of("9000002", "9000001"), selected.events.stream().map(h -> h.getId()).toList());
+        assertEquals(0L, histories.scanSystemEventHistory(auditStart(), auditEnd(), "999999", List.of(auditTable()),
+                "U", h -> true, 0, 30, true).total);
+        assertEquals(0L, histories.scanSystemEventHistory(auditStart(), auditEnd(), TEST_SYS_USER_ID, List.of(), "U",
+                h -> true, 0, 30, true).total);
+    }
+
+    @Test
+    public void auditBatchesKeepOneDatabaseSnapshotAcrossAConcurrentCommittedInsert() {
+        insertAuditCandidates(601);
+        var inserted = new AtomicBoolean();
+        var selected = histories.scanSystemEventHistory(auditStart(), auditEnd(), TEST_SYS_USER_ID,
+                List.of(auditTable()), "U", h -> {
+                    if (inserted.compareAndSet(false, true)) {
+                        try (var connection = jdbcTemplate.getDataSource().getConnection();
+                                var statement = connection.prepareStatement(
+                                        "INSERT INTO clinlims.history(id,sys_user_id,reference_id,reference_table,timestamp,activity) VALUES(9000602,1,985101,?,'2026-10-04 10:00:00','U')")) {
+                            connection.setAutoCommit(true);
+                            statement.setInt(1, Integer.parseInt(auditTable()));
+                            assertEquals(1, statement.executeUpdate());
+                        } catch (SQLException e) {
+                            throw new AssertionError(e);
+                        }
+                    }
+                    return true;
+                }, 499L, 3, true);
+        assertEquals(601L, selected.total);
+        assertEquals(List.of("9000102", "9000101", "9000100"), selected.events.stream().map(h -> h.getId()).toList());
+        assertEquals(602L, histories.getSystemEventHistoryCount(auditStart(), auditEnd(), TEST_SYS_USER_ID,
+                List.of(auditTable()), "U", null, null));
+    }
+
+    @Test
+    public void auditTotalScansBeyondExportCapAndRetainsOnlyRequestedPageOrExportRows() {
+        insertAuditCandidates(10005);
+        var page = histories.scanSystemEventHistory(auditStart(), auditEnd(), TEST_SYS_USER_ID, List.of(auditTable()),
+                "U", h -> true, 10000L, 100, true);
+        assertEquals(10005L, page.total);
+        assertEquals(List.of("9000005", "9000004", "9000003", "9000002", "9000001"),
+                page.events.stream().map(h -> h.getId()).toList());
+        var export = histories.scanSystemEventHistory(auditStart(), auditEnd(), TEST_SYS_USER_ID, List.of(auditTable()),
+                "U", h -> true, 0, 10000, false);
+        assertEquals(10000, export.events.size());
+        assertEquals("9010005", export.events.get(0).getId());
+        assertEquals("9000006", export.events.get(9999).getId());
+    }
+
+    private void insertAuditCandidates(int count) {
+        jdbcTemplate.update(
+                "INSERT INTO clinlims.history(id,sys_user_id,reference_id,reference_table,timestamp,activity) SELECT 9000000+g,1,985101,?,'2026-10-04 10:00:00'::timestamp,'U' FROM generate_series(1,?) g",
+                Integer.parseInt(auditTable()), count);
+    }
+
+    private String auditTable() {
+        return references.getReferenceTableByName("LOCALIZATION").getId();
+    }
+
+    private Timestamp auditStart() {
+        return Timestamp.valueOf("2026-10-04 00:00:00");
+    }
+
+    private Timestamp auditEnd() {
+        return Timestamp.valueOf("2026-10-04 23:59:59");
     }
 
     private TestCatalogBasicInfo catalogUpdate() {

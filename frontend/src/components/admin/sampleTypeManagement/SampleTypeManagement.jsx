@@ -895,6 +895,7 @@ function SampleTypeManagement({ intl }) {
           open={confirmLeave}
           className="oe-admin-modal"
           modalHeading={intl.formatMessage({ id: "workspace.leave.title" })}
+          closeButtonLabel={intl.formatMessage({ id: "button.close" })}
           primaryButtonText={intl.formatMessage({
             id: "workspace.leave.confirm",
           })}

@@ -5,11 +5,13 @@ import static org.mockito.Mockito.*;
 
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Predicate;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -38,6 +40,8 @@ public class ConfigurationNameAuditReadContractTest {
     private HistoryService histories;
     private AuditEntitySnapshotService snapshots;
     private Object originalMessages;
+    private List<History> candidates = List.of();
+    private PatientService patients;
 
     @Before
     public void setUp() {
@@ -52,8 +56,22 @@ public class ConfigurationNameAuditReadContractTest {
         ReflectionTestUtils.setField(controller, "snapshotService", snapshots);
         ReflectionTestUtils.setField(controller, "referenceTablesService", references);
         ReflectionTestUtils.setField(controller, "systemUserService", mock(SystemUserService.class));
-        ReflectionTestUtils.setField(controller, "patientService", mock(PatientService.class));
+        patients = mock(PatientService.class);
+        ReflectionTestUtils.setField(controller, "patientService", patients);
+        for (String name : List.of("PANEL", "TEST_SECTION", "PATIENT", "PERSON"))
+            when(references.getReferenceTableByName(name)).thenReturn(reference(Map.of("PANEL", "14", "TEST_SECTION", "13", "PATIENT", "15", "PERSON", "16").get(name)));
         ReflectionTestUtils.invokeMethod(controller, "initRefTableCache");
+        when(histories.scanSystemEventHistory(any(), any(), any(), anyList(), any(), any(), anyLong(), anyInt(), anyBoolean()))
+                .thenAnswer(call -> {
+                    Predicate<History> matches = call.getArgument(5);
+                    long offset = call.getArgument(6);
+                    int limit = call.getArgument(7);
+                    boolean countAll = call.getArgument(8);
+                    List<History> matched = candidates.stream().filter(matches).toList();
+                    int from = (int) Math.min(offset, matched.size());
+                    int to = Math.min(from + limit, matched.size());
+                    return new HistoryService.HistorySelection(matched.subList(from, to), countAll ? matched.size() : to);
+                });
         originalMessages = ReflectionTestUtils.getField(MessageUtil.class, "instance");
         StaticMessageSource messages = new StaticMessageSource();
         messages.addMessage("auditTrail.activity.update", Locale.ENGLISH, "Updated");
@@ -105,14 +123,13 @@ public class ConfigurationNameAuditReadContractTest {
     }
 
     @Test
-    public void localizationFilterUsesReferenceTableRatherThanBusinessTable() {
-        rows(List.of(named("1", "testSection", "73", "原专业组", "新专业组")));
+    public void localizationFilterUsesFinalDisplayTypeAndKeepsLegacyRows() {
+        rows(List.of(named("2", "testSection", "73", "原专业组", "新专业组"),
+                history("1", LOCALIZATION_TABLE_ID, "987", Map.of("description", "legacy"))));
         Map<String, Object> event = fetch("LOCALIZATION", 1, 30).get(0);
-        assertEquals("73", event.get("businessId"));
-        verify(histories).getSystemEventHistory(isNull(), isNull(), isNull(), eq(List.of(LOCALIZATION_TABLE_ID)),
-                isNull(), isNull(), isNull(), eq(1), eq(30));
-        verify(histories).getSystemEventHistoryCount(isNull(), isNull(), isNull(), eq(List.of(LOCALIZATION_TABLE_ID)),
-                isNull(), isNull(), isNull());
+        assertEquals("1", event.get("id"));
+        assertFalse(event.containsKey("businessId"));
+        verify(histories, never()).getSystemEventHistoryCount(any(), any(), any(), anyList(), any(), any(), any());
     }
 
     @Test
@@ -154,15 +171,15 @@ public class ConfigurationNameAuditReadContractTest {
     }
 
     @Test
-    public void csvExportsProfessionalGroupBusinessIdentityUsingLocalizationFilter() throws Exception {
+    public void csvExportsProfessionalGroupBusinessIdentityUsingDisplayTypeFilter() throws Exception {
         rows(List.of(named("1", "testSection", "73", "旧专业组", "新专业组")));
-        String[] columns = csvRow("LOCALIZATION");
+        String[] columns = csvRow("TEST_SECTION");
         assertEquals("TEST_SECTION", columns[2]);
         assertEquals("73", columns[3]);
         assertEquals("zh: 旧专业组", columns[5]);
         assertEquals("zh: 新专业组", columns[6]);
-        verify(histories).getSystemEventHistory(isNull(), isNull(), isNull(), eq(List.of(LOCALIZATION_TABLE_ID)),
-                isNull(), isNull(), isNull(), eq(1), eq(10000));
+        verify(histories).scanSystemEventHistory(isNull(), isNull(), isNull(), anyList(), isNull(), any(), eq(0L),
+                eq(10000), eq(false));
     }
 
     @Test
@@ -256,7 +273,7 @@ public class ConfigurationNameAuditReadContractTest {
     @Test
     public void csvSampleChineseUsesSampleIdentityAndUtf8OldNewValues() throws Exception {
         rows(List.of(named("1", "sampleType", "985001", "原中文 & 名称", "新中文 & 名称")));
-        String[] columns = csvRow("LOCALIZATION");
+        String[] columns = csvRow("TYPE_OF_SAMPLE");
         assertEquals("TYPE_OF_SAMPLE", columns[2]);
         assertEquals("985001", columns[3]);
         assertEquals("zh: 原中文 & 名称", columns[5]);
@@ -321,6 +338,170 @@ public class ConfigurationNameAuditReadContractTest {
         verifyZeroInteractions(snapshots);
     }
 
+    @Test
+    public void sampleIdSearchMatchesBothNamedLocalizationAndMetadataAndNotRawLocalizationId() {
+        History translated = named("3", "sampleType", "25", "old", "new");
+        translated.setReferenceId("142");
+        rows(List.of(translated,
+                history("2", SAMPLE_TYPE_TABLE_ID, "25", Map.of("configurationType", "sampleType", "businessId", "25",
+                        "abbreviationBefore", "OLD", "abbreviationAfter", "NEW")),
+                named("1", "panel", "25", "old", "new")));
+        Map<String, Object> body = query("TYPE_OF_SAMPLE", "25", 1, 30);
+        assertEquals(2L, body.get("totalItems"));
+        assertEquals(List.of("3", "2"), eventIds(body));
+        assertEquals(0L, query("TYPE_OF_SAMPLE", "142", 1, 30).get("totalItems"));
+        verifyZeroInteractions(snapshots);
+    }
+
+    @Test
+    public void filteredPaginationCountsAllMatchesAndKeepsExactHistoricalSnapshots() {
+        rows(List.of(named("4", "panel", "25", "old", "new"), named("3", "sampleType", "25", "middle", "new"),
+                named("2", "sampleType", "26", "old", "new"), named("1", "sampleType", "25", "old", "middle")));
+        Map<String, Object> body = query("TYPE_OF_SAMPLE", "25", 2, 1);
+        assertEquals(2L, body.get("totalItems"));
+        assertEquals(2, body.get("totalPages"));
+        assertEquals(List.of("1"), eventIds(body));
+        assertPair(((List<Map<String, Object>>) body.get("events")).get(0), "zh", "old", "middle");
+        verifyZeroInteractions(snapshots);
+    }
+
+    @Test
+    public void unknownTypesReturnEmptyWithoutInvokingAnyHistoryQuery() {
+        rows(List.of(named("1", "sampleType", "25", "old", "new")));
+        clearInvocations(histories);
+        assertEquals(0L, query("UNKNOWN", "25", 1, 30).get("totalItems"));
+        assertEquals(List.of(), eventIds(query(",UNKNOWN,", null, 1, 30)));
+        verifyZeroInteractions(histories);
+        assertEquals(1L, query("UNKNOWN, TYPE_OF_SAMPLE", "25", 1, 30).get("totalItems"));
+    }
+
+    @Test
+    public void noncanonicalBusinessOrSourceIdCannotChangeDisplayedIdentityOrFiltering() {
+        for (String businessId : List.of("0", "025", "-25")) {
+            rows(List.of(named("1", "sampleType", businessId, "old", "new")));
+            assertEquals(0L, query("TYPE_OF_SAMPLE", businessId, 1, 30).get("totalItems"));
+            var legacy = query("LOCALIZATION", "987", 1, 30);
+            assertEquals(1L, legacy.get("totalItems"));
+            assertFalse(((List<Map<String, Object>>) legacy.get("events")).get(0).containsKey("businessId"));
+        }
+        for (String sourceId : List.of("0", "0142", "bad")) {
+            History h = named("1", "sampleType", "25", "old", "new");
+            h.setReferenceId(sourceId);
+            rows(List.of(h));
+            assertEquals(0L, query("TYPE_OF_SAMPLE", "25", 1, 30).get("totalItems"));
+            assertEquals(1L, query("LOCALIZATION", sourceId, 1, 30).get("totalItems"));
+        }
+    }
+
+    @Test
+    public void mismatchedOrIncompleteSnapshotUsesRawIdentityForSearchAndClassification() {
+        rows(List.of(
+                history("2", SAMPLE_TYPE_TABLE_ID, "26",
+                        Map.of("configurationType", "sampleType", "businessId", "25", "abbreviationBefore", "old",
+                                "abbreviationAfter", "new")),
+                history("1", LOCALIZATION_TABLE_ID, "142",
+                        Map.of("configurationType", "sampleType", "businessId", "25", "zhBefore", "old"))));
+        assertEquals(0L, query("TYPE_OF_SAMPLE", "25", 1, 30).get("totalItems"));
+        assertEquals(1L, query("TYPE_OF_SAMPLE", "26", 1, 30).get("totalItems"));
+        assertEquals(1L, query("LOCALIZATION", "142", 1, 30).get("totalItems"));
+    }
+
+    @Test
+    public void searchRetainsSqlLikeWildcardsAndBackslashEscapesWithoutRawIdFallback() {
+        rows(List.of(named("3", "sampleType", "25", "old", "new"), named("2", "sampleType", "205", "old", "new"),
+                named("1", "sampleType", "31", "old", "new")));
+        assertEquals(2L, query("TYPE_OF_SAMPLE", "2%5", 1, 30).get("totalItems"));
+        assertEquals(1L, query("TYPE_OF_SAMPLE", "2_5", 1, 30).get("totalItems"));
+        assertEquals(0L, query("TYPE_OF_SAMPLE", "2\\%5", 1, 30).get("totalItems"));
+        assertEquals(0L, query("TYPE_OF_SAMPLE", "2\\_5", 1, 30).get("totalItems"));
+        assertEquals(2L, query("TYPE_OF_SAMPLE", "2" + "%".repeat(2000) + "5", 1, 30).get("totalItems"));
+        assertEquals(0L, query("TYPE_OF_SAMPLE", "%_".repeat(2000) + "x", 1, 30).get("totalItems"));
+    }
+
+    @Test
+    public void csvAndPdfUseTheSameFilteredBusinessIdentityAndExcludeOtherRows() throws Exception {
+        rows(List.of(named("2", "sampleType", "25", "old25", "new25"),
+                named("1", "sampleType", "26", "old26", "new26")));
+        var csv = new MockHttpServletResponse();
+        controller.exportCsv(null, null, null, "TYPE_OF_SAMPLE", null, "25", null, csv);
+        assertTrue(csv.getContentAsString().contains("TYPE_OF_SAMPLE,25,"));
+        assertFalse(csv.getContentAsString().contains("old26"));
+        var pdf = new MockHttpServletResponse();
+        controller.exportPdf(null, null, null, "TYPE_OF_SAMPLE", null, "25", null, pdf);
+        var reader = new com.itextpdf.text.pdf.PdfReader(pdf.getContentAsByteArray());
+        String text = com.itextpdf.text.pdf.parser.PdfTextExtractor.getTextFromPage(reader, 1);
+        reader.close();
+        assertTrue(text.contains("TYPE_OF_SAMPLE"));
+        assertTrue(text.contains("old25"));
+        assertFalse(text.contains("old26"));
+        verify(histories, times(2)).scanSystemEventHistory(isNull(), isNull(), isNull(), anyList(), isNull(), any(),
+                eq(0L), eq(10000), eq(false));
+    }
+
+    @Test
+    public void exportCapsSelectedRowsButFilteredListCountRemainsUntruncated() throws Exception {
+        List<History> many = new ArrayList<>();
+        for (int i = 10005; i > 0; i--)
+            many.add(named(String.valueOf(i), "sampleType", "25", "old", "new"));
+        rows(many);
+        var body = query("TYPE_OF_SAMPLE", "25", 101, 100);
+        assertEquals(10005L, body.get("totalItems"));
+        assertEquals(5, eventIds(body).size());
+        var csv = new MockHttpServletResponse();
+        controller.exportCsv(null, null, null, "TYPE_OF_SAMPLE", null, "25", null, csv);
+        assertEquals(10001, csv.getContentAsString().split("\\R").length);
+    }
+
+    @Test
+    public void filteredQueriesForwardDatabaseDateUserActionAndOnlyRegisteredScope() {
+        rows(List.of());
+        controller.getSystemAuditEvents("2026-10-04", "2026-10-04", "7", "TYPE_OF_SAMPLE", "U", "25", null, 1, 30);
+        verify(histories).scanSystemEventHistory(notNull(), notNull(), eq("7"), argThat(
+                ids -> ids.contains(LOCALIZATION_TABLE_ID) && ids.contains(SAMPLE_TYPE_TABLE_ID) && ids.size() == 7),
+                eq("U"), any(), eq(0L), eq(30), eq(true));
+    }
+
+    @Test
+    public void maximumPageUsesLongOffsetAndNeverWrapsToAnEarlierPage() {
+        rows(List.of(named("1", "sampleType", "25", "old", "new")));
+        assertEquals(List.of(), eventIds(query("TYPE_OF_SAMPLE", "25", Integer.MAX_VALUE, 100)));
+        verify(histories).scanSystemEventHistory(isNull(), isNull(), isNull(), anyList(), isNull(), any(),
+                eq((Integer.MAX_VALUE - 1L) * 100), eq(100), eq(true));
+        clearInvocations(histories);
+        assertEquals(List.of(), fetch(null, Integer.MAX_VALUE, 100));
+        verify(histories, never()).getSystemEventHistory(any(), any(), any(), anyList(), any(), any(), any(), anyInt(),
+                anyInt());
+    }
+
+    @Test
+    public void patientScopeStillQueriesOnlyPatientAndLinkedPersonUsingOriginalFilters() {
+        var patient = new org.openelisglobal.patient.valueholder.Patient();
+        patient.setId("25");
+        var person = new org.openelisglobal.person.valueholder.Person();
+        person.setId("75");
+        patient.setPerson(person);
+        when(patients.get("25")).thenReturn(patient);
+        when(histories.getSystemEventHistory(isNull(), isNull(), eq("7"), eq(List.of("15")), eq("U"), eq("25"),
+                eq("25"), eq(1), eq(10000))).thenReturn(List.of(history("2", "15", "25", Map.of("gender", "M"))));
+        when(histories.getSystemEventHistory(isNull(), isNull(), eq("7"), eq(List.of("16")), eq("U"), eq("25"),
+                eq("75"), eq(1), eq(10000))).thenReturn(List.of(history("1", "16", "75", Map.of("firstName", "old"))));
+        var body = controller.getSystemAuditEvents(null, null, "7", "TYPE_OF_SAMPLE", "U", "25", "25", 1, 30).getBody();
+        assertEquals(2L, body.get("totalItems"));
+        assertEquals(List.of("2", "1"), eventIds(body));
+        verify(histories, never()).scanSystemEventHistory(any(), any(), any(), anyList(), any(), any(), anyLong(),
+                anyInt(), anyBoolean());
+    }
+
+    private Map<String, Object> query(String type, String search, int page, int size) {
+        return controller.getSystemAuditEvents(null, null, null, type, null, search, null, page, size).getBody();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> eventIds(Map<String, Object> body) {
+        return ((List<Map<String, Object>>) body.get("events")).stream().map(event -> (String) event.get("id"))
+                .toList();
+    }
+
     private ReferenceTables reference(String id) {
         ReferenceTables reference = new ReferenceTables();
         reference.setId(id);
@@ -361,10 +542,11 @@ public class ConfigurationNameAuditReadContractTest {
     }
 
     private void rows(List<History> rows) {
+        candidates = rows;
         when(histories.getSystemEventHistory(isNull(), isNull(), isNull(), anyList(), isNull(), isNull(), isNull(),
                 anyInt(), anyInt())).thenReturn(rows);
-        when(histories.getSystemEventHistoryCount(isNull(), isNull(), isNull(), anyList(), isNull(), isNull(), isNull()))
-                .thenReturn((long) rows.size());
+        when(histories.getSystemEventHistoryCount(isNull(), isNull(), isNull(), anyList(), isNull(), isNull(),
+                isNull())).thenReturn((long) rows.size());
     }
 
     @SuppressWarnings("unchecked")

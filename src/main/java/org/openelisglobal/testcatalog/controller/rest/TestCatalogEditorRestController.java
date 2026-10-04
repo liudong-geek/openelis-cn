@@ -240,8 +240,10 @@ public class TestCatalogEditorRestController {
                 continue;
             }
             String name = test.getName();
+            String code = test.getLocalCode();
             if (searchLower != null && !searchLower.isBlank()
-                    && (name == null || !name.toLowerCase(Locale.ROOT).contains(searchLower))) {
+                    && (name == null || !name.toLowerCase(Locale.ROOT).contains(searchLower))
+                    && (code == null || !code.toLowerCase(Locale.ROOT).contains(searchLower))) {
                 continue;
             }
             List<CatalogHealthService.Finding> findings = findingsByTest.getOrDefault(test.getId(), List.of());
@@ -251,7 +253,7 @@ public class TestCatalogEditorRestController {
             TestListRow row = new TestListRow();
             row.testId = test.getId();
             row.name = name;
-            row.code = test.getLocalCode();
+            row.code = code;
             row.domain = test.getDomain();
             row.active = active;
             row.amr = testAmr;

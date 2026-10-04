@@ -16,6 +16,9 @@ public interface HistoryDAO extends BaseDAO<History, String> {
             List<String> referenceTableIds, String activity, String search, String referenceId, int page, int pageSize)
             throws LIMSRuntimeException;
 
+    List<History> getSystemEventHistoryCandidates(Timestamp startDate, Timestamp endDate, String sysUserId,
+            List<String> referenceTableIds, String activity, int page, int pageSize);
+
     long getSystemEventHistoryCount(Timestamp startDate, Timestamp endDate, String sysUserId,
             List<String> referenceTableIds, String activity, String search, String referenceId)
             throws LIMSRuntimeException;

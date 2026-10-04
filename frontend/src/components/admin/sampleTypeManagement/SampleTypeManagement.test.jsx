@@ -352,6 +352,25 @@ describe("SampleTypeManagement basic editor", () => {
       expect(apiMocks.put).not.toHaveBeenCalled();
     },
   );
+  test("localizes discard confirmation Close and retains the draft when it is dismissed", async () => {
+    renderPage();
+    const dialog = await edit();
+    modifyZh(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    const heading = await screen.findByRole("heading", {
+      name: "尚有未保存的修改",
+    });
+    const confirmation = heading.closest('[role="dialog"]');
+    expect(
+      within(confirmation).queryByRole("button", { name: "Close" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(confirmation).getByRole("button", { name: "关闭" }));
+    expect(
+      screen.queryByRole("heading", { name: "尚有未保存的修改" }),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).getByLabelText("中文显示名称")).toHaveValue("新血清");
+    expect(apiMocks.put).not.toHaveBeenCalled();
+  });
   test("locks repeated save, fields, X/Escape, Cancel, and navigation while submitting", async () => {
     let callback;
     apiMocks.put.mockImplementation((_url, _payload, cb) => {

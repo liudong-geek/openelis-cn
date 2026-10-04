@@ -2,7 +2,9 @@ package org.openelisglobal.history.service;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 import org.openelisglobal.audittrail.dao.HistoryDAO;
 import org.openelisglobal.audittrail.valueholder.History;
 import org.openelisglobal.common.exception.LIMSRuntimeException;
@@ -10,6 +12,7 @@ import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.service.AuditableBaseObjectServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -83,5 +86,33 @@ public class HistoryServiceImpl extends AuditableBaseObjectServiceImpl<History, 
             throws LIMSRuntimeException {
         return baseObjectDAO.getSystemEventHistoryCount(startDate, endDate, sysUserId, referenceTableIds, activity,
                 search, referenceId);
+    }
+
+    @Override
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public HistorySelection scanSystemEventHistory(Timestamp startDate, Timestamp endDate, String sysUserId,
+            List<String> referenceTableIds, String activity, Predicate<History> matches, long offset, int limit,
+            boolean countAll) {
+        if (referenceTableIds == null || referenceTableIds.isEmpty())
+            return new HistorySelection(List.of(), 0);
+        if (offset < 0 || limit < 1 || limit > 10000 || matches == null)
+            throw new IllegalArgumentException("Invalid audit selection");
+        List<History> selected = new ArrayList<>(Math.min(limit, 500));
+        long total = 0;
+        for (int batchPage = 1;; batchPage++) {
+            List<History> candidates = baseObjectDAO.getSystemEventHistoryCandidates(startDate, endDate, sysUserId,
+                    referenceTableIds, activity, batchPage, 500);
+            for (History history : candidates) {
+                if (!matches.test(history))
+                    continue;
+                if (total >= offset && selected.size() < limit)
+                    selected.add(history);
+                total++;
+                if (!countAll && selected.size() == limit)
+                    return new HistorySelection(selected, total);
+            }
+            if (candidates.size() < 500)
+                return new HistorySelection(selected, total);
+        }
     }
 }

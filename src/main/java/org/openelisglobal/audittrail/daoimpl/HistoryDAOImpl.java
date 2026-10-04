@@ -65,7 +65,7 @@ public class HistoryDAOImpl extends BaseDAOImpl<History, String> implements Hist
         try {
             StringBuilder hql = new StringBuilder("from History h where 1=1");
             appendFilters(hql, startDate, endDate, sysUserId, referenceTableIds, activity, search, referenceId);
-            hql.append(" order by h.timestamp desc");
+            hql.append(" order by h.timestamp desc, h.id desc");
 
             Query<History> query = entityManager.unwrap(Session.class).createQuery(hql.toString(), History.class);
             setFilterParameters(query, startDate, endDate, sysUserId, referenceTableIds, activity, search, referenceId);
@@ -76,6 +76,21 @@ public class HistoryDAOImpl extends BaseDAOImpl<History, String> implements Hist
             LogEvent.logError(e);
             throw new LIMSRuntimeException("Error in HistoryDAOImpl getSystemEventHistory()", e);
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<History> getSystemEventHistoryCandidates(Timestamp startDate, Timestamp endDate, String sysUserId,
+            List<String> referenceTableIds, String activity, int page, int pageSize) {
+        if (referenceTableIds == null || referenceTableIds.isEmpty())
+            return Collections.emptyList();
+        List<History> rows = getSystemEventHistory(startDate, endDate, sysUserId, referenceTableIds, activity, null,
+                null, page, pageSize);
+        // Only the dedicated read-only scan detaches rows. Normal history reads
+        // retain their existing managed-entity semantics.
+        for (History row : rows)
+            entityManager.detach(row);
+        return rows;
     }
 
     @Override
