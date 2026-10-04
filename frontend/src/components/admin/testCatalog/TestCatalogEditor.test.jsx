@@ -14,6 +14,10 @@ const mockHistory = {
   location: { search: "" },
 };
 let mockParams = {};
+let mockLocation = {
+  pathname: "/MasterListsPage/TestCatalogEditor/7",
+  search: "",
+};
 
 vi.mock("react-router-dom", async (importOriginal) => {
   const actual = await importOriginal();
@@ -22,10 +26,7 @@ vi.mock("react-router-dom", async (importOriginal) => {
     useHistory: () => mockHistory,
     useParams: () => mockParams,
     // base is derived from the pathname; a non-/admin path → /MasterListsPage.
-    useLocation: () => ({
-      pathname: "/MasterListsPage/TestCatalogEditor/7",
-      search: "",
-    }),
+    useLocation: () => mockLocation,
   };
 });
 
@@ -155,6 +156,10 @@ const envelope = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockParams = { testId: "7" };
+  mockLocation = {
+    pathname: "/MasterListsPage/TestCatalogEditor/7",
+    search: "",
+  };
 });
 
 describe("TestCatalogEditor shell", () => {
@@ -254,5 +259,45 @@ describe("TestCatalogEditor shell", () => {
       "/rest/test-catalog/tests/new",
       expect.anything(),
     );
+  });
+});
+
+describe("catalog return context", () => {
+  const list = "/MasterListsPage/TestCatalogList?q=GLU&page=3&pageSize=20";
+  const search = `?returnTo=${encodeURIComponent(list)}`;
+
+  it("retains context during section canonicalization, related-group entry and Cancel", async () => {
+    mockLocation.search = search;
+    getFromOpenElisServer.mockImplementation((url, cb) =>
+      cb(
+        url.endsWith("/siblings")
+          ? [{ testId: "7" }, { testId: "8" }]
+          : envelope,
+      ),
+    );
+    renderEditor();
+    await screen.findByText("Glucose Panel");
+    expect(mockHistory.replace).toHaveBeenCalledWith(
+      `/MasterListsPage/TestCatalogEditor/7/basic-info${search}`,
+    );
+    fireEvent.click(screen.getByTestId("edit-related-tests"));
+    expect(mockHistory.push).toHaveBeenCalledWith(
+      `/MasterListsPage/TestCatalogEditor/group/7,8/ranges${search}`,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(mockHistory.push).toHaveBeenLastCalledWith(list);
+  });
+
+  it("returns an admin legacy deep link to its own list when returnTo is unsafe", async () => {
+    mockLocation = {
+      pathname: "/admin/TestCatalogEditor/7/ranges",
+      search: "?returnTo=https%3A%2F%2Fevil.invalid",
+    };
+    mockParams = { testId: "7", section: "ranges" };
+    getFromOpenElisServer.mockImplementation((url, cb) => cb(envelope));
+    renderEditor();
+    await screen.findByText("Glucose Panel");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(mockHistory.push).toHaveBeenCalledWith("/admin/TestCatalogList");
   });
 });

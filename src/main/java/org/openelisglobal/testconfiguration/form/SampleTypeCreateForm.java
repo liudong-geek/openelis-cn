@@ -1,6 +1,10 @@
 package org.openelisglobal.testconfiguration.form;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import org.openelisglobal.common.form.BaseForm;
 import org.openelisglobal.validation.annotations.SafeHtml;
@@ -27,8 +31,19 @@ public class SampleTypeCreateForm extends BaseForm {
     private String sampleTypeFrenchName;
 
     @SafeHtml(level = SafeHtml.SafeListLevel.NONE)
+    private String nameZh;
+
+    @Size(max = 40)
+    @SafeHtml(level = SafeHtml.SafeListLevel.NONE)
+    private String identifyingName;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    private String createdSampleTypeId;
+
+    @SafeHtml(level = SafeHtml.SafeListLevel.NONE)
     private String domain;
 
+    @Size(max = 5)
     @SafeHtml(level = SafeHtml.SafeListLevel.NONE)
     private String whonetCode;
 
@@ -87,6 +102,38 @@ public class SampleTypeCreateForm extends BaseForm {
 
     public void setSampleTypeFrenchName(String sampleTypeFrenchName) {
         this.sampleTypeFrenchName = sampleTypeFrenchName;
+    }
+
+    public String getNameZh() {
+        return nameZh;
+    }
+
+    public void setNameZh(String nameZh) {
+        this.nameZh = nameZh;
+    }
+
+    public String getIdentifyingName() {
+        return identifyingName;
+    }
+
+    public void setIdentifyingName(String identifyingName) {
+        this.identifyingName = identifyingName;
+    }
+
+    public String getCreatedSampleTypeId() {
+        return createdSampleTypeId;
+    }
+
+    public void setCreatedSampleTypeId(String createdSampleTypeId) {
+        this.createdSampleTypeId = createdSampleTypeId;
+    }
+
+    @AssertTrue(message = "The identifying name must contain at most 40 characters")
+    @JsonIgnore
+    public boolean isIdentifyingNameLengthValid() {
+        String effective = identifyingName == null || identifyingName.trim().isEmpty() ? sampleTypeEnglishName
+                : identifyingName;
+        return effective == null || effective.trim().length() <= 40;
     }
 
     public String getDomain() {

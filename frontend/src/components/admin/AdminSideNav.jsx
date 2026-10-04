@@ -10,7 +10,12 @@ import {
 } from "@carbon/react";
 import { getFromOpenElisServer } from "../utils/Utils";
 import { TEST_CATALOG_SECTION_GROUPS } from "./testCatalog/sectionConfig";
+import {
+  getCatalogReturnTo,
+  withCatalogReturnTo,
+} from "./testCatalog/catalogReturnTo";
 import { SAMPLE_TYPE_SECTIONS } from "./sampleTypeManagement/sectionConfig";
+import { safeSampleTypeReturnTo } from "./sampleTypeManagement/basicEditorHelpers";
 import { getAdminNavigationDomain } from "./adminNavigation";
 
 const getAdminBasePath = (pathname) =>
@@ -30,6 +35,19 @@ export default function AdminSideNav() {
   const location = useLocation();
   const basePath = getAdminBasePath(location.pathname);
   const currentDomain = getAdminNavigationDomain(location.pathname);
+  const catalogReturnTo = getCatalogReturnTo(location.search, basePath);
+  const sampleTypeListPath = `${basePath}/SampleTypeManagement`;
+  const sampleReturnValues = new URLSearchParams(location.search).getAll(
+    "returnTo",
+  );
+  const sampleTypeReturnTo = safeSampleTypeReturnTo(
+    sampleReturnValues.length === 1 ? sampleReturnValues[0] : null,
+    sampleTypeListPath,
+  );
+  const sampleReturnSearch =
+    sampleTypeReturnTo === sampleTypeListPath
+      ? ""
+      : `?returnTo=${encodeURIComponent(sampleTypeReturnTo)}`;
 
   const editorMatch = location.pathname.match(/\/TestCatalogEditor\/([^/]+)/);
   const editorTestId = editorMatch ? editorMatch[1] : null;
@@ -163,7 +181,7 @@ export default function AdminSideNav() {
           data-cy="testCatalogList"
           data-testid="test-catalog-back-to-list"
           renderIcon={ArrowLeft}
-          {...navProps(`${basePath}/TestCatalogList`)}
+          {...navProps(catalogReturnTo)}
         >
           <FormattedMessage id="sidenav.label.admin.testCatalog.backToList" />
         </SideNavLink>
@@ -185,33 +203,37 @@ export default function AdminSideNav() {
           </strong>
         </li>
 
-        {TEST_CATALOG_SECTION_GROUPS.map((group) => {
-          const isCurrentGroup = group.sections.includes(editorSection);
-          return (
-            <SideNavMenu
-              key={`${group.key}-${isCurrentGroup ? "active" : "idle"}`}
-              data-cy={`testCatalog-group-${group.key}`}
-              defaultExpanded={isCurrentGroup}
-              title={intl.formatMessage({
-                id: `sidenav.label.admin.testCatalog.group.${group.key}`,
-              })}
-            >
-              {group.sections.map((sectionKey) => (
-                <SideNavMenuItem
-                  key={sectionKey}
-                  data-cy={`section-${sectionKey}`}
-                  {...navProps(
-                    `${basePath}/TestCatalogEditor/${editorTestId}/${sectionKey}`,
-                  )}
-                >
-                  <FormattedMessage
-                    id={`label.testCatalog.section.${sectionKey}`}
-                  />
-                </SideNavMenuItem>
-              ))}
-            </SideNavMenu>
-          );
-        })}
+        {editorTestId !== "group" &&
+          TEST_CATALOG_SECTION_GROUPS.map((group) => {
+            const isCurrentGroup = group.sections.includes(editorSection);
+            return (
+              <SideNavMenu
+                key={`${group.key}-${isCurrentGroup ? "active" : "idle"}`}
+                data-cy={`testCatalog-group-${group.key}`}
+                defaultExpanded={isCurrentGroup}
+                title={intl.formatMessage({
+                  id: `sidenav.label.admin.testCatalog.group.${group.key}`,
+                })}
+              >
+                {group.sections.map((sectionKey) => (
+                  <SideNavMenuItem
+                    key={sectionKey}
+                    data-cy={`section-${sectionKey}`}
+                    {...navProps(
+                      withCatalogReturnTo(
+                        `${basePath}/TestCatalogEditor/${editorTestId}/${sectionKey}`,
+                        catalogReturnTo,
+                      ),
+                    )}
+                  >
+                    <FormattedMessage
+                      id={`label.testCatalog.section.${sectionKey}`}
+                    />
+                  </SideNavMenuItem>
+                ))}
+              </SideNavMenu>
+            );
+          })}
       </SideNavItems>
     );
   }
@@ -229,7 +251,7 @@ export default function AdminSideNav() {
       >
         <SideNavMenuItem
           data-cy="sampleTypeManagement"
-          {...navProps(`${basePath}/SampleTypeManagement`)}
+          {...navProps(sampleTypeReturnTo)}
         >
           <FormattedMessage
             id={
@@ -275,7 +297,7 @@ export default function AdminSideNav() {
                 key={sectionKey}
                 data-cy={`sampleType-section-${sectionKey}`}
                 {...navProps(
-                  `${basePath}/SampleTypeManagement/${editorSampleTypeId}/${sectionKey}`,
+                  `${basePath}/SampleTypeManagement/${editorSampleTypeId}/${sectionKey}${sampleReturnSearch}`,
                 )}
               >
                 <FormattedMessage

@@ -32,6 +32,7 @@ import org.springframework.test.util.ReflectionTestUtils;
  */
 public class ConfigurationNameAuditReadContractTest {
     private static final String LOCALIZATION_TABLE_ID = "216";
+    private static final String SAMPLE_TYPE_TABLE_ID = "34";
     private static final String TEST_TABLE_ID = "4";
     private SystemAuditEventRestController controller;
     private HistoryService histories;
@@ -46,6 +47,7 @@ public class ConfigurationNameAuditReadContractTest {
         ReferenceTablesService references = mock(ReferenceTablesService.class);
         when(references.getReferenceTableByName("LOCALIZATION")).thenReturn(reference(LOCALIZATION_TABLE_ID));
         when(references.getReferenceTableByName("TEST")).thenReturn(reference(TEST_TABLE_ID));
+        when(references.getReferenceTableByName("TYPE_OF_SAMPLE")).thenReturn(reference(SAMPLE_TYPE_TABLE_ID));
         ReflectionTestUtils.setField(controller, "historyService", histories);
         ReflectionTestUtils.setField(controller, "snapshotService", snapshots);
         ReflectionTestUtils.setField(controller, "referenceTablesService", references);
@@ -215,6 +217,108 @@ public class ConfigurationNameAuditReadContractTest {
         Map<String, Object> unrelated = fetch(null, 1, 30).get(0);
         assertFalse(unrelated.containsKey("businessId"));
         assertPair(unrelated, "zhAfter", "新名称", "");
+    }
+
+    @Test
+    public void sampleChineseSnapshotReturnsIndependentPairsAndSampleBusinessId() {
+        rows(List.of(named("1", "sampleType", "985001", "原标本", "新标本")));
+        Map<String, Object> event = fetch(null, 1, 30).get(0);
+        assertPair(event, "zh", "原标本", "新标本");
+        assertEquals("LOCALIZATION", event.get("entityType"));
+        assertEquals("985001", event.get("businessId"));
+        verifyZeroInteractions(snapshots);
+    }
+
+    @Test
+    public void sampleMetadataSnapshotReturnsExactAllChangedFieldsAndNoContextAsChange() {
+        rows(List.of(history("1", SAMPLE_TYPE_TABLE_ID, "985001",
+                Map.of("configurationType", "sampleType", "businessId", "985001", "abbreviationBefore", "BAS1",
+                        "abbreviationAfter", "AFTER", "isActiveBefore", "true", "isActiveAfter", "false"))));
+        Map<String, Object> event = fetch(null, 1, 30).get(0);
+        assertPair(event, "abbreviation", "BAS1", "AFTER");
+        assertPair(event, "isActive", "true", "false");
+        assertEquals(2, ((Map<?, ?>) event.get("changes")).size());
+        verifyZeroInteractions(snapshots);
+    }
+
+    @Test
+    public void catalogBasicSnapshotDoesNotGuessNewValuesFromCurrentEntity() {
+        rows(List.of(history("1", TEST_TABLE_ID, "985201",
+                Map.of("configurationType", "testCatalog", "businessId", "985201", "codeBefore", "BEFORE", "codeAfter",
+                        "AFTER", "sampleTypeIdsBefore", "985001", "sampleTypeIdsAfter", "985002"))));
+        Map<String, Object> event = fetch(null, 1, 30).get(0);
+        assertPair(event, "code", "BEFORE", "AFTER");
+        assertPair(event, "sampleTypeIds", "985001", "985002");
+        assertEquals("testCatalog", event.get("configurationType"));
+        verifyZeroInteractions(snapshots);
+    }
+
+    @Test
+    public void csvSampleChineseUsesSampleIdentityAndUtf8OldNewValues() throws Exception {
+        rows(List.of(named("1", "sampleType", "985001", "原中文 & 名称", "新中文 & 名称")));
+        String[] columns = csvRow("LOCALIZATION");
+        assertEquals("TYPE_OF_SAMPLE", columns[2]);
+        assertEquals("985001", columns[3]);
+        assertEquals("zh: 原中文 & 名称", columns[5]);
+        assertEquals("zh: 新中文 & 名称", columns[6]);
+        verifyZeroInteractions(snapshots);
+    }
+
+    @Test
+    public void csvSampleMetadataKeepsOriginalTypeIdentityAndIndependentPairs() throws Exception {
+        rows(List.of(history("1", SAMPLE_TYPE_TABLE_ID, "985001", Map.of("configurationType", "sampleType",
+                "businessId", "985001", "abbreviationBefore", "BAS1", "abbreviationAfter", "AFTER"))));
+        String[] columns = csvRow(null);
+        assertEquals("TYPE_OF_SAMPLE", columns[2]);
+        assertEquals("985001", columns[3]);
+        assertEquals("abbreviation: BAS1", columns[5]);
+        assertEquals("abbreviation: AFTER", columns[6]);
+    }
+
+    @Test
+    public void csvCatalogMetadataKeepsTestIdentityAndIndependentPairs() throws Exception {
+        rows(List.of(history("1", TEST_TABLE_ID, "985201", Map.of("configurationType", "testCatalog", "businessId",
+                "985201", "descriptionBefore", "原检验项目", "descriptionAfter", "新检验项目"))));
+        String[] columns = csvRow(null);
+        assertEquals("TEST", columns[2]);
+        assertEquals("985201", columns[3]);
+        assertEquals("description: 原检验项目", columns[5]);
+        assertEquals("description: 新检验项目", columns[6]);
+    }
+
+    @Test
+    public void unsupportedMetadataFieldOrIncompletePairKeepsLegacyBehavior() {
+        for (Map<String, String> bad : List.of(
+                Map.of("configurationType", "sampleType", "businessId", "985001", "abbreviationBefore", "BAS1"),
+                Map.of("configurationType", "sampleType", "businessId", "985001", "otherBefore", "OLD", "otherAfter",
+                        "NEW"))) {
+            rows(List.of(history("1", SAMPLE_TYPE_TABLE_ID, "985001", bad)));
+            assertFalse(fetch(null, 1, 30).get(0).containsKey("businessId"));
+        }
+    }
+
+    @Test
+    public void mismatchedTableTypeOrBusinessIdentityCannotMasqueradeAsSnapshot() {
+        rows(List.of(history("1", TEST_TABLE_ID, "985001", Map.of("configurationType", "sampleType", "businessId",
+                "985001", "abbreviationBefore", "BAS1", "abbreviationAfter", "AFTER"))));
+        assertFalse(fetch(null, 1, 30).get(0).containsKey("businessId"));
+        rows(List.of(history("1", SAMPLE_TYPE_TABLE_ID, "985001", Map.of("configurationType", "sampleType",
+                "businessId", "985002", "abbreviationBefore", "BAS1", "abbreviationAfter", "AFTER"))));
+        assertFalse(fetch(null, 1, 30).get(0).containsKey("businessId"));
+    }
+
+    @Test
+    public void successiveCatalogSnapshotsKeepExactHistoricalValuesAcrossPages() {
+        rows(List.of(
+                history("2", TEST_TABLE_ID, "985201",
+                        Map.of("configurationType", "testCatalog", "businessId", "985201", "codeBefore", "MIDDLE",
+                                "codeAfter", "NEW")),
+                history("1", TEST_TABLE_ID, "985201", Map.of("configurationType", "testCatalog", "businessId", "985201",
+                        "codeBefore", "OLD", "codeAfter", "MIDDLE"))));
+        var events = fetch(null, 1, 30);
+        assertPair(events.get(0), "code", "MIDDLE", "NEW");
+        assertPair(events.get(1), "code", "OLD", "MIDDLE");
+        verifyZeroInteractions(snapshots);
     }
 
     private ReferenceTables reference(String id) {

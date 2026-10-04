@@ -320,3 +320,107 @@ describe("AdminSideNav — Test Catalog Management entry", () => {
     ).toBe("/admin/TestCatalogEditor/7/storage");
   });
 });
+
+describe("catalog return context", () => {
+  it("preserves the original list through section hrefs, clicks and return", () => {
+    const list = "/MasterListsPage/TestCatalogList?q=ALT&page=2&pageSize=20";
+    const search = `?returnTo=${encodeURIComponent(list)}`;
+    mockLocation = {
+      pathname: "/MasterListsPage/TestCatalogEditor/7/methods",
+      search,
+    };
+    const { container } = renderNav();
+    expect(screen.getByTestId("test-catalog-back-to-list")).toHaveAttribute(
+      "href",
+      list,
+    );
+    expect(
+      container.querySelector('[data-cy="section-methods"]'),
+    ).toHaveAttribute("aria-current", "page");
+    const ranges = container.querySelector('[data-cy="section-ranges"]');
+    expect(ranges).toHaveAttribute(
+      "href",
+      `/MasterListsPage/TestCatalogEditor/7/ranges${search}`,
+    );
+    act(() => ranges.click());
+    expect(mockHistory.push).toHaveBeenCalledWith(
+      `/MasterListsPage/TestCatalogEditor/7/ranges${search}`,
+    );
+  });
+
+  it("does not propagate a foreign return target into editor links", () => {
+    mockLocation = {
+      pathname: "/admin/TestCatalogEditor/7/methods",
+      search: "?returnTo=%2F%2Fevil.invalid",
+    };
+    const { container } = renderNav();
+    expect(screen.getByTestId("test-catalog-back-to-list")).toHaveAttribute(
+      "href",
+      "/admin/TestCatalogList",
+    );
+    expect(
+      container.querySelector('[data-cy="section-ranges"]'),
+    ).toHaveAttribute("href", "/admin/TestCatalogEditor/7/ranges");
+  });
+});
+
+it("keeps grouped editing on its own sections and returns to the original list", () => {
+  const list = "/MasterListsPage/TestCatalogList?q=ALT&page=2";
+  mockLocation = {
+    pathname: "/MasterListsPage/TestCatalogEditor/group/7,8/ranges",
+    search: `?returnTo=${encodeURIComponent(list)}`,
+  };
+  const { container } = renderNav();
+  expect(screen.getByTestId("test-catalog-back-to-list")).toHaveAttribute(
+    "href",
+    list,
+  );
+  expect(container.querySelectorAll('[data-cy^="section-"]')).toHaveLength(0);
+  act(() => screen.getByTestId("test-catalog-back-to-list").click());
+  expect(mockHistory.push).toHaveBeenCalledWith(list);
+});
+
+it.each(["/MasterListsPage", "/admin"])(
+  "preserves %s sample-type filters through associated configuration and return",
+  (base) => {
+    const list = `${base}/SampleTypeManagement?q=EDTA&domain=CLINICAL&page=3&pageSize=50`;
+    const search = `?returnTo=${encodeURIComponent(list)}`;
+    mockLocation = {
+      pathname: `${base}/SampleTypeManagement/24/tests`,
+      search,
+    };
+    const { container } = renderNav();
+    expect(
+      container.querySelector('[data-cy="sampleTypeManagement"]'),
+    ).toHaveAttribute("href", list);
+    SAMPLE_TYPE_SECTIONS.forEach((section) => {
+      const link = container.querySelector(
+        `[data-cy="sampleType-section-${section}"]`,
+      );
+      expect(link).toHaveAttribute(
+        "href",
+        `${base}/SampleTypeManagement/24/${section}${search}`,
+      );
+    });
+    act(() =>
+      container.querySelector('[data-cy="sampleTypeManagement"]').click(),
+    );
+    expect(mockHistory.push).toHaveBeenCalledWith(list);
+  },
+);
+
+it.each([
+  "?returnTo=https%3A%2F%2Fevil.invalid",
+  "?returnTo=%2Fadmin%2FSampleTypeManagement&returnTo=%2Fadmin%2FSampleTypeManagement%3Fq%3Ddifferent",
+])("rejects unsafe or ambiguous sample-type return context: %s", (search) => {
+  mockLocation = { pathname: "/admin/SampleTypeManagement/24/tests", search };
+  const { container } = renderNav();
+  expect(
+    container.querySelector('[data-cy="sampleTypeManagement"]'),
+  ).toHaveAttribute("href", "/admin/SampleTypeManagement");
+  SAMPLE_TYPE_SECTIONS.forEach((section) =>
+    expect(
+      container.querySelector(`[data-cy="sampleType-section-${section}"]`),
+    ).toHaveAttribute("href", `/admin/SampleTypeManagement/24/${section}`),
+  );
+});

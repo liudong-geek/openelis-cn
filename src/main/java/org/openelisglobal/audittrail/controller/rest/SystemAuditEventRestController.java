@@ -178,7 +178,7 @@ public class SystemAuditEventRestController {
      * paired with the entity's current persisted value when available
      * (patient-scoped queries pre-load the patient + linked person); older
      * occurrences chain to the next-newer row's old value for the same field.
-     * Explicit configuration-name snapshots carry their own before/after values and
+     * Explicit configuration snapshots carry their own before/after values and
      * never use the current entity or this reverse chain.
      */
     private List<Map<String, Object>> buildItemsWithOldNew(List<History> events, String patientId,
@@ -207,7 +207,7 @@ public class SystemAuditEventRestController {
         for (History h : events) {
             Map<String, String> parsed = parseChanges(h);
             parsedByHistory.put(h, parsed);
-            if (!parsed.isEmpty() && !isConfigurationNameSnapshot(h, parsed)) {
+            if (!parsed.isEmpty() && !isExplicitConfigurationSnapshot(h, parsed)) {
                 fieldsByEntityKey.computeIfAbsent(entityKey(h.getReferenceTable(), h.getReferenceId()),
                         k -> new java.util.HashSet<>()).addAll(parsed.keySet());
             }
@@ -238,16 +238,17 @@ public class SystemAuditEventRestController {
             item.put("action", mapActivity(h.getActivity()));
 
             Map<String, String> oldByField = parsedByHistory.getOrDefault(h, Collections.emptyMap());
-            if (isConfigurationNameSnapshot(h, oldByField)) {
+            if (isExplicitConfigurationSnapshot(h, oldByField)) {
                 item.put("configurationType", oldByField.get("configurationType"));
                 item.put("businessId", oldByField.get("businessId"));
                 Map<String, Map<String, String>> changes = new LinkedHashMap<>();
-                for (String locale : new String[] { "en", "fr", "zh" }) {
-                    if (oldByField.containsKey(locale + "Before")) {
+                for (String key : oldByField.keySet()) {
+                    if (key.endsWith("Before")) {
+                        String field = key.substring(0, key.length() - "Before".length());
                         Map<String, String> pair = new LinkedHashMap<>();
-                        pair.put("old", StringEscapeUtils.unescapeXml(oldByField.get(locale + "Before")));
-                        pair.put("new", StringEscapeUtils.unescapeXml(oldByField.get(locale + "After")));
-                        changes.put(locale, pair);
+                        pair.put("old", StringEscapeUtils.unescapeXml(oldByField.get(key)));
+                        pair.put("new", StringEscapeUtils.unescapeXml(oldByField.get(field + "After")));
+                        changes.put(field, pair);
                     }
                 }
                 item.put("changes", changes);
@@ -289,28 +290,42 @@ public class SystemAuditEventRestController {
     }
 
     /**
-     * Only the explicit name-change format is self-contained; legacy XML still
-     * chains.
+     * Only the explicit configuration-change format is self-contained; legacy XML
+     * still chains.
      */
-    private boolean isConfigurationNameSnapshot(History history, Map<String, String> values) {
-        if (!"U".equals(history.getActivity())
-                || !"LOCALIZATION".equals(refTableIdToName.get(history.getReferenceTable()))) {
+    private boolean isExplicitConfigurationSnapshot(History history, Map<String, String> values) {
+        if (!"U".equals(history.getActivity()))
             return false;
-        }
+        String table = refTableIdToName.get(history.getReferenceTable());
         String type = values.get("configurationType");
         String businessId = values.get("businessId");
-        if (!("panel".equals(type) || "testSection".equals(type)) || businessId == null
-                || !businessId.matches("[0-9]+")) {
+        if (businessId == null || !businessId.matches("[0-9]+"))
             return false;
-        }
+        List<String> fields;
+        if ("LOCALIZATION".equals(table)
+                && ("panel".equals(type) || "testSection".equals(type) || "sampleType".equals(type))) {
+            fields = Arrays.asList("en", "fr", "zh");
+        } else if ("TYPE_OF_SAMPLE".equals(table) && "sampleType".equals(type)
+                && businessId.equals(history.getReferenceId())) {
+            fields = Arrays.asList("description", "domain", "abbreviation", "whonetCode", "disposalInstructions",
+                    "isActive", "sortOrder");
+        } else if ("TEST".equals(table) && "testCatalog".equals(type) && businessId.equals(history.getReferenceId())) {
+            fields = Arrays.asList("code", "description", "domain", "labUnitId", "sampleTypeIds",
+                    "antimicrobialResistance", "active", "orderable");
+        } else
+            return false;
         boolean hasPair = false;
-        for (String locale : new String[] { "en", "fr", "zh" }) {
-            boolean before = values.containsKey(locale + "Before");
-            boolean after = values.containsKey(locale + "After");
-            if (before != after) {
+        for (String field : fields) {
+            boolean before = values.containsKey(field + "Before"), after = values.containsKey(field + "After");
+            if (before != after)
                 return false;
-            }
             hasPair |= before;
+        }
+        for (String key : values.keySet()) {
+            if (key.endsWith("Before") && !fields.contains(key.substring(0, key.length() - 6)))
+                return false;
+            if (key.endsWith("After") && !fields.contains(key.substring(0, key.length() - 5)))
+                return false;
         }
         return hasPair;
     }
@@ -322,6 +337,10 @@ public class SystemAuditEventRestController {
         if ("testSection".equals(item.get("configurationType"))) {
             return "TEST_SECTION";
         }
+        if ("sampleType".equals(item.get("configurationType")))
+            return "TYPE_OF_SAMPLE";
+        if ("testCatalog".equals(item.get("configurationType")))
+            return "TEST";
         return (String) item.get("entityType");
     }
 

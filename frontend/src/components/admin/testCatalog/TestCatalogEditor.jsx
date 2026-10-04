@@ -31,6 +31,7 @@ import AlertsSection from "./sections/AlertsSection";
 import ReflexCalcSection from "./sections/ReflexCalcSection";
 import LocalizationSection from "./sections/LocalizationSection";
 import { DEFAULT_SECTION, isValidSection } from "./sectionConfig";
+import { getCatalogReturnTo, withCatalogReturnTo } from "./catalogReturnTo";
 
 /**
  * OGC-949 M2 / OGC-927 — unified Test Catalog editor shell.
@@ -53,6 +54,7 @@ const TestCatalogEditor = () => {
   const base = location.pathname.startsWith("/admin")
     ? "/admin"
     : "/MasterListsPage";
+  const returnTo = getCatalogReturnTo(location.search, base);
   const { addNotification, setNotificationVisible, notificationVisible } =
     useContext(NotificationContext);
 
@@ -77,10 +79,15 @@ const TestCatalogEditor = () => {
   // Canonicalize the section into the URL so deep-links + the SideNav agree.
   useEffect(() => {
     if (testId && (!section || !isValidSection(section))) {
-      history.replace(`${base}/TestCatalogEditor/${testId}/${DEFAULT_SECTION}`);
+      history.replace(
+        withCatalogReturnTo(
+          `${base}/TestCatalogEditor/${testId}/${DEFAULT_SECTION}`,
+          returnTo,
+        ),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [testId, section]);
+  }, [testId, section, base, returnTo, history]);
 
   const handleEnvelope = (res) => {
     setLoading(false);
@@ -96,12 +103,12 @@ const TestCatalogEditor = () => {
     { label: "breadcrums.admin.managment", link: base },
     {
       label: "label.testCatalog.editor",
-      link: `${base}/TestCatalogList`,
+      link: returnTo,
     },
   ];
 
   const handleCancel = () => {
-    history.push(`${base}/TestCatalogList`);
+    history.push(returnTo);
   };
 
   // FR-7: open the combined editor over this test's specimen siblings (tests
@@ -113,7 +120,10 @@ const TestCatalogEditor = () => {
         const ids = Array.isArray(res) ? res.map((r) => r.testId) : [];
         if (ids.length >= 2) {
           history.push(
-            `${base}/TestCatalogEditor/group/${ids.join(",")}/ranges`,
+            withCatalogReturnTo(
+              `${base}/TestCatalogEditor/group/${ids.join(",")}/ranges`,
+              returnTo,
+            ),
           );
         } else {
           setNotificationVisible(true);

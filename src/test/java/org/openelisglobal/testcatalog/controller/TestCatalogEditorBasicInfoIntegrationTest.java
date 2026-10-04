@@ -32,6 +32,9 @@ import org.springframework.mock.web.MockHttpSession;
  * case-insensitive name sort, and pagination — the behavior contract that a
  * later move to a DB-side projection query must preserve.
  */
+@org.springframework.test.context.ContextConfiguration(classes = { org.openelisglobal.BaseTestConfig.class,
+        org.openelisglobal.AppTestConfig.class,
+        org.openelisglobal.common.management.service.AdminBasicEditPersistenceTest.TestConfig.class })
 public class TestCatalogEditorBasicInfoIntegrationTest extends BaseWebContextSensitiveTest {
 
     private static final long TEST_ID = 95001L;
@@ -81,6 +84,9 @@ public class TestCatalogEditorBasicInfoIntegrationTest extends BaseWebContextSen
     @Autowired
     private org.openelisglobal.panelitem.service.PanelItemService panelItemService;
 
+    @Autowired
+    private org.openelisglobal.testcatalog.service.TestCatalogBasicInfoService basicInfoService;
+
     private TestCatalogEditorRestController controller;
     private JdbcTemplate jdbc;
 
@@ -97,6 +103,7 @@ public class TestCatalogEditorBasicInfoIntegrationTest extends BaseWebContextSen
                 testResultService, resultLimitService, coverageService, handlingService, analyzerService,
                 analyzerTestMappingService, typeOfSampleService, typeOfSampleTestService, terminologyService,
                 panelService, panelItemService);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "basicInfoService", basicInfoService);
         cleanup();
         jdbc.update(
                 "INSERT INTO clinlims.test (id, name, description, is_active, guid, domain, antimicrobial_resistance,"

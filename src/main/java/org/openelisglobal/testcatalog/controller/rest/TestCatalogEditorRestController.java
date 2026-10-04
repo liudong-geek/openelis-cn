@@ -564,136 +564,40 @@ public class TestCatalogEditorRestController {
     }
 
     /** OGC-748 Basic Info — identity + domain + AMR flag + status. */
-    public static class BasicInfo {
-        public String testId;
-        @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
-        public String testGuid;
-        public String name;
-        public String code;
-        public String description;
-        public String domain;
-        public String labUnitId;
-        public String sampleTypeId;
-        // OGC-1145 FR-1/2: all associated sample types (order preserved, primary
-        // first). On write this list wins over the legacy scalar when present.
-        public List<String> sampleTypeIds;
-        public Boolean antimicrobialResistance;
-        public Boolean active;
-        public Boolean orderable;
+    public static class BasicInfo extends org.openelisglobal.testcatalog.form.TestCatalogBasicInfo {
+        public BasicInfo() {
+        }
+
+        public BasicInfo(org.openelisglobal.testcatalog.form.TestCatalogBasicInfo source) {
+            super(source);
+        }
     }
+
+    @Autowired
+    private org.openelisglobal.testcatalog.service.TestCatalogBasicInfoService basicInfoService;
 
     @GetMapping(value = "/tests/{testId}/basic-info", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<BasicInfo> getBasicInfo(@PathVariable String testId) {
-        Test test = testService.getTestById(testId);
-        if (test == null) {
+        try {
+            return ResponseEntity.ok(new BasicInfo(basicInfoService.read(testId)));
+        } catch (java.util.NoSuchElementException e) {
             return ResponseEntity.notFound().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
         }
-        return ResponseEntity.ok(toBasicInfo(test));
     }
 
     @PutMapping(value = "/tests/{testId}/basic-info", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<BasicInfo> saveBasicInfo(@PathVariable String testId, @RequestBody BasicInfo body,
             HttpServletRequest request) {
-        Test test = testService.getTestById(testId);
-        if (test == null) {
+        try {
+            return ResponseEntity
+                    .ok(new BasicInfo(basicInfoService.save(testId, body, ControllerUtills.getSysUserId(request))));
+        } catch (java.util.NoSuchElementException e) {
             return ResponseEntity.notFound().build();
-        }
-        if (body.domain != null && !DOMAINS.contains(body.domain)) {
+        } catch (IllegalArgumentException e) {
             return ResponseEntity.unprocessableEntity().build();
         }
-        // OGC-1145 FR-1/2/3 — validate the sample-type set up front so a rejected
-        // request leaves the test untouched. Absent list + blank scalar means the
-        // caller didn't send the field (partial PUT): skip reconcile entirely.
-        List<String> desiredSampleTypes = resolveSampleTypeIds(body.sampleTypeIds, body.sampleTypeId);
-        boolean reconcileSampleTypes = body.sampleTypeIds != null || !isBlank(body.sampleTypeId);
-        if (reconcileSampleTypes) {
-            boolean effectiveOrderable = body.orderable != null ? body.orderable
-                    : Boolean.TRUE.equals(test.getOrderable());
-            boolean effectiveActive = body.active != null ? body.active : test.isActive();
-            if (desiredSampleTypes.isEmpty() && (effectiveActive || effectiveOrderable)) {
-                return ResponseEntity.unprocessableEntity().build();
-            }
-            String effectiveDomain = body.domain != null ? body.domain : test.getDomain();
-            for (String sampleTypeId : desiredSampleTypes) {
-                if (!sampleTypeDomainCompatible(effectiveDomain, typeOfSampleService.get(sampleTypeId))) {
-                    return ResponseEntity.unprocessableEntity().build();
-                }
-            }
-        }
-        // The display name is localized — it is edited in the Localization section
-        // (which owns the per-locale + English values), so it stays immutable here.
-        // Code and description ARE editable here now (OGC-1112 dependency 8).
-        if (changesImmutableField(body.name, test.getName())) {
-            return ResponseEntity.unprocessableEntity().build();
-        }
-        if (body.code != null && !body.code.isBlank()) {
-            test.setLocalCode(body.code);
-        }
-        if (body.description != null) {
-            test.setDescription(body.description);
-        }
-        // Boxed flags: apply only what the caller actually sent, so a partial PUT
-        // can't silently deactivate / clear AMR / un-orderable a test.
-        if (body.domain != null) {
-            test.setDomain(body.domain);
-        }
-        if (body.antimicrobialResistance != null) {
-            test.setAntimicrobialResistance(body.antimicrobialResistance);
-        }
-        if (body.orderable != null) {
-            test.setOrderable(body.orderable);
-        }
-        // Lab unit (test section) is editable on modify too (not just create).
-        // Assigning an inactive section activates it, mirroring the create flow and
-        // the legacy Test Section assignment, so the test surfaces on Add Order.
-        if (!isBlank(body.labUnitId) && testSectionService != null) {
-            TestSection section = testSectionService.get(body.labUnitId);
-            if (section != null) {
-                if ("N".equals(section.getIsActive())) {
-                    section.setIsActive("Y");
-                    section.setSysUserId(ControllerUtills.getSysUserId(request));
-                    testSectionService.update(section);
-                }
-                test.setTestSection(section);
-            }
-        }
-        // Activation (N→Y) is gated on reference-range coverage (the H-03 safety
-        // gate) and must go through POST .../activate; basic-info only persists a
-        // deactivation, so it cannot be used to bypass the coverage acknowledgment.
-        if (body.active != null && !body.active) {
-            test.setIsActive("N");
-        }
-        test.setSysUserId(ControllerUtills.getSysUserId(request));
-        Test updated = testService.update(test);
-        // OGC-1145 FR-2: reconcile the type_of_sample_test junction to the desired
-        // set — delete removed links, insert added ones, and drop duplicate rows
-        // for the same type (validated above, so this cannot fail mid-write).
-        if (reconcileSampleTypes) {
-            String sysUserId = ControllerUtills.getSysUserId(request);
-            Set<String> kept = new HashSet<>();
-            for (TypeOfSampleTest link : typeOfSampleTestService.getTypeOfSampleTestsForTest(testId)) {
-                if (!desiredSampleTypes.contains(link.getTypeOfSampleId()) || !kept.add(link.getTypeOfSampleId())) {
-                    typeOfSampleTestService.delete(link.getId(), sysUserId);
-                }
-            }
-            for (String sampleTypeId : desiredSampleTypes) {
-                if (!kept.contains(sampleTypeId)) {
-                    TypeOfSampleTest link = new TypeOfSampleTest();
-                    link.setTypeOfSampleId(sampleTypeId);
-                    link.setTestId(testId);
-                    link.setSysUserId(sysUserId);
-                    typeOfSampleTestService.insert(link);
-                }
-            }
-        }
-        // Reflect active / orderable / lab-unit / sample-type changes in the cached
-        // order-picker lists immediately; otherwise the change lags until an
-        // unrelated refresh (same stale-cache cause as OGC-1116).
-        if (body.active != null || body.orderable != null || !isBlank(body.labUnitId) || reconcileSampleTypes) {
-            refreshTestCaches();
-        }
-        invalidateHealth();
-        return ResponseEntity.ok(toBasicInfo(updated));
     }
 
     /**
@@ -706,37 +610,6 @@ public class TestCatalogEditorRestController {
         DisplayListService.getInstance().refreshList(DisplayListService.ListType.TEST_SECTION_ACTIVE);
         DisplayListService.getInstance().refreshList(DisplayListService.ListType.TEST_SECTION_INACTIVE);
         typeOfSampleService.clearCache();
-    }
-
-    /**
-     * True when a non-editable field is present in the body and differs from the
-     * stored value (null/blank treated as equal).
-     */
-    private static boolean changesImmutableField(String submitted, String current) {
-        if (submitted == null) {
-            return false;
-        }
-        return !submitted.equals(current == null ? "" : current);
-    }
-
-    private BasicInfo toBasicInfo(Test test) {
-        BasicInfo info = new BasicInfo();
-        info.testId = test.getId();
-        info.name = test.getName();
-        info.code = test.getLocalCode();
-        info.testGuid = test.getGuid();
-        info.description = test.getDescription();
-        info.domain = test.getDomain();
-        info.labUnitId = test.getTestSection() == null ? null : test.getTestSection().getId();
-        info.sampleTypeIds = new ArrayList<>();
-        for (TypeOfSample type : testService.getTypeOfSamples(test)) {
-            info.sampleTypeIds.add(type.getId());
-        }
-        info.sampleTypeId = info.sampleTypeIds.isEmpty() ? null : info.sampleTypeIds.get(0);
-        info.antimicrobialResistance = Boolean.TRUE.equals(test.getAntimicrobialResistance());
-        info.active = test.isActive();
-        info.orderable = Boolean.TRUE.equals(test.getOrderable());
-        return info;
     }
 
     // ── Sample & Results — Result Components (OGC-749 / OGC-962) ───────────────

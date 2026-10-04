@@ -34,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class TypeOfSampleServiceImpl extends AuditableBaseObjectServiceImpl<TypeOfSample, String>
         implements TypeOfSampleService {
 
+    private boolean cacheInvalidated;
     private Map<String, List<Test>> sampleIdTestMap = new HashMap<>();
     private Map<String, String> typeOfSampleIdToNameMap;
     private Map<String, String> typeOfSampleWellKnownNameToIdMap;
@@ -82,6 +83,7 @@ public class TypeOfSampleServiceImpl extends AuditableBaseObjectServiceImpl<Type
     @Override
     @Transactional(readOnly = true)
     public synchronized List<Test> getActiveTestsBySampleTypeId(String sampleTypeId, boolean orderableOnly) {
+        ensureCacheFresh();
 
         List<Test> testList = sampleIdTestMap.get(sampleTypeId);
 
@@ -141,6 +143,7 @@ public class TypeOfSampleServiceImpl extends AuditableBaseObjectServiceImpl<Type
     @Override
     @Transactional(readOnly = true)
     public synchronized List<TypeOfSample> getTypeOfSampleForTest(String testId) {
+        ensureCacheFresh();
         if (testIdToTypeOfSampleMap == null) {
             createTestIdToTypeOfSampleMap();
         }
@@ -200,27 +203,41 @@ public class TypeOfSampleServiceImpl extends AuditableBaseObjectServiceImpl<Type
      * changes, we need to invalidate such lists.
      */
     @Override
+    public synchronized void invalidateCache() {
+        cacheInvalidated = true;
+    }
+
+    private synchronized void ensureCacheFresh() {
+        if (cacheInvalidated)
+            clearCache();
+    }
+
+    @Override
     public synchronized void clearCache() {
         sampleIdTestMap.clear();
         createTypeOfSampleIdentityMap();
         typeOfSampleIdToNameMap = null;
         typeOfSampleWellKnownNameToIdMap = null;
         testIdToTypeOfSampleMap = null;
+        panelIdToTypeOfSampleMap = null;
+        cacheInvalidated = false;
     }
 
     private synchronized void createTypeOfSampleIdentityMap() {
-        typeOfSampleIdtoTypeOfSampleMap = new HashMap<>();
+        Map<String, TypeOfSample> rebuilt = new HashMap<>();
 
         List<TypeOfSample> typeOfSampleList = baseObjectDAO.getAllTypeOfSamples();
 
         for (TypeOfSample typeOfSample : typeOfSampleList) {
-            typeOfSampleIdtoTypeOfSampleMap.put(typeOfSample.getId(), typeOfSample);
+            rebuilt.put(typeOfSample.getId(), typeOfSample);
         }
+        typeOfSampleIdtoTypeOfSampleMap = rebuilt;
     }
 
     @Override
     @Transactional(readOnly = true)
     public synchronized String getTypeOfSampleNameForId(String id) {
+        ensureCacheFresh();
         if (typeOfSampleIdToNameMap == null) {
             createSampleNameIDMaps();
         }
@@ -231,6 +248,7 @@ public class TypeOfSampleServiceImpl extends AuditableBaseObjectServiceImpl<Type
     @Override
     @Transactional(readOnly = true)
     public synchronized String getTypeOfSampleIdForLocalAbbreviation(String name) {
+        ensureCacheFresh();
         if (typeOfSampleWellKnownNameToIdMap == null) {
             createSampleNameIDMaps();
         }
@@ -252,6 +270,7 @@ public class TypeOfSampleServiceImpl extends AuditableBaseObjectServiceImpl<Type
     @Override
     @Transactional(readOnly = true)
     public synchronized List<TypeOfSample> getTypeOfSampleForPanelId(String id) {
+        ensureCacheFresh();
         if (panelIdToTypeOfSampleMap == null) {
             panelIdToTypeOfSampleMap = new HashMap<>();
 

@@ -62,6 +62,7 @@ public class TestServiceImpl extends AuditableBaseObjectServiceImpl<Test, String
     // private static String LANGUAGE_LOCALE = ConfigurationProperties.getInstance()
     // .getPropertyValue(ConfigurationProperties.Property.DEFAULT_LANG_LOCALE);
     private static Map<Entity, Map<String, String>> entityToMap;
+    private static boolean testNamesInvalidated;
 
     protected static TestDAO baseObjectDAO = SpringContext.getBean(TestDAO.class);
 
@@ -121,10 +122,23 @@ public class TestServiceImpl extends AuditableBaseObjectServiceImpl<Test, String
     }
 
     @Override
+    @Transactional(readOnly = true)
     public void refreshTestNames() {
-        entityToMap.put(Entity.TEST_NAME, createTestIdToNameMap());
-        entityToMap.put(Entity.TEST_AUGMENTED_NAME, createTestIdToAugmentedNameMap());
-        entityToMap.put(Entity.TEST_REPORTING_NAME, createTestIdToReportingNameMap());
+        synchronized (TestServiceImpl.class) {
+            Map<Entity, Map<String, String>> rebuilt = new HashMap<>();
+            rebuilt.put(Entity.TEST_NAME, createTestIdToNameMap());
+            rebuilt.put(Entity.TEST_AUGMENTED_NAME, createTestIdToAugmentedNameMap());
+            rebuilt.put(Entity.TEST_REPORTING_NAME, createTestIdToReportingNameMap());
+            entityToMap = rebuilt;
+            testNamesInvalidated = false;
+        }
+    }
+
+    @Override
+    public void invalidateTestNames() {
+        synchronized (TestServiceImpl.class) {
+            testNamesInvalidated = true;
+        }
     }
 
     @Override
@@ -258,7 +272,11 @@ public class TestServiceImpl extends AuditableBaseObjectServiceImpl<Test, String
     }
 
     public static Map<String, String> getMap(Entity entiy) {
-        return entityToMap.get(entiy);
+        synchronized (TestServiceImpl.class) {
+            if (testNamesInvalidated)
+                SpringContext.getBean(TestService.class).refreshTestNames();
+            return entityToMap.get(entiy);
+        }
     }
 
     /**

@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { useHistory, useLocation } from "react-router-dom";
 import {
   Stack,
@@ -13,6 +13,10 @@ import {
   Loading,
   InlineNotification,
   Modal,
+  ComposedModal,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
 } from "@carbon/react";
 import Tag from "../../../common/LocalizedTag";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -21,6 +25,7 @@ import {
   postToOpenElisServerFullResponse,
   postToOpenElisServerJsonResponse,
   putToOpenElisServer,
+  putToOpenElisServerFullResponse,
 } from "../../../utils/Utils";
 import { NotificationContext } from "../../../layout/Layout";
 import useDomains from "../../../common/useDomains";
@@ -71,11 +76,40 @@ const sampleTypeMatchesDomain = (type, domain) => {
   return normalized === null || normalized === domain;
 };
 
+// The modal needs the complete basic-info DTO. The older list projection
+// must not become an editable record by filling missing fields with defaults.
+const completeBasicInfo = (record, id) => {
+  if (!record || typeof record !== "object" || Array.isArray(record))
+    return false;
+  const has = (key) => Object.prototype.hasOwnProperty.call(record, key);
+  const nullableString = (key) =>
+    has(key) && (record[key] === null || typeof record[key] === "string");
+  return (
+    typeof record.testId === "string" &&
+    record.testId.trim() !== "" &&
+    record.testId === String(id) &&
+    typeof record.name === "string" &&
+    nullableString("code") &&
+    nullableString("description") &&
+    nullableString("labUnitId") &&
+    nullableString("domain") &&
+    Array.isArray(record.sampleTypeIds) &&
+    record.sampleTypeIds.every(
+      (value) => typeof value === "string" && value.trim() !== "",
+    ) &&
+    ["antimicrobialResistance", "active", "orderable"].every(
+      (key) => has(key) && typeof record[key] === "boolean",
+    )
+  );
+};
+
 const BasicInfoSection = ({
   testId,
   embedded = false,
   onCreated,
   onCancel,
+  onSaved,
+  onConfigure,
 }) => {
   const domains = useDomains();
   const intl = useIntl();
@@ -93,6 +127,31 @@ const BasicInfoSection = ({
   const [loading, setLoading] = useState(!isCreate);
   const [error, setError] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loadRevision, setLoadRevision] = useState(0);
+  const [referenceError, setReferenceError] = useState(false);
+  const [referencesLoaded, setReferencesLoaded] = useState({
+    lab: false,
+    samples: false,
+  });
+  const [saveError, setSaveError] = useState(null);
+  const [verificationPayload, setVerificationPayload] = useState(null);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const originalForm = useRef(null);
+  const submitLock = useRef(false);
+  const closeRequest = useRef(() => false);
+  const editFieldsElement = useRef(null);
+  const [referenceRevision, setReferenceRevision] = useState(0);
+  const requestVersion = useRef(0);
+  const modalEdit = embedded && !isCreate;
+  const editablePayload = (record) => ({
+    code: record.code || "",
+    description: record.description || "",
+    labUnitId: record.labUnitId || "",
+    sampleTypeIds: [...(record.sampleTypeIds || [])],
+    domain: record.domain,
+    antimicrobialResistance: !!record.antimicrobialResistance,
+    orderable: !!record.orderable,
+  });
   const [form, setForm] = useState(null);
   const [pendingDomain, setPendingDomain] = useState(null);
   const [domainRadioKey, setDomainRadioKey] = useState(0);
@@ -142,48 +201,204 @@ const BasicInfoSection = ({
   };
 
   useEffect(() => {
-    if (!testId || isCreate) {
-      return;
-    }
+    const version = ++requestVersion.current;
+    if (isCreate) return;
     setLoading(true);
     setError(false);
+    setSaveError(null);
+    setVerificationPayload(null);
+    setForm(null);
+    setConfirmDiscard(false);
+    originalForm.current = null;
+    submitLock.current = false;
+    setSaving(false);
     getFromOpenElisServer(
       `/rest/test-catalog/tests/${testId}/basic-info`,
       (res) => {
+        if (version !== requestVersion.current) return;
         setLoading(false);
-        if (!res) {
+        if (
+          modalEdit
+            ? !completeBasicInfo(res, testId)
+            : !res ||
+              typeof res.name !== "string" ||
+              !Array.isArray(res.sampleTypeIds)
+        ) {
           setError(true);
           return;
         }
+        originalForm.current = editablePayload(res);
         setForm(res);
       },
     );
-    // FR-58 — proactively fetch what still blocks activation so the editor can
-    // show the checklist before the user tries to activate.
-    getFromOpenElisServer(
-      `/rest/test-catalog/tests/${testId}/completeness`,
-      (res) => {
-        if (res && !res.complete) {
-          setCompletenessGaps(res.messages || []);
-        } else {
-          setCompletenessGaps([]);
-        }
-      },
-    );
-  }, [testId, isCreate]);
+    if (!modalEdit) {
+      getFromOpenElisServer(
+        `/rest/test-catalog/tests/${testId}/completeness`,
+        (res) => {
+          if (
+            version === requestVersion.current &&
+            res &&
+            Array.isArray(res.messages)
+          ) {
+            setCompletenessGaps(res.messages);
+          }
+        },
+      );
+    }
+    return () => {
+      requestVersion.current++;
+    };
+  }, [testId, isCreate, modalEdit, loadRevision]);
 
-  // Both create and edit need the Lab Unit + Sample type reference lists (they are
-  // editable in both modes).
   useEffect(() => {
-    getFromOpenElisServer("/rest/test-catalog/lab-units", (res) =>
-      setLabUnits(Array.isArray(res) ? res : []),
-    );
-    getFromOpenElisServer("/rest/test-catalog/sample-types", (res) =>
-      setSampleTypes(Array.isArray(res) ? res : []),
-    );
-  }, []);
+    let disposed = false;
+    setReferenceError(false);
+    setReferencesLoaded({ lab: false, samples: false });
+    getFromOpenElisServer("/rest/test-catalog/lab-units", (res) => {
+      if (disposed) return;
+      if (!Array.isArray(res)) {
+        setReferenceError(true);
+        return;
+      }
+      setLabUnits(res);
+      setReferencesLoaded((value) => ({ ...value, lab: true }));
+    });
+    getFromOpenElisServer("/rest/test-catalog/sample-types", (res) => {
+      if (disposed) return;
+      if (!Array.isArray(res)) {
+        setReferenceError(true);
+        return;
+      }
+      setSampleTypes(res);
+      setReferencesLoaded((value) => ({ ...value, samples: true }));
+    });
+    return () => {
+      disposed = true;
+    };
+  }, [loadRevision, referenceRevision]);
 
-  const update = (patch) => setForm((prev) => ({ ...prev, ...patch }));
+  const dirty =
+    form &&
+    originalForm.current &&
+    JSON.stringify(editablePayload(form)) !==
+      JSON.stringify(originalForm.current);
+  const referenceIdentityMissing =
+    modalEdit &&
+    originalForm.current &&
+    referencesLoaded.lab &&
+    referencesLoaded.samples &&
+    ((originalForm.current.labUnitId &&
+      !labUnits.some(
+        (item) => String(item.id) === String(originalForm.current.labUnitId),
+      )) ||
+      originalForm.current.sampleTypeIds.some(
+        (id) => !sampleTypes.some((item) => String(item.id) === String(id)),
+      ));
+  closeRequest.current = (event) => {
+    // Carbon handles Escape at document capture. Close an expanded list box
+    // first through its own trigger so it retains its selection and focus.
+    if (event?.key === "Escape") {
+      const trigger = editFieldsElement.current?.querySelector(
+        "button.cds--list-box__menu-icon--open",
+      );
+      if (trigger) {
+        trigger.click();
+        return false;
+      }
+    }
+    if (submitLock.current || pendingDomain) return false;
+    if (dirty) setConfirmDiscard(true);
+    else onCancel?.();
+    return false;
+  };
+  const requestClose = (event) => closeRequest.current(event);
+  const editModal = (children) => (
+    <ComposedModal
+      open
+      className="oe-admin-modal test-catalog-basic-modal"
+      size="lg"
+      preventCloseOnClickOutside
+      onClose={requestClose}
+    >
+      <ModalHeader
+        title={intl.formatMessage({
+          id: confirmDiscard
+            ? "workspace.leave.title"
+            : "admin.basicEdit.catalogTitle",
+        })}
+        closeModal={requestClose}
+        iconDescription={intl.formatMessage({ id: "button.close" })}
+      />
+      <ModalBody>
+        {confirmDiscard ? (
+          <p>{intl.formatMessage({ id: "workspace.leave.helper" })}</p>
+        ) : (
+          children
+        )}
+      </ModalBody>
+      <ModalFooter>
+        {confirmDiscard ? (
+          <>
+            <Button kind="secondary" onClick={() => setConfirmDiscard(false)}>
+              {intl.formatMessage({ id: "workspace.leave.cancel" })}
+            </Button>
+            <Button
+              kind="danger"
+              dangerDescription={intl.formatMessage({
+                id: "workspace.leave.title",
+              })}
+              onClick={() => onCancel?.()}
+            >
+              {intl.formatMessage({ id: "workspace.leave.confirm" })}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button kind="secondary" disabled={saving} onClick={requestClose}>
+              {intl.formatMessage({ id: "button.cancel" })}
+            </Button>
+            {verificationPayload ? (
+              <Button
+                kind="primary"
+                disabled={saving}
+                onClick={retryVerification}
+              >
+                {intl.formatMessage({ id: "button.retry" })}
+              </Button>
+            ) : (
+              <Button
+                kind="primary"
+                disabled={
+                  saving ||
+                  loading ||
+                  error ||
+                  !form ||
+                  !dirty ||
+                  referenceError ||
+                  !referencesLoaded.lab ||
+                  !referencesLoaded.samples ||
+                  referenceIdentityMissing ||
+                  editSampleTypesMissing ||
+                  editIncompatibleTypes.length > 0
+                }
+                onClick={handleSave}
+              >
+                {intl.formatMessage({
+                  id: saving ? "label.button.saving" : "label.button.save",
+                })}
+              </Button>
+            )}
+          </>
+        )}
+      </ModalFooter>
+    </ComposedModal>
+  );
+
+  const update = (patch) => {
+    if (modalEdit && (submitLock.current || verificationPayload)) return;
+    setSaveError(null);
+    setForm((prev) => ({ ...prev, ...patch }));
+  };
   const updateCreate = (patch) =>
     setCreateForm((prev) => ({ ...prev, ...patch }));
 
@@ -329,15 +544,154 @@ const BasicInfoSection = ({
     );
   };
 
-  const handleSave = () => {
+  const matchesEditablePayload = (record, payload) => {
+    const current = editablePayload(record);
+    // Associated sample types are a membership set; display order is managed
+    // separately. Preserve every ID while ignoring the backend read order.
+    const ids = (values) => [...new Set(values)].sort();
+    return (
+      JSON.stringify({
+        ...current,
+        sampleTypeIds: ids(current.sampleTypeIds),
+      }) ===
+      JSON.stringify({ ...payload, sampleTypeIds: ids(payload.sampleTypeIds) })
+    );
+  };
+  const confirmSaved = (record, version) => {
+    if (version !== requestVersion.current) return;
+    originalForm.current = editablePayload(record);
+    setForm(record);
+    setVerificationPayload(null);
+    setSaveError(null);
+    setNotificationVisible(true);
+    addNotification({
+      kind: "success",
+      title: intl.formatMessage({ id: "label.testCatalog.section.basic-info" }),
+      message: intl.formatMessage({ id: "label.testCatalog.basicInfo.saved" }),
+    });
+    onSaved?.();
+  };
+  const verifyUpdate = async (payload, version) => {
+    const record = await new Promise((resolve) =>
+      getFromOpenElisServer(
+        `/rest/test-catalog/tests/${encodeURIComponent(testId)}/basic-info`,
+        resolve,
+      ),
+    );
+    if (version !== requestVersion.current) return;
+    if (!completeBasicInfo(record, testId)) {
+      setSaveError("admin.basicEdit.update.verificationFailed");
+      return;
+    }
+    if (!matchesEditablePayload(record, payload)) {
+      setVerificationPayload(null);
+      setSaveError("admin.basicEdit.update.notConfirmed");
+      return;
+    }
+    confirmSaved(record, version);
+  };
+  const retryVerification = async () => {
+    if (!verificationPayload || submitLock.current) return;
+    submitLock.current = true;
     setSaving(true);
+    const version = requestVersion.current;
+    try {
+      await verifyUpdate(verificationPayload, version);
+    } catch {
+      if (version === requestVersion.current)
+        setSaveError("admin.basicEdit.update.verificationFailed");
+    } finally {
+      if (version === requestVersion.current) {
+        submitLock.current = false;
+        setSaving(false);
+      }
+    }
+  };
+  const saveModal = async (payload, version) => {
+    try {
+      const response = await new Promise((resolve) =>
+        putToOpenElisServerFullResponse(
+          `/rest/test-catalog/tests/${encodeURIComponent(testId)}/basic-info`,
+          JSON.stringify(payload),
+          resolve,
+        ),
+      );
+      if (version !== requestVersion.current) return;
+      if (response?.status >= 400 && !response.redirected) {
+        setSaveError(
+          response.status === 404
+            ? "admin.basicEdit.notFound"
+            : response.status === 422
+              ? "admin.basicEdit.invalid"
+              : response.status === 409
+                ? "admin.basicEdit.conflict"
+                : "admin.basicEdit.saveFailed",
+        );
+        return;
+      }
+      if (response?.ok && response.status === 200 && !response.redirected) {
+        let record;
+        try {
+          record = await response.json();
+        } catch {
+          /* Verify the server state before a retry. */
+        }
+        if (version !== requestVersion.current) return;
+        if (
+          completeBasicInfo(record, testId) &&
+          matchesEditablePayload(record, payload)
+        ) {
+          confirmSaved(record, version);
+          return;
+        }
+      }
+      setVerificationPayload(payload);
+      await verifyUpdate(payload, version);
+    } catch {
+      if (version === requestVersion.current) {
+        setVerificationPayload(payload);
+        setSaveError("admin.basicEdit.update.verificationFailed");
+      }
+    } finally {
+      if (version === requestVersion.current) {
+        submitLock.current = false;
+        setSaving(false);
+      }
+    }
+  };
+
+  const handleSave = () => {
+    if (
+      submitLock.current ||
+      !form ||
+      (modalEdit &&
+        (verificationPayload ||
+          !completeBasicInfo(form, testId) ||
+          !dirty ||
+          referenceError ||
+          !referencesLoaded.lab ||
+          !referencesLoaded.samples ||
+          referenceIdentityMissing))
+    )
+      return;
+    submitLock.current = true;
+    setSaving(true);
+    setSaveError(null);
+    const version = requestVersion.current;
+    if (modalEdit) {
+      saveModal(editablePayload(form), version);
+      return;
+    }
     putToOpenElisServer(
       `/rest/test-catalog/tests/${testId}/basic-info`,
-      JSON.stringify(form),
+      JSON.stringify(modalEdit ? editablePayload(form) : form),
       (status) => {
+        if (version !== requestVersion.current) return;
+        submitLock.current = false;
         setSaving(false);
-        setNotificationVisible(true);
         if (status === 200) {
+          originalForm.current = editablePayload(form);
+          setNotificationVisible(true);
           addNotification({
             kind: "success",
             title: intl.formatMessage({
@@ -347,12 +701,17 @@ const BasicInfoSection = ({
               id: "label.testCatalog.basicInfo.saved",
             }),
           });
+          onSaved?.();
         } else {
-          addNotification({
-            kind: "error",
-            title: intl.formatMessage({ id: "error.title" }),
-            message: intl.formatMessage({ id: "server.error.msg" }),
-          });
+          setSaveError(
+            status === 404
+              ? "admin.basicEdit.notFound"
+              : status === 422
+                ? "admin.basicEdit.invalid"
+                : status === 409
+                  ? "admin.basicEdit.conflict"
+                  : "admin.basicEdit.saveFailed",
+          );
         }
       },
     );
@@ -548,7 +907,7 @@ const BasicInfoSection = ({
           modalHeading={intl.formatMessage({
             id: "button.testCatalog.newTest",
           })}
-          closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
+          iconDescription={intl.formatMessage({ id: "label.button.close" })}
           selectorPrimaryFocus="#basic-info-name"
           primaryButtonText={intl.formatMessage({ id: "label.button.save" })}
           secondaryButtonText={intl.formatMessage({
@@ -568,29 +927,85 @@ const BasicInfoSection = ({
   }
 
   if (loading) {
-    return (
+    const state = (
       <Loading
         description={intl.formatMessage({ id: "label.loading" })}
         withOverlay={false}
       />
     );
+    return modalEdit ? editModal(state) : state;
   }
   if (error || !form) {
-    return (
-      <InlineNotification
-        kind="error"
-        lowContrast
-        hideCloseButton
-        title={intl.formatMessage({ id: "error.title" })}
-        subtitle={intl.formatMessage({
-          id: "label.testCatalog.editor.loadError",
-        })}
-      />
+    const state = (
+      <>
+        <InlineNotification
+          kind="error"
+          lowContrast
+          hideCloseButton
+          title={intl.formatMessage({ id: "error.title" })}
+          subtitle={intl.formatMessage({
+            id: "label.testCatalog.editor.loadError",
+          })}
+        />
+        <Button kind="tertiary" onClick={() => setLoadRevision((n) => n + 1)}>
+          {intl.formatMessage({ id: "button.retry" })}
+        </Button>
+      </>
     );
+    return modalEdit ? editModal(state) : state;
   }
 
-  return (
+  const editFields = (
     <Stack gap={6}>
+      {saveError && (
+        <InlineNotification
+          kind="error"
+          lowContrast
+          hideCloseButton
+          title={intl.formatMessage({ id: saveError })}
+        />
+      )}
+      {referenceIdentityMissing && (
+        <InlineNotification
+          kind="error"
+          lowContrast
+          hideCloseButton
+          title={intl.formatMessage({
+            id: "admin.basicEdit.referencesMissing",
+          })}
+        />
+      )}
+      {referenceError && (
+        <Button
+          kind="tertiary"
+          disabled={saving}
+          onClick={() => setReferenceRevision((n) => n + 1)}
+        >
+          {intl.formatMessage({ id: "button.retry" })}
+        </Button>
+      )}
+      {referenceError && (
+        <InlineNotification
+          kind="error"
+          lowContrast
+          hideCloseButton
+          title={intl.formatMessage({ id: "admin.basicEdit.referencesFailed" })}
+        />
+      )}
+      {modalEdit && (
+        <p className="test-catalog-basic-modal__hint">
+          {intl.formatMessage({ id: "admin.basicEdit.catalogScope" })}
+          <Button
+            kind="ghost"
+            size="sm"
+            disabled={saving || dirty}
+            onClick={onConfigure}
+          >
+            {intl.formatMessage({ id: "common.action.relatedConfiguration" })}
+          </Button>
+        </p>
+      )}
+
       <TextInput
         id="basic-info-name"
         labelText={intl.formatMessage({
@@ -698,23 +1113,35 @@ const BasicInfoSection = ({
         toggled={!!form.antimicrobialResistance}
         onToggle={(checked) => update({ antimicrobialResistance: checked })}
       />
-      <Toggle
-        id="basic-info-active"
-        labelText={intl.formatMessage({
-          id: "label.testCatalog.basicInfo.active",
-        })}
-        labelA={intl.formatMessage({ id: "label.no" })}
-        labelB={intl.formatMessage({ id: "label.yes" })}
-        toggled={!!form.active}
-        onToggle={(checked) => {
-          if (checked && !form.active) {
-            handleActivate(null);
-          } else {
-            update({ active: checked });
-          }
-        }}
-      />
-      {!form.active && completenessGaps.length > 0 && (
+      {!modalEdit && (
+        <Toggle
+          id="basic-info-active"
+          labelText={intl.formatMessage({
+            id: "label.testCatalog.basicInfo.active",
+          })}
+          labelA={intl.formatMessage({ id: "label.no" })}
+          labelB={intl.formatMessage({ id: "label.yes" })}
+          toggled={!!form.active}
+          onToggle={(checked) => {
+            if (checked && !form.active) {
+              handleActivate(null);
+            } else {
+              update({ active: checked });
+            }
+          }}
+        />
+      )}
+      {modalEdit && (
+        <p>
+          {intl.formatMessage({ id: "label.testCatalog.list.col.status" })}：
+          {intl.formatMessage({
+            id: form.active
+              ? "label.testCatalog.basicInfo.active"
+              : "label.testCatalog.list.filter.inactive",
+          })}
+        </p>
+      )}
+      {!modalEdit && !form.active && completenessGaps.length > 0 && (
         <InlineNotification
           kind="info"
           lowContrast
@@ -737,17 +1164,21 @@ const BasicInfoSection = ({
         onToggle={(checked) => update({ orderable: checked })}
       />
 
-      <div>
-        <Button
-          kind="primary"
-          disabled={
-            saving || editSampleTypesMissing || editIncompatibleTypes.length > 0
-          }
-          onClick={handleSave}
-        >
-          <FormattedMessage id="label.button.save" />
-        </Button>
-      </div>
+      {!modalEdit && (
+        <div>
+          <Button
+            kind="primary"
+            disabled={
+              saving ||
+              editSampleTypesMissing ||
+              editIncompatibleTypes.length > 0
+            }
+            onClick={handleSave}
+          >
+            <FormattedMessage id="label.button.save" />
+          </Button>
+        </div>
+      )}
 
       {pendingDomain !== null && (
         <Modal
@@ -813,6 +1244,17 @@ const BasicInfoSection = ({
       )}
     </Stack>
   );
+  return modalEdit
+    ? editModal(
+        <fieldset
+          ref={editFieldsElement}
+          disabled={saving || !!verificationPayload || referenceIdentityMissing}
+          className="test-catalog-basic-modal__fields"
+        >
+          {editFields}
+        </fieldset>,
+      )
+    : editFields;
 };
 
 export default BasicInfoSection;

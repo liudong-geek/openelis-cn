@@ -63,3 +63,19 @@
     padding: 1rem;
   }
 }
+
+.testCatalogList__rowActions {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.test-catalog-basic-modal__hint {
+  color: var(--cds-text-secondary);
+  line-height: 1.6;
+}
+.test-catalog-basic-modal__fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}

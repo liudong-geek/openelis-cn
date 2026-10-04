@@ -84,6 +84,8 @@ public interface TestService extends BaseObjectService<Test, String> {
 
     void refreshTestNames();
 
+    void invalidateTestNames();
+
     String getTestMethodName(Test test);
 
     List<TestResult> getPossibleTestResults(Test test);

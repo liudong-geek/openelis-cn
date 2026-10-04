@@ -27,6 +27,58 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 @TestPropertySource("classpath:common.properties")
 public class SampleTypeManagementRestControllerSecurityTest extends SecuritySliceMockMvcTest {
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.openelisglobal.common.management.service.SampleTypeManagementService managementService;
+
+    @org.junit.Before
+    public void resetBasicServiceCalls() {
+        org.mockito.Mockito.clearInvocations(managementService);
+    }
+
+    @Test
+    public void htmlChineseFailsValidationWithoutCallingSave() throws Exception {
+        mockMvc.perform(put("/rest/sample-types/1").with(user("admin").roles("ADMIN"))
+                .sessionAttr(org.openelisglobal.common.action.IActionConstants.USER_SESSION_DATA, adminSession())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"nameZh\":\"<b>血清</b>\"}"))
+                .andExpect(status().isBadRequest());
+        org.mockito.Mockito.verify(managementService, org.mockito.Mockito.never()).save(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    public void excessiveAbbreviationFailsValidationWithoutCallingSave() throws Exception {
+        mockMvc.perform(put("/rest/sample-types/1").with(user("admin").roles("ADMIN"))
+                .sessionAttr(org.openelisglobal.common.action.IActionConstants.USER_SESSION_DATA, adminSession())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"abbreviation\":\"ABCDEFGHIJK\"}"))
+                .andExpect(status().isBadRequest());
+        org.mockito.Mockito.verify(managementService, org.mockito.Mockito.never()).save(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    public void excessiveInternalIdentifierFailsValidationWithoutCallingSave() throws Exception {
+        mockMvc.perform(put("/rest/sample-types/1").with(user("admin").roles("ADMIN"))
+                .sessionAttr(org.openelisglobal.common.action.IActionConstants.USER_SESSION_DATA, adminSession())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"description\":\"" + "A".repeat(41) + "\"}"))
+                .andExpect(status().isBadRequest());
+        org.mockito.Mockito.verify(managementService, org.mockito.Mockito.never()).save(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    public void excessiveWhonetFailsValidationWithoutCallingSave() throws Exception {
+        mockMvc.perform(put("/rest/sample-types/1").with(user("admin").roles("ADMIN"))
+                .sessionAttr(org.openelisglobal.common.action.IActionConstants.USER_SESSION_DATA, adminSession())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"whonetCode\":\"ABCDEF\"}"))
+                .andExpect(status().isBadRequest());
+        org.mockito.Mockito.verify(managementService, org.mockito.Mockito.never()).save(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+    }
+
     @Test
     public void testSampleTypeManagement_WithoutAuthentication_Returns401() throws Exception {
         mockMvc.perform(get("/rest/sample-types").contentType(MediaType.APPLICATION_JSON))
@@ -41,9 +93,9 @@ public class SampleTypeManagementRestControllerSecurityTest extends SecuritySlic
 
     @Test
     public void testSampleTypeManagement_AdminRole_Returns200() throws Exception {
-        mockMvc.perform(
-                get("/rest/sample-types").with(user("admin").roles("ADMIN")).contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isOk());
+        mockMvc.perform(get("/rest/sample-types").with(user("admin").roles("ADMIN"))
+                .sessionAttr(org.openelisglobal.common.action.IActionConstants.USER_SESSION_DATA, adminSession())
+                .contentType(MediaType.APPLICATION_JSON)).andExpect(status().isOk());
     }
 
     // Mutating + terminology endpoints must carry the same ADMIN gate. A
@@ -66,6 +118,7 @@ public class SampleTypeManagementRestControllerSecurityTest extends SecuritySlic
     public void updateSampleType_AdminRole_PassesAuth() throws Exception {
         // the mocked service returns null → 404: the request cleared the auth gate
         mockMvc.perform(put("/rest/sample-types/1").with(user("admin").roles("ADMIN"))
+                .sessionAttr(org.openelisglobal.common.action.IActionConstants.USER_SESSION_DATA, adminSession())
                 .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isNotFound());
     }
 
@@ -78,9 +131,9 @@ public class SampleTypeManagementRestControllerSecurityTest extends SecuritySlic
     @Test
     public void getSampleTypeById_AdminRole_PassesAuth() throws Exception {
         // the mocked service returns null → 404: the request cleared the auth gate
-        mockMvc.perform(
-                get("/rest/sample-types/1").with(user("admin").roles("ADMIN")).contentType(MediaType.APPLICATION_JSON))
-                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/rest/sample-types/1").with(user("admin").roles("ADMIN"))
+                .sessionAttr(org.openelisglobal.common.action.IActionConstants.USER_SESSION_DATA, adminSession())
+                .contentType(MediaType.APPLICATION_JSON)).andExpect(status().isNotFound());
     }
 
     @Test
@@ -99,12 +152,14 @@ public class SampleTypeManagementRestControllerSecurityTest extends SecuritySlic
     public void updateDisplayOrder_AdminRole_PassesAuth() throws Exception {
         // the mocked service returns null → 404: the request cleared the auth gate
         mockMvc.perform(put("/rest/sample-types/1/display-order").with(user("admin").roles("ADMIN"))
+                .sessionAttr(org.openelisglobal.common.action.IActionConstants.USER_SESSION_DATA, adminSession())
                 .contentType(MediaType.APPLICATION_JSON).content("{\"position\":1}")).andExpect(status().isNotFound());
     }
 
     @Test
     public void updateDisplayOrder_AdminRole_InvalidPosition_Returns422() throws Exception {
         mockMvc.perform(put("/rest/sample-types/1/display-order").with(user("admin").roles("ADMIN"))
+                .sessionAttr(org.openelisglobal.common.action.IActionConstants.USER_SESSION_DATA, adminSession())
                 .contentType(MediaType.APPLICATION_JSON).content("{\"position\":0}"))
                 .andExpect(status().isUnprocessableEntity());
     }
@@ -120,6 +175,7 @@ public class SampleTypeManagementRestControllerSecurityTest extends SecuritySlic
     @Test
     public void terminology_AdminRole_PassesAuth() throws Exception {
         mockMvc.perform(get("/rest/sample-types/1/terminology").with(user("admin").roles("ADMIN"))
+                .sessionAttr(org.openelisglobal.common.action.IActionConstants.USER_SESSION_DATA, adminSession())
                 .contentType(MediaType.APPLICATION_JSON)).andExpect(status().isNotFound());
     }
 
@@ -139,18 +195,27 @@ public class SampleTypeManagementRestControllerSecurityTest extends SecuritySlic
     public void associatedTests_AdminRole_PassesAuth() throws Exception {
         // mocked service returns null → 404: the request cleared the auth gate
         mockMvc.perform(get("/rest/sample-types/1/associable-tests").with(user("admin").roles("ADMIN"))
+                .sessionAttr(org.openelisglobal.common.action.IActionConstants.USER_SESSION_DATA, adminSession())
                 .contentType(MediaType.APPLICATION_JSON)).andExpect(status().isNotFound());
         mockMvc.perform(put("/rest/sample-types/1/tests/2").with(user("admin").roles("ADMIN"))
+                .sessionAttr(org.openelisglobal.common.action.IActionConstants.USER_SESSION_DATA, adminSession())
                 .contentType(MediaType.APPLICATION_JSON).content("{}")).andExpect(status().isNotFound());
         mockMvc.perform(delete("/rest/sample-types/1/tests/2").with(user("admin").roles("ADMIN"))
+                .sessionAttr(org.openelisglobal.common.action.IActionConstants.USER_SESSION_DATA, adminSession())
                 .contentType(MediaType.APPLICATION_JSON)).andExpect(status().isNotFound());
+    }
+
+    private static org.openelisglobal.login.valueholder.UserSessionData adminSession() {
+        var session = new org.openelisglobal.login.valueholder.UserSessionData();
+        session.setSytemUserId(1);
+        return session;
     }
 
     @Configuration
     @EnableWebMvc
     @org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
     @org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity(prePostEnabled = true)
-    static class TestConfig {
+    static class TestConfig implements org.springframework.web.servlet.config.annotation.WebMvcConfigurer {
         @Bean
         org.springframework.security.web.SecurityFilterChain securityFilterChain(
                 org.springframework.security.config.annotation.web.builders.HttpSecurity http) throws Exception {
@@ -158,6 +223,30 @@ public class SampleTypeManagementRestControllerSecurityTest extends SecuritySlic
                     .httpBasic(org.springframework.security.config.Customizer.withDefaults())
                     .csrf(csrf -> csrf.disable());
             return http.build();
+        }
+
+        @Bean
+        org.openelisglobal.common.management.service.SampleTypeManagementService managementService() {
+            var service = mock(org.openelisglobal.common.management.service.SampleTypeManagementService.class);
+            org.mockito.Mockito.when(service.read(org.mockito.ArgumentMatchers.any()))
+                    .thenThrow(new java.util.NoSuchElementException());
+            org.mockito.Mockito.when(service.save(org.mockito.ArgumentMatchers.any(),
+                    org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                    .thenThrow(new java.util.NoSuchElementException());
+            return service;
+        }
+
+        @Bean
+        org.springframework.validation.beanvalidation.LocalValidatorFactoryBean validator() {
+            var validator = new org.springframework.validation.beanvalidation.LocalValidatorFactoryBean();
+            validator.setMessageInterpolator(
+                    new org.hibernate.validator.messageinterpolation.ParameterMessageInterpolator());
+            return validator;
+        }
+
+        @Override
+        public org.springframework.validation.Validator getValidator() {
+            return validator();
         }
 
         @Bean

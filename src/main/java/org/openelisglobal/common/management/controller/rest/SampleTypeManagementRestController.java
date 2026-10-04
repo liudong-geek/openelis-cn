@@ -11,7 +11,6 @@ import org.openelisglobal.common.domain.Domain;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.rest.BaseRestController;
 import org.openelisglobal.common.services.DisplayListService;
-import org.openelisglobal.localization.valueholder.Localization;
 import org.openelisglobal.sampletypeterminology.service.SampleTypeTerminologyMappingService;
 import org.openelisglobal.sampletypeterminology.valueholder.SampleTypeTerminologyMapping;
 import org.openelisglobal.typeofsample.service.TypeOfSampleService;
@@ -55,132 +54,22 @@ public class SampleTypeManagementRestController extends BaseRestController {
     /**
      * DTO for Sample Type Management
      */
-    public static class SampleTypeManagementDTO {
-        private String id;
-        private String name;
-        private String description;
-        private String domain;
-        private String abbreviation;
-        private String whonetCode;
-        private String disposalInstructions;
-        private Boolean isActive;
-        private int sortOrder;
-        private int testCount;
-        private String lastUpdated;
-
-        // Constructors
+    public static class SampleTypeManagementDTO
+            extends org.openelisglobal.common.management.form.SampleTypeBasicInfoForm {
         public SampleTypeManagementDTO() {
         }
 
-        public SampleTypeManagementDTO(TypeOfSample typeOfSample) {
-            this.id = typeOfSample.getId();
-
-            String nameValue = typeOfSample.getDescription();
-            if (typeOfSample.getLocalization() != null) {
-                String localizedValue = typeOfSample.getLocalization().getLocalizedValue();
-                if (localizedValue != null && !localizedValue.trim().isEmpty()) {
-                    nameValue = localizedValue;
-                }
-            }
-            this.name = nameValue;
-            this.description = typeOfSample.getDescription();
-            this.domain = mapBackendDomainToFrontend(typeOfSample.getDomain()); // Map domain to frontend format
-            this.abbreviation = typeOfSample.getLocalAbbreviation();
-            this.whonetCode = typeOfSample.getWhonetCode();
-            this.disposalInstructions = typeOfSample.getDisposalInstructions();
-            this.isActive = typeOfSample.getIsActive();
-            this.sortOrder = typeOfSample.getSortOrder();
+        public SampleTypeManagementDTO(TypeOfSample type) {
+            super(type);
         }
 
-        // Getters and Setters
-        public String getId() {
-            return id;
-        }
-
-        public void setId(String id) {
-            this.id = id;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public void setName(String name) {
-            this.name = name;
-        }
-
-        public String getDescription() {
-            return description;
-        }
-
-        public void setDescription(String description) {
-            this.description = description;
-        }
-
-        public String getDomain() {
-            return domain;
-        }
-
-        public void setDomain(String domain) {
-            this.domain = domain;
-        }
-
-        public String getAbbreviation() {
-            return abbreviation;
-        }
-
-        public void setAbbreviation(String abbreviation) {
-            this.abbreviation = abbreviation;
-        }
-
-        public String getWhonetCode() {
-            return whonetCode;
-        }
-
-        public void setWhonetCode(String whonetCode) {
-            this.whonetCode = whonetCode;
-        }
-
-        public String getDisposalInstructions() {
-            return disposalInstructions;
-        }
-
-        public void setDisposalInstructions(String disposalInstructions) {
-            this.disposalInstructions = disposalInstructions;
-        }
-
-        public Boolean getIsActive() {
-            return isActive;
-        }
-
-        public void setIsActive(Boolean isActive) {
-            this.isActive = isActive;
-        }
-
-        public int getSortOrder() {
-            return sortOrder;
-        }
-
-        public void setSortOrder(int sortOrder) {
-            this.sortOrder = sortOrder;
-        }
-
-        public int getTestCount() {
-            return testCount;
-        }
-
-        public void setTestCount(int testCount) {
-            this.testCount = testCount;
-        }
-
-        public String getLastUpdated() {
-            return lastUpdated;
-        }
-
-        public void setLastUpdated(String lastUpdated) {
-            this.lastUpdated = lastUpdated;
+        public SampleTypeManagementDTO(org.openelisglobal.common.management.form.SampleTypeBasicInfoForm source) {
+            super(source);
         }
     }
+
+    @Autowired
+    private org.openelisglobal.common.management.service.SampleTypeManagementService managementService;
 
     /**
      * Response wrapper for API responses
@@ -242,13 +131,14 @@ public class SampleTypeManagementRestController extends BaseRestController {
 
     @GetMapping(value = "/sample-types/{sampleTypeId}")
     public ResponseEntity<ApiResponse<SampleTypeManagementDTO>> getSampleType(@PathVariable String sampleTypeId) {
-        TypeOfSample typeOfSample = typeOfSampleService.getTypeOfSampleById(sampleTypeId);
-        if (typeOfSample == null) {
+        try {
+            return ResponseEntity.ok(new ApiResponse<>(true, "Sample type retrieved successfully",
+                    new SampleTypeManagementDTO(managementService.read(sampleTypeId))));
+        } catch (java.util.NoSuchElementException e) {
             return ResponseEntity.notFound().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, "Invalid sample type ID", null));
         }
-        SampleTypeManagementDTO dto = new SampleTypeManagementDTO(typeOfSample);
-        dto.setTestCount(typeOfSampleService.getAllTestsBySampleTypeId(sampleTypeId).size());
-        return ResponseEntity.ok(new ApiResponse<>(true, "Sample type retrieved successfully", dto));
     }
 
     /** Body for the display-order move: a 1-based target position. */
@@ -292,89 +182,20 @@ public class SampleTypeManagementRestController extends BaseRestController {
         }
 
         try {
-            TypeOfSample existingTypeOfSample = typeOfSampleService.getTypeOfSampleById(sampleTypeId);
-            if (existingTypeOfSample == null) {
-                return ResponseEntity.notFound().build();
-            }
-
-            String userId = getSysUserId(request);
-
-            if (sampleTypeDTO.getDescription() != null && !sampleTypeDTO.getDescription().trim().isEmpty()) {
-                existingTypeOfSample.setDescription(sampleTypeDTO.getDescription().trim());
-            }
-
-            // Domain (single, required — OGC-296 v2.1). Stored as the enum
-            // value since the Dependency-4 migration; only rewritten when the
-            // admin actually changed it, so any legacy-coded row keeps its
-            // original code until its domain genuinely changes.
-            if (sampleTypeDTO.getDomain() != null && !sampleTypeDTO.getDomain()
-                    .equals(mapBackendDomainToFrontend(existingTypeOfSample.getDomain()))) {
-                existingTypeOfSample.setDomain(Domain.normalize(sampleTypeDTO.getDomain()));
-            }
-
-            if (sampleTypeDTO.getAbbreviation() != null) {
-                String abbreviation = sampleTypeDTO.getAbbreviation().trim();
-                if (abbreviation.length() <= 10) {
-                    existingTypeOfSample.setLocalAbbreviation(abbreviation);
-                }
-            }
-
-            // WHONET code — empty string clears it; the column caps at 5 chars.
-            if (sampleTypeDTO.getWhonetCode() != null) {
-                String whonetCode = sampleTypeDTO.getWhonetCode().trim();
-                if (whonetCode.length() <= 5) {
-                    existingTypeOfSample.setWhonetCode(whonetCode.isEmpty() ? null : whonetCode);
-                }
-            }
-
-            // Disposal instructions (OGC-296 v2.1) — free-text reference;
-            // empty string clears it.
-            if (sampleTypeDTO.getDisposalInstructions() != null) {
-                String disposal = sampleTypeDTO.getDisposalInstructions().trim();
-                existingTypeOfSample.setDisposalInstructions(disposal.isEmpty() ? null : disposal);
-            }
-
-            if (sampleTypeDTO.getSortOrder() > 0) {
-                existingTypeOfSample.setSortOrder(sampleTypeDTO.getSortOrder());
-            }
-
-            // Null means "not sent" — section saves (e.g. Disposal) must not
-            // flip an inactive type back to active.
-            if (sampleTypeDTO.getIsActive() != null) {
-                existingTypeOfSample.setIsActive(sampleTypeDTO.getIsActive());
-            }
-            existingTypeOfSample.setSysUserId(userId);
-
-            // Rename updates the EXISTING localization in place (the mapping
-            // cascades) — creating a fresh Localization here would orphan the
-            // old row and drop the non-English values.
-            if (sampleTypeDTO.getName() != null && !sampleTypeDTO.getName().trim().isEmpty()) {
-                String newName = sampleTypeDTO.getName().trim();
-                Localization localization = existingTypeOfSample.getLocalization();
-                if (localization == null) {
-                    localization = new Localization();
-                    localization.setDescription("type of sample name");
-                    existingTypeOfSample.setLocalization(localization);
-                }
-                localization.setLocalizedValue("en", newName);
-                localization.setSysUserId(userId);
-            }
-
-            typeOfSampleService.save(existingTypeOfSample);
-
-            // Reflect the change in order entry immediately.
-            typeOfSampleService.clearCache();
-            DisplayListService.getInstance().refreshList(DisplayListService.ListType.SAMPLE_TYPE);
-            DisplayListService.getInstance().refreshList(DisplayListService.ListType.SAMPLE_TYPE_ACTIVE);
-            DisplayListService.getInstance().refreshList(DisplayListService.ListType.SAMPLE_TYPE_INACTIVE);
-
-            SampleTypeManagementDTO responseDTO = new SampleTypeManagementDTO(existingTypeOfSample);
-            return ResponseEntity.ok(new ApiResponse<>(true, "Sample type updated successfully", responseDTO));
-
+            SampleTypeManagementDTO saved = new SampleTypeManagementDTO(
+                    managementService.save(sampleTypeId, sampleTypeDTO, getSysUserId(request)));
+            return ResponseEntity.ok(new ApiResponse<>(true, "Sample type updated successfully", saved));
+        } catch (java.util.NoSuchElementException e) {
+            return ResponseEntity.notFound().build();
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(new ApiResponse<>(false, "Invalid sample type update", null));
+        } catch (org.openelisglobal.common.exception.LIMSDuplicateRecordException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(new ApiResponse<>(false, "Sample type already exists", null));
         } catch (Exception e) {
             LogEvent.logError("SampleTypeManagementRestController", "updateSampleType", e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ApiResponse<>(false, "Error updating sample type: " + e.getMessage(), null));
+                    .body(new ApiResponse<>(false, "Error updating sample type", null));
         }
     }
 

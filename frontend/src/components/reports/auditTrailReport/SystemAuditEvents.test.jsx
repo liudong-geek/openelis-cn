@@ -188,3 +188,77 @@ describe("中国版操作日志查询", () => {
     expect(screen.getByText("名称配置")).toBeInTheDocument();
   });
 });
+
+test("基础配置快照显示配对业务对象、中文字段和原始前后值", async () => {
+  getFromOpenElisServer.mockImplementation((url, callback) => {
+    if (url === "/rest/systemAuditEvents/entityTypes")
+      callback([
+        { id: "50", name: "LOCALIZATION" },
+        { id: "10", name: "TEST" },
+        { id: "11", name: "TYPE_OF_SAMPLE" },
+      ]);
+    else if (url === "/rest/users") callback([]);
+    else
+      callback({
+        events: [
+          {
+            timestamp: "2026-10-04T01:00:00Z",
+            entityType: "TEST",
+            entityId: "373",
+            configurationType: "testCatalog",
+            businessId: "373",
+            action: "UPDATE",
+            user: "管理员",
+            changes: {
+              code: { old: "SMA", new: "SMA-QA" },
+              labUnitId: { old: "164", new: "165" },
+              sampleTypeIds: { old: "1,2", new: "1,2,3" },
+              active: { old: "false", new: "true" },
+            },
+          },
+          {
+            timestamp: "2026-10-04T01:00:01Z",
+            entityType: "TYPE_OF_SAMPLE",
+            entityId: "25",
+            configurationType: "sampleType",
+            businessId: "25",
+            action: "UPDATE",
+            user: "管理员",
+            changes: {
+              abbreviation: { old: "ED", new: "EDTA" },
+              isActive: { old: "false", new: "true" },
+              sortOrder: { old: "0", new: "1" },
+            },
+          },
+          {
+            timestamp: "2026-10-04T01:00:02Z",
+            entityType: "LOCALIZATION",
+            entityId: "900",
+            configurationType: "sampleType",
+            businessId: "25",
+            action: "UPDATE",
+            user: "管理员",
+            changes: { zh: { old: "EDTA抗凝管", new: "EDTA抗凝管(验收)" } },
+          },
+        ],
+        totalItems: 3,
+      });
+  });
+  renderPage();
+  const testRow = await screen.findByRole("row", { name: /SMA-QA/ });
+  expect(testRow).toHaveTextContent("检验项目");
+  expect(testRow).toHaveTextContent("373");
+  expect(testRow).toHaveTextContent("项目代码：SMA → SMA-QA");
+  expect(testRow).toHaveTextContent("专业组编号：164 → 165");
+  expect(testRow).toHaveTextContent("标本类型编号：1,2 → 1,2,3");
+  expect(testRow).toHaveTextContent("启用状态：false → true");
+  const fieldRow = screen.getByRole("row", { name: /ED → EDTA/ });
+  expect(fieldRow).toHaveTextContent("标本类型");
+  expect(fieldRow).toHaveTextContent("25");
+  expect(fieldRow).toHaveTextContent("启用状态：false → true");
+  expect(fieldRow).toHaveTextContent("排序：0 → 1");
+  const nameRow = screen.getByRole("row", { name: /EDTA抗凝管/ });
+  expect(nameRow).toHaveTextContent("标本类型");
+  expect(nameRow).toHaveTextContent("25");
+  expect(nameRow).not.toHaveTextContent("900");
+});

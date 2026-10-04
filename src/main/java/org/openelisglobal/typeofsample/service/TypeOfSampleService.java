@@ -45,6 +45,8 @@ public interface TypeOfSampleService extends BaseObjectService<TypeOfSample, Str
 
     void clearCache();
 
+    void invalidateCache();
+
     List<TypeOfSample> getTypeOfSampleForTest(String testId);
 
     String getTypeOfSampleNameForId(String id);

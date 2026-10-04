@@ -175,9 +175,13 @@ describe("TestCatalogList", () => {
     renderList();
     const cell = await screen.findByText("Glucose");
     fireEvent.click(cell.closest("tr"));
-    expect(mockHistory.push).toHaveBeenCalledWith(
-      "/MasterListsPage/TestCatalogEditor/7/basic-info",
-    );
+    expect(mockHistory.push).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(
+      getFromOpenElisServer.mock.calls.some(
+        ([url]) => url === "/rest/test-catalog/tests/7/basic-info",
+      ),
+    ).toBe(true);
   });
 
   it("provides an explicit edit action for users who do not discover row click", async () => {
@@ -201,10 +205,14 @@ describe("TestCatalogList", () => {
       await screen.findByRole("button", { name: "Edit Glucose" }),
     );
 
-    expect(mockHistory.push).toHaveBeenCalledTimes(1);
-    expect(mockHistory.push).toHaveBeenCalledWith(
-      "/MasterListsPage/TestCatalogEditor/7/basic-info",
-    );
+    expect(mockHistory.push).not.toHaveBeenCalled();
+    expect(mockHistory.push).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(
+      getFromOpenElisServer.mock.calls.some(
+        ([url]) => url === "/rest/test-catalog/tests/7/basic-info",
+      ),
+    ).toBe(true);
   });
 
   it("debounces the search — one fetch after the pause, not per keystroke", () => {
@@ -302,8 +310,27 @@ describe("TestCatalogList", () => {
       screen.getByRole("checkbox", { name: "选择检验项目“葡萄糖”" }),
     );
     expect(screen.getByText("已选择 1 个检验项目")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByText("取消")).toBeInTheDocument();
     expect(screen.getByText("每页项数")).toBeInTheDocument();
     expect(screen.getByText("第 1–1 项，共 1 项")).toBeInTheDocument();
   });
+});
+
+it("opens related configuration with allowed list context and no modal", async () => {
+  getFromOpenElisServer.mockImplementation((url, cb) =>
+    cb(
+      url.includes("/tests")
+        ? pageOf([{ testId: "7", name: "Glucose", active: true }])
+        : [],
+    ),
+  );
+  renderList();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Related configuration" }),
+  );
+  expect(mockHistory.push).toHaveBeenCalledWith(
+    "/MasterListsPage/TestCatalogEditor/7/basic-info",
+  );
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });

@@ -20,6 +20,9 @@ import org.openelisglobal.typeofsample.service.TypeOfSampleService;
 import org.openelisglobal.typeofsample.valueholder.TypeOfSample;
 import org.springframework.beans.factory.annotation.Autowired;
 
+@org.springframework.test.context.ContextConfiguration(classes = { org.openelisglobal.BaseTestConfig.class,
+        org.openelisglobal.AppTestConfig.class,
+        org.openelisglobal.common.management.service.AdminBasicEditPersistenceTest.TestConfig.class })
 public class SampleTypeCreateServiceTest extends BaseWebContextSensitiveTest {
 
     @Autowired

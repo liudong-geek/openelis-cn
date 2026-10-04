@@ -32,6 +32,9 @@ import org.springframework.mock.web.MockHttpSession;
  * sampleTypes payload (FR-9), and the FR-10 health-finding inversion (zero
  * links is the only error; multiple links raise nothing).
  */
+@org.springframework.test.context.ContextConfiguration(classes = { org.openelisglobal.BaseTestConfig.class,
+        org.openelisglobal.AppTestConfig.class,
+        org.openelisglobal.common.management.service.AdminBasicEditPersistenceTest.TestConfig.class })
 public class TestCatalogEditorSampleTypesIntegrationTest extends BaseWebContextSensitiveTest {
 
     private static final long TEST_ID = 96001L;
@@ -75,6 +78,9 @@ public class TestCatalogEditorSampleTypesIntegrationTest extends BaseWebContextS
     @Autowired
     private javax.sql.DataSource dataSource;
 
+    @Autowired
+    private org.openelisglobal.testcatalog.service.TestCatalogBasicInfoService basicInfoService;
+
     private TestCatalogEditorRestController controller;
     private JdbcTemplate jdbc;
 
@@ -87,6 +93,7 @@ public class TestCatalogEditorSampleTypesIntegrationTest extends BaseWebContextS
                 testResultService, resultLimitService, coverageService, handlingService, analyzerService,
                 analyzerTestMappingService, typeOfSampleService, typeOfSampleTestService, terminologyService,
                 panelService, panelItemService);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "basicInfoService", basicInfoService);
         // create-in-place is field-injected (optional) in production; wire it here so
         // the createTest endpoint is exercisable.
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "testCatalogCreationService",

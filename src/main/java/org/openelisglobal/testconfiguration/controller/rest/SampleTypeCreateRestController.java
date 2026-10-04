@@ -1,13 +1,14 @@
 package org.openelisglobal.testconfiguration.controller.rest;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Locale;
-import javax.validation.Valid;
+import java.util.Map;
 import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.controller.BaseController;
 import org.openelisglobal.common.domain.Domain;
-import org.openelisglobal.common.exception.LIMSRuntimeException;
+import org.openelisglobal.common.exception.LIMSDuplicateRecordException;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.services.DisplayListService;
 import org.openelisglobal.localization.valueholder.Localization;
@@ -20,6 +21,8 @@ import org.openelisglobal.testconfiguration.service.SampleTypeCreateService;
 import org.openelisglobal.typeofsample.service.TypeOfSampleService;
 import org.openelisglobal.typeofsample.valueholder.TypeOfSample;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.WebDataBinder;
@@ -36,7 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class SampleTypeCreateRestController extends BaseController {
 
     private static final String[] ALLOWED_FIELDS = new String[] { "sampleTypeEnglishName", "sampleTypeFrenchName",
-            "domain", "whonetCode", "active" };
+            "nameZh", "identifyingName", "domain", "whonetCode", "active" };
 
     public static final String NAME_SEPARATOR = "$";
 
@@ -85,19 +88,27 @@ public class SampleTypeCreateRestController extends BaseController {
     }
 
     @PostMapping(value = "/SampleTypeCreate")
-    public SampleTypeCreateForm postSampleTypeCreate(HttpServletRequest request,
+    public ResponseEntity<?> postSampleTypeCreate(HttpServletRequest request,
             @RequestBody @Valid SampleTypeCreateForm form, BindingResult result) {
+        form.setCreatedSampleTypeId(null);
         if (result.hasErrors()) {
-            saveErrors(result);
-            setupDisplayItems(form);
-            // return findForward(FWD_FAIL_INSERT, form);
-            return form;
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid sample type fields"));
         }
-        String identifyingName = form.getSampleTypeEnglishName();
+        String identifyingName = form.getIdentifyingName() == null || form.getIdentifyingName().trim().isEmpty()
+                ? form.getSampleTypeEnglishName().trim()
+                : form.getIdentifyingName().trim();
+        if (identifyingName.length() > 40) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid identifying name"));
+        }
         String userId = getSysUserId(request);
         String backendDomainCode = mapFrontendDomainToBackendCode(form.getDomain());
 
-        Localization localization = createLocalization(form.getSampleTypeFrenchName(), identifyingName, userId);
+        Localization localization = createLocalization(form.getSampleTypeFrenchName().trim(),
+                form.getSampleTypeEnglishName().trim(), userId);
+        if (form.getNameZh() != null && !form.getNameZh().trim().isEmpty()) {
+            localization.setLocalizedValue("zh", form.getNameZh().trim());
+        }
+        localization.getValues().values().forEach(value -> value.setSysUserId(userId));
 
         TypeOfSample typeOfSample = createTypeOfSample(identifyingName, userId, backendDomainCode, form.getWhonetCode(),
                 Boolean.TRUE.equals(form.getActive()));
@@ -116,16 +127,17 @@ public class SampleTypeCreateRestController extends BaseController {
         try {
             sampleTypeCreateService.createAndInsertSampleType(localization, typeOfSample, workplanModule, resultModule,
                     validationModule, workplanResultModule, resultResultModule, validationValidationModule);
-        } catch (LIMSRuntimeException e) {
+        } catch (LIMSDuplicateRecordException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "Sample type already exists"));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Required sample type roles are not configured"));
+        } catch (RuntimeException e) {
             LogEvent.logError("Failed to save Sample Type '" + identifyingName + "' to database: " + e.getMessage(), e);
-            throw e;
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Sample type could not be saved"));
         }
-        DisplayListService.getInstance().refreshList(DisplayListService.ListType.SAMPLE_TYPE);
-        DisplayListService.getInstance().refreshList(DisplayListService.ListType.SAMPLE_TYPE_ACTIVE);
-        DisplayListService.getInstance().refreshList(DisplayListService.ListType.SAMPLE_TYPE_INACTIVE);
-
-        // return findForward(FWD_SUCCESS_INSERT, form);
-        return form;
+        form.setCreatedSampleTypeId(typeOfSample.getId());
+        return ResponseEntity.ok(form);
     }
 
     private Localization createLocalization(String french, String english, String currentUserId) {

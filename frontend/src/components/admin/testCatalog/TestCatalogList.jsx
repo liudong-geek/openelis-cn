@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useHistory } from "react-router-dom";
+import { useHistory, useLocation } from "react-router-dom";
 import {
   Grid,
   Column,
@@ -35,6 +35,7 @@ import { getFromOpenElisServer } from "../../utils/Utils";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import useDomains from "../../common/useDomains";
 import { DEFAULT_SECTION } from "./sectionConfig";
+import { buildCatalogReturnTo, withCatalogReturnTo } from "./catalogReturnTo";
 import BasicInfoSection from "./sections/BasicInfoSection";
 import "../AdminModal.css";
 import "./TestCatalogList.css";
@@ -75,6 +76,12 @@ const SEARCH_DEBOUNCE_MS = 300;
 const SEVERITY_RANK = { ERROR: 0, WARNING: 1, INFO: 2 };
 
 const TestCatalogList = () => {
+  const location = useLocation();
+  const base = location.pathname.startsWith("/admin")
+    ? "/admin"
+    : "/MasterListsPage";
+  const [editingId, setEditingId] = useState(null);
+  const [savedNotice, setSavedNotice] = useState(false);
   const domainOptions = [
     ALL_DOMAINS_OPTION,
     ...useDomains().map((d) => ({ id: d.id, label: d.labelKey })),
@@ -215,12 +222,16 @@ const TestCatalogList = () => {
   ];
 
   const openEditor = (testId) => {
-    // Push the canonical section URL so the deep-link is fully formed and the
-    // first section + its SideNav item light up immediately.
-    history.push(
-      `/MasterListsPage/TestCatalogEditor/${testId}/${DEFAULT_SECTION}`,
-    );
+    setSavedNotice(false);
+    setEditingId(testId);
   };
+  const openConfiguration = (testId) =>
+    history.push(
+      withCatalogReturnTo(
+        `${base}/TestCatalogEditor/${testId}/${DEFAULT_SECTION}`,
+        buildCatalogReturnTo(location),
+      ),
+    );
 
   const openNewTest = () => {
     setCreateOpen(true);
@@ -230,7 +241,10 @@ const TestCatalogList = () => {
     // Combined editor over the selected set (FR-6/FR-8).
     const ids = selectedRows.map((r) => r.id).join(",");
     history.push(
-      `/MasterListsPage/TestCatalogEditor/group/${ids}/${DEFAULT_SECTION}`,
+      withCatalogReturnTo(
+        `${base}/TestCatalogEditor/group/${ids}/${DEFAULT_SECTION}`,
+        buildCatalogReturnTo(location),
+      ),
     );
   };
 
@@ -414,7 +428,32 @@ const TestCatalogList = () => {
           }}
         />
       )}
+      {editingId && (
+        <BasicInfoSection
+          key={editingId}
+          testId={editingId}
+          embedded
+          onCancel={() => setEditingId(null)}
+          onConfigure={() => openConfiguration(editingId)}
+          onSaved={() => {
+            setEditingId(null);
+            setSavedNotice(true);
+            setReloadKey((value) => value + 1);
+          }}
+        />
+      )}
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
+      {savedNotice && (
+        <InlineNotification
+          kind="success"
+          lowContrast
+          title={intl.formatMessage({
+            id: "label.testCatalog.basicInfo.saved",
+          })}
+          onClose={() => setSavedNotice(false)}
+        />
+      )}
+
       <Grid fullWidth>
         <Column lg={16} md={8} sm={4}>
           <Section className="testCatalogList__header">
@@ -627,9 +666,19 @@ const TestCatalogList = () => {
                             <React.Fragment key={row.id}>
                               <TableRow
                                 {...getRowProps({ row })}
-                                onClick={() => openEditor(row.id)}
+                                onClick={(event) => {
+                                  if (
+                                    !event.target.closest(
+                                      "button, a, input, label",
+                                    )
+                                  )
+                                    openEditor(row.id);
+                                }}
                                 onKeyDown={(e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
+                                  if (
+                                    e.target === e.currentTarget &&
+                                    (e.key === "Enter" || e.key === " ")
+                                  ) {
                                     e.preventDefault();
                                     openEditor(row.id);
                                   }
@@ -699,22 +748,36 @@ const TestCatalogList = () => {
                                         )}
                                       </span>
                                     ) : cell.info.header === "actions" ? (
-                                      <Button
-                                        kind="ghost"
-                                        size="sm"
-                                        hasIconOnly
-                                        renderIcon={Edit}
-                                        iconDescription={intl.formatMessage(
-                                          {
-                                            id: "button.testCatalog.editTestAria",
-                                          },
-                                          { name: source?.name || "" },
-                                        )}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          openEditor(row.id);
-                                        }}
-                                      />
+                                      <div className="testCatalogList__rowActions">
+                                        <Button
+                                          kind="ghost"
+                                          size="sm"
+                                          hasIconOnly
+                                          renderIcon={Edit}
+                                          iconDescription={intl.formatMessage(
+                                            {
+                                              id: "button.testCatalog.editTestAria",
+                                            },
+                                            { name: source?.name || "" },
+                                          )}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            openEditor(row.id);
+                                          }}
+                                        />
+                                        <Button
+                                          kind="ghost"
+                                          size="sm"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            openConfiguration(row.id);
+                                          }}
+                                        >
+                                          {intl.formatMessage({
+                                            id: "common.action.relatedConfiguration",
+                                          })}
+                                        </Button>
+                                      </div>
                                     ) : (
                                       cell.value
                                     )}

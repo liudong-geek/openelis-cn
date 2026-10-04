@@ -153,6 +153,15 @@ public class TestCatalogEditorRestControllerSecurityTest extends SecuritySliceMo
         }
 
         @Bean
+        org.openelisglobal.testcatalog.service.TestCatalogBasicInfoService basicInfoService() {
+            var service = mock(org.openelisglobal.testcatalog.service.TestCatalogBasicInfoService.class);
+            org.mockito.Mockito.when(service.save(org.mockito.ArgumentMatchers.eq("999999"),
+                    org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                    .thenThrow(new java.util.NoSuchElementException());
+            return service;
+        }
+
+        @Bean
         TestService testService() {
             return mock(TestService.class);
         }

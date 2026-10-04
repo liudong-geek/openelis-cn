@@ -27,6 +27,7 @@ import { AlertDialog } from "../../common/CustomNotification";
 import { NotificationContext } from "../../layout/Layout";
 import RangeModal from "./sections/RangeModal";
 import StorageSection from "./sections/StorageSection";
+import { getCatalogReturnTo, withCatalogReturnTo } from "./catalogReturnTo";
 
 /**
  * OGC-1112 (FR-7..14) — Edit related tests together.
@@ -62,6 +63,7 @@ const CombinedTestEditor = () => {
   const base = location.pathname.startsWith("/admin")
     ? "/admin"
     : "/MasterListsPage";
+  const returnTo = getCatalogReturnTo(location.search, base);
   const { addNotification, setNotificationVisible, notificationVisible } =
     useContext(NotificationContext);
 
@@ -161,7 +163,10 @@ const CombinedTestEditor = () => {
     const remaining = testIds.filter((t) => t !== id);
     if (remaining.length >= 2) {
       history.push(
-        `${base}/TestCatalogEditor/group/${remaining.join(",")}/ranges`,
+        withCatalogReturnTo(
+          `${base}/TestCatalogEditor/group/${remaining.join(",")}/ranges`,
+          returnTo,
+        ),
       );
     }
   };
@@ -214,7 +219,7 @@ const CombinedTestEditor = () => {
   const breadcrumbs = [
     { label: "home.label", link: "/" },
     { label: "breadcrums.admin.managment", link: base },
-    { label: "label.testCatalog.editor", link: `${base}/TestCatalogList` },
+    { label: "label.testCatalog.editor", link: returnTo },
   ];
 
   if (loading) {
@@ -295,7 +300,10 @@ const CombinedTestEditor = () => {
                         size="sm"
                         onClick={() =>
                           history.push(
-                            `${base}/TestCatalogEditor/${s.testId}/terminology`,
+                            withCatalogReturnTo(
+                              `${base}/TestCatalogEditor/${s.testId}/terminology`,
+                              returnTo,
+                            ),
                           )
                         }
                       >
@@ -475,10 +483,7 @@ const CombinedTestEditor = () => {
                 >
                   <FormattedMessage id="button.testCatalog.setAllTo" />
                 </Button>
-                <Button
-                  kind="secondary"
-                  onClick={() => history.push(`${base}/TestCatalogList`)}
-                >
+                <Button kind="secondary" onClick={() => history.push(returnTo)}>
                   <FormattedMessage id="label.button.cancel" />
                 </Button>
               </div>
