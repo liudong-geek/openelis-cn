@@ -1,5 +1,5 @@
 import React from "react";
-import { waitFor } from "@testing-library/dom";
+import { waitFor, within } from "@testing-library/dom";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { IntlProvider } from "react-intl";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
@@ -96,11 +96,11 @@ it("cannot resubmit an unknown configuration save after reload", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Save report grouping" }));
   await waitFor(() =>
     expect(
-      screen.getByRole("button", { name: "Reload grouping rules" }),
+      screen.getByRole("button", { name: "Read current grouping" }),
     ).not.toBeDisabled(),
   );
   fireEvent.click(
-    screen.getByRole("button", { name: "Reload grouping rules" }),
+    screen.getByRole("button", { name: "Read current grouping" }),
   );
   await screen.findByLabelText("Glucose");
   expect(
@@ -121,7 +121,9 @@ it("initializes only through null expected version after unconfigured response",
       expect(body.expectedRuleVersion).toBeNull();
       current = { ruleVersion: "v1", groups: body.groups };
     }
-    return current ? json(current) : json({}, 409);
+    return current
+      ? json(current)
+      : json({ error: "REPORT_GROUPS_NOT_CONFIGURED" }, 409);
   });
   vi.stubGlobal("fetch", fetcher);
   render(view());
@@ -137,4 +139,80 @@ it("initializes only through null expected version after unconfigured response",
   fireEvent.click(screen.getByLabelText("Glucose"));
   fireEvent.click(screen.getByRole("button", { name: "Save report grouping" }));
   await screen.findByText("Grouping rules saved and verified.");
+});
+
+it("does not offer initialization for corrupted or disabled grouping conflicts", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (u: any) =>
+      String(u).endsWith("/test-list")
+        ? json([{ id: "90", value: "Glucose" }])
+        : json({ error: "REPORT_STATE_CONFLICT" }, 409),
+    ),
+  );
+  render(view());
+  await screen.findByText(en["report.groups.loadError"]);
+  expect(
+    screen.queryByRole("button", { name: "Start initial configuration" }),
+  ).toBeNull();
+});
+it("retains named grouping edits after a rejected save", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (u: any, o: any) =>
+      o.method === "PUT"
+        ? json({ error: "INVALID_REPORT_REQUEST" }, 400)
+        : String(u).endsWith("/test-list")
+          ? json([{ id: "90", value: "Glucose" }])
+          : json(rules),
+    ),
+  );
+  render(view());
+  await screen.findByLabelText("Glucose");
+  fireEvent.change(screen.getByLabelText("Group name"), {
+    target: { value: "Retained group edit" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save report grouping" }));
+  await screen.findByText(en["report.groups.conflict"]);
+  expect(screen.getByLabelText("Group name")).toHaveValue(
+    "Retained group edit",
+  );
+});
+it("requires explicit discard before reload and preserves edits if that read fails", async () => {
+  let failing = false;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (u: any) => {
+      if (failing) throw new TypeError("read unavailable");
+      return String(u).endsWith("/test-list")
+        ? json([{ id: "90", value: "Glucose" }])
+        : json(rules);
+    }),
+  );
+  render(view());
+  await screen.findByLabelText("Glucose");
+  fireEvent.change(screen.getByLabelText("Group name"), {
+    target: { value: "Retained after read failure" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Reload grouping rules" }),
+  );
+  expect(screen.getByRole("dialog")).toBeVisible();
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }),
+  );
+  expect(screen.getByLabelText("Group name")).toHaveValue(
+    "Retained after read failure",
+  );
+  failing = true;
+  fireEvent.click(
+    screen.getByRole("button", { name: "Reload grouping rules" }),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Discard edits and reload" }),
+  );
+  await screen.findByText(en["report.groups.loadError"]);
+  expect(screen.getByLabelText("Group name")).toHaveValue(
+    "Retained after read failure",
+  );
 });

@@ -3,7 +3,9 @@ package org.openelisglobal.resultreporting.controller.rest;
 import jakarta.servlet.http.HttpServletRequest;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.apache.commons.validator.GenericValidator;
 import org.openelisglobal.common.controller.BaseController;
 import org.openelisglobal.common.exception.LIMSRuntimeException;
@@ -22,6 +24,7 @@ import org.openelisglobal.siteinformation.service.SiteInformationService;
 import org.openelisglobal.siteinformation.valueholder.SiteInformation;
 import org.openelisglobal.spring.util.SpringContext;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.annotation.Validated;
@@ -32,6 +35,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/rest")
@@ -49,8 +53,6 @@ public class ResultReportingConfigurationRestController extends BaseController {
     @Autowired
     private ResultReportingConfigurationService resultReportingConfigurationService;
     private static final String NEVER = "never";
-    private static final String CRON_POSTFIX = "? * *";
-    private static final String CRON_PREFIX = "0 ";
 
     @InitBinder
     public void initBinder(WebDataBinder binder) {
@@ -83,31 +85,44 @@ public class ResultReportingConfigurationRestController extends BaseController {
             @RequestBody @Validated(ResultReportingConfigurationForm.ResultReportConfig.class) ResultReportingConfigurationForm form,
             BindingResult result) {
         if (result.hasErrors()) {
-            saveErrors(result);
-            // return findForward(FWD_FAIL_INSERT, form);
-            return form;
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid report channel configuration");
+        }
+        if (form.getReports() == null || form.getReports().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Report channels are required");
         }
         List<SiteInformation> informationList = new ArrayList<>();
         List<CronScheduler> scheduleList = new ArrayList<>();
         List<ReportingConfiguration> reports = form.getReports();
 
+        Set<String> identities = new HashSet<>();
         for (ReportingConfiguration config : reports) {
-            informationList.add(setSiteInformationFor(config.getUrl(), config.getUrlId()));
-            informationList.add(setSiteInformationFor(config.getEnabled(), config.getEnabledId()));
+            if (config == null || config.getEnabledId() == null || !config.getEnabledId().matches("[1-9][0-9]*")
+                    || config.getUrlId() == null || !config.getUrlId().matches("[1-9][0-9]*")
+                    || !("enable".equals(config.getEnabled()) || "disable".equals(config.getEnabled()))) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Required report channel fields are invalid");
+            }
+            if (!identities.add(config.getUrlId()) || !identities.add(config.getEnabledId())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Duplicate report channel identity");
+            }
+            SiteInformation url = setSiteInformationFor(config.getUrl(), config.getUrlId(), "url");
+            SiteInformation enabled = setSiteInformationFor(config.getEnabled(), config.getEnabledId(), "enable");
+            if (url.getGroup() != enabled.getGroup()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mismatched report channel identity");
+            }
+            informationList.add(url);
+            informationList.add(enabled);
 
-            if (config.getIsScheduled()) {
-                CronScheduler scheduler = setScheduleInformationFor(config);
-                if (scheduler != null) {
-                    scheduleList.add(scheduler);
-                }
+            CronScheduler scheduler = setScheduleInformationFor(config, url, enabled);
+            if (scheduler != null) {
+                scheduleList.add(scheduler);
             }
         }
 
         try {
             resultReportingConfigurationService.updateInformationAndSchedulers(informationList, scheduleList);
         } catch (LIMSRuntimeException e) {
-            // return findForward(FWD_FAIL_INSERT, form);
-            return form;
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Report channel configuration was not saved", e);
         }
 
         ConfigurationProperties.loadDBValuesIntoConfiguration();
@@ -118,44 +133,58 @@ public class ResultReportingConfigurationRestController extends BaseController {
         return form;
     }
 
-    private CronScheduler setScheduleInformationFor(ReportingConfiguration config) {
-        CronScheduler scheduler = schedulerService.get(config.getSchedulerId());
-
-        if (scheduler != null) {
-            String cronStatement = createCronStatement(config.getScheduleHours(), config.getScheduleMin(), false);
-            scheduler.setActive("enable".equals(config.getEnabled()));
-            scheduler.setCronStatement(cronStatement);
-            scheduler.setSysUserId(getSysUserId(request));
+    private CronScheduler setScheduleInformationFor(ReportingConfiguration config, SiteInformation url,
+            SiteInformation enabled) {
+        CronScheduler linked = url.getSchedule() == null ? enabled.getSchedule() : url.getSchedule();
+        if (url.getSchedule() != null && enabled.getSchedule() != null
+                && !url.getSchedule().getId().equals(enabled.getSchedule().getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Conflicting stored report channel schedules");
         }
+        if (linked == null) {
+            if (config.getIsScheduled() || !GenericValidator.isBlankOrNull(config.getSchedulerId())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unexpected report channel schedule");
+            }
+            return null;
+        }
+        if (!config.getIsScheduled() || !linked.getId().equals(config.getSchedulerId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid report channel schedule identity");
+        }
+        CronScheduler scheduler = schedulerService.get(linked.getId());
+        if (scheduler == null || !linked.getId().equals(scheduler.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Report channel schedule was not found");
+        }
+        String cron = scheduler.getCronStatement();
+        String hour = null;
+        String minute = null;
+        if (!NEVER.equals(cron)) {
+            try {
+                String[] parts = cron.trim().split("\\s+");
+                hour = parts[2];
+                minute = String.valueOf(Integer.parseInt(parts[1]));
+            } catch (RuntimeException e) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Invalid stored report channel schedule", e);
+            }
+        }
+        if (!sameScheduleTime(hour, config.getScheduleHours()) || !sameScheduleTime(minute, config.getScheduleMin())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Report channel schedule is read-only");
+        }
+        // Editing delivery enablement or URL must preserve the complete existing cron.
+        scheduler.setActive("enable".equals(config.getEnabled()));
+        scheduler.setSysUserId(getSysUserId(request));
         return scheduler;
     }
 
-    private String createCronStatement(String hour, String min, boolean tweak) {
-        int approxStringLength = 10;
-        StringBuilder cronBuilder = new StringBuilder(approxStringLength);
-
-        if (GenericValidator.isBlankOrNull(hour) || GenericValidator.isBlankOrNull(min)) {
-            cronBuilder.append(NEVER);
-        } else {
-            cronBuilder.append(CRON_PREFIX);
-            if (tweak) {
-                int minute = Math.min(Integer.parseInt(min) + (int) (Math.random() * 9.0), 59);
-                cronBuilder.append(String.valueOf(minute));
-            } else {
-                cronBuilder.append(min);
-            }
-            cronBuilder.append(" ");
-            cronBuilder.append(hour);
-            cronBuilder.append(" ");
-            cronBuilder.append(CRON_POSTFIX);
-        }
-
-        return cronBuilder.toString();
+    private boolean sameScheduleTime(String expected, String supplied) {
+        return expected == null ? GenericValidator.isBlankOrNull(supplied) : expected.equals(supplied);
     }
 
-    private SiteInformation setSiteInformationFor(String value, String id) {
+    private SiteInformation setSiteInformationFor(String value, String id, String tag) {
         SiteInformation siteInformation = siteInformationService.get(id);
-
+        if (siteInformation == null || !id.equals(siteInformation.getId()) || siteInformation.getDomain() == null
+                || !"resultReporting".equals(siteInformation.getDomain().getName())
+                || !tag.equals(siteInformation.getTag())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid report channel identity");
+        }
         if (siteInformation.getId() != null) {
 
             if ("boolean".equals(siteInformation.getValueType())) {

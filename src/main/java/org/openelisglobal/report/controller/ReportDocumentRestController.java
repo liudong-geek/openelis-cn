@@ -182,6 +182,12 @@ public class ReportDocumentRestController extends BaseRestController {
                 .body(Map.of("error", "INVALID_REPORT_REQUEST", "message", exception.getMessage()));
     }
 
+    @ExceptionHandler(ReportGroupingConfigurationService.NotConfiguredException.class)
+    public ResponseEntity<Map<String, String>> notConfigured() {
+        return ResponseEntity.status(409)
+                .body(Map.of("error", "REPORT_GROUPS_NOT_CONFIGURED", "message", "Report grouping is not configured"));
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<Map<String, String>> conflict(IllegalStateException exception) {
         return ResponseEntity.status(409)

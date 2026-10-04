@@ -190,7 +190,7 @@ public class ExchangeConfigurationService {
                     String[] cronParts = cronString.split(" ");
                     int minutes = Integer.parseInt(cronParts[1]);
                     configuration.setScheduleHours(cronParts[2]);
-                    configuration.setScheduleMin(String.valueOf(minutes / 10 * 10));
+                    configuration.setScheduleMin(String.valueOf(minutes));
                 }
             }
         }

@@ -7,10 +7,10 @@ import {
   Stack,
   TextInput,
   Tile,
+  Modal,
 } from "@carbon/react";
 import { useIntl } from "react-intl";
 import {
-  getReportRules,
   getReportTests,
   readRules,
   ReportApiError,
@@ -27,6 +27,10 @@ import {
   rememberPendingReport,
   useReportSession,
 } from "../../patient/resultsViewer/reportWorkspaceState";
+import { getGroupingRules, ReportingApiError } from "./result-reporting-api";
+import "../AdminModal.css";
+const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+
 export default function ReportGroupingConfiguration() {
   const session = useReportSession(true);
   const intl = useIntl();
@@ -54,6 +58,11 @@ function Editor({ request }: { request: ReportRequest }) {
     >(null),
     [tests, setTests] = useState<{ id: string; value: string }[]>([]);
   const [canInitialize, setCanInitialize] = useState(false);
+  const [baseline, setBaseline] = useState<typeof rules>(null);
+  const [conflict, setConflict] = useState(false);
+  const [confirmReload, setConfirmReload] = useState(false);
+  const expected = useRef<typeof rules>(null);
+  const dirty = rules && JSON.stringify(rules) !== JSON.stringify(baseline);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [success, setSuccess] = useState(false),
@@ -76,8 +85,6 @@ function Editor({ request }: { request: ReportRequest }) {
   const load = async () => {
     if (writing.current) return;
     const c = context();
-    setRules(null);
-    setTests([]);
     setCanInitialize(false);
     setError("");
     setSuccess(false);
@@ -86,12 +93,34 @@ function Editor({ request }: { request: ReportRequest }) {
       const list = await getReportTests(c);
       if (c.current()) setTests(list);
       try {
-        const r = await getReportRules(c);
-        if (c.current()) setRules(r);
+        const r = await getGroupingRules(c);
+        if (c.current()) {
+          if (pending && expected.current) {
+            if (
+              r.ruleVersion === expected.current.ruleVersion ||
+              JSON.stringify(r.groups) !==
+                JSON.stringify(expected.current.groups)
+            ) {
+              setError(t("unknown"));
+              return;
+            }
+            clearPendingReport(key);
+            setPending(false);
+            expected.current = null;
+            setSuccess(true);
+          }
+          setRules(clone(r));
+          setBaseline(clone(r));
+          setConflict(false);
+        }
       } catch (e) {
         if (c.current()) {
-          setCanInitialize(e instanceof ReportApiError && e.status === 409);
-          setError(t("loadError"));
+          const missing =
+            e instanceof ReportingApiError &&
+            e.status === 409 &&
+            e.code === "REPORT_GROUPS_NOT_CONFIGURED";
+          setCanInitialize(missing && !rules && !pending);
+          setError(missing && !rules ? "" : t("loadError"));
         }
       }
     } catch {
@@ -112,6 +141,8 @@ function Editor({ request }: { request: ReportRequest }) {
     if (
       !rules ||
       writing.current ||
+      busy ||
+      conflict ||
       pending ||
       !request.current() ||
       readPendingReport(key)
@@ -124,6 +155,7 @@ function Editor({ request }: { request: ReportRequest }) {
       return;
     }
     const c = context();
+    expected.current = clone(rules);
     writing.current = true;
     setBusy(true);
     setError("");
@@ -132,13 +164,16 @@ function Editor({ request }: { request: ReportRequest }) {
       rememberPendingReport(key, { kind: "rules" }, c);
       setPending(true);
       const saved = await saveReportRules(rules, c);
-      const current = await getReportRules(c);
+      const current = await getGroupingRules(c);
       if (c.current()) {
         if (JSON.stringify(saved) !== JSON.stringify(current))
           throw new ReportApiError("unknown");
         clearPendingReport(key);
         setPending(false);
-        setRules(current);
+        setRules(clone(current));
+        setBaseline(clone(current));
+        expected.current = null;
+        setConflict(false);
         setSuccess(true);
       }
     } catch (e) {
@@ -146,7 +181,8 @@ function Editor({ request }: { request: ReportRequest }) {
         if (e instanceof ReportApiError && e.kind === "rejected") {
           clearPendingReport(key);
           setPending(false);
-          setRules(null);
+          expected.current = null;
+          setConflict(e.status === 409);
         }
         setError(
           t(
@@ -162,11 +198,11 @@ function Editor({ request }: { request: ReportRequest }) {
     }
   };
   return (
-    <Tile>
+    <Tile className="report-grouping-workspace">
       <Stack gap={5}>
         <h3>{t("title")}</h3>
         <p>{t("help")}</p>
-        {error && (
+        {error && !(pending && error === t("unknown")) && (
           <InlineNotification
             kind="error"
             lowContrast
@@ -191,9 +227,44 @@ function Editor({ request }: { request: ReportRequest }) {
           />
         )}{" "}
         {busy && <InlineLoading description={t("loading")} />}
-        <Button kind="tertiary" disabled={busy} onClick={() => void load()}>
-          {t("reload")}
+        <Button
+          kind="tertiary"
+          disabled={busy}
+          onClick={() => {
+            if (dirty && !pending) setConfirmReload(true);
+            else void load();
+          }}
+        >
+          {t(pending ? "verify" : "reload")}
         </Button>
+        {canInitialize && (
+          <InlineNotification
+            kind="info"
+            lowContrast
+            hideCloseButton
+            title={t("notConfiguredTitle")}
+            subtitle={t("notConfiguredHelp")}
+          />
+        )}
+        <Modal
+          open={confirmReload}
+          className="oe-admin-modal"
+          modalHeading={t("reloadConfirmTitle")}
+          primaryButtonText={t("reloadConfirm")}
+          secondaryButtonText={intl.formatMessage({
+            id: "label.button.cancel",
+          })}
+          closeButtonLabel={intl.formatMessage({ id: "button.close" })}
+          onRequestClose={() => {
+            if (!writing.current) setConfirmReload(false);
+          }}
+          onRequestSubmit={() => {
+            setConfirmReload(false);
+            void load();
+          }}
+        >
+          <p>{t("reloadConfirmHelp")}</p>
+        </Modal>
         {canInitialize && !rules && (
           <Button
             disabled={busy || pending}
@@ -218,10 +289,11 @@ function Editor({ request }: { request: ReportRequest }) {
               id="report-groups-test-search"
               labelText={t("search")}
               value={query}
+              disabled={busy || pending}
               onChange={(e) => setQuery(e.target.value)}
             />
             {rules.groups.map((group, index) => (
-              <Tile key={index}>
+              <Tile className="report-grouping-workspace__group" key={index}>
                 <Stack gap={4}>
                   <TextInput
                     id={`report-group-key-${index}`}
@@ -264,36 +336,38 @@ function Editor({ request }: { request: ReportRequest }) {
                       title={t("missingTests")}
                     />
                   )}
-                  {tests
-                    .filter((test) =>
-                      test.value.toLowerCase().includes(query.toLowerCase()),
-                    )
-                    .map((test) => (
-                      <Checkbox
-                        key={test.id}
-                        id={`report-group-${index}-test-${test.id}`}
-                        labelText={test.value}
-                        checked={group.testIds.includes(test.id)}
-                        disabled={busy || pending}
-                        onChange={(_, data) =>
-                          setRules({
-                            ...rules,
-                            groups: rules.groups.map((g, i) =>
-                              i === index
-                                ? {
-                                    ...g,
-                                    testIds: data.checked
-                                      ? [...g.testIds, test.id]
-                                      : g.testIds.filter(
-                                          (id) => id !== test.id,
-                                        ),
-                                  }
-                                : g,
-                            ),
-                          })
-                        }
-                      />
-                    ))}
+                  <div className="report-grouping-workspace__tests">
+                    {tests
+                      .filter((test) =>
+                        test.value.toLowerCase().includes(query.toLowerCase()),
+                      )
+                      .map((test) => (
+                        <Checkbox
+                          key={test.id}
+                          id={`report-group-${index}-test-${test.id}`}
+                          labelText={test.value}
+                          checked={group.testIds.includes(test.id)}
+                          disabled={busy || pending}
+                          onChange={(_, data) =>
+                            setRules({
+                              ...rules,
+                              groups: rules.groups.map((g, i) =>
+                                i === index
+                                  ? {
+                                      ...g,
+                                      testIds: data.checked
+                                        ? [...g.testIds, test.id]
+                                        : g.testIds.filter(
+                                            (id) => id !== test.id,
+                                          ),
+                                    }
+                                  : g,
+                              ),
+                            })
+                          }
+                        />
+                      ))}
+                  </div>
                   <Button
                     kind="danger--tertiary"
                     disabled={busy || pending || rules.groups.length === 1}
@@ -324,9 +398,26 @@ function Editor({ request }: { request: ReportRequest }) {
             >
               {t("add")}
             </Button>
-            <Button disabled={busy || pending} onClick={() => void save()}>
-              {t("save")}
-            </Button>
+            <div className="result-reporting-workspace__actions">
+              <Button
+                disabled={busy || pending || conflict}
+                onClick={() => void save()}
+              >
+                {t("save")}
+              </Button>
+              <Button
+                kind="tertiary"
+                disabled={busy || pending || !dirty}
+                onClick={() => {
+                  setRules(clone(baseline));
+                  setCanInitialize(baseline === null);
+                  setError("");
+                  setSuccess(false);
+                }}
+              >
+                {intl.formatMessage({ id: "label.button.cancel" })}
+              </Button>
+            </div>
           </>
         )}
       </Stack>

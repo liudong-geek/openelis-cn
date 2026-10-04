@@ -37,11 +37,11 @@ public class ReflexRule extends BaseObject<Integer> {
     @Column(name = "toggled")
     private Boolean toggled;
 
-    @OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
+    @OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "reflex_rule_id", referencedColumnName = "id")
     Set<ReflexRuleCondition> conditions;
 
-    @OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
+    @OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "reflex_rule_id", referencedColumnName = "id")
     Set<ReflexRuleAction> actions;
 
@@ -56,6 +56,21 @@ public class ReflexRule extends BaseObject<Integer> {
 
     @Transient
     String stringId;
+
+    @Transient
+    private String configurationVersion;
+
+    /**
+     * Exact database version, independent of JSON timestamp millisecond precision.
+     */
+    public String getConfigurationVersion() {
+        return configurationVersion != null ? configurationVersion
+                : getLastupdated() == null ? null : getLastupdated().toInstant().toString();
+    }
+
+    public void setConfigurationVersion(String configurationVersion) {
+        this.configurationVersion = configurationVersion;
+    }
 
     @Override
     public Integer getId() {

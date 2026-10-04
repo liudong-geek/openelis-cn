@@ -14,12 +14,10 @@ import org.openelisglobal.testcalculated.service.TestCalculationService;
 import org.openelisglobal.testcalculated.valueholder.Calculation;
 import org.openelisglobal.testcalculated.valueholder.Operation;
 import org.openelisglobal.typeofsample.service.TypeOfSampleService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,10 +27,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 @Controller
+@PreAuthorize("hasRole('ADMIN')")
 @RequestMapping(value = "/rest/")
-public class CalculatedValueRestController {
-
-    private static final Logger logger = LoggerFactory.getLogger(CalculatedValueRestController.class);
+public class CalculatedValueRestController extends RuleConfigurationRestSupport {
 
     @Autowired
     TypeOfSampleService typeOfSampleService;
@@ -53,54 +50,25 @@ public class CalculatedValueRestController {
     ResultCalculationService resultCalculationService;
 
     @PostMapping(value = "test-calculation", produces = MediaType.APPLICATION_JSON_VALUE)
-    @ResponseBody
-    public ResponseEntity<Void> saveReflexRule(HttpServletRequest request, @RequestBody Calculation calculation) {
-        try {
-            SafeCalculationExpressionEvaluator.validateDefinition(calculation);
-            if (calculation.getId() != null) {
-                if (testCalculationService.get(calculation.getId()) == null) {
-                    return ResponseEntity.notFound().build();
-                }
-                testCalculationService.update(calculation);
-            } else {
-                testCalculationService.save(calculation);
-            }
-            return ResponseEntity.ok().build();
-        } catch (IllegalArgumentException exception) {
-            logger.warn("Rejected invalid calculated-test definition: {}", exception.getMessage());
-            return ResponseEntity.badRequest().build();
-        }
+    public ResponseEntity<Calculation> saveReflexRule(HttpServletRequest request,
+            @RequestBody Calculation calculation) {
+        SafeCalculationExpressionEvaluator.validateDefinition(calculation);
+        return ResponseEntity.ok(testCalculationService.saveDefinition(calculation));
     }
 
     @PostMapping(value = "deactivate-test-calculation/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Void> deactivateReflexRule(@PathVariable Integer id) {
-        return setReflexRuleActive(id, false);
+    public ResponseEntity<Calculation> deactivateReflexRule(@PathVariable Integer id) {
+        return ResponseEntity.ok(testCalculationService.setDefinitionActive(id, false));
     }
 
-    /**
-     * OGC-655: counterpart to deactivate. Flips the Active flag back to true so the
-     * UI Toggle Rule control has a round-trip persistence path.
-     */
     @PostMapping(value = "activate-test-calculation/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<Void> activateReflexRule(@PathVariable Integer id) {
-        return setReflexRuleActive(id, true);
+    public ResponseEntity<Calculation> activateReflexRule(@PathVariable Integer id) {
+        return ResponseEntity.ok(testCalculationService.setDefinitionActive(id, true));
     }
 
-    private ResponseEntity<Void> setReflexRuleActive(Integer id, boolean active) {
-        try {
-            Calculation calculation = testCalculationService.get(id);
-            if (calculation == null) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
-            }
-            calculation.setActive(active);
-            testCalculationService.update(calculation);
-            return ResponseEntity.ok().build();
-        } catch (RuntimeException e) {
-            // Replaces a silent empty catch that swallowed every error (OGC-655) —
-            // the FE used to fire-and-forget without status feedback.
-            logger.error("Failed to set Active={} on calculation {}", active, id, e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
+    @GetMapping(value = "test-calculation/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Calculation> getCalculation(@PathVariable Integer id) {
+        return ResponseEntity.ok(testCalculationService.getDefinition(id));
     }
 
     @GetMapping(value = "test-calculations", produces = MediaType.APPLICATION_JSON_VALUE)

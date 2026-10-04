@@ -182,6 +182,9 @@ public class TestReflexServiceImpl extends AuditableBaseObjectServiceImpl<TestRe
             processReflexRule(reflexRule);
             reflexRuleDAO.insert(reflexRule);
         } else {
+            ReflexRule original = reflexRuleDAO.get(reflexRule.getId()).orElseThrow(
+                    () -> new org.hibernate.ObjectNotFoundException(reflexRule.getId(), ReflexRule.class.getName()));
+            clearDerived(original);
             processReflexRule(reflexRule);
             reflexRuleDAO.update(reflexRule);
         }
@@ -198,14 +201,8 @@ public class TestReflexServiceImpl extends AuditableBaseObjectServiceImpl<TestRe
     public boolean deactivateReflexRule(String id) {
         Optional<ReflexRule> rule = reflexRuleDAO.get(Integer.valueOf(id));
         if (rule.isPresent()) {
-            // clear all the existing reflex tests
-            for (ReflexRuleCondition condition : rule.get().getConditions()) {
-                if (condition.getId() != null && condition.getTestAnalyteId() != null) {
-                    List<TestReflex> reflexes = baseObjectDAO
-                            .getTestReflexsByTestAnalyteId(condition.getTestAnalyteId().toString());
-                    reflexes.forEach(r -> baseObjectDAO.delete(r));
-                }
-            }
+            clearDerived(rule.get());
+            rule.get().getActions().forEach(action -> action.setTestReflexId(null));
             rule.get().setActive(false);
             reflexRuleDAO.update(rule.get());
             return true;
@@ -227,6 +224,15 @@ public class TestReflexServiceImpl extends AuditableBaseObjectServiceImpl<TestRe
         return false;
     }
 
+    private void clearDerived(ReflexRule rule) {
+        for (ReflexRuleCondition condition : rule.getConditions()) {
+            if (condition.getTestAnalyteId() != null) {
+                baseObjectDAO.getTestReflexsByTestAnalyteId(condition.getTestAnalyteId().toString())
+                        .forEach(baseObjectDAO::delete);
+            }
+        }
+    }
+
     private void processReflexRule(ReflexRule rule) {
         Analyte analyte = null;
         if (rule.getId() != null && rule.getAnalyteId() != null) {
@@ -241,14 +247,8 @@ public class TestReflexServiceImpl extends AuditableBaseObjectServiceImpl<TestRe
             rule.setAnalyteId(Integer.valueOf(analyte.getId()));
         }
 
-        // clear all the existing reflex tests
-        for (ReflexRuleCondition condition : rule.getConditions()) {
-            if (condition.getId() != null && condition.getTestAnalyteId() != null) {
-                List<TestReflex> reflexes = baseObjectDAO
-                        .getTestReflexsByTestAnalyteId(condition.getTestAnalyteId().toString());
-                reflexes.forEach(r -> baseObjectDAO.delete(r));
-            }
-        }
+        clearDerived(rule);
+        rule.getActions().forEach(action -> action.setTestReflexId(null));
 
         for (ReflexRuleCondition condition : rule.getConditions()) {
             if (testAndSampleMatches(condition.getTestId(), condition.getSampleId())) {
@@ -269,6 +269,8 @@ public class TestReflexServiceImpl extends AuditableBaseObjectServiceImpl<TestRe
                     testAnalyte = testAnalyteService.save(testAnalyte);
                     condition.setTestAnalyteId(Integer.valueOf(testAnalyte.getId()));
                 }
+                if (!Boolean.TRUE.equals(rule.getActive()))
+                    continue;
                 for (ReflexRuleAction action : rule.getActions()) {
                     TestReflex reflex = new TestReflex();
                     setTestReflexTest(triggerTest, condition, action, reflex, testAnalyte);
@@ -296,12 +298,17 @@ public class TestReflexServiceImpl extends AuditableBaseObjectServiceImpl<TestRe
         } else {
             reflex.setTestResult(results.get(0));
             if (testService.getResultType(triggerTest).equals("N")) {
-                Double value = Double.parseDouble(condition.getValue());
-                Double value2 = Double.parseDouble(condition.getValue2());
-                if (condition.getRelation().equals(NumericRelationOptions.BETWEEN)) {
-                    reflex.setNonDictionaryValue(value.toString() + "-" + value2.toString());
+                if (condition.getRelation() == NumericRelationOptions.INSIDE_NORMAL_RANGE
+                        || condition.getRelation() == NumericRelationOptions.OUTSIDE_NORMAL_RANGE) {
+                    reflex.setNonDictionaryValue(condition.getValue());
                 } else {
-                    reflex.setNonDictionaryValue(value.toString());
+                    Double value = Double.parseDouble(condition.getValue());
+                    if (condition.getRelation() == NumericRelationOptions.BETWEEN) {
+                        Double value2 = Double.parseDouble(condition.getValue2());
+                        reflex.setNonDictionaryValue(value.toString() + "-" + value2.toString());
+                    } else {
+                        reflex.setNonDictionaryValue(value.toString());
+                    }
                 }
             } else {
                 reflex.setNonDictionaryValue(condition.getValue());

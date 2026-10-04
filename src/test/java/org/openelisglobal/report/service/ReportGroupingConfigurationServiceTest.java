@@ -37,7 +37,7 @@ public class ReportGroupingConfigurationServiceTest {
 
     @Test
     public void missingConfigFailsClosedInsteadOfInferringClinicalGroups() {
-        assertThrows(IllegalStateException.class, () -> service.getRules());
+        assertThrows(ReportGroupingConfigurationService.NotConfiguredException.class, () -> service.getRules());
     }
 
     @Test
@@ -90,10 +90,12 @@ public class ReportGroupingConfigurationServiceTest {
     public void disabledOrMalformedPersistedConfigurationFailsClosed() throws Exception {
         var definition = persisted("SIM-OLD");
         definition.setIsActive(false);
-        assertThrows(IllegalStateException.class, () -> service.getRules());
+        var inactive = assertThrows(IllegalStateException.class, () -> service.getRules());
+        assertFalse(inactive instanceof ReportGroupingConfigurationService.NotConfiguredException);
         definition.setIsActive(true);
         definition.setDefinitionJson("{}");
-        assertThrows(IllegalStateException.class, () -> service.getRules());
+        var malformed = assertThrows(IllegalStateException.class, () -> service.getRules());
+        assertFalse(malformed instanceof ReportGroupingConfigurationService.NotConfiguredException);
     }
 
     @Test

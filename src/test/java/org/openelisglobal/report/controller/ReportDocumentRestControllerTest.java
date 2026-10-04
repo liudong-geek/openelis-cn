@@ -84,9 +84,16 @@ public class ReportDocumentRestControllerTest {
     }
 
     @Test public void configurationConflictIsAnExplicit409() throws Exception {
-        when(configuration.getRules()).thenThrow(new IllegalStateException("Report grouping is not configured"));
+        when(configuration.getRules()).thenThrow(new IllegalStateException("Invalid persisted report grouping configuration"));
         mvc.perform(get("/rest/reports/group-rules").session(session)).andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("REPORT_STATE_CONFLICT"));
+    }
+
+    @Test
+    public void onlyMissingGroupingAdvertisesInitialConfiguration() throws Exception {
+        when(configuration.getRules()).thenThrow(new ReportGroupingConfigurationService.NotConfiguredException());
+        mvc.perform(get("/rest/reports/group-rules").session(session)).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("REPORT_GROUPS_NOT_CONFIGURED"));
     }
 
     @Test

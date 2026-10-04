@@ -1,8 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Accordion,
+  AccordionItem,
   Button,
   DataTable,
   InlineLoading,
+  InlineNotification,
+  Modal,
   Select,
   SelectItem,
   Table,
@@ -17,10 +21,20 @@ import {
 } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
 import {
-  getFromOpenElisServer,
-  postToOpenElisServerJsonResponse,
-  putToOpenElisServerFullResponse,
-} from "../../utils/Utils";
+  useReportSession,
+  pendingReportKey,
+  readPendingReport,
+  rememberPendingReport,
+  clearPendingReport,
+} from "../../patient/resultsViewer/reportWorkspaceState";
+import { ReportApiError } from "../../patient/resultsViewer/patient-report-release-api";
+import {
+  OUTBOX_STATUSES,
+  changeOutboxMessage,
+  getOutboxMessages,
+  simulateOutboxMessage,
+} from "./result-reporting-api";
+import "../AdminModal.css";
 import "./HisResultOutboxPanel.css";
 
 const statusKinds = {
@@ -30,50 +44,89 @@ const statusKinds = {
   DEAD_LETTER: "magenta",
   CLOSED: "gray",
 };
-
 const headers = [
-  { key: "businessId", header: "his.outbox.businessId" },
-  { key: "eventType", header: "his.outbox.eventType" },
-  { key: "status", header: "his.outbox.status" },
-  { key: "attempts", header: "his.outbox.attempts" },
-  { key: "response", header: "his.outbox.response" },
-  { key: "hash", header: "his.outbox.hash" },
-  { key: "actions", header: "his.outbox.actions" },
-];
-
-const parseResponse = async (response) => {
-  if (!response?.ok) {
-    throw new Error(`HTTP ${response?.status || 0}`);
-  }
-  return response.json();
-};
-
+  "businessId",
+  "eventType",
+  "status",
+  "attempts",
+  "response",
+  "hash",
+  "actions",
+].map((key) => ({ key, header: `his.outbox.${key}` }));
 export default function HisResultOutboxPanel() {
+  const session = useReportSession(true);
   const intl = useIntl();
-  const [messages, setMessages] = useState([]);
-  const [status, setStatus] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [closingId, setClosingId] = useState(null);
-  const [closeReason, setCloseReason] = useState("");
-
-  const load = useCallback(() => {
+  if (!session.valid || !session.stamp)
+    return (
+      <InlineNotification
+        kind="info"
+        lowContrast
+        hideCloseButton
+        title={intl.formatMessage({ id: "resultreporting.adminOnly" })}
+      />
+    );
+  return (
+    <OutboxEditor
+      key={session.key}
+      request={{ stamp: session.stamp, current: session.current }}
+    />
+  );
+}
+export function OutboxEditor({ request }) {
+  const intl = useIntl();
+  const t = (id) => intl.formatMessage({ id: `his.outbox.${id}` });
+  const [messages, setMessages] = useState([]),
+    [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(true),
+    [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState(""),
+    [actionError, setActionError] = useState(""),
+    [success, setSuccess] = useState("");
+  const [closing, setClosing] = useState(null),
+    [closeReason, setCloseReason] = useState("");
+  const pendingKey = pendingReportKey(request.stamp.identity, "outbox");
+  const [uncertain, setUncertain] = useState(!!readPendingReport(pendingKey));
+  const active = useRef(true),
+    generation = useRef(0),
+    writing = useRef(false),
+    latest = useRef(request);
+  latest.current = request;
+  const context = () => {
+    const value = ++generation.current;
+    return {
+      ...request,
+      current: () =>
+        active.current &&
+        value === generation.current &&
+        latest.current.current(),
+    };
+  };
+  const load = async () => {
+    if (writing.current) return;
+    const c = context();
     setLoading(true);
-    const query = status ? `?status=${encodeURIComponent(status)}` : "";
-    getFromOpenElisServer(`/rest/his-result-outbox${query}`, (response) => {
-      if (Array.isArray(response)) {
-        setMessages(response);
-        setError("");
-      } else {
-        setError(intl.formatMessage({ id: "his.outbox.loadError" }));
-      }
-      setLoading(false);
-    });
-  }, [intl, status]);
-
-  useEffect(() => load(), [load]);
-
+    setLoadError("");
+    try {
+      const rows = await getOutboxMessages(status, c);
+      if (!c.current()) return;
+      setMessages(rows);
+      // Reads update the ledger only. An uncertain mutation is never automatically resent.
+    } catch {
+      if (c.current()) setLoadError(t("loadError"));
+    } finally {
+      if (c.current()) setLoading(false);
+    }
+  };
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+      generation.current++;
+    };
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [status]);
   const summary = useMemo(
     () => ({
       total: messages.length,
@@ -86,70 +139,65 @@ export default function HisResultOutboxPanel() {
     }),
     [messages],
   );
-
-  const finish = () => {
-    setBusy(false);
-    load();
-  };
-
-  const simulate = (outcome) => {
-    const stamp = Date.now();
+  const perform = async (operation) => {
+    if (writing.current || busy || uncertain || !request.current()) return;
+    const c = context();
+    writing.current = true;
     setBusy(true);
-    postToOpenElisServerJsonResponse(
-      "/rest/his-result-outbox/simulate",
-      JSON.stringify({
+    setActionError("");
+    setSuccess("");
+    try {
+      rememberPendingReport(pendingKey, { kind: "rules" }, c);
+      const saved =
+        operation.kind === "simulate"
+          ? await simulateOutboxMessage(operation.body, c)
+          : await changeOutboxMessage(
+              operation.id,
+              operation.kind,
+              operation.kind === "close" ? { reason: operation.reason } : null,
+              c,
+            );
+      if (!c.current()) return;
+      clearPendingReport(pendingKey);
+      setSuccess(t("actionSucceeded"));
+      if (operation.kind === "close") {
+        setClosing(null);
+        setCloseReason("");
+      }
+      // Stable response identity and requested status were validated by the local API.
+      setMessages((current) =>
+        current.map((row) => (row.id === saved.id ? saved : row)),
+      );
+    } catch (failure) {
+      if (!c.current()) return;
+      const rejected =
+        failure instanceof ReportApiError && failure.kind === "rejected";
+      if (!rejected) setUncertain(true);
+      else clearPendingReport(pendingKey);
+      setActionError(t(rejected ? "actionError" : "unknown"));
+    } finally {
+      writing.current = false;
+      if (c.current()) {
+        setBusy(false);
+        void load();
+      }
+    }
+  };
+  const simulate = (outcome) => {
+    const idempotencyKey = `HIS-SIM-${crypto.randomUUID()}`;
+    void perform({
+      kind: "simulate",
+      body: {
         sourceSystem: "HIS-SIM",
-        businessId: `SIM-${stamp}`,
+        businessId: idempotencyKey,
         eventType: "REPORT",
-        idempotencyKey: `HIS-SIM-${stamp}`,
-        payload: JSON.stringify({ reportId: `SIM-${stamp}`, version: 1 }),
+        idempotencyKey,
+        payload: JSON.stringify({ reportId: idempotencyKey, version: 1 }),
         maxAttempts: 3,
         outcome,
-      }),
-      (response) => {
-        if (!response?.id) {
-          setError(intl.formatMessage({ id: "his.outbox.actionError" }));
-        }
-        finish();
       },
-    );
+    });
   };
-
-  const retry = (id) => {
-    setBusy(true);
-    putToOpenElisServerFullResponse(
-      `/rest/his-result-outbox/${id}/retry`,
-      null,
-      async (response) => {
-        try {
-          await parseResponse(response);
-        } catch (_error) {
-          setError(intl.formatMessage({ id: "his.outbox.actionError" }));
-        }
-        finish();
-      },
-    );
-  };
-
-  const close = (id) => {
-    if (!closeReason.trim()) return;
-    setBusy(true);
-    putToOpenElisServerFullResponse(
-      `/rest/his-result-outbox/${id}/close`,
-      JSON.stringify({ reason: closeReason }),
-      async (response) => {
-        try {
-          await parseResponse(response);
-          setClosingId(null);
-          setCloseReason("");
-        } catch (_error) {
-          setError(intl.formatMessage({ id: "his.outbox.actionError" }));
-        }
-        finish();
-      },
-    );
-  };
-
   const rows = messages.map((message) => ({
     ...message,
     id: String(message.id),
@@ -157,50 +205,42 @@ export default function HisResultOutboxPanel() {
     response: message.lastError || message.responseCode || "—",
     hash: message.payloadHash?.slice(0, 12) || "—",
   }));
-
+  const locked = busy || uncertain;
   return (
     <section className="his-outbox-panel" aria-labelledby="his-outbox-title">
       <div className="his-outbox-panel__header">
         <div>
-          <h3 id="his-outbox-title">
-            <FormattedMessage id="his.outbox.title" />
-          </h3>
-          <p>
-            <FormattedMessage id="his.outbox.description" />
-          </p>
+          <h2 id="his-outbox-title">{t("title")}</h2>
+          <p>{t("operationsHelp")}</p>
         </div>
         <div className="his-outbox-panel__actions">
           <Select
             id="his-outbox-status"
-            labelText={intl.formatMessage({ id: "his.outbox.filter" })}
+            labelText={t("filter")}
             value={status}
+            disabled={busy}
             onChange={(event) => setStatus(event.target.value)}
           >
-            <SelectItem
-              value=""
-              text={intl.formatMessage({ id: "his.outbox.all" })}
-            />
-            {Object.keys(statusKinds).map((value) => (
+            <SelectItem value="" text={t("all")} />
+            {OUTBOX_STATUSES.map((value) => (
               <SelectItem
                 key={value}
                 value={value}
-                text={intl.formatMessage({ id: `his.outbox.status.${value}` })}
+                text={t(`status.${value}`)}
               />
             ))}
           </Select>
           <Button
-            kind="secondary"
-            disabled={busy}
-            onClick={() => simulate("FAILED")}
+            kind="tertiary"
+            size="sm"
+            disabled={busy || loading}
+            onClick={() => void load()}
           >
-            <FormattedMessage id="his.outbox.simulateFailure" />
-          </Button>
-          <Button disabled={busy} onClick={() => simulate("ACKNOWLEDGED")}>
-            <FormattedMessage id="his.outbox.simulateAck" />
+            {t("reload")}
           </Button>
         </div>
       </div>
-
+      <p className="his-outbox-panel__scope">{t("loadedScope")}</p>
       <div className="his-outbox-panel__summary">
         {Object.entries(summary).map(([key, value]) => (
           <div className="his-outbox-panel__metric" key={key}>
@@ -209,128 +249,208 @@ export default function HisResultOutboxPanel() {
           </div>
         ))}
       </div>
-
-      {error && <div role="alert">{error}</div>}
-      {loading ? (
-        <InlineLoading
-          description={intl.formatMessage({ id: "his.outbox.loading" })}
+      {loadError && (
+        <InlineNotification
+          kind="error"
+          lowContrast
+          hideCloseButton
+          title={loadError}
         />
-      ) : (
-        <DataTable rows={rows} headers={headers}>
-          {({
-            rows: tableRows,
-            headers: tableHeaders,
-            getHeaderProps,
-            getRowProps,
-          }) => (
-            <TableContainer>
-              <Table size="sm">
-                <TableHead>
-                  <TableRow>
-                    {tableHeaders.map((header) => (
-                      <TableHeader
-                        {...getHeaderProps({ header })}
-                        key={header.key}
-                      >
-                        <FormattedMessage id={header.header} />
-                      </TableHeader>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {tableRows.map((row) => {
-                    const original = messages.find(
-                      (item) => String(item.id) === row.id,
-                    );
-                    return (
-                      <TableRow {...getRowProps({ row })} key={row.id}>
-                        {row.cells.map((cell) => {
-                          if (cell.info.header === "status") {
-                            return (
-                              <TableCell key={cell.id}>
-                                <Tag type={statusKinds[cell.value] || "gray"}>
-                                  {intl.formatMessage({
-                                    id: `his.outbox.status.${cell.value}`,
-                                  })}
-                                </Tag>
-                              </TableCell>
-                            );
-                          }
-                          if (cell.info.header === "eventType") {
-                            return (
-                              <TableCell key={cell.id}>
-                                {intl.formatMessage({
-                                  id: `his.outbox.event.${cell.value}`,
-                                })}
-                              </TableCell>
-                            );
-                          }
-                          if (cell.info.header === "hash") {
-                            return (
-                              <TableCell
-                                className="his-outbox-panel__hash"
-                                key={cell.id}
-                              >
-                                {cell.value}
-                              </TableCell>
-                            );
-                          }
-                          if (cell.info.header === "actions") {
-                            const completed = [
-                              "ACKNOWLEDGED",
-                              "CLOSED",
-                            ].includes(original?.status);
-                            return (
-                              <TableCell key={cell.id}>
-                                <Button
-                                  kind="ghost"
-                                  size="sm"
-                                  disabled={busy || completed}
-                                  onClick={() => retry(original.id)}
-                                >
-                                  <FormattedMessage id="his.outbox.retry" />
-                                </Button>
-                                <Button
-                                  kind="secondary"
-                                  size="sm"
-                                  disabled={busy || completed}
-                                  onClick={() => setClosingId(original.id)}
-                                >
-                                  <FormattedMessage id="his.outbox.close" />
-                                </Button>
-                              </TableCell>
-                            );
-                          }
-                          return (
-                            <TableCell key={cell.id}>{cell.value}</TableCell>
-                          );
-                        })}
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </DataTable>
       )}
-
-      {closingId && (
-        <div className="his-outbox-panel__close">
-          <TextInput
-            id="his-outbox-close-reason"
-            labelText={intl.formatMessage({ id: "his.outbox.closeReason" })}
-            value={closeReason}
-            onChange={(event) => setCloseReason(event.target.value)}
-          />
-          <Button
-            disabled={!closeReason.trim() || busy}
-            onClick={() => close(closingId)}
-          >
-            <FormattedMessage id="his.outbox.confirmClose" />
-          </Button>
+      {(actionError || uncertain) && (
+        <InlineNotification
+          kind={uncertain ? "warning" : "error"}
+          lowContrast
+          hideCloseButton
+          title={actionError || t("unknown")}
+        />
+      )}
+      {success && (
+        <InlineNotification
+          kind="success"
+          lowContrast
+          hideCloseButton
+          title={success}
+        />
+      )}
+      {loading && <InlineLoading description={t("loading")} />}
+      {!loading && messages.length === 0 && !loadError && (
+        <InlineNotification
+          kind="info"
+          lowContrast
+          hideCloseButton
+          title={t("empty")}
+        />
+      )}
+      {!loading && messages.length > 0 && (
+        <div className="his-outbox-panel__table">
+          <DataTable rows={rows} headers={headers}>
+            {({
+              rows: tableRows,
+              headers: tableHeaders,
+              getHeaderProps,
+              getRowProps,
+            }) => (
+              <TableContainer>
+                <Table size="sm">
+                  <TableHead>
+                    <TableRow>
+                      {tableHeaders.map((header) => (
+                        <TableHeader
+                          {...getHeaderProps({ header })}
+                          key={header.key}
+                        >
+                          <FormattedMessage id={header.header} />
+                        </TableHeader>
+                      ))}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {tableRows.map((row) => {
+                      const original = messages.find(
+                        (item) => String(item.id) === row.id,
+                      );
+                      return (
+                        <TableRow {...getRowProps({ row })} key={row.id}>
+                          {row.cells.map((cell) => {
+                            if (cell.info.header === "status")
+                              return (
+                                <TableCell key={cell.id}>
+                                  <Tag type={statusKinds[cell.value] || "gray"}>
+                                    {t(`status.${cell.value}`)}
+                                  </Tag>
+                                </TableCell>
+                              );
+                            if (cell.info.header === "eventType")
+                              return (
+                                <TableCell key={cell.id}>
+                                  {t(`event.${cell.value}`)}
+                                </TableCell>
+                              );
+                            if (cell.info.header === "hash")
+                              return (
+                                <TableCell
+                                  className="his-outbox-panel__hash"
+                                  key={cell.id}
+                                >
+                                  {cell.value}
+                                </TableCell>
+                              );
+                            if (cell.info.header === "actions") {
+                              const completed = [
+                                "ACKNOWLEDGED",
+                                "CLOSED",
+                              ].includes(original.status);
+                              return (
+                                <TableCell key={cell.id}>
+                                  <div className="his-outbox-panel__row-actions">
+                                    <Button
+                                      kind="ghost"
+                                      size="sm"
+                                      disabled={locked || completed}
+                                      onClick={() =>
+                                        void perform({
+                                          kind: "retry",
+                                          id: original.id,
+                                        })
+                                      }
+                                    >
+                                      {t("retry")}
+                                    </Button>
+                                    <Button
+                                      kind="tertiary"
+                                      size="sm"
+                                      disabled={locked || completed}
+                                      onClick={() => {
+                                        setClosing({
+                                          id: original.id,
+                                          businessId: original.businessId,
+                                        });
+                                        setCloseReason("");
+                                      }}
+                                    >
+                                      {t("close")}
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              );
+                            }
+                            return (
+                              <TableCell key={cell.id}>{cell.value}</TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </DataTable>
         </div>
       )}
+      <Accordion className="his-outbox-panel__simulation">
+        <AccordionItem title={t("simulationTitle")}>
+          <p>{t("simulationHelp")}</p>
+          <div className="his-outbox-panel__actions">
+            <Button
+              kind="tertiary"
+              disabled={locked}
+              onClick={() => simulate("FAILED")}
+            >
+              {t("simulateFailure")}
+            </Button>
+            <Button
+              kind="tertiary"
+              disabled={locked}
+              onClick={() => simulate("ACKNOWLEDGED")}
+            >
+              {t("simulateAck")}
+            </Button>
+          </div>
+        </AccordionItem>
+      </Accordion>
+      <Modal
+        open={!!closing}
+        className="oe-admin-modal"
+        modalHeading={t("closeTitle")}
+        primaryButtonText={t("confirmClose")}
+        secondaryButtonText={intl.formatMessage({ id: "label.button.cancel" })}
+        closeButtonLabel={intl.formatMessage({ id: "button.close" })}
+        primaryButtonDisabled={!closeReason.trim() || locked}
+        onRequestClose={() => {
+          if (!writing.current) {
+            setClosing(null);
+            if (!uncertain) setCloseReason("");
+          }
+        }}
+        onRequestSubmit={() => {
+          if (closing && closeReason.trim())
+            void perform({
+              kind: "close",
+              id: closing.id,
+              reason: closeReason.trim(),
+            });
+        }}
+      >
+        <p>{t("closeHelp")}</p>
+        <p className="his-outbox-panel__business-id">{closing?.businessId}</p>
+        <TextInput
+          id="his-outbox-close-reason"
+          labelText={t("closeReason")}
+          value={closeReason}
+          disabled={locked}
+          onChange={(event) => setCloseReason(event.target.value)}
+        />
+        {actionError && (
+          <InlineNotification
+            kind={uncertain ? "warning" : "error"}
+            lowContrast
+            hideCloseButton
+            title={actionError}
+          />
+        )}
+      </Modal>
     </section>
   );
 }

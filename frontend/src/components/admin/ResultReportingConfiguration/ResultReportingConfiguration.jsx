@@ -1,324 +1,422 @@
-import React, { useContext, useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  Heading,
-  TextInput,
   Button,
-  Grid,
-  Column,
-  Section,
-  RadioButton,
-  Loading,
+  InlineLoading,
+  InlineNotification,
+  Select,
+  SelectItem,
   Tag,
+  TextInput,
+  Toggle,
 } from "@carbon/react";
-import {
-  getFromOpenElisServer,
-  postToOpenElisServerJsonResponse,
-} from "../../utils/Utils";
-import { NotificationContext } from "../../layout/Layout";
-import {
-  AlertDialog,
-  NotificationKinds,
-} from "../../common/CustomNotification";
-import { FormattedMessage, injectIntl, useIntl } from "react-intl";
-import ReportGroupingConfiguration from "./ReportGroupingConfiguration";
+import { FormattedMessage, useIntl } from "react-intl";
+import { useHistory, useLocation } from "react-router-dom";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
-import { refreshCurrentRoute } from "../../utils/NavigationUtils";
-import HisResultOutboxPanel from "./HisResultOutboxPanel";
 import ProductPageHeader from "../../common/ProductPageHeader";
+import ReportGroupingConfiguration from "./ReportGroupingConfiguration";
+import HisResultOutboxPanel from "./HisResultOutboxPanel";
+import {
+  useReportSession,
+  pendingReportKey,
+  readPendingReport,
+  rememberPendingReport,
+  clearPendingReport,
+} from "../../patient/resultsViewer/reportWorkspaceState";
+import { ReportApiError } from "../../patient/resultsViewer/patient-report-release-api";
+import {
+  channelIdentity,
+  getReportingChannels,
+  saveReportingChannels,
+  sameChannelConfiguration,
+} from "./result-reporting-api";
 import "./ResultReportingConfiguration.css";
 
-let breadcrumbs = [
-  { label: "home.label", link: "/" },
-  { label: "breadcrums.admin.managment", link: "/MasterListsPage" },
-  {
-    label: "resultreporting.browse.title",
-    link: "/MasterListsPage/resultReportingConfiguration",
-  },
-];
+const SECTIONS = ["channels", "groups", "operations"];
+const CHANNEL_TITLES = {
+  resultReport: "resultreporting.channel.results",
+  malariaSurvaeillance: "resultreporting.channel.surveillance",
+  malariaCase: "resultreporting.channel.case",
+};
+const copy = (value) => JSON.parse(JSON.stringify(value));
 
-function ResultReportingConfiguration() {
-  const { notificationVisible, setNotificationVisible, addNotification } =
-    useContext(NotificationContext);
-
-  const componentMounted = useRef(false);
-
+export default function ResultReportingConfiguration() {
   const intl = useIntl();
+  const location = useLocation();
+  const history = useHistory();
+  const session = useReportSession(true);
+  const query = new URLSearchParams(location.search);
+  const section = SECTIONS.includes(query.get("section"))
+    ? query.get("section")
+    : "channels";
+  const base = location.pathname.startsWith("/admin")
+    ? "/admin"
+    : "/MasterListsPage";
+  return (
+    <div className="adminPageContent result-reporting-page">
+      <PageBreadCrumb
+        breadcrumbs={[
+          { label: "home.label", link: "/" },
+          { label: "breadcrums.admin.managment", link: base },
+          {
+            label: "resultreporting.browse.title",
+            link: `${base}/resultReportingConfiguration`,
+          },
+        ]}
+      />
+      <ProductPageHeader
+        title={<FormattedMessage id="resultreporting.browse.title" />}
+        subtitle={<FormattedMessage id="resultreporting.workspace.subtitle" />}
+      />
+      <div className="result-reporting-workspace__section-picker">
+        <Select
+          id="report-configuration-section"
+          labelText={intl.formatMessage({
+            id: "resultreporting.section.label",
+          })}
+          value={section}
+          onChange={(event) => {
+            const next = new URLSearchParams(location.search);
+            next.set("section", event.target.value);
+            history.replace({ ...location, search: `?${next}` });
+          }}
+        >
+          {SECTIONS.map((value) => (
+            <SelectItem
+              key={value}
+              value={value}
+              text={intl.formatMessage({
+                id: `resultreporting.section.${value}`,
+              })}
+            />
+          ))}
+        </Select>
+      </div>
+      {!session.valid || !session.stamp ? (
+        <InlineNotification
+          kind="info"
+          lowContrast
+          hideCloseButton
+          title={intl.formatMessage({ id: "resultreporting.adminOnly" })}
+        />
+      ) : (
+        <div className="result-reporting-workspace" key={session.key}>
+          <section
+            hidden={section !== "channels"}
+            aria-label={intl.formatMessage({
+              id: "resultreporting.section.channels",
+            })}
+          >
+            <ChannelEditor
+              request={{ stamp: session.stamp, current: session.current }}
+            />
+          </section>
+          <section
+            hidden={section !== "groups"}
+            aria-label={intl.formatMessage({
+              id: "resultreporting.section.groups",
+            })}
+          >
+            <ReportGroupingConfiguration />
+          </section>
+          <section
+            hidden={section !== "operations"}
+            aria-label={intl.formatMessage({
+              id: "resultreporting.section.operations",
+            })}
+          >
+            <HisResultOutboxPanel />
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
 
-  const [loading, setLoading] = useState(false);
-  const [reportsResp, setReportsResp] = useState({});
-  const [reportsRespPost, setReportsRespPost] = useState({});
-  const [saveButton, setSaveButton] = useState(true);
-  const [reportsShow, setReportsShow] = useState([]);
-  const [reportsShowMinList, setReportsShowMinList] = useState([]);
-  const [reportsShowHourList, setReportsShowHourList] = useState([]);
-
-  const fetchPrograms = (programsList) => {
-    if (componentMounted.current) {
-      setReportsResp(programsList);
-    }
+export function ChannelEditor({ request }) {
+  const intl = useIntl();
+  const t = (id) => intl.formatMessage({ id: `resultreporting.${id}` });
+  const [form, setForm] = useState(null),
+    [baseline, setBaseline] = useState(null);
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [success, setSuccess] = useState(false);
+  const key = pendingReportKey(request.stamp.identity, "channels");
+  const [pending, setPending] = useState(!!readPendingReport(key));
+  const active = useRef(true),
+    generation = useRef(0),
+    working = useRef(false),
+    latest = useRef(request),
+    expected = useRef(null);
+  latest.current = request;
+  const context = () => {
+    const value = ++generation.current;
+    return {
+      ...request,
+      current: () =>
+        active.current &&
+        value === generation.current &&
+        latest.current.current(),
+    };
   };
-
-  useEffect(() => {
-    if (
-      reportsResp &&
-      reportsResp.reports &&
-      reportsResp.hourList &&
-      reportsResp.minList
-    ) {
-      setReportsShow(reportsResp.reports);
-      setReportsShowHourList(reportsResp.hourList);
-      setReportsShowMinList(reportsResp.minList);
-
-      const postObject = {
-        cancelMethod: reportsResp.cancelMethod,
-        cancelAction: reportsResp.cancelAction,
-        formMethod: reportsResp.formMethod,
-        formName: reportsResp.formName,
-        reports: reportsResp.reports,
-        hourList: reportsResp.hourList,
-        minList: reportsResp.minList,
-      };
-      setReportsRespPost(postObject);
-    }
-  }, [reportsResp]);
-
-  useEffect(() => {
-    setReportsRespPost((prevState) => ({
-      ...prevState,
-      reports: reportsShow,
-      hourList: reportsShowHourList,
-      minList: reportsShowMinList,
-    }));
-  }, [reportsShow, reportsShowHourList, reportsShowMinList]);
-
-  async function displayStatus(res) {
-    setNotificationVisible(true);
-    if (res) {
-      addNotification({
-        kind: NotificationKinds.success,
-        title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "save.config.success.msg" }),
-      });
-    } else {
-      addNotification({
-        kind: NotificationKinds.error,
-        title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "server.error.msg" }),
-      });
-    }
-    setLoading(false);
-    if (res) {
-      setReportsResp((current) => ({ ...current, reports: reportsShow }));
-      setSaveButton(true);
-    }
-  }
-
-  function handleSubmit(event) {
-    event.preventDefault();
-    setLoading(true);
-    postToOpenElisServerJsonResponse(
-      "/rest/ResultReportingConfiguration",
-      JSON.stringify(reportsRespPost),
-      (res) => {
-        displayStatus(res);
-      },
-    );
-  }
-
-  const handleRadioChange = (index, value) => {
-    const updatedReports = reportsShow.map((report, i) =>
-      i === index ? { ...report, enabled: value } : report,
-    );
-    setReportsShow(updatedReports);
-    setSaveButton(false);
-  };
-
-  const handleUrlChange = (index, e) => {
-    const value = e.target.value.trim();
-    const urlPattern =
-      /^(https?:\/\/)?(www\.)?[\w-]+\.[a-z]{2,}(\.[a-z]{2,})?$/i;
-
-    if (value && !urlPattern.test(value)) {
-      if (!notificationVisible) {
-        setNotificationVisible(true);
-        addNotification({
-          title: intl.formatMessage({
-            id: "notification.title",
-          }),
-          message: intl.formatMessage({
-            id: "notification.organization.post.internetAddress",
-          }),
-          kind: NotificationKinds.info,
-        });
+  const dirty = form && baseline && !sameChannelConfiguration(baseline, form);
+  const load = async () => {
+    if (working.current) return;
+    const c = context();
+    setBusy(true);
+    setError("");
+    setSuccess(false);
+    try {
+      const current = await getReportingChannels(c);
+      if (!c.current()) return;
+      if (pending && expected.current) {
+        if (!sameChannelConfiguration(expected.current, current)) {
+          setError(t("channels.unknown"));
+          return;
+        }
+        clearPendingReport(key);
+        setPending(false);
+        expected.current = null;
+        setSuccess(true);
       }
-    } else {
-      setNotificationVisible(false);
+      // A failed read never destroys the editable draft; ordinary reload is disabled while dirty.
+      setForm(copy(current));
+      setBaseline(copy(current));
+    } catch {
+      if (c.current()) setError(t("channels.loadError"));
+    } finally {
+      if (c.current()) setBusy(false);
     }
-
-    const updatedReports = reportsShow.map((report, i) =>
-      i === index ? { ...report, url: e.target.value } : report,
-    );
-    setReportsShow(updatedReports);
-    setSaveButton(false);
   };
-
-  const resetToDefault = () => {
-    setReportsShow(reportsResp.reports);
-    setReportsShowHourList(reportsResp.hourList);
-    setReportsShowMinList(reportsResp.minList);
-    setSaveButton(true);
-  };
-
   useEffect(() => {
-    componentMounted.current = true;
-    getFromOpenElisServer("/rest/ResultReportingConfiguration", fetchPrograms);
-
+    active.current = true;
+    void load();
     return () => {
-      componentMounted.current = false;
+      active.current = false;
+      generation.current++;
     };
   }, []);
-
+  const save = async () => {
+    if (
+      !form ||
+      !dirty ||
+      busy ||
+      working.current ||
+      pending ||
+      readPendingReport(key) ||
+      !request.current()
+    )
+      return;
+    const target = copy(form),
+      c = context();
+    expected.current = target;
+    working.current = true;
+    setBusy(true);
+    setError("");
+    setSuccess(false);
+    try {
+      rememberPendingReport(key, { kind: "rules" }, c);
+      setPending(true);
+      await saveReportingChannels(target, c);
+      const current = await getReportingChannels(c);
+      if (!c.current()) return;
+      if (!sameChannelConfiguration(target, current))
+        throw new ReportApiError("unknown");
+      clearPendingReport(key);
+      setPending(false);
+      expected.current = null;
+      setForm(copy(current));
+      setBaseline(copy(current));
+      setSuccess(true);
+    } catch (failure) {
+      if (!c.current()) return;
+      if (failure instanceof ReportApiError && failure.kind === "rejected") {
+        clearPendingReport(key);
+        setPending(false);
+        expected.current = null;
+        setError(t("channels.rejected"));
+      } else setError(t("channels.unknown"));
+    } finally {
+      working.current = false;
+      if (c.current()) setBusy(false);
+    }
+  };
+  const change = (identity, updates) => {
+    if (busy || pending || working.current) return;
+    setSuccess(false);
+    setForm((current) => ({
+      ...current,
+      reports: current.reports.map((channel) =>
+        channelIdentity(channel) === identity
+          ? { ...channel, ...updates }
+          : channel,
+      ),
+    }));
+  };
+  const locked = busy || pending;
   return (
-    <>
-      {/* {notificationVisible === true ? <AlertDialog /> : ""} */}
-      {loading && <Loading />}
-      {notificationVisible && <AlertDialog />}
-      <div className="adminPageContent">
-        <PageBreadCrumb breadcrumbs={breadcrumbs} />
-        <ProductPageHeader
-          title={<FormattedMessage id="resultreporting.browse.title" />}
-          subtitle={
-            <FormattedMessage id="resultreporting.workspace.subtitle" />
-          }
+    <div className="result-reporting-channels">
+      <header className="result-reporting-workspace__section-header">
+        <div>
+          <h2>{t("section.channels")}</h2>
+          <p>{t("channels.help")}</p>
+        </div>
+        <Button
+          kind="tertiary"
+          size="sm"
+          disabled={busy || (dirty && !pending)}
+          onClick={() => void load()}
+        >
+          {t(pending ? "channels.verify" : "channels.reload")}
+        </Button>
+      </header>
+      {error && !(pending && error === t("channels.unknown")) && (
+        <InlineNotification
+          kind="error"
+          lowContrast
+          hideCloseButton
+          title={error}
         />
-        <div className="result-reporting-workspace">
-          <ReportGroupingConfiguration />
-          <HisResultOutboxPanel />
+      )}
+      {pending && (
+        <InlineNotification
+          kind="warning"
+          lowContrast
+          hideCloseButton
+          title={t("channels.unknown")}
+        />
+      )}
+      {success && (
+        <InlineNotification
+          kind="success"
+          lowContrast
+          hideCloseButton
+          title={t("channels.saved")}
+        />
+      )}
+      {busy && <InlineLoading description={t("channels.loading")} />}
+      {form && (
+        <>
           <div className="result-reporting-workspace__summary">
             <div>
-              <strong>{reportsShow.length}</strong>
-              <span>
-                <FormattedMessage id="resultreporting.summary.channels" />
-              </span>
+              <strong>{form.reports.length}</strong>
+              <span>{t("summary.channels")}</span>
             </div>
             <div>
               <strong>
                 {
-                  reportsShow.filter((report) => report.enabled === "enable")
+                  form.reports.filter((channel) => channel.enabled === "enable")
                     .length
                 }
               </strong>
-              <span>
-                <FormattedMessage id="resultreporting.summary.enabled" />
-              </span>
+              <span>{t("summary.enabled")}</span>
             </div>
             <div>
               <strong>
-                {reportsShow.reduce(
-                  (sum, report) => sum + Number(report.backlogSize || 0),
+                {form.reports.reduce(
+                  (count, channel) => count + Number(channel.backlogSize || 0),
                   0,
                 )}
               </strong>
-              <span>
-                <FormattedMessage id="resultreporting.summary.backlog" />
-              </span>
+              <span>{t("summary.backlog")}</span>
             </div>
           </div>
+          {form.reports.length === 0 && (
+            <InlineNotification
+              kind="info"
+              lowContrast
+              hideCloseButton
+              title={t("channels.empty")}
+            />
+          )}
           <div className="result-reporting-workspace__channels">
-            {reportsShow &&
-              reportsShow.map((report, index) => (
+            {form.reports.map((channel, index) => {
+              const identity = channelIdentity(channel),
+                titleId = CHANNEL_TITLES[channel.connectionTestIdentifier];
+              return (
                 <section
                   className="result-reporting-workspace__channel"
-                  key={index}
+                  key={identity}
                 >
                   <header>
-                    <h2>
-                      <FormattedMessage id={report.title} />
-                    </h2>
-                    <Tag type={report.enabled === "enable" ? "green" : "gray"}>
-                      <FormattedMessage
-                        id={
-                          report.enabled === "enable"
-                            ? "resultreporting.enabled"
-                            : "resultreporting.disabled"
-                        }
-                      />
+                    <h3>
+                      {titleId
+                        ? intl.formatMessage({ id: titleId })
+                        : channel.title || t("channel.other")}
+                    </h3>
+                    <Tag type={channel.enabled === "enable" ? "green" : "gray"}>
+                      {t(channel.enabled === "enable" ? "enabled" : "disabled")}
                     </Tag>
                   </header>
-                  <div style={{ display: "flex", alignItems: "center" }}>
-                    <RadioButton
-                      id={`enabled-${index}-yes`}
-                      labelText={intl.formatMessage({
-                        id: "resultreporting.enabled",
-                      })}
-                      value="enable"
-                      checked={report.enabled === "enable"}
-                      onChange={() => handleRadioChange(index, "enable")}
-                    />
-                    <RadioButton
-                      id={`enabled-${index}-no`}
-                      labelText={intl.formatMessage({
-                        id: "resultreporting.disabled",
-                      })}
-                      value="disable"
-                      checked={report.enabled === "disable"}
-                      onChange={() => handleRadioChange(index, "disable")}
-                    />
-                  </div>
-                  <Grid fullWidth={true}>
-                    <Column lg={16} md={8} sm={4}>
-                      <TextInput
-                        id={`url-${index}`}
-                        className="default"
-                        type="text"
-                        labelText={intl.formatMessage({
-                          id: "resultreporting.config.url",
-                        })}
-                        placeholder={intl.formatMessage({
-                          id: "resultreporting.config.url.placeholder",
-                        })}
-                        required={true}
-                        value={report.url || ""}
-                        onChange={(e) => handleUrlChange(index, e)}
-                      />
-                    </Column>
-                  </Grid>
-                  <p className="result-reporting-workspace__help">
-                    <FormattedMessage id="testnotification.patiententry.info" />
-                  </p>
-                  <div className="result-reporting-workspace__backlog">
-                    <span>
-                      <FormattedMessage id="result.report.queue.size" />{" "}
-                      {report.backlogSize}
-                    </span>
-                  </div>
+                  <Toggle
+                    id={`report-channel-${index}-enabled`}
+                    labelText={t("channels.enable")}
+                    labelA={t("disabled")}
+                    labelB={t("enabled")}
+                    toggled={channel.enabled === "enable"}
+                    disabled={locked}
+                    onToggle={(enabled) =>
+                      change(identity, {
+                        enabled: enabled ? "enable" : "disable",
+                      })
+                    }
+                  />
+                  <TextInput
+                    id={`url-${index}`}
+                    type="text"
+                    labelText={t("config.url")}
+                    placeholder={t("config.url.placeholder")}
+                    value={channel.url}
+                    disabled={locked}
+                    onChange={(event) =>
+                      change(identity, { url: event.target.value })
+                    }
+                  />
+                  {channel.isScheduled && (
+                    <p className="result-reporting-workspace__help">
+                      {t("channels.schedule")}:{" "}
+                      {channel.scheduleHours && channel.scheduleMin
+                        ? `${channel.scheduleHours.padStart(2, "0")}:${channel.scheduleMin.padStart(2, "0")}`
+                        : t("channels.scheduleNone")}
+                    </p>
+                  )}
+                  {channel.showAuthentication && (
+                    <p className="result-reporting-workspace__help">
+                      {t("channels.authenticationReadonly")}
+                    </p>
+                  )}
+                  {channel.showBacklog && (
+                    <div className="result-reporting-workspace__backlog">
+                      {intl.formatMessage({ id: "result.report.queue.size" })}{" "}
+                      {channel.backlogSize || "0"}
+                    </div>
+                  )}
                 </section>
-              ))}
+              );
+            })}
           </div>
-          <Grid fullWidth={true}>
-            <Column lg={16} md={8} sm={4}>
-              <Button
-                data-cy="saveButton"
-                disabled={saveButton}
-                onClick={handleSubmit}
-                type="button"
-              >
-                <FormattedMessage id="label.button.save" />
-              </Button>{" "}
-              <Button
-                data-cy="cancelButton"
-                onClick={resetToDefault}
-                kind="tertiary"
-                type="button"
-              >
-                <FormattedMessage id="label.button.cancel" />
-              </Button>
-            </Column>
-          </Grid>
-        </div>
-      </div>
-    </>
+          <div className="result-reporting-workspace__actions">
+            <Button
+              data-cy="saveButton"
+              disabled={locked || !dirty}
+              onClick={() => void save()}
+            >
+              {intl.formatMessage({ id: "label.button.save" })}
+            </Button>
+            <Button
+              data-cy="cancelButton"
+              kind="tertiary"
+              disabled={locked || !dirty}
+              onClick={() => {
+                setForm(copy(baseline));
+                setError("");
+                setSuccess(false);
+              }}
+            >
+              {intl.formatMessage({ id: "label.button.cancel" })}
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
-
-export default injectIntl(ResultReportingConfiguration);

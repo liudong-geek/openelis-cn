@@ -2,7 +2,6 @@ package org.openelisglobal.testcalculated.controller.rest;
 
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -16,7 +15,6 @@ import java.util.Arrays;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
@@ -53,33 +51,39 @@ public class CalculatedValueRestControllerTest {
     public void deactivate_persistsActiveFalse_returns200() throws Exception {
         Calculation existing = new Calculation();
         existing.setId(7);
+        existing.setOperations(new ArrayList<>());
         existing.setActive(true);
-        when(testCalculationService.get(7)).thenReturn(existing);
+        when(testCalculationService.setDefinitionActive(7, false)).thenAnswer(call -> {
+            existing.setActive(false);
+            return existing;
+        });
 
         mockMvc.perform(post("/rest/deactivate-test-calculation/7")).andExpect(status().isOk());
 
-        ArgumentCaptor<Calculation> captor = ArgumentCaptor.forClass(Calculation.class);
-        verify(testCalculationService).update(captor.capture());
-        assertEquals(Boolean.FALSE, captor.getValue().getActive());
+        verify(testCalculationService).setDefinitionActive(7, false);
+        assertEquals(Boolean.FALSE, existing.getActive());
     }
 
     @Test
     public void activate_persistsActiveTrue_returns200() throws Exception {
         Calculation existing = new Calculation();
         existing.setId(7);
+        existing.setOperations(new ArrayList<>());
         existing.setActive(false);
-        when(testCalculationService.get(7)).thenReturn(existing);
+        when(testCalculationService.setDefinitionActive(7, true)).thenAnswer(call -> {
+            existing.setActive(true);
+            return existing;
+        });
 
         mockMvc.perform(post("/rest/activate-test-calculation/7")).andExpect(status().isOk());
 
-        ArgumentCaptor<Calculation> captor = ArgumentCaptor.forClass(Calculation.class);
-        verify(testCalculationService).update(captor.capture());
-        assertEquals(Boolean.TRUE, captor.getValue().getActive());
+        verify(testCalculationService).setDefinitionActive(7, true);
+        assertEquals(Boolean.TRUE, existing.getActive());
     }
 
     @Test
     public void deactivate_unknownRule_returns404_doesNotUpdate() throws Exception {
-        when(testCalculationService.get(99)).thenReturn(null);
+        when(testCalculationService.setDefinitionActive(99, false)).thenThrow(new org.hibernate.ObjectNotFoundException(99, Calculation.class.getName()));
 
         mockMvc.perform(post("/rest/deactivate-test-calculation/99")).andExpect(status().isNotFound());
 
@@ -95,9 +99,9 @@ public class CalculatedValueRestControllerTest {
     public void deactivate_persistenceFailure_returns500() throws Exception {
         Calculation existing = new Calculation();
         existing.setId(7);
+        existing.setOperations(new ArrayList<>());
         existing.setActive(true);
-        when(testCalculationService.get(7)).thenReturn(existing);
-        doThrow(new RuntimeException("db down")).when(testCalculationService).update(any(Calculation.class));
+        when(testCalculationService.setDefinitionActive(7, false)).thenThrow(new RuntimeException("db down"));
 
         mockMvc.perform(post("/rest/deactivate-test-calculation/7")).andExpect(status().isInternalServerError());
     }
@@ -132,6 +136,6 @@ public class CalculatedValueRestControllerTest {
         mockMvc.perform(post("/rest/test-calculation").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isBadRequest());
 
-        verify(testCalculationService, never()).save(any(Calculation.class));
+        verify(testCalculationService, never()).saveDefinition(any(Calculation.class));
     }
 }

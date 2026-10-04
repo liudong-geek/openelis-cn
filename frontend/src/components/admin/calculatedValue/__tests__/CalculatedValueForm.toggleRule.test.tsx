@@ -1,166 +1,93 @@
 import React from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import "@testing-library/jest-dom";
+import { waitFor } from "@testing-library/dom";
 import { IntlProvider } from "react-intl";
-import messages from "../../../../languages/en.json";
-
-/**
- * OGC-655 — "Toggle Rule" persists Active state, while display
- * expand/collapse is owned by an Accordion that wraps the editor body.
- *
- * - Clicking Toggle Rule POSTs to /rest/activate-test-calculation/{id} or
- *   /rest/deactivate-test-calculation/{id} and mirrors the new state into
- *   the local `active` flag.
- * - Clicking Toggle Rule does NOT collapse the editor body — the Accordion
- *   chevron is the only display affordance.
- */
-
-const { postSpy } = vi.hoisted(() => ({ postSpy: vi.fn() }));
-
-vi.mock("../../../utils/Utils", () => ({
-  getFromOpenElisServer: vi.fn((url, callback) => {
-    if (typeof callback !== "function") return;
-    if (url === "/rest/test-calculations") {
-      callback([
-        {
-          id: 1,
-          name: "Test Calc 1",
-          sampleId: 1,
-          testId: 1,
-          result: "1",
-          note: "",
-          toggled: true,
-          active: true,
-          operations: [
-            {
-              id: null,
-              order: 0,
-              type: "INTEGER",
-              value: "1",
-              sampleId: null,
-            },
-          ],
-        },
-      ]);
-      return;
-    }
-    if (url === "/rest/math-functions") {
-      callback([{ id: "ABS", value: "abs" }]);
-      return;
-    }
-    if (url === "/rest/displayList/SAMPLE_TYPE_ACTIVE") {
-      callback([{ id: "1", value: "Blood" }]);
-      return;
-    }
-    if (url.startsWith("/rest/test-display-beans-map")) {
-      callback({});
-      return;
-    }
-    if (url.startsWith("/rest/test-display-beans")) {
-      callback([]);
-      return;
-    }
-    callback([]);
-  }),
-  // Default the post callback to a 200 status so toggle clicks don't revert.
-  // Utils.js#postToOpenElisServer passes response.status (a NUMBER) — mirror
-  // that here so the test catches strict-equality regressions in callers.
-  postToOpenElisServer: vi.fn((url, _body, callback) => {
-    postSpy(url);
-    if (typeof callback === "function") callback(200);
-  }),
+import { MemoryRouter } from "react-router-dom";
+import messages from "../../../../languages/zh.json";
+import UserSessionDetailsContext from "../../../../UserSessionDetailsContext";
+import { makeServer, adminSession } from "../../rulesWorkspace/testFixture";
+const { request } = vi.hoisted(() => ({ request: vi.fn() }));
+vi.mock("../../rulesWorkspace/ruleApi", async (importOriginal) => ({
+  ...(await importOriginal()),
+  ruleRequest: request,
 }));
-
-vi.mock("../../../layout/Layout", () => ({
-  NotificationContext: React.createContext({
-    notificationVisible: false,
-    setNotificationVisible: () => {},
-    addNotification: () => {},
-  }),
-}));
-
-vi.mock("../../../common/CustomNotification", () => ({
-  AlertDialog: () => null,
-  NotificationKinds: { success: "success", error: "error" },
-}));
-
-vi.mock("../../../common/PageBreadCrumb", () => ({
-  default: () => null,
-}));
-
-vi.mock("../../../common/AutoComplete", () => ({
-  default: () => <input data-testid="autocomplete-mock" />,
-}));
-
 import CalculatedValue from "../CalculatedValueForm";
-
-const renderForm = () =>
+const mount = () =>
   render(
-    <IntlProvider locale="en" messages={messages}>
-      <CalculatedValue />
+    <IntlProvider locale="zh" messages={messages}>
+      <UserSessionDetailsContext.Provider value={adminSession}>
+        <MemoryRouter initialEntries={["/MasterListsPage/calculatedValue"]}>
+          <CalculatedValue />
+        </MemoryRouter>
+      </UserSessionDetailsContext.Provider>
     </IntlProvider>,
   );
-
-const flush = () => new Promise((r) => setTimeout(r, 0));
-
-describe("OGC-655 — Calculated Values 'Toggle Rule' persists Active state", () => {
-  beforeEach(() => {
-    postSpy.mockReset();
-  });
-
-  test("toggle OFF fires POST /rest/deactivate-test-calculation/{id}", async () => {
-    const user = userEvent.setup();
-    renderForm();
-    await flush();
-
-    const toggle = await screen.findByRole("switch", {
-      name: /activate.*deactivate|toggle/i,
-    });
-    await user.click(toggle);
-    await flush();
-
-    expect(
-      postSpy,
-      "OGC-655: toggle off must persist via deactivate endpoint",
-    ).toHaveBeenCalledWith("/rest/deactivate-test-calculation/1");
-  });
-
-  test("toggle OFF updates Active label without collapsing the editor body", async () => {
-    const user = userEvent.setup();
-    renderForm();
-    await flush();
-
-    // Open the accordion so the editor body is visible for the assertion.
-    // The Rule details title is the accordion header (a button).
-    const accordionHeader = await screen.findByRole("button", {
-      name: /view rule|rule details/i,
-    });
-    await user.click(accordionHeader);
-    await flush();
-
-    // Pre-condition: rule active=true, editor body visible after expanding.
-    expect(
-      screen.queryByRole("button", { name: /test result/i }),
-      "editor body should be visible after expanding the accordion",
-    ).not.toBeNull();
-
-    const toggle = await screen.findByRole("switch", {
-      name: /activate.*deactivate|toggle/i,
-    });
-    await user.click(toggle);
-    await flush();
-
-    // Active label flips to reflect the new state.
-    expect(
-      screen.queryByText(/active:\s*false/i),
-      "OGC-655: Active label should reflect the new state",
-    ).not.toBeNull();
-
-    // Editor body stays expanded — toggle controls activation, not display.
-    expect(
-      screen.queryByRole("button", { name: /test result/i }),
-      "editor body should remain visible after toggle off — Accordion owns display",
-    ).not.toBeNull();
-  });
+beforeEach(() => {
+  request.mockClear();
+  sessionStorage.clear();
+  localStorage.setItem("CSRF", "token");
 });
+afterEach(cleanup);
+test("legacy calculation entry selects its category and explicit confirmed deactivate persists then reads exact ID", async () => {
+  const server = makeServer();
+  request.mockImplementation(server.request);
+  mount();
+  await screen.findByText("计算示例");
+  expect(screen.queryByText("白细胞加做")).toBeNull();
+  const row = screen.getByText("计算示例").closest("tr");
+  await userEvent.click(within(row!).getByRole("button", { name: "停用" }));
+  await screen.findByText("确认停用规则");
+  expect(
+    server.calls.filter((call) => call.options.method === "POST"),
+  ).toHaveLength(0);
+  await userEvent.click(screen.getAllByRole("button", { name: "停用" }).pop()!);
+  await screen.findByText("规则启停状态已更新并核对。");
+  expect(
+    server.calls
+      .filter((call) => call.options.method === "POST")
+      .map((call) => call.path),
+  ).toEqual(["/rest/deactivate-test-calculation/2"]);
+  expect(
+    server.calls.some(
+      (call) =>
+        call.path === "/rest/test-calculation/2" &&
+        call.options.method !== "POST",
+    ),
+  ).toBe(true);
+  expect(server.store.calculation[0].active).toBe(false);
+});
+test.each([0, 500])(
+  "unknown activation status %s retains original status and opens no editor; retry only reads",
+  async (status) => {
+    const server = makeServer();
+    server.store.calculation[0].active = false;
+    const handler = server.request;
+    request.mockImplementation((path, options) =>
+      options?.method === "POST"
+        ? Promise.resolve({ ok: false, status })
+        : handler(path, options),
+    );
+    mount();
+    await screen.findByText("计算示例");
+    await userEvent.click(
+      within(screen.getByText("计算示例").closest("tr")!).getByRole("button", {
+        name: "启用",
+      }),
+    );
+    await userEvent.click(
+      screen.getAllByRole("button", { name: "启用" }).pop()!,
+    );
+    await screen.findByText(
+      "启停结果待核实。点击核对只读取当前状态，不会重复提交启停操作。",
+    );
+    expect(screen.queryByLabelText("规则名称")).toBeNull();
+    server.store.calculation[0].active = true;
+    await userEvent.click(screen.getByRole("button", { name: "核对保存结果" }));
+    await screen.findByText("规则启停状态已更新并核对。");
+    expect(
+      request.mock.calls.filter(([, options]) => options?.method === "POST"),
+    ).toHaveLength(1);
+    await waitFor(() => expect(screen.queryByText("确认启用规则")).toBeNull());
+  },
+);

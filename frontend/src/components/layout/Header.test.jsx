@@ -87,6 +87,28 @@ const mockNotificationContext = {
 };
 
 describe("primary navigation route aliases", () => {
+  test.each([
+    ["/MasterListsPage/reflex", "/MasterListsPage/rulesWorkspace"],
+    ["/MasterListsPage/calculatedValue", "/MasterListsPage/rulesWorkspace"],
+    ["/admin/reflex", "/admin/rulesWorkspace"],
+    ["/admin/calculatedValue/", "/admin/rulesWorkspace"],
+  ])(
+    "keeps the rule list task active at legacy route %s",
+    (route, expected) => {
+      expect(resolvePrimaryNavigationPath(route)).toBe(expected);
+    },
+  );
+
+  test("does not treat unrelated or malformed paths as rule aliases", () => {
+    [
+      "/MasterListsPage/reflexUnknown",
+      "/MasterListsPage/reflex/unknown",
+      "/MasterListsPage/rulesWorkspace",
+    ].forEach((route) => {
+      expect(resolvePrimaryNavigationPath(route)).toBe(route);
+    });
+  });
+
   test("keeps the test list task active while creating a test", () => {
     expect(
       resolvePrimaryNavigationPath(

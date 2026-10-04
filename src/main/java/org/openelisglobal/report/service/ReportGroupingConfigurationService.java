@@ -19,6 +19,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ReportGroupingConfigurationService {
     public static final String DEFINITION_ID = "lis-patient-group-rules";
+
+    /** Absence is the only state that permits initial configuration. */
+    public static class NotConfiguredException extends IllegalStateException {
+        public NotConfiguredException() {
+            super("Report grouping is not configured");
+        }
+    }
+
     private final ObjectMapper mapper = new ObjectMapper();
     @Autowired
     private ReportDefinitionService definitions;
@@ -29,7 +37,7 @@ public class ReportGroupingConfigurationService {
     public ReportGroupingRules getRules() {
         ReportDefinition definition = findConfiguration();
         if (definition == null)
-            throw new IllegalStateException("Report grouping is not configured");
+            throw new NotConfiguredException();
         return parse(definition);
     }
 

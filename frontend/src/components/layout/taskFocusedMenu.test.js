@@ -563,7 +563,7 @@ describe("taskFocusedMenu", () => {
         "/MasterListsPage/TestSectionManagement",
         "sidenav.china.configuration.testSections",
       ],
-      ["/MasterListsPage/reflex", "sidenav.china.configuration.rules"],
+      ["/MasterListsPage/rulesWorkspace", "sidenav.china.configuration.rules"],
       [
         "/MasterListsPage/organizationManagement",
         "sidenav.china.configuration.organizations",

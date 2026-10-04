@@ -54,6 +54,10 @@ import { resolveNavigationProfile } from "./navigationProfile";
 
 export const resolvePrimaryNavigationPath = (pathname) => {
   const normalizedPath = pathname === "/" ? "/Dashboard" : pathname;
+  const legacyRuleMatch = normalizedPath.match(
+    /^\/(admin|MasterListsPage)\/(reflex|calculatedValue)\/?$/,
+  );
+  if (legacyRuleMatch) return `/${legacyRuleMatch[1]}/rulesWorkspace`;
   const createTestMatch = normalizedPath.match(
     /^\/(admin|MasterListsPage)\/TestCatalogEditor\/new(?:\/|$)/,
   );

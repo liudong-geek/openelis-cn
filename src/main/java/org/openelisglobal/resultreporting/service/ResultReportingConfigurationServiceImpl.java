@@ -1,7 +1,6 @@
 package org.openelisglobal.resultreporting.service;
 
 import java.util.List;
-import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.scheduler.service.CronSchedulerService;
 import org.openelisglobal.scheduler.valueholder.CronScheduler;
 import org.openelisglobal.siteinformation.service.SiteInformationService;
@@ -30,6 +29,6 @@ public class ResultReportingConfigurationServiceImpl implements ResultReportingC
             schedulerService.update(scheduler);
         }
 
-        ConfigurationProperties.loadDBValuesIntoConfiguration();
+        // Callers reload runtime configuration only after this transaction commits.
     }
 }

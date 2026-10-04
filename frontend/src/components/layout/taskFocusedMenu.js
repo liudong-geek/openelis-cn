@@ -149,7 +149,7 @@ const CHINA_ADMIN_TASKS = Object.freeze([
   {
     elementId: "menu_configuration_rules",
     displayKey: "sidenav.china.configuration.rules",
-    actionURL: "/MasterListsPage/reflex",
+    actionURL: "/MasterListsPage/rulesWorkspace",
     workspace: "configuration",
     allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
   },

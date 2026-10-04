@@ -1,48 +1,78 @@
 .his-outbox-panel {
-  margin-block: 1.5rem;
-  padding: 1.5rem;
-  background: var(--cds-layer-01, #f4f4f4);
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem;
+  min-width: 0;
+  border: 1px solid var(--oe-border, #dde1e6);
+  border-radius: 0.5rem;
+  background: var(--oe-surface, #fff);
 }
-
 .his-outbox-panel__header,
 .his-outbox-panel__actions,
 .his-outbox-panel__summary,
-.his-outbox-panel__close {
+.his-outbox-panel__row-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: end;
 }
-
 .his-outbox-panel__header {
   justify-content: space-between;
-  margin-bottom: 1rem;
 }
-
-.his-outbox-panel__summary {
-  margin-block: 1rem;
+.his-outbox-panel__header p,
+.his-outbox-panel__scope,
+.his-outbox-panel__simulation p {
+  color: var(--oe-text-muted, #64748b);
+  line-height: 1.6;
+  margin-top: 0.5rem;
 }
-
 .his-outbox-panel__metric {
-  min-width: 8rem;
+  flex: 1 1 8rem;
   padding: 0.75rem 1rem;
-  background: var(--cds-layer-02, #fff);
+  background: var(--oe-surface-muted, #f5f7fa);
+  border-radius: 0.375rem;
 }
-
 .his-outbox-panel__metric strong {
   display: block;
   font-size: 1.5rem;
+  margin-bottom: 0.25rem;
 }
-
 .his-outbox-panel__hash {
   font-family: var(--cds-code-01-font-family, monospace);
   font-size: 0.75rem;
 }
-
-.his-outbox-panel__close {
-  min-width: 22rem;
+.his-outbox-panel__table {
+  min-width: 0;
+  overflow-x: auto;
 }
-
-.his-outbox-panel__close .cds--text-input-wrapper {
-  flex: 1;
+.his-outbox-panel__table .cds--data-table {
+  min-width: 48rem;
+}
+.his-outbox-panel__table td {
+  overflow-wrap: anywhere;
+}
+.his-outbox-panel__simulation .his-outbox-panel__actions {
+  margin-top: 1rem;
+}
+.his-outbox-panel__business-id {
+  margin-block: 1rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 672px) {
+  .his-outbox-panel__header,
+  .his-outbox-panel__actions {
+    align-items: stretch;
+  }
+  .his-outbox-panel__header > *,
+  .his-outbox-panel__actions > * {
+    width: 100%;
+    min-width: 0;
+  }
+  .his-outbox-panel__actions .cds--btn {
+    max-width: none;
+    min-height: 2.5rem;
+    height: 2.5rem;
+    align-items: center;
+  }
 }

@@ -471,10 +471,7 @@ public class TestReflexUtil {
             return !(Double.valueOf(result.getValue()) >= result.getMinNormal()
                     && Double.valueOf(result.getValue()) <= result.getMaxNormal());
         case BETWEEN:
-            String value1 = reflexTest.getNonDictionaryValue().split("-")[0];
-            String value2 = reflexTest.getNonDictionaryValue().split("-")[1];
-            return Double.valueOf(result.getValue()) >= Double.valueOf(value1)
-                    && Double.valueOf(result.getValue()) <= Double.valueOf(value2);
+            return NumericReflexRange.contains(reflexTest.getNonDictionaryValue(), Double.valueOf(result.getValue()));
         default:
             return false;
         }
