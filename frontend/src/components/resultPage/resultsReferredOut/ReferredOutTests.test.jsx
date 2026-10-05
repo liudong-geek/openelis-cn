@@ -8,6 +8,27 @@ import { MemoryRouter } from "react-router-dom";
 import zhMessages from "../../../languages/zh_CN.json";
 import ReferredOutTests from "./ReferredOutTests";
 import { getFromOpenElisServer } from "../../utils/Utils";
+import { ConfigurationContext } from "../../layout/Layout";
+import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
+
+vi.mock("../../layout/Layout", async () => {
+  const { createContext } = await import("react");
+  return { ConfigurationContext: createContext({}) };
+});
+
+const actor = {
+  authenticated: true,
+  userId: "17",
+  sessionId: "synthetic-referral-session",
+  roles: ["Results"],
+  loginLabUnit: "化学组",
+  userLabRolesMap: { 化学组: ["Results"] },
+};
+const json = (value, status = 200) =>
+  new Response(value === undefined ? "" : JSON.stringify(value), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
 
 vi.mock("../../utils/Utils", async () => {
   const actualUtils = await vi.importActual("../../utils/Utils");
@@ -57,7 +78,7 @@ vi.mock("../../common/CustomLabNumberInput", () => ({
 }));
 
 const makeReferral = (index) => ({
-  analysisId: `A-${index}`,
+  analysisId: String(index),
   resultDate: `2026-08-${String(index).padStart(2, "0")}`,
   accessionNumber: `LN-${String(index).padStart(3, "0")}`,
   referredSendDate: "2026-08-01",
@@ -76,34 +97,45 @@ const renderPage = () =>
   render(
     <MemoryRouter initialEntries={["/ReferredOutTests"]}>
       <IntlProvider locale="zh-CN" messages={zhMessages}>
-        <ReferredOutTests />
+        <ConfigurationContext.Provider
+          value={{ configurationProperties: { DEFAULT_DATE_LOCALE: "zh-CN" } }}
+        >
+          <UserSessionDetailsContext.Provider
+            value={{ userSessionDetails: actor }}
+          >
+            <ReferredOutTests />
+          </UserSessionDetailsContext.Provider>
+        </ConfigurationContext.Provider>
       </IntlProvider>
     </MemoryRouter>,
   );
 
-const configureServer = (referralResponse) => {
+const configureServer = (referralResponse, { deferOptions = false } = {}) => {
   getFromOpenElisServer.mockImplementation((url, callback) => {
-    if (url === "/rest/test-list") {
+    if (
+      !deferOptions &&
+      (url === "/rest/test-list" || url.startsWith("/rest/user-test-sections/"))
+    )
       callback([]);
-      return;
-    }
-    if (url.startsWith("/rest/user-test-sections/")) {
-      callback([]);
-      return;
-    }
-    if (url.startsWith("/rest/ReferredOutTests?")) {
-      callback(referralResponse);
-    }
   });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url) => {
+      if (String(url).endsWith("/session")) return Promise.resolve(json(actor));
+      if (String(url).includes("/rest/ReferredOutTests?"))
+        return Promise.resolve(
+          json(referralResponse, referralResponse?.status || 200),
+        );
+      throw new Error(`Unexpected request: ${url}`);
+    }),
+  );
 };
 
 const searchByLabNumber = async (value = "NO-SUCH-REFERRAL") => {
   const user = userEvent.setup();
-  await user.type(
-    screen.getByRole("textbox", { name: "扫描或手动输入" }),
-    value,
-  );
-  await user.click(screen.getByRole("button", { name: "按实验室编号查询" }));
+  await user.selectOptions(screen.getByLabelText("查询类别"), "LAB_NUMBER");
+  await user.type(screen.getByLabelText("实验室编号"), value);
+  await user.click(screen.getByRole("button", { name: "搜索" }));
   return user;
 };
 
@@ -113,8 +145,13 @@ describe("ReferredOutTests", () => {
     window.history.replaceState({}, "", "/ReferredOutTests");
   });
 
-  test("初始态完整中文化，且查询前不渲染空表格和分页", async () => {
-    configureServer({ referralDisplayItems: [] });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  test("初始态完整中文化，且查询准备前不渲染空表格和分页", async () => {
+    configureServer({ referralDisplayItems: [] }, { deferOptions: true });
 
     const { container } = renderPage();
 
@@ -122,11 +159,16 @@ describe("ReferredOutTests", () => {
       await screen.findByRole("heading", { name: "外送检验查询" }),
     ).toBeInTheDocument();
     expect(screen.getByText("发送日期")).toBeInTheDocument();
+    await userEvent
+      .setup()
+      .selectOptions(screen.getByLabelText("查询类别"), "PATIENT");
     expect(screen.getByTestId("patient-search")).toHaveAttribute(
       "data-compact-search",
       "true",
     );
-    expect(screen.getByText("请选择一种查询方式")).toBeInTheDocument();
+    expect(
+      screen.getByText("查询条件已变更，请点击搜索。"),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "下一页" }),
@@ -147,8 +189,11 @@ describe("ReferredOutTests", () => {
       screen.queryByRole("button", { name: "下一页" }),
     ).not.toBeInTheDocument();
 
-    const referralCall = getFromOpenElisServer.mock.calls.find(([url]) =>
-      url.startsWith("/rest/ReferredOutTests?"),
+    const referralCall = fetch.mock.calls.find(
+      ([url]) =>
+        String(url).includes("/rest/ReferredOutTests?") &&
+        new URL(url, "http://openelis.local").searchParams.get("searchType") ===
+          "LAB_NUMBER",
     );
     const requestUrl = new URL(referralCall[0], "http://openelis.local");
     expect(requestUrl.searchParams.get("searchType")).toBe("LAB_NUMBER");
@@ -215,7 +260,7 @@ describe("ReferredOutTests", () => {
       openSpy.mock.calls[0][0],
       "http://openelis.local",
     );
-    expect(reportUrl.searchParams.get("analysisIds")).toBe("A-1,A-11");
+    expect(reportUrl.searchParams.get("analysisIds")).toBe("1,11");
     expect(openSpy.mock.calls[0][1]).toBe("_blank");
     expect(reportWindow.opener).toBeNull();
     openSpy.mockRestore();
@@ -226,7 +271,7 @@ describe("ReferredOutTests", () => {
       searchFinished: true,
       referralDisplayItems: [
         { ...makeReferral(1), disabled: true },
-        { ...makeReferral(2), analysisId: "" },
+        { ...makeReferral(2), analysisId: null },
         makeReferral(3),
       ],
     });
@@ -255,7 +300,7 @@ describe("ReferredOutTests", () => {
       openSpy.mock.calls[0][0],
       "http://openelis.local",
     );
-    expect(reportUrl.searchParams.get("analysisIds")).toBe("A-3");
+    expect(reportUrl.searchParams.get("analysisIds")).toBe("3");
     openSpy.mockRestore();
   });
 

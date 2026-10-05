@@ -2,6 +2,10 @@ package org.openelisglobal.referral.service;
 
 import java.sql.Date;
 import java.sql.Timestamp;
+import java.time.DateTimeException;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.ResolverStyle;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -11,8 +15,8 @@ import java.util.stream.Collectors;
 import org.apache.commons.validator.GenericValidator;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
-import org.openelisglobal.common.service.AuditableBaseObjectServiceImpl;
 import org.openelisglobal.common.constants.Constants;
+import org.openelisglobal.common.service.AuditableBaseObjectServiceImpl;
 import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.dictionary.service.DictionaryService;
 import org.openelisglobal.dictionary.valueholder.Dictionary;
@@ -31,8 +35,10 @@ import org.openelisglobal.samplehuman.service.SampleHumanService;
 import org.openelisglobal.systemuser.service.UserService;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ReferralServiceImpl extends AuditableBaseObjectServiceImpl<Referral, String> implements ReferralService {
@@ -144,6 +150,9 @@ public class ReferralServiceImpl extends AuditableBaseObjectServiceImpl<Referral
     }
 
     private List<Referral> getReferrals(ReferredOutTestsForm form) {
+        if (form == null || form.getSearchType() == null) {
+            throw invalidReferralQuery();
+        }
         switch (form.getSearchType()) {
         case TEST_AND_DATES:
             return getReferralsByTestAndDate(form);
@@ -187,6 +196,11 @@ public class ReferralServiceImpl extends AuditableBaseObjectServiceImpl<Referral
     }
 
     private List<Referral> getReferralsByTestAndDate(ReferredOutTestsForm form) {
+        if (form.getDateType() == null) {
+            throw invalidReferralQuery();
+        }
+        List<String> testUnitIds = validatedQueryIds(form.getTestUnitIds());
+        List<String> testIds = validatedQueryIds(form.getTestIds());
         String startDate = form.getStartDate();
         String endDate = form.getEndDate();
         if (GenericValidator.isBlankOrNull(startDate) && !GenericValidator.isBlankOrNull(endDate)) {
@@ -195,20 +209,71 @@ public class ReferralServiceImpl extends AuditableBaseObjectServiceImpl<Referral
         if (GenericValidator.isBlankOrNull(endDate) && !GenericValidator.isBlankOrNull(startDate)) {
             endDate = startDate;
         }
-        java.sql.Timestamp startTimestamp = GenericValidator.isBlankOrNull(startDate) ? null
-                : DateUtil.convertStringDateStringTimeToTimestamp(startDate, "00:00:00.0");
-        java.sql.Timestamp endTimestamp = GenericValidator.isBlankOrNull(endDate) ? null
-                : DateUtil.convertStringDateStringTimeToTimestamp(endDate, "23:59:59");
-        return getReferralsByTestAndDate(form.getDateType(), startTimestamp, endTimestamp, form.getTestUnitIds(),
-                form.getTestIds());
+        Timestamp startTimestamp = null;
+        Timestamp endTimestampExclusive = null;
+        if (!GenericValidator.isBlankOrNull(startDate)) {
+            LocalDate firstDay = parseQueryDate(startDate);
+            LocalDate lastDay = parseQueryDate(endDate);
+            if (firstDay.isAfter(lastDay)) {
+                throw invalidReferralQuery();
+            }
+            startTimestamp = Timestamp.valueOf(firstDay.atStartOfDay());
+            endTimestampExclusive = Timestamp.valueOf(lastDay.plusDays(1).atStartOfDay());
+        }
+        return getReferralsByTestAndDate(form.getDateType(), startTimestamp, endTimestampExclusive, testUnitIds,
+                testIds);
+    }
+
+    private LocalDate parseQueryDate(String value) {
+        try {
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern(DateUtil.getDateFormat().replace("yyyy", "uuuu"))
+                    .withResolverStyle(ResolverStyle.STRICT);
+            return LocalDate.parse(value, formatter);
+        } catch (DateTimeException e) {
+            throw invalidReferralQuery();
+        }
+    }
+
+    private List<String> validatedQueryIds(List<String> values) {
+        if (values == null) {
+            return null;
+        }
+        List<String> ids = new ArrayList<>();
+        for (String value : values) {
+            // Empty multi-select placeholders retain the existing no-filter behavior.
+            if (!GenericValidator.isBlankOrNull(value)) {
+                ids.add(validatedQueryId(value));
+            }
+        }
+        return ids;
+    }
+
+    private String validatedQueryId(String value) {
+        if (GenericValidator.isBlankOrNull(value) || !value.matches("[0-9]+")) {
+            throw invalidReferralQuery();
+        }
+        try {
+            // Existing numeric identifiers are bound through LIMSStringNumberUserType.
+            Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            throw invalidReferralQuery();
+        }
+        return value;
+    }
+
+    private ResponseStatusException invalidReferralQuery() {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, "error.validation");
     }
 
     private List<Referral> getReferralsByLabNumber(ReferredOutTestsForm form) {
+        if (GenericValidator.isBlankOrNull(form.getLabNumber())) {
+            throw invalidReferralQuery();
+        }
         return getReferralsByAccessionNumber(form.getLabNumber());
     }
 
     private List<Referral> getReferralsByPatient(ReferredOutTestsForm form) {
-        return getReferralByPatientId(form.getSelPatient());
+        return getReferralByPatientId(validatedQueryId(form.getSelPatient()));
     }
 
     @Override

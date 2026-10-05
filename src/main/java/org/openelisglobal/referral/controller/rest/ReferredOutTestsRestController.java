@@ -1,21 +1,24 @@
 package org.openelisglobal.referral.controller.rest;
 
-import jakarta.validation.Valid;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import java.lang.reflect.InvocationTargetException;
+import java.util.Arrays;
 import java.util.List;
-import org.openelisglobal.common.services.DisplayListService;
 import org.openelisglobal.common.rest.BaseRestController;
+import org.openelisglobal.common.services.DisplayListService;
 import org.openelisglobal.common.util.IdValuePair;
 import org.openelisglobal.referral.form.ReferredOutTestsForm;
 import org.openelisglobal.referral.service.ReferralService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.InitBinder;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/rest/")
@@ -36,6 +39,10 @@ public class ReferredOutTestsRestController extends BaseRestController {
     @GetMapping(value = "ReferredOutTests")
     public ReferredOutTestsForm showReferredOutTests(@Valid ReferredOutTestsForm form, HttpServletRequest request)
             throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
+        if (form.getSearchType() == null
+                && Arrays.stream(ALLOWED_FIELDS).anyMatch(field -> request.getParameterMap().containsKey(field))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "error.validation");
+        }
         setupPageForDisplay(form, getSysUserId(request));
         return form;
     }

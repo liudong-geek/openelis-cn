@@ -1,0 +1,141 @@
+.referral-workspace {
+  display: grid;
+  gap: 16px;
+}
+.referral-query-panel,
+.referral-results-panel {
+  min-width: 0;
+  padding: 20px;
+  background: var(--cds-layer, #fff);
+  border: 1px solid var(--cds-border-subtle, #dce6ea);
+  border-radius: 8px;
+}
+.referral-query-toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(220px, 1fr) auto;
+  align-items: end;
+  gap: 16px;
+}
+.referral-query-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 8px;
+  color: var(--cds-text-secondary, #617783);
+}
+.referral-query-summary strong {
+  color: var(--cds-text-primary, #203b49);
+  font-size: 13px;
+}
+.referral-query-actions,
+.referral-results-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.referral-query-applied {
+  margin: 12px 0 0;
+  color: var(--cds-text-secondary, #617783);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.referral-advanced {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--cds-border-subtle, #dce6ea);
+}
+.referral-advanced p {
+  color: var(--cds-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.referral-advanced input[type="date"] {
+  min-width: 0;
+  width: 100%;
+}
+.referral-patient-search {
+  margin-top: 16px;
+  border-top: 1px solid var(--cds-border-subtle);
+  padding-top: 16px;
+}
+.referral-patient-search .cds--css-grid {
+  padding-inline: 0;
+}
+.referral-selected-patient {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 4px;
+  background: #eff8f7;
+  color: #203b49;
+}
+.referral-results-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.referral-results-heading h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.referral-results-heading span {
+  color: var(--cds-text-secondary);
+  font-size: 12px;
+}
+.referral-empty {
+  padding: 32px 16px;
+  text-align: center;
+  background: var(--cds-layer-accent, #f6f8fa);
+  border-radius: 4px;
+  color: var(--cds-text-secondary);
+}
+.referral-empty strong {
+  color: var(--cds-text-primary);
+}
+.referral-empty p {
+  margin-top: 8px;
+}
+.referral-results-grid.cds--css-grid {
+  padding-inline: 0;
+}
+.referral-results-grid .cds--data-table-container {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.referral-results-grid .cds--data-table {
+  min-width: 1100px;
+}
+@media (max-width: 1055px) {
+  .referral-query-toolbar {
+    grid-template-columns: minmax(160px, 1fr) minmax(200px, 2fr);
+  }
+  .referral-query-actions {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 671px) {
+  .referral-query-panel,
+  .referral-results-panel {
+    padding: 16px;
+  }
+  .referral-query-toolbar,
+  .referral-advanced {
+    grid-template-columns: 1fr;
+  }
+  .referral-query-actions {
+    grid-column: auto;
+  }
+  .referral-selected-patient {
+    align-items: start;
+    gap: 8px;
+  }
+}

@@ -163,12 +163,12 @@ public class ReferralDAOImpl extends BaseDAOImpl<Referral, String> implements Re
 
     @Transactional(readOnly = true)
     @Override
-    public List<Referral> getReferralsByTestAndDate(ReferDateType dateType, Timestamp startDate, Timestamp endDate,
-            List<String> testUnitIds, List<String> testIds) {
+    public List<Referral> getReferralsByTestAndDate(ReferDateType dateType, Timestamp startDate,
+            Timestamp endDateExclusive, List<String> testUnitIds, List<String> testIds) {
         String hql = "From Referral r WHERE 1 = 1 ";
         String subHQL = "SELECT a.id FROM Analysis a WHERE 1 = 1 ";
         if (ReferDateType.RESULT.equals(dateType) && startDate != null) {
-            subHQL += "AND a.completedDate BETWEEN :startDate AND :endDate ";
+            subHQL += "AND a.completedDate >= :startDate AND a.completedDate < :endDateExclusive ";
         }
         if (testUnitIds != null && testUnitIds.size() > 0) {
             subHQL += "AND a.testSection.id in (:testUnitIds) ";
@@ -181,14 +181,14 @@ public class ReferralDAOImpl extends BaseDAOImpl<Referral, String> implements Re
             hql += "AND r.analysis.id in (" + subHQL + ") ";
         }
         if (ReferDateType.SENT.equals(dateType) && startDate != null) {
-            hql += "AND r.sentDate BETWEEN :startDate AND :endDate ";
+            hql += "AND r.sentDate >= :startDate AND r.sentDate < :endDateExclusive ";
         }
 
         try {
             Query<Referral> query = entityManager.unwrap(Session.class).createQuery(hql, Referral.class);
             if (startDate != null) {
                 query.setParameter("startDate", startDate);
-                query.setParameter("endDate", endDate);
+                query.setParameter("endDateExclusive", endDateExclusive);
             }
             if (testUnitIds != null && testUnitIds.size() > 0) {
                 query.setParameter("testUnitIds", testUnitIds);
