@@ -388,6 +388,43 @@ test("renders the current server page once and delegates controlled paging witho
   expect(view.onPageChange).toHaveBeenLastCalledWith({ page: 1, pageSize: 20 });
 });
 
+test.each([1, 3])(
+  "localizes the real Carbon page selector and all pagination labels for %s pages",
+  (totalPages) => {
+    setup([order()], {
+      state: {
+        ...scope,
+        totalResults: totalPages === 1 ? 1 : 23,
+        paging: { ...scope.paging, totalPages },
+      },
+    });
+    const pageLabel = `页码，共${totalPages}页`;
+    const controls = within(document.body);
+    expect(controls.getByRole("combobox", { name: pageLabel })).toBeVisible();
+    expect(screen.getByText(pageLabel)).toBeInTheDocument();
+    expect(screen.getByText(`共 ${totalPages} 页`)).toBeVisible();
+    expect(
+      controls.getByRole("combobox", {
+        name: messages["pagination.items-per-page"],
+      }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "上一页" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下一页" })).toBeInTheDocument();
+    expect(screen.queryByText(/Page of \d+ pages?/)).toBeNull();
+  },
+);
+
+test("shows neutral placeholders for missing facility and test without changing the order", () => {
+  const data = order("11", "甲", {
+    requestingFacility: " ",
+    testName: null,
+  });
+  setup([data]);
+  expect(mainRow().getAllByRole("cell", { name: "—" })).toHaveLength(2);
+  expect(data.requestingFacility).toBe(" ");
+  expect(data.testName).toBeNull();
+});
+
 test.each(["loading", "error", "idle"])(
   "does not expose old clinical rows or an empty-success message while %s",
   (phase) => {

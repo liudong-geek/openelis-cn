@@ -567,6 +567,7 @@ const EOrder = ({
                       <TableHeader
                         key={header.key}
                         {...getHeaderProps({ header })}
+                        className={`eorder-column--${header.key}`}
                       >
                         {header.header}
                       </TableHeader>
@@ -598,8 +599,19 @@ const EOrder = ({
                                       cell.value,
                                       intl,
                                     )
-                                  : cell.value;
-                          return <TableCell key={cell.id}>{label}</TableCell>;
+                                  : ["requestingFacility", "testName"].includes(
+                                        cell.info.header,
+                                      ) && !String(cell.value ?? "").trim()
+                                    ? "—"
+                                    : cell.value;
+                          return (
+                            <TableCell
+                              key={cell.id}
+                              className={`eorder-column--${cell.info.header}`}
+                            >
+                              {label}
+                            </TableCell>
+                          );
                         })}
                       </TableExpandRow>
                       <TableExpandedRow
@@ -634,9 +646,9 @@ const EOrder = ({
             itemsPerPageText={intl.formatMessage({
               id: "pagination.items-per-page",
             })}
-            pageNumberText={intl.formatMessage({
-              id: "pagination.page-number",
-            })}
+            pageSelectLabelText={(total) =>
+              intl.formatMessage({ id: "pagination.page-select" }, { total })
+            }
             itemRangeText={(min, max, total) =>
               intl.formatMessage(
                 { id: "pagination.item-range" },

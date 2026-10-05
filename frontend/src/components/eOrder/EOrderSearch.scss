@@ -76,13 +76,46 @@
 .eorder-list-panel__body {
   overflow-x: auto;
 }
+.eorder-list-panel__body .cds--data-table-container,
 .eorder-list-panel__body table {
-  min-width: 48rem;
+  min-width: 66rem;
+}
+.eorder-list-panel__body table {
+  table-layout: fixed;
+}
+.eorder-list-panel__body th {
+  white-space: nowrap;
+}
+.eorder-list-panel__body .eorder-column--requestDateDisplay {
+  width: 7rem;
+}
+.eorder-list-panel__body .eorder-column--patientName {
+  width: 7rem;
+}
+.eorder-list-panel__body .eorder-column--externalOrderId {
+  width: 10rem;
+}
+.eorder-list-panel__body .eorder-column--requestingFacility,
+.eorder-list-panel__body .eorder-column--testName {
+  width: 6.5rem;
+}
+.eorder-list-panel__body .eorder-column--priority {
+  width: 6rem;
+}
+.eorder-list-panel__body .eorder-column--status {
+  width: 6.5rem;
+}
+.eorder-list-panel__body .eorder-column--action {
+  width: 12.5rem;
 }
 .eorder-list-panel__body td {
   max-width: 20rem;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+.eorder-list-panel__body td.eorder-column--requestDateDisplay {
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 .eorder-list-panel__body .cds--inline-loading,
 .eorder-list-panel__empty {
@@ -143,9 +176,14 @@
 }
 
 .eorder-row-action {
-  min-width: 10rem;
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  min-width: 0;
 }
 .eorder-row-action__reason {
+  display: block;
+  width: 100%;
   color: var(--oe-text-muted, #647985);
   font-size: 0.75rem;
   margin-top: var(--cds-spacing-03, 0.5rem);
