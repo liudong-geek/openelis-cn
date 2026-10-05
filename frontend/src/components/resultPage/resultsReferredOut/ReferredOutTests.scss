@@ -1,12 +1,13 @@
 .referral-workspace {
   display: grid;
   gap: 16px;
+  margin: 0 24px 24px;
 }
 .referral-query-panel,
 .referral-results-panel {
   min-width: 0;
   padding: 20px;
-  background: var(--cds-layer, #fff);
+  background: var(--cds-layer-01, #fff);
   border: 1px solid var(--cds-border-subtle, #dce6ea);
   border-radius: 8px;
 }
@@ -94,7 +95,7 @@
 .referral-empty {
   padding: 32px 16px;
   text-align: center;
-  background: var(--cds-layer-accent, #f6f8fa);
+  background: var(--cds-layer, #f6f8fa);
   border-radius: 4px;
   color: var(--cds-text-secondary);
 }
@@ -123,6 +124,9 @@
   }
 }
 @media (max-width: 671px) {
+  .referral-workspace {
+    margin: 0 16px 16px;
+  }
   .referral-query-panel,
   .referral-results-panel {
     padding: 16px;

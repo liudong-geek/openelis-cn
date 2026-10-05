@@ -390,6 +390,52 @@ describe("referral controlled query and request lifecycle", () => {
     expect(screen.queryByText("LN-003")).not.toBeInTheDocument();
     expect(printButton()).toBeDisabled();
   });
+  test.each([
+    ["开始日期", "startDate", 5],
+    ["结束日期", "endDate", 1],
+  ])(
+    "tracked native input updates %s immediately and clears stale results",
+    async (label, field, daysBeforeToday) => {
+      configure({ rows: [makeReferral(1)] });
+      const { history } = renderPage();
+      const user = userEvent.setup();
+      const row = await screen.findByRole("row", { name: /LN-001/ });
+      await user.click(within(row).getByRole("checkbox"));
+      expect(printButton()).toBeEnabled();
+      await user.click(screen.getByRole("button", { name: "高级搜索" }));
+      const input = screen.getByLabelText(label);
+      const nextDate = new Date();
+      nextDate.setDate(nextDate.getDate() - daysBeforeToday);
+      const value = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}-${String(nextDate.getDate()).padStart(2, "0")}`;
+      const before = { ...history.location.state.referralQuery.draft };
+      expect(input).not.toHaveValue(value);
+      // Native input can arrive after the browser/controlled-input setter has
+      // already tracked the value. Dispatch only input: a second change event
+      // would conceal the deployed browser defect this regression reproduces.
+      act(() => {
+        input.value = value;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      expect(input).toHaveValue(value);
+      const next = { ...before, [field]: value };
+      expect(
+        screen.getByText(`${next.startDate} — ${next.endDate}`),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("table")).not.toBeInTheDocument();
+      expect(printButton()).toBeNull();
+      expect(
+        screen.getByText("查询条件已变更，请点击搜索。"),
+      ).toBeInTheDocument();
+      expect(history.location.state.referralQuery.draft[field]).toBe(value);
+      expect(queries).toHaveLength(1);
+      await user.selectOptions(screen.getByLabelText("日期依据"), "RESULT");
+      expect(screen.getByLabelText(label)).toHaveValue(value);
+      await user.click(screen.getByRole("button", { name: "搜索" }));
+      await waitFor(() => expect(queries).toHaveLength(2));
+      expect(queryParams(1).get(field)).toBe(value.replaceAll("-", "/"));
+      expect(queryParams(1).get("dateType")).toBe("RESULT");
+    },
+  );
   test("changing conditions clears selected reports before another request can succeed", async () => {
     configure({ rows: [makeReferral(1)] });
     renderPage();

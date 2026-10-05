@@ -719,6 +719,9 @@ export default function ReferredOutTests() {
                 id="startDate"
                 labelText={intl.formatMessage({ id: "eorder.date.start" })}
                 value={draft.startDate}
+                onInput={(event) =>
+                  changeDraft({ startDate: event.currentTarget.value })
+                }
                 onChange={(event) =>
                   changeDraft({ startDate: event.target.value })
                 }
@@ -728,6 +731,9 @@ export default function ReferredOutTests() {
                 id="endDate"
                 labelText={intl.formatMessage({ id: "eorder.date.end" })}
                 value={draft.endDate}
+                onInput={(event) =>
+                  changeDraft({ endDate: event.currentTarget.value })
+                }
                 onChange={(event) =>
                   changeDraft({ endDate: event.target.value })
                 }
