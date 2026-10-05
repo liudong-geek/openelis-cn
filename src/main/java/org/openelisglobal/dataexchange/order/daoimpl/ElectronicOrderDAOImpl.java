@@ -524,4 +524,37 @@ public class ElectronicOrderDAOImpl extends BaseDAOImpl<ElectronicOrder, String>
         }
         return new ArrayList<>();
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ElectronicOrder> searchElectronicOrderQuery(java.sql.Timestamp start, java.sql.Timestamp endExclusive,
+            String statusId, List<String> identifiers, String patientValue) {
+        String hql = "select distinct eo from ElectronicOrder eo left join fetch eo.patient patient "
+                + "left join fetch patient.person person where 1 = 1 ";
+        if (start != null)
+            hql += "and eo.orderTimestamp >= :start and eo.orderTimestamp < :endExclusive ";
+        if (statusId != null)
+            hql += "and eo.statusId = :statusId ";
+        if (patientValue != null) {
+            hql += "and (lower(eo.externalId) in (:identifiers) or lower(person.firstName) = :patientValue "
+                    + "or lower(person.lastName) = :patientValue or lower(patient.nationalId) = :patientValue "
+                    + "or lower(concat(person.firstName, ' ', person.lastName)) = :patientValue "
+                    + "or lower(concat(person.lastName, person.firstName)) = :patientValue "
+                    + "or patient.id in (select identity.patientId from PatientIdentity identity "
+                    + "where lower(identity.identityData) = :patientValue)) ";
+        }
+        hql += "order by eo.orderTimestamp desc, eo.id desc";
+        Query<ElectronicOrder> query = entityManager.unwrap(Session.class).createQuery(hql, ElectronicOrder.class);
+        if (start != null) {
+            query.setParameter("start", start);
+            query.setParameter("endExclusive", endExclusive);
+        }
+        if (statusId != null)
+            query.setParameter("statusId", statusId);
+        if (patientValue != null) {
+            query.setParameterList("identifiers", identifiers);
+            query.setParameter("patientValue", patientValue);
+        }
+        return query.list();
+    }
 }

@@ -26,6 +26,7 @@ import org.openelisglobal.dataexchange.order.form.ElectronicOrderPaging;
 import org.openelisglobal.dataexchange.order.form.ElectronicOrderViewForm;
 import org.openelisglobal.dataexchange.order.valueholder.ElectronicOrder;
 import org.openelisglobal.dataexchange.order.valueholder.ElectronicOrderDisplayItem;
+import org.openelisglobal.dataexchange.service.order.ElectronicOrderQueryService;
 import org.openelisglobal.dataexchange.service.order.ElectronicOrderService;
 import org.openelisglobal.organization.service.OrganizationService;
 import org.openelisglobal.organization.valueholder.Organization;
@@ -37,6 +38,7 @@ import org.openelisglobal.statusofsample.service.StatusOfSampleService;
 import org.openelisglobal.test.service.TestService;
 import org.openelisglobal.test.valueholder.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.InitBinder;
@@ -44,13 +46,16 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 public class RestElectronicOrdersController extends BaseController {
 
     private static final String[] ALLOWED_FIELDS = new String[] { "searchType", "searchValue", "startDate", "endDate",
-            "testIds", "statusId", "useAllInfo" };
+            "testIds", "statusId", "useAllInfo", "queryVersion", "page", "pageSize", "pendingOnly" };
 
+    @Autowired
+    private ElectronicOrderQueryService queryService;
     @Autowired
     private StatusOfSampleService statusOfSampleService;
     @Autowired
@@ -79,6 +84,32 @@ public class RestElectronicOrdersController extends BaseController {
     public ElectronicOrderViewForm showElectronicOrders(HttpServletRequest request,
             @ModelAttribute("form") @Valid ElectronicOrderViewForm form, BindingResult result)
             throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
+        if (request.getParameterMap().containsKey("queryVersion")) {
+            if (!"2".equals(form.getQueryVersion()) || result.hasErrors()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "error.validation");
+            }
+            if (request.getParameterMap().containsKey("searchType") && form.getSearchType() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "error.validation");
+            }
+            for (String numeric : java.util.List.of("page", "pageSize")) {
+                String raw = request.getParameter(numeric);
+                if (raw != null && !raw.matches("[1-9][0-9]*"))
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "error.validation");
+            }
+            for (String bool : java.util.List.of("pendingOnly", "useAllInfo")) {
+                String raw = request.getParameter(bool);
+                if (raw != null && !java.util.List.of("true", "false").contains(raw))
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "error.validation");
+            }
+            for (String name : request.getParameterMap().keySet()) {
+                if (!java.util.Arrays.asList(ALLOWED_FIELDS).contains(name)
+                        || request.getParameterValues(name).length != 1) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "error.validation");
+                }
+            }
+            return queryService.query(request, form);
+        }
+        // Legacy JSP/session paging remains compatible. CL-08 tracks its replacement.
         form.setReferralFacilitySelectionList(
                 DisplayListService.getInstance().getList(ListType.REFERRAL_ORGANIZATIONS));
         form.setTestSelectionList(DisplayListService.getInstance().getList(ListType.ORDERABLE_TESTS));

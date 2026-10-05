@@ -14,6 +14,14 @@ public class ElectronicOrderViewForm extends BaseForm implements IPagingForm {
         IDENTIFIER, DATE_STATUS
     }
 
+    private String queryVersion;
+    private Integer page;
+    private Integer pageSize;
+    private Boolean pendingOnly;
+    private String currentUserId;
+    private boolean canReceive;
+    private List<String> warningCodes;
+
     private SearchType searchType;
 
     private boolean searchFinished;
@@ -222,5 +230,61 @@ public class ElectronicOrderViewForm extends BaseForm implements IPagingForm {
     @Override
     public PagingBean getPaging() {
         return paging;
+    }
+
+    public String getQueryVersion() {
+        return queryVersion;
+    }
+
+    public void setQueryVersion(String value) {
+        queryVersion = value;
+    }
+
+    public Integer getPage() {
+        return page;
+    }
+
+    public void setPage(Integer value) {
+        page = value;
+    }
+
+    public Integer getPageSize() {
+        return pageSize;
+    }
+
+    public void setPageSize(Integer value) {
+        pageSize = value;
+    }
+
+    public Boolean getPendingOnly() {
+        return pendingOnly;
+    }
+
+    public void setPendingOnly(Boolean value) {
+        pendingOnly = value;
+    }
+
+    public String getCurrentUserId() {
+        return currentUserId;
+    }
+
+    public void setCurrentUserId(String value) {
+        currentUserId = value;
+    }
+
+    public boolean getCanReceive() {
+        return canReceive;
+    }
+
+    public void setCanReceive(boolean value) {
+        canReceive = value;
+    }
+
+    public List<String> getWarningCodes() {
+        return warningCodes;
+    }
+
+    public void setWarningCodes(List<String> value) {
+        warningCodes = value;
     }
 }

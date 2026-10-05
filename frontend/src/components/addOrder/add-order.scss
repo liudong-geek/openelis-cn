@@ -178,3 +178,16 @@
 #order_nextVisitDate {
   width: 438px !important;
 }
+
+.eorder-return-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--cds-spacing-05, 1rem);
+  padding: 0 var(--cds-spacing-06, 1.5rem) var(--cds-spacing-05, 1rem);
+}
+.eorder-return-actions p {
+  color: var(--oe-text-muted, #647985);
+  font-size: 0.875rem;
+  margin: 0;
+}

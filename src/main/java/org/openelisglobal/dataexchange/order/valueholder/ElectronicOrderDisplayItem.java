@@ -18,6 +18,12 @@ import org.openelisglobal.sample.valueholder.OrderPriority;
 
 public class ElectronicOrderDisplayItem {
 
+    private String statusId;
+    private String statusCode;
+    private boolean canReceive;
+    private String actionUnavailableReason;
+    private List<String> warningCodes;
+
     private String electronicOrderId;
 
     private String externalOrderId;
@@ -216,5 +222,45 @@ public class ElectronicOrderDisplayItem {
 
     public void setQaEventId(String qaEventId) {
         this.qaEventId = qaEventId;
+    }
+
+    public String getStatusId() {
+        return statusId;
+    }
+
+    public void setStatusId(String value) {
+        statusId = value;
+    }
+
+    public String getStatusCode() {
+        return statusCode;
+    }
+
+    public void setStatusCode(String value) {
+        statusCode = value;
+    }
+
+    public boolean getCanReceive() {
+        return canReceive;
+    }
+
+    public void setCanReceive(boolean value) {
+        canReceive = value;
+    }
+
+    public String getActionUnavailableReason() {
+        return actionUnavailableReason;
+    }
+
+    public void setActionUnavailableReason(String value) {
+        actionUnavailableReason = value;
+    }
+
+    public List<String> getWarningCodes() {
+        return warningCodes;
+    }
+
+    public void setWarningCodes(List<String> value) {
+        warningCodes = value;
     }
 }

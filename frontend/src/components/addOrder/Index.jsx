@@ -47,6 +47,8 @@ export let sampleObject = {
 };
 const Index = () => {
   const intl = useIntl();
+  const fromElectronicOrders =
+    window.history.state?.state?.electronicOrderReturn === true;
 
   const firstPageNumber = 0;
   const lastPageNumber = 4;
@@ -122,7 +124,7 @@ const Index = () => {
     fetch(
       config.serverBaseUrl +
         "/ajaxQueryXML?asJSON=true&provider=LabOrderSearchProvider&orderNumber=" +
-        orderNumber,
+        encodeURIComponent(orderNumber),
       {
         method: "get",
         //indicator: 'throbbing',
@@ -788,6 +790,16 @@ const Index = () => {
   return (
     <>
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
+      {fromElectronicOrders && (
+        <div className="eorder-return-actions">
+          <Button kind="tertiary" onClick={() => window.history.back()}>
+            <FormattedMessage id="eorder.query.return" />
+          </Button>
+          <p>
+            <FormattedMessage id="eorder.action.manualSave" />
+          </p>
+        </div>
+      )}
       <Stack gap={10}>
         <div className="pageContent">
           {notificationVisible === true ? <AlertDialog /> : ""}
