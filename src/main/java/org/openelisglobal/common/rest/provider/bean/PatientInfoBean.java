@@ -24,6 +24,8 @@ public class PatientInfoBean implements Serializable {
     private String currentDate;
     private String patientLastUpdated;
     private String personLastUpdated;
+    private String patientContactLastUpdated;
+    private String patientContactPersonLastUpdated;
     private PatientUpdateStatus patientUpdateStatus;
     private String patientPK;
     private String STnumber;
@@ -62,6 +64,8 @@ public class PatientInfoBean implements Serializable {
     private String otherNationality;
     private PatientContact patientContact;
     private boolean readOnly = false;
+    private boolean canCreate = false;
+    private boolean canEdit = false;
     private boolean isMerged = false;
     private String mergedIntoPatientId;
     private String mergedIntoNationalId;
@@ -108,6 +112,22 @@ public class PatientInfoBean implements Serializable {
 
     public void setPersonLastUpdated(String personLastUpdated) {
         this.personLastUpdated = personLastUpdated;
+    }
+
+    public String getPatientContactLastUpdated() {
+        return patientContactLastUpdated;
+    }
+
+    public void setPatientContactLastUpdated(String value) {
+        this.patientContactLastUpdated = value;
+    }
+
+    public String getPatientContactPersonLastUpdated() {
+        return patientContactPersonLastUpdated;
+    }
+
+    public void setPatientContactPersonLastUpdated(String value) {
+        this.patientContactPersonLastUpdated = value;
     }
 
     public String getPatientPK() {
@@ -324,6 +344,22 @@ public class PatientInfoBean implements Serializable {
 
     public void setGuid(String guid) {
         this.guid = guid;
+    }
+
+    public boolean getCanCreate() {
+        return canCreate;
+    }
+
+    public void setCanCreate(boolean canCreate) {
+        this.canCreate = canCreate;
+    }
+
+    public boolean getCanEdit() {
+        return canEdit;
+    }
+
+    public void setCanEdit(boolean canEdit) {
+        this.canEdit = canEdit;
     }
 
     public boolean isReadOnly() {

@@ -79,6 +79,7 @@ public class PatientIdDocumentServiceImpl extends AuditableBaseObjectServiceImpl
         Optional<PatientIdDocument> optDoc = getMatch("id", documentId);
         if (optDoc.isPresent()) {
             PatientIdDocument doc = optDoc.get();
+            baseObjectDAO.evict(doc);
             doc.setDeleted(true);
             doc.setSysUserId(sysUserId);
             update(doc);
@@ -101,6 +102,7 @@ public class PatientIdDocumentServiceImpl extends AuditableBaseObjectServiceImpl
             return null;
         }
         PatientIdDocument doc = optDoc.get();
+        baseObjectDAO.evict(doc);
         doc.setDocumentCategory(documentCategory);
         doc.setDescription(description);
         if (documentBase64 != null && !documentBase64.isEmpty()) {

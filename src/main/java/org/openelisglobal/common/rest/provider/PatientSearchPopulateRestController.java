@@ -1,5 +1,6 @@
 package org.openelisglobal.common.rest.provider;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.apache.commons.validator.GenericValidator;
 import org.openelisglobal.address.service.AddressPartService;
@@ -7,8 +8,10 @@ import org.openelisglobal.address.service.PersonAddressService;
 import org.openelisglobal.address.valueholder.AddressPart;
 import org.openelisglobal.address.valueholder.PersonAddress;
 import org.openelisglobal.common.rest.provider.bean.PatientInfoBean;
+import org.openelisglobal.common.util.ControllerUtills;
 import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.patient.service.PatientContactService;
+import org.openelisglobal.patient.service.PatientManagementAuthorizationService;
 import org.openelisglobal.patient.service.PatientService;
 import org.openelisglobal.patient.util.PatientUtil;
 import org.openelisglobal.patient.valueholder.Patient;
@@ -49,6 +52,9 @@ public class PatientSearchPopulateRestController {
     @Autowired
     PatientIdentityTypeService patientIdentityTypeService;
 
+    @Autowired
+    PatientManagementAuthorizationService maintenanceAuthorization;
+
     private String ADDRESS_PART_VILLAGE_ID;
 
     private String ADDRESS_PART_COMMUNE_ID;
@@ -57,10 +63,18 @@ public class PatientSearchPopulateRestController {
 
     @GetMapping(value = "patient-details", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
-    public PatientInfoBean getPatientResults(@RequestParam String patientID) {
+    public PatientInfoBean getPatientResults(@RequestParam String patientID, HttpServletRequest request) {
 
         if (!GenericValidator.isBlankOrNull(patientID)) {
-            return getPatientDetails(getPatientForID(patientID));
+            Patient patient = getPatientForID(patientID);
+            if (patient == null)
+                return new PatientInfoBean();
+            PatientInfoBean details = getPatientDetails(patient);
+            String actor = ControllerUtills.getSysUserId(request);
+            details.setCanCreate(maintenanceAuthorization.canCreate(request, actor));
+            details.setCanEdit(
+                    !Boolean.TRUE.equals(patient.getIsMerged()) && maintenanceAuthorization.canEdit(request, actor));
+            return details;
         } else {
             return new PatientInfoBean();
         }
@@ -148,8 +162,8 @@ public class PatientSearchPopulateRestController {
         patientInfo.setOccupation(identityMap.getIdentityValue(identityList, "OCCUPATION"));
         patientInfo.setCustomNotes(identityMap.getIdentityValue(identityList, "CUSTOM_NOTES"));
         patientInfo.setTargetDiseaseProgramme(identityMap.getIdentityValue(identityList, "DISEASE_PROGRAMME"));
-        patientInfo.setBirthDateForDisplay(
-                DateUtil.formatStringDateForConfiguredLocale(patient.getBirthDateForDisplay()));
+        patientInfo
+                .setBirthDateForDisplay(DateUtil.formatStringDateForConfiguredLocale(patient.getBirthDateForDisplay()));
         patientInfo.setCommune(commune);
         patientInfo.setAddressDepartment(dept);
         patientInfo.setMothersInitial(identityMap.getIdentityValue(identityList, "MOTHERS_INITIAL"));
@@ -174,6 +188,10 @@ public class PatientSearchPopulateRestController {
         if (patientContacts.size() >= 1) {
             PatientContact contact = patientContacts.get(0);
             patientInfo.setPatientContact(contact);
+            if (contact.getLastupdated() != null)
+                patientInfo.setPatientContactLastUpdated(contact.getLastupdated().toString());
+            if (contact.getPerson() != null && contact.getPerson().getLastupdated() != null)
+                patientInfo.setPatientContactPersonLastUpdated(contact.getPerson().getLastupdated().toString());
         }
 
         if (patient.getLastupdated() != null) {

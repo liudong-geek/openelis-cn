@@ -1,4 +1,11 @@
-import React, { useState, useRef, useEffect, useContext } from "react";
+import React, {
+  useCallback,
+  useState,
+  useRef,
+  useEffect,
+  useContext,
+} from "react";
+import { createPortal } from "react-dom";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import { useHistory } from "react-router-dom";
 import "../Style.css";
@@ -34,10 +41,12 @@ import {
   Column,
   Toggle,
   InlineNotification,
+  Modal,
 } from "@carbon/react";
 import AddressSearch from "./AddressSearch";
 
-import { Formik, Field, ErrorMessage } from "formik";
+import { Formik, Field, ErrorMessage, useFormikContext } from "formik";
+import type { FormikProps } from "formik";
 import CreatePatientFormValues from "../formModel/innitialValues/CreatePatientFormValues";
 import PatientFormObserver from "./PatientFormObserver";
 import { AlertDialog, NotificationKinds } from "../common/CustomNotification";
@@ -52,6 +61,49 @@ import PatientImageSelector from "./photoManagement/uploadPhoto/PatientImageSele
 import IdentificationDocuments from "./IdentificationDocuments";
 import { getPhoneFormatHint } from "./phoneFormatHint";
 import type { AddressHierarchyLevel, PatientRecord, Nullable } from "./types";
+import {
+  confirmedPatientSaveId,
+  patientMaintenanceMatches,
+  patientMediaMatches,
+} from "./patientMaintenanceContract";
+import {
+  patientMaintenancePendingKey,
+  readPatientMaintenancePending,
+  beginPatientMaintenancePending,
+  clearPatientMaintenancePending,
+} from "./patientMaintenancePending";
+import "../admin/AdminModal.css";
+
+export interface PatientMaintenanceFormState {
+  dirty: boolean;
+  busy: boolean;
+  unknown: boolean;
+}
+function MaintenanceStateObserver({
+  onChange,
+  unknown,
+  extraBusy,
+}: {
+  onChange?: (state: PatientMaintenanceFormState) => void;
+  unknown: boolean;
+  extraBusy: boolean;
+}) {
+  const { dirty, isSubmitting } = useFormikContext();
+  useEffect(() => {
+    onChange?.({ dirty, busy: isSubmitting || extraBusy, unknown });
+  }, [dirty, isSubmitting, extraBusy, unknown, onChange]);
+  return null;
+}
+
+function PatientActionPortal({
+  target,
+  children,
+}: {
+  target?: HTMLElement | null;
+  children: React.ReactNode;
+}) {
+  return target ? createPortal(children, target) : <>{children}</>;
+}
 
 type ConfigurationItem = {
   id?: string;
@@ -77,6 +129,11 @@ interface CreatePatientFormProps {
   showActionsButton?: boolean;
   showPatientSearch?: boolean;
   onCancel?: () => void;
+  maintenanceMode?: boolean;
+  maintenanceActorKey?: string;
+  maintenanceSessionKey?: string;
+  actionsContainer?: HTMLElement | null;
+  onFormStateChange?: (state: PatientMaintenanceFormState) => void;
   onSaveSuccess?: (savedPatientId?: string) => void;
   [key: string]: unknown;
 }
@@ -224,6 +281,7 @@ function CreatePatientForm(props: CreatePatientFormProps) {
   );
   const validationSchema = createPatientValidationSchema(
     configurationProperties,
+    props.maintenanceMode ? intl : undefined,
   );
 
   const defaultNationality =
@@ -251,10 +309,7 @@ function CreatePatientForm(props: CreatePatientFormProps) {
   // Bridge so async callbacks (photo fetch, hierarchy defaults) can write
   // into Formik state without going through `initialValues`. Set via
   // <Formik innerRef={formikRef}>.
-  const formikRef =
-    useRef<
-      Nullable<{ setFieldValue: (field: string, value: unknown) => void }>
-    >(null);
+  const formikRef = useRef<Nullable<FormikProps<PatientRecord>>>(null);
   const [healthRegions, setHealthRegions] = useState<ConfigurationItem[]>([]);
   const [healthDistricts, setHealthDistricts] = useState<ConfigurationItem[]>(
     [],
@@ -279,6 +334,138 @@ function CreatePatientForm(props: CreatePatientFormProps) {
   const [isEditing, setIsEditing] = useState(false);
   const isExistingPatient = !!props.selectedPatient?.patientPK;
   const isReadOnly = isExistingPatient && !isEditing;
+  const [saveConfirmation, setSaveConfirmation] = useState<null | {
+    values: PatientRecord;
+    formikBag: any;
+  }>(null);
+  const pendingKey = patientMaintenancePendingKey(
+    props.maintenanceActorKey || "",
+    String(props.selectedPatient?.patientPK || ""),
+  );
+  const [initialPending] = useState(() =>
+    props.maintenanceMode && isExistingPatient
+      ? readPatientMaintenancePending(pendingKey)
+      : "clear",
+  );
+  const [maintenanceError, setMaintenanceError] = useState(() =>
+    initialPending === "clear"
+      ? ""
+      : intl.formatMessage({
+          id:
+            initialPending === "pending"
+              ? "patient.maintenance.pending"
+              : "patient.maintenance.storageUnavailable",
+        }),
+  );
+  const [saveUnknown, setSaveUnknown] = useState(initialPending !== "clear");
+  const fieldsReadOnly = isReadOnly || (props.maintenanceMode && saveUnknown);
+  const [documentBusy, setDocumentBusy] = useState(false);
+  const [documentUnknown, setDocumentUnknown] = useState(false);
+  const onDocumentStateChange = useCallback(
+    (busy: boolean, unknown: boolean) => {
+      setDocumentBusy(busy);
+      setDocumentUnknown(unknown);
+    },
+    [],
+  );
+  const refreshDocumentVersions = () => {
+    const id = props.selectedPatient?.patientPK;
+    if (!id) return;
+    getFromOpenElisServer<PatientRecord>(
+      `/rest/patient-details?patientID=${encodeURIComponent(id)}`,
+      (details) => {
+        if (
+          !componentMounted.current ||
+          !details ||
+          String(details.patientPK || "") !== id
+        )
+          return;
+        if (!patientMaintenanceMatches(details, initialValues, id)) {
+          setMaintenanceError(
+            intl.formatMessage({ id: "patient.maintenance.conflict" }),
+          );
+          return;
+        }
+        if (details.patientLastUpdated)
+          formikRef.current?.setFieldValue(
+            "patientLastUpdated",
+            details.patientLastUpdated,
+          );
+        if (details.patientContactLastUpdated)
+          formikRef.current?.setFieldValue(
+            "patientContactLastUpdated",
+            details.patientContactLastUpdated,
+          );
+        if (details.patientContactPersonLastUpdated)
+          formikRef.current?.setFieldValue(
+            "patientContactPersonLastUpdated",
+            details.patientContactPersonLastUpdated,
+          );
+        const contact = details.patientContact;
+        if (contact?.lastupdated)
+          formikRef.current?.setFieldValue(
+            "patientContact.lastupdated",
+            contact.lastupdated,
+          );
+        if (contact?.person?.lastupdated)
+          formikRef.current?.setFieldValue(
+            "patientContact.person.lastupdated",
+            contact.person.lastupdated,
+          );
+        if (details.personLastUpdated)
+          formikRef.current?.setFieldValue(
+            "personLastUpdated",
+            details.personLastUpdated,
+          );
+      },
+    );
+  };
+  const saveGeneration = useRef(0);
+  const saveInProgress = useRef(false);
+  const documentPreflightInProgress = useRef(false);
+  const verification = useRef<null | {
+    id?: string;
+    values: PatientRecord;
+    formikBag: any;
+    confirmed?: boolean;
+    documentBaseline?: ReadonlySet<string>;
+  }>(null);
+  const readController = useRef<AbortController | null>(null);
+  const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      saveGeneration.current++;
+      readController.current?.abort();
+      if (saveTimeout.current) clearTimeout(saveTimeout.current);
+    },
+    [],
+  );
+  const previousMaintenanceSession = useRef(props.maintenanceSessionKey);
+  useEffect(() => {
+    if (
+      !props.maintenanceMode ||
+      previousMaintenanceSession.current === props.maintenanceSessionKey
+    )
+      return;
+    previousMaintenanceSession.current = props.maintenanceSessionKey;
+    saveGeneration.current++;
+    readController.current?.abort();
+    if (saveTimeout.current) clearTimeout(saveTimeout.current);
+    if (documentPreflightInProgress.current) {
+      failMaintenanceSave(
+        "patient.maintenance.documents.baselineUnavailable",
+        formikRef.current,
+        false,
+      );
+    } else if (saveInProgress.current || saveUnknown) {
+      if (verification.current) verification.current.confirmed = false;
+      failMaintenanceSave(
+        "patient.maintenance.pending",
+        formikRef.current,
+        true,
+      );
+    }
+  }, [props.maintenanceSessionKey]);
   const [phoneValidation, setPhoneValidation] = useState(
     () =>
       props.initialPhoneValidation || {
@@ -687,7 +874,9 @@ function CreatePatientForm(props: CreatePatientFormProps) {
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
-        message: numberType + ":" + numberValue + " Already in use",
+        message: props.maintenanceMode
+          ? intl.formatMessage({ id: "patient.maintenance.identifierInUse" })
+          : numberType + ":" + numberValue + " Already in use",
       });
       error = "duplicate";
     }
@@ -726,7 +915,7 @@ function CreatePatientForm(props: CreatePatientFormProps) {
     setHealthDistricts(districts);
   };
 
-  const handleSubmit = (values, formikBag) => {
+  const submitLegacyPatient = (values, formikBag) => {
     // Strip display-only age parts before they reach the wire — the backend
     // only knows birthDateForDisplay.
     const payload = { ...values };
@@ -784,6 +973,440 @@ function CreatePatientForm(props: CreatePatientFormProps) {
     );
   };
 
+  const failMaintenanceSave = (
+    id: string,
+    formikBag: any,
+    unknown: boolean,
+  ) => {
+    if (saveTimeout.current) clearTimeout(saveTimeout.current);
+    saveInProgress.current = false;
+    documentPreflightInProgress.current = false;
+    formikBag.setSubmitting(false);
+    setSaveUnknown(unknown);
+    setMaintenanceError(intl.formatMessage({ id }));
+  };
+
+  const verifyPendingDocuments = (
+    id: string,
+    values: PatientRecord,
+    documentBaseline: ReadonlySet<string> | undefined,
+    controller: AbortController,
+    current: () => boolean,
+    done: (verified: boolean) => void,
+  ) => {
+    const pending = (
+      Array.isArray(values.idDocuments) ? values.idDocuments : []
+    ).filter((document) => !document.id && document.data);
+    if (!pending.length) {
+      done(true);
+      return;
+    }
+    if (!documentBaseline) {
+      done(false);
+      return;
+    }
+    getFromOpenElisServer<
+      Array<{ id?: string; category?: string; description?: string }>
+    >(
+      `/rest/patient-id-documents/${encodeURIComponent(id)}`,
+      (documents) => {
+        if (!current()) return;
+        if (!Array.isArray(documents)) {
+          done(false);
+          return;
+        }
+        const available = documents.filter(
+          (document) =>
+            document.id && !documentBaseline.has(String(document.id)),
+        );
+        const used = new Set<string>();
+        const next = (index: number) => {
+          if (!current()) return;
+          if (index === pending.length) {
+            done(true);
+            return;
+          }
+          const draft = pending[index];
+          const candidates = available.filter(
+            (document) =>
+              !used.has(String(document.id)) &&
+              (document.category || "") === (draft.category || "") &&
+              (document.description || "") === (draft.description || ""),
+          );
+          const tryCandidate = (candidate: number) => {
+            if (!current()) return;
+            if (candidate >= candidates.length) {
+              done(false);
+              return;
+            }
+            const document = candidates[candidate];
+            getFromOpenElisServer<{ data?: string }>(
+              `/rest/patient-id-documents/${encodeURIComponent(id)}/${encodeURIComponent(String(document.id))}/full`,
+              (full) => {
+                if (!current()) return;
+                if (
+                  typeof full?.data === "string" &&
+                  patientMediaMatches(full.data, String(draft.data))
+                ) {
+                  used.add(String(document.id));
+                  next(index + 1);
+                } else tryCandidate(candidate + 1);
+              },
+              controller.signal,
+            );
+          };
+          tryCandidate(0);
+        };
+        next(0);
+      },
+      controller.signal,
+    );
+  };
+
+  const verifyMaintenanceSave = (
+    id: string,
+    values: PatientRecord,
+    formikBag: any,
+    generation: number,
+    documentBaseline: ReadonlySet<string> | undefined,
+  ) => {
+    const current = () =>
+      componentMounted.current && saveGeneration.current === generation;
+    const controller = new AbortController();
+    readController.current?.abort();
+    readController.current = controller;
+    verification.current = { ...verification.current, id, values, formikBag };
+    getFromOpenElisServer<PatientRecord>(
+      `/rest/patient-details?patientID=${encodeURIComponent(id)}`,
+      (saved) => {
+        if (!current()) return;
+        if (!patientMaintenanceMatches(saved, values, id)) {
+          failMaintenanceSave(
+            "patient.maintenance.saveUnverified",
+            formikBag,
+            true,
+          );
+          return;
+        }
+        getFromOpenElisServer<{ data?: string }>(
+          `/rest/patient-photos/${encodeURIComponent(id)}/false`,
+          (photo) => {
+            if (!current()) return;
+            if (
+              !photo ||
+              typeof photo.data !== "string" ||
+              !patientMediaMatches(photo.data, String(values.photo || ""))
+            ) {
+              failMaintenanceSave(
+                "patient.maintenance.saveUnverified",
+                formikBag,
+                true,
+              );
+              return;
+            }
+            if (!verification.current?.confirmed) {
+              failMaintenanceSave(
+                "patient.maintenance.coreVerified",
+                formikBag,
+                true,
+              );
+              return;
+            }
+            verifyPendingDocuments(
+              id,
+              values,
+              documentBaseline,
+              controller,
+              current,
+              (documentsVerified) => {
+                if (!current()) return;
+                if (!documentsVerified) {
+                  failMaintenanceSave(
+                    "patient.maintenance.saveUnverified",
+                    formikBag,
+                    true,
+                  );
+                  return;
+                }
+                if (!clearPatientMaintenancePending(pendingKey)) {
+                  failMaintenanceSave(
+                    "patient.maintenance.storageUnavailable",
+                    formikBag,
+                    true,
+                  );
+                  return;
+                }
+                if (saveTimeout.current) clearTimeout(saveTimeout.current);
+                saveInProgress.current = false;
+                setSaveUnknown(false);
+                setMaintenanceError("");
+                formikBag.setSubmitting(false);
+                formikBag.resetForm({
+                  values: {
+                    ...values,
+                    ...saved,
+                    photo: photo.data,
+                    patientUpdateStatus: "NO_ACTION",
+                  },
+                });
+                setIsEditing(false);
+                setNotificationVisible(true);
+                addNotification({
+                  title: intl.formatMessage({ id: "notification.title" }),
+                  message: intl.formatMessage({ id: "success.save.patient" }),
+                  kind: NotificationKinds.success,
+                });
+                props.onSaveSuccess?.(id);
+              },
+            );
+          },
+          controller.signal,
+        );
+      },
+      controller.signal,
+    );
+  };
+
+  const startMaintenanceTimeout = (formikBag: any, submitted = true) => {
+    if (saveTimeout.current) clearTimeout(saveTimeout.current);
+    saveTimeout.current = setTimeout(() => {
+      if (!componentMounted.current) return;
+      saveGeneration.current++;
+      readController.current?.abort();
+      failMaintenanceSave(
+        submitted
+          ? "patient.maintenance.saveUnverified"
+          : "patient.maintenance.documents.baselineUnavailable",
+        formikBag,
+        submitted,
+      );
+    }, 30000);
+  };
+
+  const saveMaintenancePatient = () => {
+    if (!saveConfirmation || saveInProgress.current || saveUnknown) return;
+    const { values, formikBag } = saveConfirmation;
+    setSaveConfirmation(null);
+    setMaintenanceError("");
+    saveInProgress.current = true;
+    formikBag.setSubmitting(true);
+    const generation = ++saveGeneration.current;
+    const expectedId = props.selectedPatient?.patientPK;
+    const current = () =>
+      componentMounted.current &&
+      saveGeneration.current === generation &&
+      saveInProgress.current;
+    const submit = (documentBaseline: ReadonlySet<string>) => {
+      if (!current()) return;
+      documentPreflightInProgress.current = false;
+      readController.current?.abort();
+      if (saveTimeout.current) clearTimeout(saveTimeout.current);
+      const pending = beginPatientMaintenancePending(pendingKey);
+      if (pending !== "started") {
+        failMaintenanceSave(
+          pending === "pending"
+            ? "patient.maintenance.pending"
+            : "patient.maintenance.storageUnavailable",
+          formikBag,
+          true,
+        );
+        return;
+      }
+      const payload = { ...values };
+      delete payload.years;
+      delete payload.months;
+      delete payload.days;
+      verification.current = {
+        id: expectedId,
+        values,
+        formikBag,
+        documentBaseline,
+      };
+      startMaintenanceTimeout(formikBag);
+      postToOpenElisServerJsonResponse<Record<string, unknown>>(
+        "/rest/PatientManagement",
+        JSON.stringify(payload),
+        (response) => {
+          if (!current()) return;
+          const id = confirmedPatientSaveId(response, expectedId);
+          if (id) {
+            verification.current = {
+              id,
+              values,
+              formikBag,
+              confirmed: true,
+              documentBaseline,
+            };
+            verifyMaintenanceSave(
+              id,
+              values,
+              formikBag,
+              generation,
+              documentBaseline,
+            );
+            return;
+          }
+          const status = Number(response?.statusCode || response?.status || 0);
+          const rejected = [400, 401, 403, 404, 409, 422].includes(status);
+          if (rejected && !clearPatientMaintenancePending(pendingKey)) {
+            failMaintenanceSave(
+              "patient.maintenance.storageUnavailable",
+              formikBag,
+              true,
+            );
+            return;
+          }
+          failMaintenanceSave(
+            rejected
+              ? "error.save.patient"
+              : "patient.maintenance.saveUnverified",
+            formikBag,
+            !rejected,
+          );
+          if (rejected)
+            setMaintenanceError(
+              resolveApiErrorMessage(intl, response, "error.save.patient"),
+            );
+        },
+      );
+    };
+    const hasPendingDocuments = (
+      Array.isArray(values.idDocuments) ? values.idDocuments : []
+    ).some((document) => !document.id && document.data);
+    if (!expectedId || !hasPendingDocuments) {
+      submit(new Set<string>());
+      return;
+    }
+    // Only this pre-write read defines the old IDs for this submission.
+    // The document panel may finish its initial load or refresh after POST.
+    documentPreflightInProgress.current = true;
+    const controller = new AbortController();
+    readController.current?.abort();
+    readController.current = controller;
+    startMaintenanceTimeout(formikBag, false);
+    getFromOpenElisServer<
+      Array<{ id?: string | number; error?: unknown; errorKey?: unknown }>
+    >(
+      `/rest/patient-id-documents/${encodeURIComponent(expectedId)}`,
+      (documents) => {
+        if (!current() || !documentPreflightInProgress.current) return;
+        const baseline = new Set<string>();
+        const valid =
+          Array.isArray(documents) &&
+          documents.every((document) => {
+            if (
+              !document ||
+              typeof document !== "object" ||
+              "error" in document ||
+              "errorKey" in document
+            )
+              return false;
+            const id = document.id;
+            if (
+              !(
+                (typeof id === "string" && id.trim().length > 0) ||
+                (typeof id === "number" && Number.isSafeInteger(id) && id > 0)
+              ) ||
+              baseline.has(String(id))
+            )
+              return false;
+            baseline.add(String(id));
+            return true;
+          });
+        if (!valid) {
+          controller.abort();
+          failMaintenanceSave(
+            "patient.maintenance.documents.baselineUnavailable",
+            formikBag,
+            false,
+          );
+          return;
+        }
+        submit(baseline);
+      },
+      controller.signal,
+    );
+  };
+
+  const recheckMaintenanceSave = () => {
+    const pending = verification.current;
+    if (saveInProgress.current) return;
+    if (!pending?.id) {
+      const id = props.selectedPatient?.patientPK;
+      const formikBag = formikRef.current;
+      if (!id || !formikBag) return;
+      saveInProgress.current = true;
+      formikBag.setSubmitting(true);
+      startMaintenanceTimeout(formikBag);
+      const generation = ++saveGeneration.current;
+      const controller = new AbortController();
+      readController.current?.abort();
+      readController.current = controller;
+      const current = () =>
+        componentMounted.current && generation === saveGeneration.current;
+      getFromOpenElisServer<PatientRecord>(
+        `/rest/patient-details?patientID=${encodeURIComponent(id)}`,
+        (details) => {
+          if (!current()) return;
+          if (!details || String(details.patientPK || "") !== String(id)) {
+            failMaintenanceSave(
+              "patient.maintenance.saveUnverified",
+              formikBag,
+              true,
+            );
+            return;
+          }
+          getFromOpenElisServer<{ data?: string }>(
+            `/rest/patient-photos/${encodeURIComponent(id)}/false`,
+            (photo) => {
+              if (!current()) return;
+              if (typeof photo?.data === "string")
+                formikBag.resetForm({
+                  values: buildInitialFormValues({
+                    base: CreatePatientFormValues,
+                    defaultNationality,
+                    selectedPatient: { ...details, photo: photo.data },
+                    dateLocale: configurationProperties.DEFAULT_DATE_LOCALE,
+                  }),
+                });
+              failMaintenanceSave(
+                "patient.maintenance.pending",
+                formikBag,
+                true,
+              );
+            },
+            controller.signal,
+          );
+        },
+        controller.signal,
+      );
+      return;
+    }
+    saveInProgress.current = true;
+    pending.formikBag.setSubmitting(true);
+    setMaintenanceError("");
+    startMaintenanceTimeout(pending.formikBag);
+    verifyMaintenanceSave(
+      pending.id,
+      pending.values,
+      pending.formikBag,
+      ++saveGeneration.current,
+      pending.documentBaseline,
+    );
+  };
+
+  const handleSubmit = (values: PatientRecord, formikBag: any) => {
+    if (!props.maintenanceMode) {
+      submitLegacyPatient(values, formikBag);
+      return;
+    }
+    if (saveInProgress.current || saveUnknown) {
+      formikBag.setSubmitting(false);
+      return;
+    }
+    setSaveConfirmation({ values: structuredClone(values), formikBag });
+  };
+
   const mergedIntoLabel =
     props.selectedPatient?.mergedIntoNationalId ||
     props.selectedPatient?.mergedIntoPatientId;
@@ -836,12 +1459,38 @@ function CreatePatientForm(props: CreatePatientFormProps) {
           setFieldValue,
           submitForm,
           isSubmitting,
+          dirty,
         }) => (
           <Form
             onSubmit={(e) => e.preventDefault()}
             onChange={handleChange}
             onBlur={handleBlur}
           >
+            {props.maintenanceMode && (
+              <MaintenanceStateObserver
+                onChange={props.onFormStateChange}
+                unknown={saveUnknown || documentUnknown}
+                extraBusy={documentBusy}
+              />
+            )}
+            {maintenanceError && (
+              <InlineNotification
+                kind="error"
+                hideCloseButton
+                title={intl.formatMessage({ id: "notification.title" })}
+                subtitle={maintenanceError}
+              />
+            )}
+            {props.maintenanceMode && saveUnknown && isExistingPatient && (
+              <Button
+                type="button"
+                kind="tertiary"
+                disabled={isSubmitting}
+                onClick={recheckMaintenanceSave}
+              >
+                <FormattedMessage id="patient.maintenance.recheck" />
+              </Button>
+            )}
             {props.orderFormValues && (
               <PatientFormObserver
                 orderFormValues={props.orderFormValues}
@@ -875,7 +1524,28 @@ function CreatePatientForm(props: CreatePatientFormProps) {
                       </Section>
                     </Section>
                   </FormLabel>
-                  {isExistingPatient && (
+                  {isExistingPatient &&
+                    props.maintenanceMode &&
+                    props.selectedPatient?.canEdit !== true && (
+                      <span className="patient-maintenance-readonly-note">
+                        <FormattedMessage id="patient.maintenance.noEditPermission" />
+                      </span>
+                    )}
+                  {isExistingPatient &&
+                    props.maintenanceMode &&
+                    props.selectedPatient?.canEdit === true &&
+                    isReadOnly && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        kind="tertiary"
+                        disabled={saveUnknown}
+                        onClick={() => !saveUnknown && setIsEditing(true)}
+                      >
+                        <FormattedMessage id="label.button.edit" />
+                      </Button>
+                    )}
+                  {isExistingPatient && !props.maintenanceMode && (
                     <Toggle
                       id="patient-edit-toggle"
                       size="sm"
@@ -902,13 +1572,19 @@ function CreatePatientForm(props: CreatePatientFormProps) {
                 pre-accordion section — so the accordion headers themselves
                 remain clickable and users can still expand sections to view
                 the data. */}
-            <fieldset disabled={!!props.disabled} className="fieldset-reset">
+            <fieldset
+              disabled={
+                !!props.disabled ||
+                (props.maintenanceMode && (isSubmitting || documentBusy))
+              }
+              className="fieldset-reset patient-maintenance-fields"
+            >
               <Grid>
                 {/* Read-only fieldset for pre-accordion fields. `display:
                     contents` keeps it out of the Grid layout while still
                     propagating the disabled attribute to its descendants. */}
                 <fieldset
-                  disabled={isReadOnly}
+                  disabled={fieldsReadOnly}
                   className="fieldset-reset-contents"
                 >
                   <Column lg={16} md={8} sm={4}>
@@ -922,9 +1598,21 @@ function CreatePatientForm(props: CreatePatientFormProps) {
                         handlePhotoChange(photo, setFieldValue)
                       }
                       required={false}
-                      disabled={!!props.disabled}
+                      disabled={
+                        !!props.disabled ||
+                        isReadOnly ||
+                        (props.maintenanceMode &&
+                          (isSubmitting || saveUnknown || documentBusy))
+                      }
                     />
                   </Column>
+                  {props.maintenanceMode && (
+                    <Column lg={16} md={8} sm={4}>
+                      <p className="patient-maintenance-save-timing">
+                        <FormattedMessage id="patient.maintenance.photo.saveTiming" />
+                      </p>
+                    </Column>
+                  )}
                   <Column lg={8} md={4} sm={4}>
                     <Field name="subjectNumber">
                       {({ field }) => (
@@ -1265,7 +1953,7 @@ function CreatePatientForm(props: CreatePatientFormProps) {
                       })}
                     >
                       <fieldset
-                        disabled={isReadOnly}
+                        disabled={fieldsReadOnly}
                         className="fieldset-reset"
                       >
                         <Grid>
@@ -1401,7 +2089,7 @@ function CreatePatientForm(props: CreatePatientFormProps) {
                       })}
                     >
                       <fieldset
-                        disabled={isReadOnly}
+                        disabled={fieldsReadOnly}
                         className="fieldset-reset"
                       >
                         <Grid>
@@ -1942,7 +2630,7 @@ function CreatePatientForm(props: CreatePatientFormProps) {
                     </AccordionItem>
                     <AccordionItem title={idDocumentsLabel}>
                       <fieldset
-                        disabled={isReadOnly}
+                        disabled={props.maintenanceMode ? false : isReadOnly}
                         className="fieldset-reset"
                       >
                         <IdentificationDocuments
@@ -1951,7 +2639,24 @@ function CreatePatientForm(props: CreatePatientFormProps) {
                           onDocumentsChange={(docs) =>
                             setFieldValue("idDocuments", docs)
                           }
-                          disabled={!!props.disabled}
+                          disabled={
+                            !!props.disabled ||
+                            (props.maintenanceMode &&
+                              (isSubmitting || documentBusy))
+                          }
+                          explainImmediateActions={props.maintenanceMode}
+                          onImmediateSaveSuccess={
+                            props.maintenanceMode
+                              ? refreshDocumentVersions
+                              : undefined
+                          }
+                          onOperationStateChange={
+                            props.maintenanceMode
+                              ? onDocumentStateChange
+                              : undefined
+                          }
+                          readOnly={props.maintenanceMode && fieldsReadOnly}
+                          maintenanceSessionKey={props.maintenanceSessionKey}
                         />
                       </fieldset>
                     </AccordionItem>
@@ -1961,14 +2666,37 @@ function CreatePatientForm(props: CreatePatientFormProps) {
                   {" "}
                   <br></br>
                 </Column>
+                {props.maintenanceMode && isReadOnly && props.onCancel && (
+                  <PatientActionPortal target={props.actionsContainer}>
+                    <Column lg={16} md={8} sm={4}>
+                      <Button
+                        type="button"
+                        kind="secondary"
+                        onClick={props.onCancel}
+                      >
+                        <FormattedMessage id="label.button.close" />
+                      </Button>
+                    </Column>
+                  </PatientActionPortal>
+                )}
                 {props.showActionsButton && !isReadOnly && (
-                  <>
+                  <PatientActionPortal
+                    target={
+                      props.maintenanceMode ? props.actionsContainer : null
+                    }
+                  >
                     <Column lg={4} md={4} sm={4}>
                       <Button
                         type="button"
                         id="submit"
                         disabled={
+                          !!props.disabled ||
                           isSubmitting ||
+                          (props.maintenanceMode &&
+                            (saveUnknown ||
+                              documentUnknown ||
+                              documentBusy ||
+                              (isExistingPatient && !dirty))) ||
                           Object.values(phoneValidation).some(
                             (item) => item.status === false,
                           )
@@ -1984,7 +2712,9 @@ function CreatePatientForm(props: CreatePatientFormProps) {
                           id="cancel"
                           type="button"
                           kind="secondary"
-                          disabled={isSubmitting}
+                          disabled={
+                            !!props.disabled || isSubmitting || documentBusy
+                          }
                           onClick={props.onCancel}
                         >
                           <FormattedMessage id="label.button.cancel" />
@@ -1993,7 +2723,9 @@ function CreatePatientForm(props: CreatePatientFormProps) {
                         <Button
                           id="clear"
                           kind="danger"
-                          disabled={isSubmitting}
+                          disabled={
+                            !!props.disabled || isSubmitting || documentBusy
+                          }
                           onClick={() => {
                             // resetForm resets years/months/days alongside
                             // birthDateForDisplay — they're real Formik fields
@@ -2014,13 +2746,38 @@ function CreatePatientForm(props: CreatePatientFormProps) {
                         </Button>
                       )}
                     </Column>
-                  </>
+                  </PatientActionPortal>
                 )}
               </Grid>
             </fieldset>
           </Form>
         )}
       </Formik>
+      {saveConfirmation && (
+        <Modal
+          open
+          size="sm"
+          className="oe-admin-modal patient-maintenance-confirm"
+          preventCloseOnClickOutside
+          modalHeading={intl.formatMessage({
+            id: "patient.maintenance.confirmSave.title",
+          })}
+          closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
+          primaryButtonText={intl.formatMessage({ id: "label.button.save" })}
+          secondaryButtonText={intl.formatMessage({
+            id: "label.button.cancel",
+          })}
+          onRequestSubmit={saveMaintenancePatient}
+          onRequestClose={() => {
+            saveConfirmation.formikBag.setSubmitting(false);
+            setSaveConfirmation(null);
+          }}
+        >
+          <p>
+            <FormattedMessage id="patient.maintenance.confirmSave.message" />
+          </p>
+        </Modal>
+      )}
     </>
   );
 }

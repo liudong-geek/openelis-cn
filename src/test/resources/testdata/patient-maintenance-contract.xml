@@ -1,0 +1,76 @@
+<dataset>
+    <patient_identity_type id="2" identity_type="ST"
+        description="ST" lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="3" identity_type="AKA"
+        description="AKA" lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="4"
+        identity_type="MOTHER" description="MOTHER"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="5"
+        identity_type="INSURANCE" description="INSURANCE"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="6"
+        identity_type="OCCUPATION" description="OCCUPATION"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="11"
+        identity_type="SUBJECT" description="SUBJECT"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="14"
+        identity_type="GUID" description="GUID"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="15"
+        identity_type="EDUCATION" description="EDUCATION"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="16"
+        identity_type="MARITIAL" description="MARITIAL"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="17"
+        identity_type="NATIONALITY" description="NATIONALITY"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="18"
+        identity_type="OTHER NATIONALITY" description="OTHER NATIONALITY"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="19"
+        identity_type="HEALTH DISTRICT" description="HEALTH DISTRICT"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="20"
+        identity_type="HEALTH REGION" description="HEALTH REGION"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="23"
+        identity_type="CUSTOM_NOTES" description="CUSTOM_NOTES"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="24"
+        identity_type="DISEASE_PROGRAMME" description="DISEASE_PROGRAMME"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="25"
+        identity_type="MOTHERS_INITIAL" description="MOTHERS_INITIAL"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_identity_type id="26"
+        identity_type="ADDRESS_HIERARCHY_1" description="Address level 1"
+        lastupdated="2023-01-01 00:00:00" />
+    <person id="7101" last_name="PatientOld" first_name="First"
+        lastupdated="2023-01-01 00:00:00" />
+    <person id="7102" last_name="OtherPatient" first_name="First"
+        lastupdated="2023-01-01 00:00:00" />
+    <person id="7103" last_name="ContactOld" first_name="First"
+        email="old@example.test" primary_phone="123"
+        lastupdated="2023-01-01 00:00:00" />
+    <person id="7104" last_name="OtherContact" first_name="First"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient id="7101" person_id="7101" gender="F"
+        national_id="PAT-7101" is_merged="false"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient id="7102" person_id="7102" gender="F"
+        national_id="PAT-7102" is_merged="false"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_contact id="7101" patient_id="7101"
+        person_id="7103" lastupdated="2023-01-01 00:00:00" />
+    <patient_contact id="7102" patient_id="7102"
+        person_id="7104" lastupdated="2023-01-01 00:00:00" />
+    <patient_identity id="7101" patient_id="7101"
+        identity_type_id="2" identity_data="OLD-ST"
+        lastupdated="2023-01-01 00:00:00" />
+    <patient_identity id="7102" patient_id="7101"
+        identity_type_id="26" identity_data="OLD-ADDRESS-CHILD"
+        lastupdated="2023-01-01 00:00:00" />
+</dataset>

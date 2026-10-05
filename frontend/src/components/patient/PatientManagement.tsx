@@ -1,4 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { FormattedMessage, injectIntl, useIntl } from "react-intl";
 import { useHistory, useLocation, useParams } from "react-router-dom";
 import "../Style.css";
@@ -14,9 +20,16 @@ import {
   ComposedModal,
   ModalHeader,
   ModalBody,
+  ModalFooter,
+  Modal,
 } from "@carbon/react";
 import { Add, ArrowLeft } from "@carbon/react/icons";
-import CreatePatientForm from "./CreatePatientForm";
+import CreatePatientForm, {
+  type PatientMaintenanceFormState,
+} from "./CreatePatientForm";
+import UserSessionDetailsContext from "../../UserSessionDetailsContext";
+import { formatPatientMaintenanceName } from "./patientMaintenanceContract";
+import "../admin/AdminModal.css";
 import PatientMasterList from "./PatientMasterList";
 import type { PatientListViewState } from "./PatientMasterList";
 import SearchPatientForm from "./SearchPatientForm";
@@ -25,7 +38,8 @@ import PageBreadCrumb from "../common/PageBreadCrumb";
 import usePatientDetails from "./usePatientDetails";
 import type { PatientRecord } from "./types";
 import ProductPageHeader from "../common/ProductPageHeader";
-import { fromList, listReturnLocation } from "../common/listWorkspace";
+import { fromList } from "../common/listWorkspace";
+import { getFromOpenElisServer } from "../utils/Utils";
 
 const breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -61,44 +75,134 @@ function PatientManagement() {
     "gender",
   ].some((key) => new URLSearchParams(location.search).has(key));
   const listState = useRef<PatientManagementViewState>({
-    ...location.state?.listState,
+    ...(location.state?.listState ||
+      location.state?.listOrigin?.state?.listState),
     managementMode: hasSearchDeepLink
       ? "advanced"
-      : (location.state?.listState?.managementMode ?? "list"),
+      : location.state?.listState?.managementMode ||
+        location.state?.listOrigin?.state?.listState?.managementMode ||
+        "list",
   });
   const [managementMode, setManagementMode] = useState<"list" | "advanced">(
     listState.current.managementMode || "list",
   );
-  const [newPatientModalOpen, setNewPatientModalOpen] = useState(false);
   const [patientListVersion, setPatientListVersion] = useState(0);
   const { patientId } = useParams<{ patientId?: string }>();
-
-  const isNewMode = patientId === "new";
-  const isEditMode = !!patientId && !isNewMode;
-  const isSearchMode = !patientId || isNewMode;
-
+  const [modal, setModal] = useState<null | {
+    patientId?: string;
+    sequence: number;
+  }>(null);
+  const modalSequence = useRef(0);
+  const modalState = useRef<PatientMaintenanceFormState>({
+    dirty: false,
+    busy: false,
+    unknown: false,
+  });
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [loadVersion, setLoadVersion] = useState(0);
+  const [actionsContainer, setActionsContainer] =
+    useState<HTMLDivElement | null>(null);
+  const { userSessionDetails } = useContext(UserSessionDetailsContext);
+  const maintenanceActorKey = String(
+    userSessionDetails?.userId ||
+      userSessionDetails?.loginName ||
+      userSessionDetails?.userName ||
+      "",
+  );
+  const maintenanceSessionKey = JSON.stringify({
+    authenticated: userSessionDetails?.authenticated,
+    csrf: userSessionDetails?.csrf,
+  });
+  const actor = JSON.stringify({
+    authenticated: userSessionDetails?.authenticated,
+    id:
+      userSessionDetails?.userId ||
+      userSessionDetails?.loginName ||
+      userSessionDetails?.userName ||
+      "",
+    roles: [...(userSessionDetails?.roles || [])].sort(),
+  });
+  const previousActor = useRef(actor);
+  const [capabilities, setCapabilities] = useState<{ canCreate: boolean }>({
+    canCreate: false,
+  });
   useEffect(() => {
-    if (isNewMode) setNewPatientModalOpen(true);
-  }, [isNewMode]);
-
+    let active = true;
+    const controller = new AbortController();
+    setCapabilities({ canCreate: false });
+    getFromOpenElisServer<{ canCreate?: boolean }>(
+      "/rest/patient-maintenance-capabilities",
+      (response) => {
+        if (active)
+          setCapabilities({ canCreate: response?.canCreate === true });
+      },
+      controller.signal,
+    );
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [actor]);
+  const onFormStateChange = useCallback(
+    (state: PatientMaintenanceFormState) => {
+      modalState.current = state;
+    },
+    [],
+  );
+  const openPatientModal = (id?: string) => {
+    if (modalState.current.busy) return;
+    modalState.current = { dirty: false, busy: false, unknown: false };
+    setDiscardOpen(false);
+    setModal({ patientId: id, sequence: ++modalSequence.current });
+  };
   useEffect(() => {
-    if (isSearchMode && hasSearchDeepLink) {
-      listState.current = {
-        ...listState.current,
-        managementMode: "advanced",
-      };
+    if (patientId)
+      openPatientModal(patientId === "new" ? undefined : patientId);
+  }, [patientId]);
+  useEffect(() => {
+    if (previousActor.current === actor) return;
+    previousActor.current = actor;
+    modalSequence.current++;
+    setModal(null);
+    setDiscardOpen(false);
+    modalState.current = { dirty: false, busy: false, unknown: false };
+  }, [actor]);
+  useEffect(() => {
+    if (hasSearchDeepLink) {
+      listState.current = { ...listState.current, managementMode: "advanced" };
       setManagementMode("advanced");
     }
-  }, [hasSearchDeepLink, isSearchMode, location.search]);
-
-  // Only fetch when an actual id is in the URL. New-mode and search-mode
-  // render without a fetch.
+  }, [hasSearchDeepLink, location.search]);
   const { patient, loading, error } = usePatientDetails(
-    isEditMode ? patientId : null,
+    modal?.patientId,
+    loadVersion,
   );
-
-  const goToSearch = () =>
-    history.push(listReturnLocation(location.state, "/PatientManagement"));
+  const closeModal = () => {
+    modalSequence.current++;
+    setModal(null);
+    setDiscardOpen(false);
+    modalState.current = { dirty: false, busy: false, unknown: false };
+    if (patientId)
+      history.replace({
+        pathname: "/PatientManagement",
+        state: { listState: listState.current },
+      });
+  };
+  const requestClose = (event?: { key?: string }) => {
+    if (event?.key === "Escape") {
+      const activeModals = document.querySelectorAll(".cds--modal.is-visible");
+      const topModal = activeModals[activeModals.length - 1];
+      if (topModal && !topModal.classList.contains("patient-create-modal"))
+        return false;
+    }
+    if (modalState.current.busy) return false;
+    if (modalState.current.dirty || modalState.current.unknown) {
+      setDiscardOpen(true);
+      return false;
+    }
+    closeModal();
+    return false;
+  };
   const openFromList = (pathname: string) => {
     history.replace({
       ...location,
@@ -109,25 +213,17 @@ function PatientManagement() {
       state: fromList("/PatientManagement", listState.current),
     });
   };
-  const goToNewPatient = () => setNewPatientModalOpen(true);
-  const closeNewPatientModal = () => {
-    setNewPatientModalOpen(false);
-    if (isNewMode) {
-      history.replace(listReturnLocation(location.state, "/PatientManagement"));
-    }
-  };
-  const handleNewPatientSaved = () => {
-    setNewPatientModalOpen(false);
-    setPatientListVersion((current) => current + 1);
-    if (isNewMode) {
-      history.replace(listReturnLocation(location.state, "/PatientManagement"));
-    }
+  const goToNewPatient = () => {
+    if (capabilities.canCreate) openPatientModal();
   };
   const goToPatientMerge = () => openFromList("/PatientMerge");
-  const goToEditPatient = (selected: PatientRecord) =>
-    openFromList(`/PatientManagement/${selected.patientPK}`);
+  const goToEditPatient = (selected: PatientRecord) => {
+    if (selected.patientPK) openPatientModal(String(selected.patientPK));
+  };
   const goToPatientResults = (selected: PatientRecord) =>
-    openFromList(`/PatientResults/${selected.patientPK}`);
+    openFromList(
+      `/PatientResults/${encodeURIComponent(String(selected.patientPK))}`,
+    );
   const changeManagementMode = (mode: "list" | "advanced") => {
     listState.current = { ...listState.current, managementMode: mode };
     setManagementMode(mode);
@@ -139,69 +235,50 @@ function PatientManagement() {
     }
   };
 
-  const titleId = isSearchMode
-    ? "patient.management.title"
-    : isNewMode
-      ? "patient.management.new.title"
-      : "patient.management.edit.title";
-
   return (
     <>
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
       <ProductPageHeader
         titleId="patient-management-title"
-        title={<FormattedMessage id={titleId} />}
-        subtitle={
-          <FormattedMessage
-            id={
-              isSearchMode
-                ? "patient.management.search.subtitle"
-                : isNewMode
-                  ? "patient.management.new.subtitle"
-                  : "patient.management.edit.subtitle"
-            }
-          />
-        }
+        title={<FormattedMessage id="patient.management.title" />}
+        subtitle={<FormattedMessage id="patient.management.search.subtitle" />}
         actions={
-          isSearchMode ? (
-            <>
-              <OverflowMenu
-                flipped
-                iconDescription={intl.formatMessage({
-                  id: "patient.management.moreActions",
-                })}
-                menuOptionsClass="patient-management-actions__options"
-              >
-                <OverflowMenuItem
-                  onClick={goToPatientMerge}
-                  itemText={
-                    <span className="patient-management-actions__item">
-                      <strong>
-                        <FormattedMessage id="banner.menu.patient.merge" />
-                      </strong>
-                      <span>
-                        <FormattedMessage id="patient.management.merge.helper" />
-                      </span>
+          <>
+            <OverflowMenu
+              flipped
+              iconDescription={intl.formatMessage({
+                id: "patient.management.moreActions",
+              })}
+              menuOptionsClass="patient-management-actions__options"
+            >
+              <OverflowMenuItem
+                onClick={goToPatientMerge}
+                itemText={
+                  <span className="patient-management-actions__item">
+                    <strong>
+                      <FormattedMessage id="banner.menu.patient.merge" />
+                    </strong>
+                    <span>
+                      <FormattedMessage id="patient.management.merge.helper" />
                     </span>
-                  }
-                />
-              </OverflowMenu>
-              <Button size="md" renderIcon={Add} onClick={goToNewPatient}>
-                <FormattedMessage id="new.patient.label" />
-              </Button>
-            </>
-          ) : (
-            <Button kind="tertiary" renderIcon={ArrowLeft} onClick={goToSearch}>
-              <FormattedMessage id="patient.management.backToList" />
+                  </span>
+                }
+              />
+            </OverflowMenu>
+            <Button
+              size="md"
+              renderIcon={Add}
+              disabled={!capabilities.canCreate}
+              onClick={goToNewPatient}
+            >
+              <FormattedMessage id="new.patient.label" />
             </Button>
-          )
+          </>
         }
       />
-      <div
-        className={`orderLegendBody patient-management-surface${isSearchMode ? " patient-management-list-surface" : ""}`}
-      >
+      <div className="orderLegendBody patient-management-surface patient-management-list-surface">
         <Grid>
-          {isSearchMode && (
+          {
             <Column lg={16} md={8} sm={4}>
               {managementMode === "advanced" && (
                 <div className="patient-management-advanced-heading">
@@ -238,7 +315,7 @@ function PatientManagement() {
                 />
               ) : (
                 <SearchPatientForm
-                  key={location.search || "advanced-search"}
+                  key={`${location.search || "advanced-search"}-${patientListVersion}`}
                   initialSearch={location.search}
                   initialState={listState.current.advanced}
                   onStateChange={(advanced) => {
@@ -257,76 +334,134 @@ function PatientManagement() {
                 />
               )}
             </Column>
-          )}
-
-          {isEditMode && loading && (
-            <Column lg={16} md={8} sm={4}>
-              <Loading
-                description={<FormattedMessage id="loading.label" />}
-                withOverlay={false}
-              />
-            </Column>
-          )}
-
-          {isEditMode && !loading && error && (
-            <Column lg={16} md={8} sm={4}>
-              <InlineNotification
-                kind="error"
-                title={<FormattedMessage id="notification.title" />}
-                subtitle={
-                  <FormattedMessage
-                    id="patient.fetch.error"
-                    defaultMessage="Could not load patient. The id may be invalid or the server is unreachable."
-                  />
-                }
-                hideCloseButton
-              />
-              <br />
-              <Button kind="tertiary" onClick={goToSearch}>
-                <FormattedMessage
-                  id="search.patient.label"
-                  defaultMessage="Search for Patient"
-                />
-              </Button>
-            </Column>
-          )}
-
-          {isEditMode && !loading && !error && patient && (
-            <Column lg={16} md={8} sm={4}>
-              <CreatePatientForm
-                key={patient.patientPK}
-                showActionsButton={true}
-                selectedPatient={patient}
-              />
-            </Column>
-          )}
+          }
         </Grid>
       </div>
-      {newPatientModalOpen && (
+      {modal && (
         <ComposedModal
           open
-          onClose={closeNewPatientModal}
+          onClose={requestClose}
           size="lg"
+          selectorPrimaryFocus=".cds--modal-close"
           preventCloseOnClickOutside
-          className="patient-create-modal"
+          className="oe-admin-modal oe-admin-modal--large patient-create-modal"
+          aria-label={intl.formatMessage({
+            id: modal.patientId
+              ? "patient.maintenance.view.title"
+              : "patient.management.new.title",
+          })}
         >
           <ModalHeader
-            title={intl.formatMessage({ id: "patient.management.new.title" })}
-            label={intl.formatMessage({
-              id: "patient.management.new.subtitle",
+            title={intl.formatMessage({
+              id: modal.patientId
+                ? "patient.maintenance.view.title"
+                : "patient.management.new.title",
             })}
-            closeModal={closeNewPatientModal}
+            label={
+              patient
+                ? `${formatPatientMaintenanceName(patient)} · ${patient.nationalId || patient.subjectNumber || patient.patientPK}`
+                : intl.formatMessage({
+                    id: modal.patientId
+                      ? "patient.management.edit.subtitle"
+                      : "patient.management.new.subtitle",
+                  })
+            }
+            iconDescription={intl.formatMessage({ id: "label.button.close" })}
+            closeModal={requestClose}
           />
           <ModalBody className="patient-create-modal__body">
-            <CreatePatientForm
-              key="new"
-              showActionsButton={true}
-              selectedPatient={{}}
-              onCancel={closeNewPatientModal}
-              onSaveSuccess={handleNewPatientSaved}
-            />
+            {modal.patientId && loading && (
+              <Loading
+                description={intl.formatMessage({ id: "loading.label" })}
+                withOverlay={false}
+              />
+            )}
+            {modal.patientId && !loading && error && (
+              <>
+                <InlineNotification
+                  kind="error"
+                  title={intl.formatMessage({ id: "notification.title" })}
+                  subtitle={intl.formatMessage({ id: "patient.fetch.error" })}
+                  hideCloseButton
+                />
+                <Button
+                  type="button"
+                  kind="tertiary"
+                  onClick={() => setLoadVersion((value) => value + 1)}
+                >
+                  <FormattedMessage id="patient.maintenance.reload" />
+                </Button>
+              </>
+            )}
+            {!modal.patientId && !capabilities.canCreate && (
+              <InlineNotification
+                kind="warning"
+                hideCloseButton
+                title={intl.formatMessage({ id: "notification.title" })}
+                subtitle={intl.formatMessage({
+                  id: "patient.maintenance.permissionDenied",
+                })}
+              />
+            )}
+            {((!modal.patientId && capabilities.canCreate) ||
+              (!loading && !error && patient)) && (
+              <CreatePatientForm
+                key={`${modal.sequence}-${patient?.patientPK || "new"}`}
+                showActionsButton
+                selectedPatient={patient || {}}
+                maintenanceMode={!!modal.patientId}
+                maintenanceActorKey={maintenanceActorKey}
+                maintenanceSessionKey={maintenanceSessionKey}
+                actionsContainer={actionsContainer}
+                onFormStateChange={onFormStateChange}
+                onCancel={requestClose}
+                onSaveSuccess={() => {
+                  if (modal.sequence !== modalSequence.current) return;
+                  closeModal();
+                  setPatientListVersion((current) => current + 1);
+                }}
+              />
+            )}
           </ModalBody>
+          {modal.patientId && (
+            <ModalFooter>
+              <div
+                ref={setActionsContainer}
+                className="patient-maintenance-footer"
+              />
+            </ModalFooter>
+          )}
         </ComposedModal>
+      )}
+      {discardOpen && (
+        <Modal
+          open
+          size="sm"
+          className="oe-admin-modal patient-maintenance-confirm"
+          preventCloseOnClickOutside
+          modalHeading={intl.formatMessage({
+            id: "patient.maintenance.discard.title",
+          })}
+          closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
+          primaryButtonText={intl.formatMessage({
+            id: "patient.maintenance.discard.confirm",
+          })}
+          secondaryButtonText={intl.formatMessage({
+            id: "patient.maintenance.discard.keep",
+          })}
+          onRequestSubmit={closeModal}
+          onRequestClose={() => setDiscardOpen(false)}
+        >
+          <p>
+            <FormattedMessage
+              id={
+                modalState.current.unknown
+                  ? "patient.maintenance.discard.unknown"
+                  : "patient.maintenance.discard.message"
+              }
+            />
+          </p>
+        </Modal>
       )}
     </>
   );

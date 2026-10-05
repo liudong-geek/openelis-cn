@@ -63,6 +63,9 @@ public class PatientManagementInfo implements Serializable {
     // TODO removable?
     private String personLastUpdated;
 
+    private String patientContactLastUpdated;
+    private String patientContactPersonLastUpdated;
+
     private PatientUpdateStatus patientUpdateStatus;
 
     @Pattern(regexp = ValidationHelper.PATIENT_ID_REGEX, groups = { SamplePatientEntryForm.SamplePatientEntry.class,
@@ -253,6 +256,22 @@ public class PatientManagementInfo implements Serializable {
 
     public void setPersonLastUpdated(String personLastUpdated) {
         this.personLastUpdated = personLastUpdated;
+    }
+
+    public String getPatientContactLastUpdated() {
+        return patientContactLastUpdated;
+    }
+
+    public void setPatientContactLastUpdated(String value) {
+        patientContactLastUpdated = value;
+    }
+
+    public String getPatientContactPersonLastUpdated() {
+        return patientContactPersonLastUpdated;
+    }
+
+    public void setPatientContactPersonLastUpdated(String value) {
+        patientContactPersonLastUpdated = value;
     }
 
     public String getPatientPK() {

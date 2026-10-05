@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+    <changeSet id="patient-contact-version-timestamp-001" author="openelis-cn" dbms="postgresql">
+        <preConditions onFail="HALT" onError="HALT">
+            <tableExists schemaName="clinlims" tableName="patient_contact" />
+            <columnExists schemaName="clinlims" tableName="patient_contact" columnName="lastupdated" />
+            <sqlCheck expectedResult="1">SELECT count(*) FROM information_schema.columns WHERE table_schema = 'clinlims' AND table_name = 'patient_contact' AND column_name = 'lastupdated' AND data_type IN ('date', 'timestamp without time zone')</sqlCheck>
+        </preConditions>
+        <comment>Preserve legacy dates at midnight and retain sub-day contact optimistic versions.</comment>
+        <sql splitStatements="false"><![CDATA[
+DO $contact_version$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'clinlims'
+            AND table_name = 'patient_contact' AND column_name = 'lastupdated' AND data_type = 'date') THEN
+        ALTER TABLE clinlims.patient_contact ALTER COLUMN lastupdated TYPE timestamp without time zone
+            USING lastupdated::timestamp without time zone;
+    END IF;
+END
+$contact_version$;
+        ]]></sql>
+    </changeSet>
+</databaseChangeLog>

@@ -9,6 +9,8 @@ export interface PatientAddress {
 }
 
 export interface PatientContactPerson {
+  id?: string;
+  lastupdated?: string;
   firstName?: string;
   lastName?: string;
   primaryPhone?: string;
@@ -17,6 +19,7 @@ export interface PatientContactPerson {
 
 export interface PatientContact {
   id?: string;
+  lastupdated?: string;
   firstName?: string;
   lastName?: string;
   primaryPhone?: string;

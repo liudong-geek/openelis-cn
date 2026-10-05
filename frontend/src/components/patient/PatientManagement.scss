@@ -169,3 +169,42 @@
     max-height: calc(100vh - 7.5rem);
   }
 }
+
+.patient-maintenance-save-timing,
+.patient-maintenance-readonly-note,
+.patient-create-modal .id-documents-save-timing {
+  color: var(--oe-text-muted, #647985);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.patient-create-modal .patient-maintenance-fields .cds--css-grid,
+.patient-create-modal .patient-maintenance-fields .cds--grid {
+  min-width: 0;
+}
+.patient-create-modal .cds--modal-close {
+  color: var(--oe-text, #203847);
+}
+
+.patient-maintenance-footer,
+.patient-maintenance-footer > .cds--css-grid-column {
+  display: contents;
+}
+.patient-create-modal:has(.patient-maintenance-footer)
+  .patient-create-modal__body {
+  min-height: 0;
+  max-height: calc(92vh - 12rem);
+}
+.patient-create-modal input:disabled,
+.patient-create-modal select:disabled,
+.patient-create-modal textarea:disabled {
+  opacity: 1;
+  color: var(--oe-text, #203847);
+  background: var(--oe-surface-subtle, #f9fafc);
+  -webkit-text-fill-color: var(--oe-text, #203847);
+}
+@media (max-width: 41.9375rem) {
+  .patient-create-modal:has(.patient-maintenance-footer)
+    .patient-create-modal__body {
+    max-height: calc(100vh - 15rem);
+  }
+}

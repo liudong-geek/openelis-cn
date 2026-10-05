@@ -35,4 +35,6 @@
   <include file="liquibase/masterdata/001-master-data-identity.xml" />
   <!-- Shared task execution slots for multi-instance scheduling -->
   <include file="liquibase/operations/001-cluster-task-coordination.xml" />
+  <!-- Patient contact optimistic versions need sub-day precision. -->
+  <include file="liquibase/patient/001-contact-version-timestamp.xml" />
 </databaseChangeLog>

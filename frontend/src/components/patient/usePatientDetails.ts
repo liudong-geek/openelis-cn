@@ -1,91 +1,87 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { getFromOpenElisServer } from "../utils/Utils";
 import type { Nullable, PatientRecord } from "./types";
 
-/**
- * Fetch a patient's full PatientInfoBean (+ photo) by id. Returns
- * { patient, loading, error }. Used by patient-menu pages that drive
- * form state from the URL (`/PatientManagement/:patientId`) instead of
- * relying on the parent to pre-fetch and prop-drill.
- *
- * Mirrors the two REST calls SearchPatientForm makes when a user picks
- * a patient: /rest/patient-details + /rest/patient-photos. The photo is
- * attached to the returned object as `photo` (base64 string), matching
- * the shape CreatePatientForm.buildInitialFormValues expects.
- *
- * Pass `null`/`undefined` for patientId to disable the fetch (search
- * mode, new-patient mode).
- *
- * The hook tracks the most recently requested patientId in a ref and
- * drops late callbacks whose captured id no longer matches — without
- * this, switching patients faster than the network can resolve lets the
- * older response overwrite the newer one.
- */
 interface PatientDetailsHookResult {
   patient: Nullable<PatientRecord>;
   loading: boolean;
   error: Nullable<Error>;
 }
 
-interface PatientPhotoResponse {
-  data?: string;
-}
-
+/** Read full identity and photo together; each effect owns its callbacks. */
 export default function usePatientDetails(
   patientId?: Nullable<string>,
+  reloadVersion = 0,
 ): PatientDetailsHookResult {
   const [patient, setPatient] = useState<Nullable<PatientRecord>>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Nullable<Error>>(null);
-  const mounted = useRef(true);
-  const currentRequestId = useRef<Nullable<string>>(null);
-
+  const [requestContext, setRequestContext] = useState({
+    id: patientId,
+    version: reloadVersion,
+  });
   useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!patientId) {
-      currentRequestId.current = null;
-      setPatient(null);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
-    const requestedId = patientId;
-    currentRequestId.current = requestedId;
-    setLoading(true);
+    let active = true;
+    const controller = new AbortController();
+    setRequestContext({ id: patientId, version: reloadVersion });
+    setPatient(null);
     setError(null);
-
-    const isStillCurrent = () =>
-      mounted.current && currentRequestId.current === requestedId;
-
-    getFromOpenElisServer(
-      "/rest/patient-details?patientID=" + requestedId,
-      (details: PatientRecord) => {
-        if (!isStillCurrent()) return;
-        if (!details || !details.patientPK) {
-          setPatient(null);
-          setLoading(false);
-          setError(new Error("Patient not found"));
+    setLoading(!!patientId);
+    if (!patientId)
+      return () => {
+        active = false;
+      };
+    const fail = () => {
+      if (!active) return;
+      active = false;
+      setLoading(false);
+      setError(new Error("Patient details could not be verified"));
+    };
+    const timeout = setTimeout(() => {
+      fail();
+      active = false;
+      controller.abort();
+    }, 30000);
+    getFromOpenElisServer<PatientRecord>(
+      `/rest/patient-details?patientID=${encodeURIComponent(patientId)}`,
+      (details) => {
+        if (!active) return;
+        if (
+          !details ||
+          String(details.patientPK || "") !== patientId ||
+          details.error
+        ) {
+          clearTimeout(timeout);
+          fail();
           return;
         }
-        getFromOpenElisServer(
-          "/rest/patient-photos/" + details.patientPK + "/false",
-          (photoResp: PatientPhotoResponse) => {
-            if (!isStillCurrent()) return;
-            const photo = photoResp && photoResp.data ? photoResp.data : "";
-            setPatient({ ...details, photo });
+        getFromOpenElisServer<{ data?: string }>(
+          `/rest/patient-photos/${encodeURIComponent(patientId)}/false`,
+          (photo) => {
+            if (!active) return;
+            clearTimeout(timeout);
+            if (!photo || typeof photo.data !== "string") {
+              fail();
+              return;
+            }
+            setPatient({ ...details, photo: photo.data });
             setLoading(false);
           },
+          controller.signal,
         );
       },
+      controller.signal,
     );
-  }, [patientId]);
-
+    return () => {
+      active = false;
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [patientId, reloadVersion]);
+  if (
+    requestContext.id !== patientId ||
+    requestContext.version !== reloadVersion
+  )
+    return { patient: null, loading: !!patientId, error: null };
   return { patient, loading, error };
 }

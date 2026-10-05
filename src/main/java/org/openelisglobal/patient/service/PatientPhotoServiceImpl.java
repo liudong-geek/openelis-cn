@@ -48,6 +48,7 @@ public class PatientPhotoServiceImpl extends AuditableBaseObjectServiceImpl<Pati
 
             PatientPhoto patientPhoto;
             if (existingPhoto != null) {
+                baseObjectDAO.evict(existingPhoto);
                 patientPhoto = existingPhoto;
                 patientPhoto.setPhotoData(cleanBase64);
                 patientPhoto.setThumbnailData(thumbnail);

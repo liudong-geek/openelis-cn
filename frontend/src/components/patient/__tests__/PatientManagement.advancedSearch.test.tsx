@@ -9,6 +9,10 @@ import PatientManagement from "../PatientManagement";
 
 const searchFormProps = vi.hoisted(() => vi.fn());
 
+vi.mock("../../utils/Utils", () => ({
+  getFromOpenElisServer: (_url: string, callback: (value: unknown) => void) =>
+    callback({ canCreate: true, canEdit: true }),
+}));
 vi.mock("../../common/PageBreadCrumb", () => ({ default: () => null }));
 vi.mock("../../common/ProductPageHeader", () => ({
   default: ({
@@ -154,7 +158,9 @@ describe("PatientManagement advanced search", () => {
         fireEvent.click(
           screen.getByRole("button", { name: "SIM open patient" }),
         );
-        expect(history.location.pathname).toBe("/PatientManagement/42");
+        expect(history.location.pathname).toBe("/PatientManagement");
+        expect(screen.getByText("SIM patient editor")).toBeVisible();
+        expect(screen.getByText(/SIM advanced patient search/)).toBeVisible();
       }
     });
   });

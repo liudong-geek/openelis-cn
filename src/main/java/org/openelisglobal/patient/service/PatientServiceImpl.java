@@ -97,6 +97,9 @@ public class PatientServiceImpl extends AuditableBaseObjectServiceImpl<Patient, 
     @Autowired
     private PatientContactService patientContactService;
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager maintenanceEntityManager;
+
     @PostConstruct
     public void initializeGlobalVariables() {
 
@@ -610,8 +613,8 @@ public class PatientServiceImpl extends AuditableBaseObjectServiceImpl<Patient, 
         List<PatientListItem> patients = getBaseObjectDAO().getPatientManagementPage(offset, safePageSize).stream()
                 .map(patient -> new PatientListItem(patient.getId(), patient.getId(), getLastName(patient),
                         getFirstName(patient), patient.getGender(),
-                        patient.getBirthDate() == null ? "" : getBirthdayForDisplay(patient),
-                        patient.getNationalId(), getPhone(patient), Boolean.TRUE.equals(patient.getIsMerged()),
+                        patient.getBirthDate() == null ? "" : getBirthdayForDisplay(patient), patient.getNationalId(),
+                        getPhone(patient), Boolean.TRUE.equals(patient.getIsMerged()),
                         patient.getMergedIntoPatientId()))
                 .toList();
 
@@ -633,6 +636,219 @@ public class PatientServiceImpl extends AuditableBaseObjectServiceImpl<Patient, 
     public List<String> getPatientIdentityBySampleStatusIdAndProject(List<Integer> inclusiveStatusIdList,
             String study) {
         return getBaseObjectDAO().getPatientIdentityBySampleStatusIdAndProject(inclusiveStatusIdList, study);
+    }
+
+    /**
+     * Patient-list maintenance only; the legacy sample-entry persistence contract
+     * remains separate.
+     */
+    @Override
+    @Transactional
+    public Patient persistPatientMaintenanceData(PatientManagementInfo info, String actor) {
+        if (info == null || org.apache.commons.validator.GenericValidator.isBlankOrNull(actor)) {
+            throw new IllegalArgumentException("Patient maintenance requires a payload and actor");
+        }
+        boolean creating = org.apache.commons.validator.GenericValidator.isBlankOrNull(info.getPatientPK());
+        info.setPatientUpdateStatus(creating ? PatientUpdateStatus.ADD : PatientUpdateStatus.UPDATE);
+        Patient patient;
+        PatientContact currentContact = null;
+        List<PatientIdentity> identities = new ArrayList<>();
+        if (creating) {
+            patient = new Patient();
+            patient.setPerson(new Person());
+            if (info.getPatientContact() != null && (!org.apache.commons.validator.GenericValidator
+                    .isBlankOrNull(info.getPatientContact().getId())
+                    || (info.getPatientContact().getPerson() != null && !org.apache.commons.validator.GenericValidator
+                            .isBlankOrNull(info.getPatientContact().getPerson().getId())))) {
+                throw new IllegalArgumentException("New patients cannot reference an existing contact");
+            }
+        } else {
+            String id = maintenanceId(info.getPatientPK());
+            patient = maintenanceEntityManager.find(Patient.class, id);
+            if (patient == null) {
+                throw new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.NOT_FOUND);
+            }
+            maintenanceEntityManager.refresh(patient);
+            Person person = patient.getPerson();
+            maintenanceEntityManager.refresh(person);
+            if (Boolean.TRUE.equals(patient.getIsMerged())
+                    || !org.apache.commons.validator.GenericValidator.isBlankOrNull(patient.getMergedIntoPatientId())) {
+                throw new PatientMaintenanceConflictException("Merged patients cannot be edited");
+            }
+            maintenanceVersion(info.getPatientLastUpdated(), patient.getLastupdated());
+            maintenanceVersion(info.getPersonLastUpdated(), person.getLastupdated());
+            List<PatientContact> currentContacts = patientContactService.getForPatient(id);
+            PatientContact supplied = info.getPatientContact();
+            if (supplied != null && !org.apache.commons.validator.GenericValidator.isBlankOrNull(supplied.getId())) {
+                currentContact = maintenanceEntityManager.find(PatientContact.class, maintenanceId(supplied.getId()));
+                if (currentContact == null || !id.equals(currentContact.getPatientId())) {
+                    throw new PatientMaintenanceConflictException("Contact does not belong to the patient");
+                }
+                maintenanceEntityManager.refresh(currentContact);
+                if (!id.equals(currentContact.getPatientId())) {
+                    throw new PatientMaintenanceConflictException("Contact ownership changed");
+                }
+                Person contactPerson = currentContact.getPerson();
+                maintenanceEntityManager.refresh(contactPerson);
+                if (supplied.getPerson() == null
+                        || org.apache.commons.validator.GenericValidator.isBlankOrNull(supplied.getPerson().getId())
+                        || (!org.apache.commons.validator.GenericValidator.isBlankOrNull(supplied.getPatientId())
+                                && !id.equals(supplied.getPatientId()))
+                        || (!org.apache.commons.validator.GenericValidator.isBlankOrNull(supplied.getPerson().getId())
+                                && !contactPerson.getId().equals(supplied.getPerson().getId()))) {
+                    throw new PatientMaintenanceConflictException("Contact identity does not match");
+                }
+                maintenanceId(supplied.getPerson().getId());
+                maintenanceVersion(info.getPatientContactLastUpdated(), currentContact.getLastupdated());
+                maintenanceVersion(info.getPatientContactPersonLastUpdated(), contactPerson.getLastupdated());
+                if (contactPerson.getId().equals(person.getId())) {
+                    throw new PatientMaintenanceConflictException("Contact person is also the patient person");
+                }
+                maintenanceEntityManager.detach(contactPerson);
+            } else if (!currentContacts.isEmpty()) {
+                throw new PatientMaintenanceConflictException("Existing contact identity is required");
+            } else if (supplied != null && supplied.getPerson() != null
+                    && !org.apache.commons.validator.GenericValidator.isBlankOrNull(supplied.getPerson().getId())) {
+                throw new IllegalArgumentException("A new contact cannot reference an existing person");
+            }
+            identities = patientIdentityService.getPatientIdentitiesForPatient(id);
+            for (PatientIdentity identity : identities) {
+                maintenanceEntityManager.detach(identity);
+                identity.setSysUserId(actor);
+            }
+            // Detach before copying form values. The auditing services can now load
+            // independent old rows.
+            maintenanceEntityManager.detach(patient);
+            maintenanceEntityManager.detach(person);
+        }
+        var errors = new org.springframework.validation.BeanPropertyBindingResult(info, "patientInfo");
+        org.openelisglobal.patient.validator.ValidatePatientInfo.validatePatientInfo(errors, info);
+        if (errors.hasErrors()) {
+            String key = errors.getAllErrors().get(0).getCode();
+            throw new PatientMaintenanceValidationException(
+                    key != null && key.startsWith("error.duplicate.") ? "DUPLICATE_PATIENT"
+                            : "PATIENT_MANAGEMENT_INVALID_REQUEST",
+                    key);
+        }
+        info.setPatientIdentities(identities);
+        try {
+            PatientUtil.copyFormBeanToValueHolders(info, patient);
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalArgumentException("Invalid patient maintenance fields", exception);
+        }
+        patient.setSysUserId(actor);
+        patient.getPerson().setSysUserId(actor);
+        if (creating) {
+            UUID uuid = UUID.randomUUID();
+            info.setGuid(uuid.toString());
+            patient.setFhirUuid(uuid);
+            personService.insert(patient.getPerson());
+            insert(patient);
+        } else {
+            Person savedPerson = personService.update(patient.getPerson());
+            maintenanceEntityManager.lock(savedPerson, jakarta.persistence.LockModeType.OPTIMISTIC);
+            patient.setPerson(savedPerson);
+            patient = update(patient);
+            // Related-only changes also advance the form's aggregate version and reject
+            // concurrent merges.
+            maintenanceEntityManager.lock(patient, jakarta.persistence.LockModeType.OPTIMISTIC_FORCE_INCREMENT);
+        }
+        persistMaintenanceContact(info, patient, currentContact, actor);
+        persistPatientRelatedInformation(info, patient, actor);
+        if (info.getAddressHierarchy() != null) {
+            for (Map.Entry<String, String> entry : info.getAddressHierarchy().entrySet()) {
+                if (entry.getKey() != null && entry.getKey().matches("addressHierarchy_[0-9]+")
+                        && org.apache.commons.validator.GenericValidator.isBlankOrNull(entry.getValue())) {
+                    String identityType = entry.getKey().toUpperCase(java.util.Locale.ROOT).replace("ADDRESSHIERARCHY",
+                            "ADDRESS_HIERARCHY");
+                    persistIdentityType(entry.getValue(), identityType, info, patient, actor);
+                }
+            }
+        }
+        info.setPatientPK(patient.getId());
+        return patient;
+    }
+
+    private void persistMaintenanceContact(PatientManagementInfo info, Patient patient, PatientContact contact,
+            String actor) {
+        PatientContact supplied = info.getPatientContact();
+        if (supplied == null || supplied.getPerson() == null) {
+            return;
+        }
+        Person source = supplied.getPerson();
+        if (contact == null) {
+            if (org.apache.commons.validator.GenericValidator.isBlankOrNull(source.getLastName())
+                    && org.apache.commons.validator.GenericValidator.isBlankOrNull(source.getFirstName())
+                    && org.apache.commons.validator.GenericValidator.isBlankOrNull(source.getEmail())
+                    && org.apache.commons.validator.GenericValidator.isBlankOrNull(source.getPrimaryPhone())) {
+                return;
+            }
+            contact = new PatientContact();
+            contact.setPatientId(patient.getId());
+            contact.setPerson(new Person());
+        }
+        if (contact.getId() != null) {
+            // The API uses the caller's optimistic version. Lock the unchanged contact row
+            // while checking it.
+            maintenanceEntityManager.refresh(contact, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+            if (!patient.getId().equals(contact.getPatientId())
+                    || (!org.apache.commons.validator.GenericValidator.isBlankOrNull(source.getId())
+                            && !source.getId().equals(contact.getPerson().getId()))
+                    || patient.getPerson().getId().equals(contact.getPerson().getId())) {
+                throw new PatientMaintenanceConflictException("Contact identity changed before persistence");
+            }
+            maintenanceVersion(info.getPatientContactLastUpdated(), contact.getLastupdated());
+            maintenanceVersion(info.getPatientContactPersonLastUpdated(), contact.getPerson().getLastupdated());
+            maintenanceEntityManager.detach(contact.getPerson());
+        }
+        Person target = contact.getPerson();
+        target.setLastName(source.getLastName());
+        target.setFirstName(source.getFirstName());
+        target.setEmail(source.getEmail());
+        target.setPrimaryPhone(source.getPrimaryPhone());
+        target.setSysUserId(actor);
+        contact.setSysUserId(actor);
+        if (contact.getId() == null) {
+            personService.insert(target);
+            patientContactService.insert(contact);
+        } else {
+            Person savedPerson = personService.update(target);
+            maintenanceEntityManager.lock(savedPerson, jakarta.persistence.LockModeType.OPTIMISTIC);
+            contact.setPerson(savedPerson);
+            // The contact row is already write-locked; use the stronger force-increment
+            // mode to advance its token.
+            maintenanceEntityManager.lock(contact, jakarta.persistence.LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+        }
+    }
+
+    private static String maintenanceId(String value) {
+        if (value == null || !value.matches("[1-9][0-9]*")) {
+            throw new IllegalArgumentException("Patient maintenance identity must be a canonical positive number");
+        }
+        try {
+            Integer.parseInt(value);
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException("Patient maintenance identity is outside the mapped range", exception);
+        }
+        return value;
+    }
+
+    private static void maintenanceVersion(String supplied, java.sql.Timestamp current) {
+        if (org.apache.commons.validator.GenericValidator.isBlankOrNull(supplied)) {
+            throw new PatientMaintenanceConflictException("Patient maintenance version is required");
+        }
+        try {
+            maintenanceVersion(java.sql.Timestamp.valueOf(supplied), current);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Invalid patient maintenance timestamp", exception);
+        }
+    }
+
+    private static void maintenanceVersion(java.sql.Timestamp supplied, java.sql.Timestamp current) {
+        if (supplied == null || current == null || !supplied.equals(current)) {
+            throw new PatientMaintenanceConflictException("Patient maintenance version changed");
+        }
     }
 
     @Override

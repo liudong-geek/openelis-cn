@@ -210,6 +210,11 @@
         <class>org.openelisglobal.labelpreset.valueholder.TestLabelPresetLink</class>
         <class>org.openelisglobal.labelpreset.valueholder.OrderLabelRequest</class>
 
+        <!-- Existing patient document writes are annotation entities discovered
+            by production. -->
+        <class>org.openelisglobal.patient.valueholder.PatientIdDocument</class>
+        <class>org.openelisglobal.patient.valueholder.PatientPhoto</class>
+
         <properties>
             <property name="hibernate.ejb.cfgfile"
                 value="hibernate/test-hibernate.cfg.xml" />
