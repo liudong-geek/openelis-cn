@@ -1,5 +1,7 @@
 import React from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { waitFor } from "@testing-library/dom";
+import userEvent from "@testing-library/user-event";
 import { Router, Route } from "react-router-dom";
 import { createMemoryHistory } from "history";
 import { IntlProvider } from "react-intl";
@@ -49,6 +51,7 @@ vi.mock("../CreatePatientForm", () => ({
     return (
       <div>
         SIM editor
+        <input aria-label="SIM draft" defaultValue="SIM draft" />
         <button
           onClick={() =>
             props.onFormStateChange({
@@ -125,11 +128,19 @@ const mount = (path = "/PatientManagement", actor = "SIM-A") => {
   };
 };
 beforeEach(() => {
+  // JSDOM has no layout; Carbon uses offsetParent to find visible tabbable nodes.
+  vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockImplementation(
+    function () {
+      return this.closest(".cds--modal.is-visible") ? this.parentElement : null;
+    },
+  );
   mocks.form.mockClear();
   mocks.list.mockClear();
   mocks.details.mockClear();
   mocks.caps = true;
 });
+afterEach(() => vi.restoreAllMocks());
+
 describe("patient list maintenance modal", () => {
   test("keeps list, route and complete row identity while showing Chinese patient title", () => {
     const { history } = mount();
@@ -158,6 +169,81 @@ describe("patient list maintenance modal", () => {
     fireEvent.click(screen.getByRole("button", { name: "关闭并放弃草稿" }));
     expect(screen.queryByText("SIM editor")).not.toBeInTheDocument();
     expect(screen.getByText("SIM list")).toBeVisible();
+  });
+  test.each(["SIM cancel", "关闭"])(
+    "the actual Carbon discard modal takes safe default focus after %s",
+    async (launcherName) => {
+      const user = userEvent.setup();
+      mount();
+      await user.click(screen.getByRole("button", { name: "SIM view" }));
+      await user.click(screen.getByRole("button", { name: "SIM dirty" }));
+      const launcher = screen.getByRole("button", { name: launcherName });
+      await user.click(launcher);
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "继续编辑" })).toHaveFocus(),
+      );
+      expect(
+        document.activeElement.closest(".patient-maintenance-confirm"),
+      ).not.toBeNull();
+      expect(
+        screen.getByRole("button", { name: "关闭并放弃草稿" }),
+      ).not.toHaveFocus();
+      await user.click(screen.getByRole("button", { name: "继续编辑" }));
+      await waitFor(() => expect(launcher).toHaveFocus());
+      expect(document.querySelector(".patient-maintenance-confirm")).toBeNull();
+      expect(screen.getByText("SIM editor")).toBeVisible();
+    },
+  );
+  test("Tab and Shift+Tab remain within the actual Carbon discard confirmation", async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole("button", { name: "SIM view" }));
+    await user.click(screen.getByRole("button", { name: "SIM dirty" }));
+    await user.click(screen.getByRole("button", { name: "SIM cancel" }));
+    const keep = screen.getByRole("button", { name: "继续编辑" });
+    const discard = screen.getByRole("button", { name: "关闭并放弃草稿" });
+    const confirmation = keep.closest(".patient-maintenance-confirm");
+    const close = confirmation.querySelector(".cds--modal-close");
+    await waitFor(() => expect(keep).toHaveFocus());
+    await user.tab();
+    expect(discard).toHaveFocus();
+    await user.tab();
+    await waitFor(() => expect(close).toHaveFocus());
+    await user.tab();
+    expect(keep).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(close).toHaveFocus();
+    await user.tab({ shift: true });
+    await waitFor(() => expect(discard).toHaveFocus());
+    expect(confirmation).toContainElement(document.activeElement);
+    expect(document.querySelector(".patient-create-modal")).toHaveClass(
+      "is-visible",
+    );
+  });
+  test("Escape dismisses only confirmation, restores its launcher and retains the draft", async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole("button", { name: "SIM view" }));
+    const draft = screen.getByRole("textbox", { name: "SIM draft" });
+    await user.clear(draft);
+    await user.type(draft, "SIM retained draft");
+    await user.click(screen.getByRole("button", { name: "SIM dirty" }));
+    const launcher = screen.getByRole("button", { name: "SIM cancel" });
+    await user.click(launcher);
+    expect(screen.getByText("关闭患者资料？")).toBeVisible();
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(document.querySelector(".patient-maintenance-confirm")).toBeNull(),
+    );
+    expect(document.querySelector(".patient-create-modal")).toHaveClass(
+      "is-visible",
+    );
+    expect(screen.getByRole("textbox", { name: "SIM draft" })).toBe(draft);
+    expect(draft).toHaveValue("SIM retained draft");
+    await waitFor(() => expect(launcher).toHaveFocus());
+    await user.click(launcher);
+    expect(screen.getByText("关闭患者资料？")).toBeVisible();
+    expect(draft).toHaveValue("SIM retained draft");
   });
   test("save locks close and successful save refreshes the same filter and page", () => {
     mount();

@@ -99,6 +99,13 @@ function PatientManagement() {
     unknown: false,
   });
   const [discardOpen, setDiscardOpen] = useState(false);
+  const discardLauncher = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (discardOpen) return;
+    const launcher = discardLauncher.current;
+    discardLauncher.current = null;
+    if (modal && launcher?.isConnected) launcher.focus();
+  }, [discardOpen, modal]);
   const [loadVersion, setLoadVersion] = useState(0);
   const [actionsContainer, setActionsContainer] =
     useState<HTMLDivElement | null>(null);
@@ -197,6 +204,11 @@ function PatientManagement() {
     }
     if (modalState.current.busy) return false;
     if (modalState.current.dirty || modalState.current.unknown) {
+      if (!discardOpen)
+        discardLauncher.current =
+          document.activeElement instanceof HTMLElement
+            ? document.activeElement
+            : null;
       setDiscardOpen(true);
       return false;
     }
@@ -343,6 +355,7 @@ function PatientManagement() {
           onClose={requestClose}
           size="lg"
           selectorPrimaryFocus=".cds--modal-close"
+          selectorsFloatingMenus={[".patient-maintenance-confirm"]}
           preventCloseOnClickOutside
           className="oe-admin-modal oe-admin-modal--large patient-create-modal"
           aria-label={intl.formatMessage({
@@ -438,6 +451,7 @@ function PatientManagement() {
           open
           size="sm"
           className="oe-admin-modal patient-maintenance-confirm"
+          selectorPrimaryFocus=".cds--btn--secondary"
           preventCloseOnClickOutside
           modalHeading={intl.formatMessage({
             id: "patient.maintenance.discard.title",
