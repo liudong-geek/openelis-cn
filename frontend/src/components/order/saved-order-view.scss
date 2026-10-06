@@ -1,0 +1,78 @@
+.saved-order-view {
+  width: 100%;
+  min-width: 0;
+  padding: 1rem 1.5rem 2rem;
+  color: var(--cds-text-primary);
+  background: var(--cds-background);
+
+  &__summary {
+    margin-top: 0.75rem;
+  }
+  &__section {
+    margin-top: 1.5rem;
+  }
+  &__section h2 {
+    margin-bottom: 0.75rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+  &__details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+    gap: 0.75rem 1.5rem;
+    margin: 0;
+    > div {
+      min-width: 0;
+    }
+    dt {
+      margin-bottom: 0.25rem;
+      font-size: 0.75rem;
+      color: var(--cds-text-secondary);
+    }
+    dd {
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+  }
+  &__record h3 {
+    margin-bottom: 0.75rem;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  &__record {
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+    background: var(--cds-layer-01);
+    border: 1px solid var(--cds-border-subtle-01);
+  }
+  &__table {
+    max-width: 100%;
+    overflow-x: auto;
+    margin-top: 0.75rem;
+  }
+  &__table td {
+    overflow-wrap: anywhere;
+  }
+  &__secondary {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--cds-text-secondary);
+  }
+  &__warnings,
+  &__requested-tests {
+    padding-left: 1.25rem;
+    margin: 0.75rem 0 0;
+  }
+  &__warnings {
+    color: var(--cds-text-secondary);
+    font-size: 0.875rem;
+  }
+  &__notice {
+    margin-top: 0.75rem;
+    color: var(--cds-text-secondary);
+  }
+  @media (max-width: 672px) {
+    padding: 1rem;
+  }
+}

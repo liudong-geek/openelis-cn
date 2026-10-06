@@ -6,7 +6,7 @@ import React, {
   useLayoutEffect,
   useRef,
 } from "react";
-import { useHistory } from "react-router-dom";
+import { Redirect, useHistory, useLocation } from "react-router-dom";
 import { useIntl, FormattedMessage } from "react-intl";
 import {
   Grid,
@@ -26,6 +26,8 @@ import {
 } from "@carbon/react";
 import { Printer } from "@carbon/icons-react";
 import OrderWorkflowLayout from "../OrderWorkflowLayout";
+import ProductPageHeader from "../../common/ProductPageHeader";
+import ListReturnButton from "../../common/ListReturnButton";
 import EntryRecoveryPanel from "../EntryRecoveryPanel";
 import { requiresEntryServerClock, useOrderContext } from "../OrderContext";
 import { getVerifiedServerClock } from "../api/serverClockApi";
@@ -91,7 +93,7 @@ const entryFingerprint = (data, samples, omitAutoReceivedTime = false) => {
  * 7. Sample & Test Selection
  */
 
-const OrderEnter = () => {
+const OrderEnterForm = () => {
   const intl = useIntl();
   const history = useHistory();
   const componentMounted = useRef(true);
@@ -938,6 +940,43 @@ const OrderEnter = () => {
       </fieldset>
     </OrderWorkflowLayout>
   );
+};
+
+const OrderEnter = () => {
+  const context = useOrderContext();
+  const location = useLocation();
+  const intl = useIntl();
+  if (context.isReadOnly === true && context.orderId) {
+    const labNumber =
+      context.labNumber || context.orderData?.sampleOrderItems?.labNo;
+    if (typeof labNumber === "string" && labNumber.trim()) {
+      return (
+        <Redirect
+          to={{
+            pathname: "/order/view",
+            search: `?labNumber=${encodeURIComponent(labNumber)}`,
+            state: location.state?.listOrigin
+              ? { listOrigin: location.state.listOrigin }
+              : undefined,
+          }}
+        />
+      );
+    }
+    return (
+      <>
+        <ProductPageHeader
+          title={<FormattedMessage id="order.saved.title" />}
+        />
+        <ListReturnButton fallback="/order" />
+        <InlineNotification
+          kind="error"
+          hideCloseButton
+          title={intl.formatMessage({ id: "order.saved.error.invalid" })}
+        />
+      </>
+    );
+  }
+  return <OrderEnterForm />;
 };
 
 export default OrderEnter;

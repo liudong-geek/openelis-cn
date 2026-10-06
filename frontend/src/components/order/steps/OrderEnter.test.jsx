@@ -733,3 +733,35 @@ describe("申请首次保存与采集入口：SIM父级交互", () => {
     vi.unstubAllGlobals();
   });
 });
+
+test("legacy saved readonly entry redirects without mounting new form hooks or save controls", async () => {
+  const raw = "HMC-00004/管 A+&";
+  mount({
+    ...draft(raw),
+    orderId: "4",
+    labNumber: raw,
+    isReadOnly: true,
+    isEditMode: true,
+  });
+  await waitFor(() => expect(history.location.pathname).toBe("/order/view"));
+  expect(new URLSearchParams(history.location.search).get("labNumber")).toBe(
+    raw,
+  );
+  expect(
+    screen.queryByRole("textbox", { name: "SIM患者" }),
+  ).not.toBeInTheDocument();
+  expect(save).not.toHaveBeenCalled();
+  expect(api.get).not.toHaveBeenCalled();
+});
+
+test("legacy readonly saved entry without an original number stays an explicit read error", async () => {
+  mount({ ...draft(), orderId: "4", isReadOnly: true });
+  expect(
+    await screen.findByText(messages["order.saved.error.invalid"]),
+  ).toBeVisible();
+  expect(history.location.pathname).toBe("/order/enter");
+  expect(
+    screen.queryByRole("textbox", { name: "SIM患者" }),
+  ).not.toBeInTheDocument();
+  expect(save).not.toHaveBeenCalled();
+});

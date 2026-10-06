@@ -301,18 +301,10 @@ const OrderDashboardContent = () => {
     }
   };
 
-  const handleViewOrder = async (order) => {
-    try {
-      await loadOrder(order.labNumber, true);
-      openFromList("/order/enter");
-    } catch (error) {
-      addNotification({
-        kind: NotificationKinds.error,
-        title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "order.load.error" }),
-      });
-      setNotificationVisible(true);
-    }
+  const handleViewOrder = (order) => {
+    openFromList(
+      `/order/view?labNumber=${encodeURIComponent(order.labNumber)}`,
+    );
   };
 
   const handleAcceptExternal = async (order) => {

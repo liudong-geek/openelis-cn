@@ -147,14 +147,15 @@ test("opens reprinting from a list row with its request number", async () => {
   expect(history.location.search).toBe("?labNumber=DEMO-12");
 });
 
-test("view loads a request read-only instead of silently enabling editing", async () => {
+test("view opens the independent read-only request without loading the mutable order context", async () => {
   const history = mount();
   const row = await screen.findByRole("row", { name: /DEMO-12/ });
   fireEvent.click(
     within(row).getByRole("button", { name: "View", exact: true }),
   );
-  await waitFor(() => expect(history.location.pathname).toBe("/order/enter"));
-  expect(mocks.load).toHaveBeenCalledWith("DEMO-12", true);
+  await waitFor(() => expect(history.location.pathname).toBe("/order/view"));
+  expect(history.location.search).toBe("?labNumber=DEMO-12");
+  expect(mocks.load).not.toHaveBeenCalled();
 });
 
 test("does not expose internal editing or printing for unaccepted external requests", async () => {
@@ -222,8 +223,9 @@ test("finishing intake no longer offers an editable Continue loop back to accept
       exact: true,
     }),
   );
-  await waitFor(() => expect(history.location.pathname).toBe("/order/enter"));
-  expect(mocks.load).toHaveBeenCalledWith("DEMO-12", true);
+  await waitFor(() => expect(history.location.pathname).toBe("/order/view"));
+  expect(history.location.search).toBe("?labNumber=DEMO-12");
+  expect(mocks.load).not.toHaveBeenCalled();
 });
 
 test("a legacy completed status cannot hide remaining preparation work", async () => {
@@ -458,8 +460,9 @@ test.each(
     fireEvent.click(
       within(row).getByRole("button", { name: "View", exact: true }),
     );
-    await waitFor(() => expect(history.location.pathname).toBe("/order/enter"));
-    expect(mocks.load).toHaveBeenCalledWith("DEMO-12", true);
+    await waitFor(() => expect(history.location.pathname).toBe("/order/view"));
+    expect(history.location.search).toBe("?labNumber=DEMO-12");
+    expect(mocks.load).not.toHaveBeenCalled();
   },
 );
 
@@ -601,4 +604,33 @@ test("session change removes existing rows and rejects old callbacks", async () 
   expect(screen.queryByRole("row", { name: /DEMO-12/ })).toBeNull();
   act(() => callbacks[0]({ orders: [order], totalCount: 201 }));
   expect(screen.queryByRole("row", { name: /DEMO-12/ })).toBeNull();
+});
+
+test("opens a saved order in its own read-only workspace without loading a mutable intake context", async () => {
+  const history = mount(
+    {
+      listState: {
+        page: 2,
+        pageSize: 25,
+        searchQuery: "DEMO-12",
+        statusFilter: "in_progress",
+      },
+    },
+    "zh",
+  );
+  const row = await screen.findByRole("row", { name: /DEMO-12/ });
+  fireEvent.click(
+    within(row).getByRole("button", {
+      name: chineseMessages["label.button.view"],
+    }),
+  );
+  await waitFor(() => expect(history.location.pathname).toBe("/order/view"));
+  expect(history.location.search).toBe("?labNumber=DEMO-12");
+  expect(history.location.state.listOrigin.state.listState).toMatchObject({
+    page: 2,
+    pageSize: 25,
+    searchQuery: "DEMO-12",
+    statusFilter: "in_progress",
+  });
+  expect(mocks.load).not.toHaveBeenCalled();
 });

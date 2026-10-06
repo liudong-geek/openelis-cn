@@ -206,6 +206,7 @@ import PageLoadingState from "./components/common/PageLoadingState";
 import {
   OrderProvider,
   OrderDashboard,
+  SavedOrderView,
   OrderEnter,
   OrderCollect,
   OrderLabel,
@@ -684,6 +685,12 @@ export default function App() {
                       <AddOrder />
                     </RouteErrorBoundary>
                   )}
+                  role={Roles.RECEPTION}
+                />
+                <SecureRoute
+                  path="/order/view"
+                  exact
+                  component={() => <SavedOrderView />}
                   role={Roles.RECEPTION}
                 />
                 {/* Decoupled Sample Collection Workflow - NAV-2 */}

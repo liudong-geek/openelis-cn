@@ -11,3 +11,4 @@ export { default as SaveNavigationButtons } from "./SaveNavigationButtons";
 export { default as OrderWorkflowLayout } from "./OrderWorkflowLayout";
 export { default as OrderDashboard } from "./OrderDashboard";
 export { OrderEnter, OrderCollect, OrderLabel, OrderQA } from "./steps";
+export { default as SavedOrderView } from "./SavedOrderView";

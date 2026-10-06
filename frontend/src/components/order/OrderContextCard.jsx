@@ -3,6 +3,7 @@ import { Tile, Tag, ProgressBar } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { useOrderContext } from "./OrderContext";
 import { localizeSampleType } from "./sampleTypeIntl";
+import { formatPatientDisplayName } from "../common/patientDisplayName";
 
 /**
  * OrderContextCard - Persistent context card displayed on all workflow steps.
@@ -36,9 +37,10 @@ const OrderContextCard = ({ className = "" }) => {
   const displayLabNumber = labNumber || orderData?.sampleOrderItems?.labNo;
 
   // Patient name
-  const patientName = orderData?.patientProperties
-    ? `${orderData.patientProperties.firstName || ""} ${orderData.patientProperties.lastName || ""}`.trim()
-    : "";
+  const patientName = formatPatientDisplayName(
+    orderData?.patientProperties,
+    intl.locale,
+  );
 
   // Sample types
   const sampleTypes = samples
