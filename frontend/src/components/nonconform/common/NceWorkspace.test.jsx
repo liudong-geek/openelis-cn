@@ -974,3 +974,269 @@ test("a current readonly list exposes the missing registration permission and ne
   ).toBe(false);
   expect(getPost()).toHaveLength(0);
 });
+
+test("actual Carbon keeps all authorized categories while editing and loading, combines unsent keyword with category, and localizes clear", async () => {
+  const delayed = deferred(),
+    original = fetcher.getMockImplementation(),
+    categoryKeys = ["general", "order", "sample", "analysis", "postAnalytical"],
+    categories = categoryKeys.map((key, i) => ({
+      id: String(i + 1),
+      name: key,
+      displayKey: `nce.category.${key}`,
+      types: i === 2 ? workspace().categories[0].types : [],
+    }));
+  let reads = 0,
+    next;
+  history = createMemoryHistory({
+    initialEntries: [
+      "/NceDashboard?status=Pending&categoryId=3&page=2&pageSize=25",
+    ],
+  });
+  fetcher.mockImplementation((url, opts) => {
+    if (!urlPath(url).endsWith("/nce/workspace")) return original(url, opts);
+    const p = new URL(url, "http://localhost").searchParams,
+      filters = Object.fromEntries(
+        ["keyword", "status", "categoryId", "severity"].map((key) => [
+          key,
+          p.get(key) || "",
+        ]),
+      );
+    if (++reads === 1)
+      return Promise.resolve(
+        jsonResponse({ ...workspace(2, 25, filters), categories }),
+      );
+    next = { p, filters };
+    return delayed.promise;
+  });
+  render(providers(<NceDashboard />));
+  await screen.findByText("NCE-2026-00026");
+  const select = screen.getByRole("combobox", {
+      name: zh["nce.filter.allCategories"],
+    }),
+    register = screen.getByRole("button", { name: "登记不符合项" });
+  expect(select).toHaveValue("3");
+  fireEvent.change(screen.getByRole("searchbox"), {
+    target: { value: "新的关键词" },
+  });
+  expect(
+    within(select)
+      .getAllByRole("option")
+      .map((o) => o.textContent),
+  ).toEqual([
+    zh["nce.filter.allCategories"],
+    ...categoryKeys.map((key) => zh[`nce.category.${key}`]),
+  ]);
+  expect(select).toHaveValue("3");
+  expect(screen.queryByText("NCE-2026-00026")).not.toBeInTheDocument();
+  expect(register).toBeEnabled();
+  fireEvent.click(
+    screen.getByRole("button", { name: zh["carbon.search.clear"] }),
+  );
+  expect(screen.getByRole("searchbox")).toHaveValue("");
+  expect(within(select).getAllByRole("option")).toHaveLength(6);
+  fireEvent.change(screen.getByRole("searchbox"), {
+    target: { value: "新的关键词" },
+  });
+  fireEvent.change(select, { target: { value: "4" } });
+  await waitFor(() => expect(reads).toBe(2));
+  expect(next.filters).toEqual({
+    keyword: "新的关键词",
+    status: "Pending",
+    categoryId: "4",
+    severity: "",
+  });
+  expect(next.p.get("page")).toBe("1");
+  expect(next.p.get("pageSize")).toBe("25");
+  expect(select).toHaveValue("4");
+  expect(within(select).getAllByRole("option")).toHaveLength(6);
+  expect(screen.getByText(zh["nce.dashboard.loading"])).toBeInTheDocument();
+  expect(screen.queryByText("NCE-2026-00026")).not.toBeInTheDocument();
+  await act(async () =>
+    delayed.resolve(
+      jsonResponse({
+        ...workspace(1, 25, next.filters),
+        categories,
+        canCreate: false,
+        createUnavailableReason: "NCE_ADD_PERMISSION_DENIED",
+      }),
+    ),
+  );
+  await screen.findByText("NCE-2026-00001");
+  expect(register).toBeDisabled();
+  expect(
+    screen.getByText(zh["nce.workspace.createDenied"]),
+  ).toBeInTheDocument();
+});
+
+test.each([500, 403])(
+  "query HTTP %s clears authorized metadata and create capability without showing old rows",
+  async (status) => {
+    const delayed = deferred(),
+      original = fetcher.getMockImplementation();
+    let reads = 0;
+    fetcher.mockImplementation((url, opts) =>
+      urlPath(url).endsWith("/nce/workspace") && ++reads > 1
+        ? delayed.promise
+        : original(url, opts),
+    );
+    render(providers(<NceDashboard />));
+    await screen.findByText("NCE-2026-00001");
+    const select = screen.getByRole("combobox", {
+      name: zh["nce.filter.allCategories"],
+    });
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "查询条件" },
+    });
+    expect(
+      within(select).getByRole("option", { name: "标本" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+    await waitFor(() => expect(reads).toBe(2));
+    if (status === 403)
+      fireEvent.change(screen.getByRole("searchbox"), {
+        target: { value: "尚未提交的新条件" },
+      });
+    await act(async () =>
+      delayed.resolve(
+        jsonResponse(
+          {
+            queryVersion: "2",
+            code: status === 403 ? "NCE_PERMISSION_DENIED" : "NCE_READ_FAILED",
+            outcome: "NOT_APPLIED",
+          },
+          status,
+        ),
+      ),
+    );
+    await screen.findByText(
+      zh[
+        status === 403
+          ? "nce.workspace.error.forbidden"
+          : "nce.workspace.error.unavailable"
+      ],
+    );
+    expect(within(select).getAllByRole("option")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "登记不符合项" })).toBeDisabled();
+    expect(screen.queryByText("NCE-2026-00001")).not.toBeInTheDocument();
+    expect(screen.queryByText(zh["nce.list.empty"])).not.toBeInTheDocument();
+  },
+);
+
+test("cached categories disappear on actor loss and an old same-owner response cannot restore them after returning", async () => {
+  const delayed = deferred(),
+    original = fetcher.getMockImplementation();
+  let reads = 0;
+  fetcher.mockImplementation((url, opts) => {
+    if (!urlPath(url).endsWith("/nce/workspace")) return original(url, opts);
+    if (++reads === 1) return original(url, opts);
+    if (reads === 2) return delayed.promise;
+    return Promise.resolve(
+      jsonResponse(
+        {
+          queryVersion: "2",
+          code: "NCE_PERMISSION_DENIED",
+          outcome: "NOT_APPLIED",
+        },
+        403,
+      ),
+    );
+  });
+  const view = render(providers(<NceDashboard />));
+  await screen.findByText("NCE-2026-00001");
+  fireEvent.change(screen.getByRole("searchbox"), {
+    target: { value: "旧条件" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+  await waitFor(() => expect(reads).toBe(2));
+  view.rerender(providers(<NceDashboard />, null));
+  expect(
+    within(
+      screen.getByRole("combobox", { name: zh["nce.filter.allCategories"] }),
+    ).getAllByRole("option"),
+  ).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "登记不符合项" })).toBeDisabled();
+  view.rerender(providers(<NceDashboard />));
+  await screen.findByText(zh["nce.workspace.error.forbidden"]);
+  await act(async () =>
+    delayed.resolve(
+      jsonResponse(
+        workspace(1, 25, {
+          keyword: "旧条件",
+          status: "",
+          categoryId: "",
+          severity: "",
+        }),
+      ),
+    ),
+  );
+  expect(
+    within(
+      screen.getByRole("combobox", { name: zh["nce.filter.allCategories"] }),
+    ).getAllByRole("option"),
+  ).toHaveLength(1);
+  expect(screen.queryByText("NCE-2026-00001")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "登记不符合项" })).toBeDisabled();
+});
+
+test("receipt permission failure clears metadata and cannot be undone by an already loading query", async () => {
+  const delayed = deferred(),
+    original = fetcher.getMockImplementation(),
+    requestId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  sessionStorage.setItem(
+    "openelis.nce.pending.v2",
+    JSON.stringify({
+      1: { actor: "1", requestId, operation: "CREATE", eventId: null },
+    }),
+  );
+  let reads = 0;
+  fetcher.mockImplementation((url, opts) => {
+    if (urlPath(url).endsWith("/receipt"))
+      return Promise.resolve(
+        jsonResponse(
+          {
+            queryVersion: "2",
+            code: "NCE_PERMISSION_DENIED",
+            outcome: "NOT_APPLIED",
+          },
+          403,
+        ),
+      );
+    if (urlPath(url).endsWith("/nce/workspace") && ++reads > 1)
+      return delayed.promise;
+    return original(url, opts);
+  });
+  render(providers(<NceDashboard />));
+  await screen.findByText("NCE-2026-00001");
+  fireEvent.change(screen.getByRole("searchbox"), {
+    target: { value: "待核对" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+  await waitFor(() => expect(reads).toBe(2));
+  fireEvent.click(
+    screen.getByRole("button", { name: zh["nce.workspace.checkReceipt"] }),
+  );
+  await screen.findByText(zh["nce.workspace.error.forbidden"]);
+  await act(async () =>
+    delayed.resolve(
+      jsonResponse(
+        workspace(1, 25, {
+          keyword: "待核对",
+          status: "",
+          categoryId: "",
+          severity: "",
+        }),
+      ),
+    ),
+  );
+  expect(
+    within(
+      screen.getByRole("combobox", { name: zh["nce.filter.allCategories"] }),
+    ).getAllByRole("option"),
+  ).toHaveLength(1);
+  expect(screen.queryByText("NCE-2026-00001")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "登记不符合项" })).toBeDisabled();
+  expect(
+    JSON.parse(sessionStorage.getItem("openelis.nce.pending.v2"))["1"],
+  ).toMatchObject({ requestId, operation: "CREATE" });
+  expect(getPost()).toHaveLength(0);
+});

@@ -66,6 +66,7 @@ export const NceDashboard = ({ registrationOpen = false }) => {
     [draftQuery, setDraftQuery] = useState(initial.current.query),
     [refresh, setRefresh] = useState(0),
     [state, setState] = useState({ phase: "loading", owner: null, epoch: -1 }),
+    [metadata, setMetadata] = useState(null),
     [expanded, setExpanded] = useState({}),
     [registration, setRegistration] = useState(registrationOpen),
     [action, setAction] = useState(null),
@@ -87,6 +88,15 @@ export const NceDashboard = ({ registrationOpen = false }) => {
     state.epoch === scope.epoch &&
     state.criteria === criteria;
   const value = active ? state.value : null;
+  // Query editing hides old rows, but the same verified actor can still choose
+  // from the last authorized filter options while the next query is loading.
+  const metadataValue =
+    scope.owner &&
+    metadata?.owner === scope.owner &&
+    metadata.epoch === scope.epoch &&
+    state.phase !== "error"
+      ? metadata.value
+      : null;
   const cleanupUrls = () => {
     for (const [url, timer] of urls.current) {
       clearTimeout(timer);
@@ -103,6 +113,7 @@ export const NceDashboard = ({ registrationOpen = false }) => {
       lastScope.current.epoch !== scope.epoch
     ) {
       setFeedback(null);
+      setMetadata(null);
       lastScope.current = { owner: scope.owner, epoch: scope.epoch };
     }
     setPending(scope.owner ? pendingNceOperation(scope.owner) : null);
@@ -144,6 +155,16 @@ export const NceDashboard = ({ registrationOpen = false }) => {
           !scope.isCurrent(atOwner, atEpoch)
         )
           return;
+        setMetadata({
+          owner: atOwner,
+          epoch: atEpoch,
+          value: {
+            categories: v.categories,
+            canCreate: v.canCreate,
+            createUnavailableReason: v.createUnavailableReason,
+            effectiveScope: v.effectiveScope,
+          },
+        });
         setState({
           phase: "success",
           owner: atOwner,
@@ -153,11 +174,20 @@ export const NceDashboard = ({ registrationOpen = false }) => {
         });
       })
       .catch((error) => {
+        const authorityFailure = [
+          "scope",
+          "unauthenticated",
+          "forbidden",
+        ].includes(error.kind);
         if (
           alive &&
-          seq === queryEpoch.current &&
-          scope.isCurrent(atOwner, atEpoch)
-        )
+          scope.isCurrent(atOwner, atEpoch) &&
+          (seq === queryEpoch.current || authorityFailure)
+        ) {
+          // An authorization failure remains relevant if keyword editing has
+          // made this query idle; it must not leave old capabilities visible.
+          if (authorityFailure) queryEpoch.current += 1;
+          setMetadata(null);
           setState({
             phase: "error",
             owner: atOwner,
@@ -165,6 +195,7 @@ export const NceDashboard = ({ registrationOpen = false }) => {
             criteria,
             errorKind: error.kind,
           });
+        }
       });
     return () => {
       alive = false;
@@ -174,7 +205,7 @@ export const NceDashboard = ({ registrationOpen = false }) => {
   useEffect(() => () => cleanupUrls(), []);
   const changeFilter = (key, v) => {
     setDraftQuery((q) => ({ ...q, [key]: v }));
-    setCriteria((c) => ({ ...c, query: { ...c.query, [key]: v }, page: 1 }));
+    setCriteria((c) => ({ ...c, query: { ...draftQuery, [key]: v }, page: 1 }));
     setFeedback(null);
   };
   const search = () => {
@@ -188,6 +219,7 @@ export const NceDashboard = ({ registrationOpen = false }) => {
   };
   const scopeUnavailable = (errorKind) => {
     queryEpoch.current += 1;
+    setMetadata(null);
     cleanupUrls();
     setExpanded({});
     setPending(pendingNceOperation(scope.owner));
@@ -200,6 +232,7 @@ export const NceDashboard = ({ registrationOpen = false }) => {
     });
   };
   const saved = (receipt, errorKind) => {
+    if (errorKind) setMetadata(null);
     closeRegistration();
     setAction(null);
     setPending(null);
@@ -244,7 +277,9 @@ export const NceDashboard = ({ registrationOpen = false }) => {
     } catch (error) {
       if (scope.isCurrent(atOwner, atEpoch)) {
         setFeedback({ kind: "warning", id: "nce.workspace.unknown" });
-        if (["scope", "unauthenticated", "forbidden"].includes(error.kind))
+        if (["scope", "unauthenticated", "forbidden"].includes(error.kind)) {
+          queryEpoch.current += 1;
+          setMetadata(null);
           setState({
             phase: "error",
             owner: atOwner,
@@ -252,6 +287,7 @@ export const NceDashboard = ({ registrationOpen = false }) => {
             criteria,
             errorKind: error.kind,
           });
+        }
       }
     } finally {
       if (scope.isCurrent(atOwner, atEpoch)) {
@@ -322,7 +358,9 @@ export const NceDashboard = ({ registrationOpen = false }) => {
             ? "nce.attachment.viewError"
             : "nce.attachment.downloadError",
         });
-        if (["scope", "unauthenticated", "forbidden"].includes(error.kind))
+        if (["scope", "unauthenticated", "forbidden"].includes(error.kind)) {
+          queryEpoch.current += 1;
+          setMetadata(null);
           setState({
             phase: "error",
             owner: atOwner,
@@ -330,6 +368,7 @@ export const NceDashboard = ({ registrationOpen = false }) => {
             criteria,
             errorKind: error.kind,
           });
+        }
       }
     } finally {
       if (
@@ -341,7 +380,7 @@ export const NceDashboard = ({ registrationOpen = false }) => {
       }
     }
   };
-  const categories = value?.categories || [];
+  const categories = metadataValue?.categories || [];
   return (
     <div className="nce-dashboard">
       <div className="nce-dashboard-header">
@@ -351,13 +390,13 @@ export const NceDashboard = ({ registrationOpen = false }) => {
         </div>
         <Button
           renderIcon={Add}
-          disabled={!active || !value.canCreate || !!pending}
+          disabled={!metadataValue?.canCreate || !!pending}
           onClick={() => setRegistration(true)}
         >
           {t("nce.button.reportNce")}
         </Button>
       </div>
-      {active && !value.canCreate && (
+      {metadataValue && !metadataValue.canCreate && (
         <p className="nce-helper-text">{t("nce.workspace.createDenied")}</p>
       )}
       <div className="nce-filter-bar">
@@ -365,6 +404,7 @@ export const NceDashboard = ({ registrationOpen = false }) => {
           id="nce-workspace-keyword"
           labelText={t("nce.search.placeholder")}
           placeholder={t("nce.search.placeholder")}
+          closeButtonLabelText={t("carbon.search.clear")}
           value={draftQuery.keyword}
           onChange={(e) => {
             queryEpoch.current += 1;
