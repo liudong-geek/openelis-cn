@@ -1,6 +1,5 @@
 import PageBreadCrumb from "../common/PageBreadCrumb";
 import { NCECorrectiveAction } from "./common/NCECorrectiveAction";
-import { ReportNonConformingEvent } from "./common/ReportNonConformingEvent";
 import { ViewNonConformingEvent } from "./common/ViewNonConforming";
 import { NceDashboard } from "./common/NceDashboard";
 
@@ -29,17 +28,20 @@ const NCE_PAGE_CRUMBS = {
 const NonConformIndex = ({ form }) => {
   const breadcrumbs = [{ label: "home.label", link: "/" }];
   if (NCE_PAGE_CRUMBS[form]) {
-    breadcrumbs.push(NCE_PAGE_CRUMBS[form]);
+    breadcrumbs.push(
+      NCE_PAGE_CRUMBS[
+        form === "ReportNonConformingEvent" ? "NceDashboard" : form
+      ],
+    );
   }
 
   return (
     <div className="nce-workspace">
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
-      {form == "NceDashboard" ? (
-        <NceDashboard />
+      {form == "NceDashboard" || form == "ReportNonConformingEvent" ? (
+        <NceDashboard registrationOpen={form == "ReportNonConformingEvent"} />
       ) : (
         <div className="orderLegendBody nce-workspace__legacy-form">
-          {form == "ReportNonConformingEvent" && <ReportNonConformingEvent />}
           {form == "ViewNonConformingEvent" && <ViewNonConformingEvent />}
           {form == "NCECorrectiveAction" && <NCECorrectiveAction />}
         </div>

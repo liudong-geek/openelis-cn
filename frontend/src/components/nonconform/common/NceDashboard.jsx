@@ -1,1189 +1,767 @@
-import React, { useState, useEffect, useContext, useCallback } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Button,
+  InlineNotification,
+  Pagination,
   Search,
   Select,
   SelectItem,
-  Tag,
-  Tile,
-  Pagination,
-  Tabs,
-  TabList,
   Tab,
-  TabPanels,
+  TabList,
   TabPanel,
-  TextArea,
-  Loading,
-  ComboBox,
+  TabPanels,
+  Tabs,
+  Tag,
 } from "@carbon/react";
 import {
   Add,
-  Warning,
-  CheckmarkFilled,
-  InProgress,
-  UserFollow,
-  DocumentAdd,
-  Time,
-  Chemistry,
-  DataBase,
+  ChevronDown,
+  ChevronUp,
   Download,
-  Document,
   View,
 } from "@carbon/react/icons";
-import { FormattedMessage, useIntl } from "react-intl";
-import { getFromOpenElisServer, postToOpenElisServer } from "../../utils/Utils";
-import config from "../../../config.json";
-import { NotificationContext } from "../../layout/Layout";
-import { useHistory } from "react-router-dom";
+import { useIntl } from "react-intl";
+import { useHistory, useLocation } from "react-router-dom";
+import {
+  nceOptionLabel,
+  nceStatusLabel,
+  NCE_STATUS_KEYS,
+  nceHistoryActivity,
+  nceHistoryDescription,
+} from "./ncePresentation";
+import {
+  clearNceOperation,
+  NCE_PAGE_SIZES,
+  pendingNceOperation,
+  readNceAttachment,
+  readNceReceipt,
+  readNceWorkspace,
+} from "./nceWorkspaceRequest";
+import { useNceScope } from "./useNceScope";
+import NceRegistrationModal from "./NceRegistrationModal";
+import NceEventActionModal from "./NceEventActionModal";
 import "./NceDashboard.css";
 
-const STATUS_CONFIG = {
-  Pending: { type: "green", icon: InProgress, labelKey: "nce.status.open" },
-  "Under Investigation": {
-    type: "blue",
-    icon: InProgress,
-    labelKey: "nce.status.underInvestigation",
-  },
-  "Corrective Action": {
-    type: "purple",
-    icon: CheckmarkFilled,
-    labelKey: "nce.status.correctiveAction",
-  },
-  Closed: {
-    type: "gray",
-    icon: CheckmarkFilled,
-    labelKey: "nce.status.closed",
-  },
+const emptyQuery = { keyword: "", status: "", categoryId: "", severity: "" };
+const restore = (search) => {
+  const p = new URLSearchParams(search),
+    page = Number(p.get("page")),
+    size = Number(p.get("pageSize"));
+  return {
+    query: Object.fromEntries(
+      Object.keys(emptyQuery).map((k) => [k, p.get(k) || ""]),
+    ),
+    page: Number.isSafeInteger(page) && page >= 1 ? page : 1,
+    pageSize: NCE_PAGE_SIZES.includes(size) ? size : 25,
+  };
 };
-
-export const NceDashboard = () => {
-  const intl = useIntl();
-  const history = useHistory();
-  const { addNotification } = useContext(NotificationContext);
-
-  // State
-  const [loading, setLoading] = useState(true);
-  const [nceList, setNceList] = useState([]);
-  const [filteredList, setFilteredList] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [expandedRows, setExpandedRows] = useState({});
-
-  // Filters
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [severityFilter, setSeverityFilter] = useState("");
-
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
-
-  // Summary counts
-  const [summaryCounts, setSummaryCounts] = useState({
-    critical: 0,
-    major: 0,
-    minor: 0,
-    overdue: 0,
-  });
-
-  // Inline form state (keyed by nce id)
-  const [noteFormOpen, setNoteFormOpen] = useState(null);
-  const [assignFormOpen, setAssignFormOpen] = useState(null);
-  const [noteText, setNoteText] = useState("");
-  const [assignee, setAssignee] = useState(null);
-  const [users, setUsers] = useState([]);
-
-  // Load NCE data
-  const loadNceData = useCallback(() => {
-    setLoading(true);
-    getFromOpenElisServer("/rest/nce/dashboard", (data) => {
-      if (data && data.nceList) {
-        setNceList(data.nceList);
-        setFilteredList(data.nceList);
-        calculateSummaryCounts(data.nceList);
-      }
-      setLoading(false);
-    });
-  }, []);
-
-  // Load categories
-  const loadCategories = useCallback(() => {
-    getFromOpenElisServer("/rest/nce/categories", (data) => {
-      if (data) {
-        setCategories(data);
-      }
-    });
-  }, []);
-
-  // Load users for assignment
-  const loadUsers = useCallback(() => {
-    getFromOpenElisServer("/rest/nce/users", (data) => {
-      if (data && Array.isArray(data)) {
-        setUsers(data);
-      }
-    });
-  }, []);
-
+export const NceDashboard = ({ registrationOpen = false }) => {
+  const intl = useIntl(),
+    history = useHistory(),
+    location = useLocation(),
+    scope = useNceScope(),
+    t = (id) => intl.formatMessage({ id });
+  const initial = useRef(restore(location.search));
+  const [criteria, setCriteria] = useState(initial.current),
+    [draftQuery, setDraftQuery] = useState(initial.current.query),
+    [refresh, setRefresh] = useState(0),
+    [state, setState] = useState({ phase: "loading", owner: null, epoch: -1 }),
+    [expanded, setExpanded] = useState({}),
+    [registration, setRegistration] = useState(registrationOpen),
+    [action, setAction] = useState(null),
+    [feedback, setFeedback] = useState(null),
+    [pending, setPending] = useState(null),
+    [receiptBusy, setReceiptBusy] = useState(false),
+    [attachmentBusy, setAttachmentBusy] = useState(null);
+  const receiptLock = useRef(false),
+    downloadLock = useRef(false),
+    urls = useRef(new Map()),
+    queryEpoch = useRef(0),
+    criteriaRef = useRef(criteria),
+    lastScope = useRef({ owner: scope.owner, epoch: scope.epoch });
+  criteriaRef.current = criteria;
+  const active =
+    scope.owner &&
+    state.phase === "success" &&
+    state.owner === scope.owner &&
+    state.epoch === scope.epoch &&
+    state.criteria === criteria;
+  const value = active ? state.value : null;
+  const cleanupUrls = () => {
+    for (const [url, timer] of urls.current) {
+      clearTimeout(timer);
+      URL.revokeObjectURL(url);
+    }
+    urls.current.clear();
+  };
   useEffect(() => {
-    loadNceData();
-    loadCategories();
-    loadUsers();
-  }, [loadNceData, loadCategories, loadUsers]);
-
-  // Normalize timestamp strings to ISO format for reliable cross-browser parsing
-  const parseTimestamp = (ts) => {
-    if (!ts) return null;
-    // Java Timestamp.toString() produces "YYYY-MM-DD HH:MM:SS.S" — replace space with T for ISO
-    const normalized = ts.includes("T") ? ts : ts.replace(" ", "T");
-    const d = new Date(normalized);
-    return isNaN(d.getTime()) ? null : d;
-  };
-
-  // Calculate summary counts
-  const calculateSummaryCounts = (list) => {
-    const counts = {
-      critical: 0,
-      major: 0,
-      minor: 0,
-      overdue: 0,
-    };
-
-    const now = new Date();
-    list.forEach((nce) => {
-      if (nce.severity === "CRITICAL") counts.critical++;
-      else if (nce.severity === "MAJOR") counts.major++;
-      else if (nce.severity === "MINOR" || nce.severity === "LOW")
-        counts.minor++;
-
-      // Check if overdue (more than 7 days old and not closed)
-      if (nce.status !== "Closed" && nce.dateOfEvent) {
-        const eventDate = new Date(nce.dateOfEvent);
-        const daysDiff = Math.floor((now - eventDate) / (1000 * 60 * 60 * 24));
-        if (daysDiff > 7) counts.overdue++;
-      }
+    cleanupUrls();
+    setExpanded({});
+    setAction(null);
+    if (
+      lastScope.current.owner !== scope.owner ||
+      lastScope.current.epoch !== scope.epoch
+    ) {
+      setFeedback(null);
+      lastScope.current = { owner: scope.owner, epoch: scope.epoch };
+    }
+    setPending(scope.owner ? pendingNceOperation(scope.owner) : null);
+    setAttachmentBusy(null);
+    downloadLock.current = false;
+    setReceiptBusy(false);
+    receiptLock.current = false;
+    const atOwner = scope.owner,
+      atEpoch = scope.epoch,
+      seq = ++queryEpoch.current;
+    setState({
+      phase: atOwner ? "loading" : "error",
+      owner: atOwner,
+      epoch: atEpoch,
+      criteria,
     });
-
-    setSummaryCounts(counts);
-  };
-
-  // Apply filters
-  useEffect(() => {
-    let filtered = [...nceList];
-
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(
-        (nce) =>
-          nce.nceNumber?.toLowerCase().includes(term) ||
-          nce.title?.toLowerCase().includes(term) ||
-          nce.description?.toLowerCase().includes(term) ||
-          nce.labOrderNumber?.toLowerCase().includes(term),
-      );
-    }
-
-    if (statusFilter) {
-      filtered = filtered.filter((nce) => nce.status === statusFilter);
-    }
-
-    if (categoryFilter) {
-      filtered = filtered.filter(
-        (nce) => nce.nceCategoryId === parseInt(categoryFilter),
-      );
-    }
-
-    if (severityFilter) {
-      filtered = filtered.filter((nce) => nce.severity === severityFilter);
-    }
-
-    setFilteredList(filtered);
-    setCurrentPage(1);
-  }, [searchTerm, statusFilter, categoryFilter, severityFilter, nceList]);
-
-  // Clear all filters
-  const clearFilters = () => {
-    setSearchTerm("");
-    setStatusFilter("");
-    setCategoryFilter("");
-    setSeverityFilter("");
-  };
-
-  // Toggle row expansion
-  const toggleRowExpansion = (nceId) => {
-    setExpandedRows((prev) => ({
-      ...prev,
-      [nceId]: !prev[nceId],
-    }));
-  };
-
-  // Get days since event
-  const getDaysSince = (dateString) => {
-    if (!dateString) return null;
-    const eventDate = new Date(dateString);
-    const now = new Date();
-    return Math.floor((now - eventDate) / (1000 * 60 * 60 * 24));
-  };
-
-  // Check if NCE is overdue
-  const isOverdue = (nce) => {
-    if (nce.status === "Closed") return false;
-    const days = getDaysSince(nce.dateOfEvent);
-    return days !== null && days > 7;
-  };
-
-  // Get paginated data
-  const getPaginatedData = () => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return filteredList.slice(startIndex, startIndex + pageSize);
-  };
-
-  // Handle acknowledge
-  const handleAcknowledge = (nce) => {
-    // Log acknowledgment via history
-    const payload = {
-      nceId: Number(nce.id),
-      activity: "ACKNOWLEDGED",
-      description: "已确认不符合项",
-    };
-    postToOpenElisServer(
-      "/rest/nce/history",
-      JSON.stringify(payload),
-      (status) => {
-        if (status >= 200 && status < 300) {
-          addNotification({
-            kind: "success",
-            title: intl.formatMessage({
-              id: "notification.success",
-            }),
-            message: intl.formatMessage({
-              id: "nce.acknowledge.success",
-            }),
-          });
-          loadNceData();
-        } else {
-          addNotification({
-            kind: "error",
-            title: intl.formatMessage({
-              id: "notification.error",
-            }),
-            message: intl.formatMessage({
-              id: "nce.acknowledge.error",
-            }),
-          });
-        }
-      },
-    );
-  };
-
-  // Toggle inline assign form
-  const handleAssign = (nce) => {
-    if (assignFormOpen === nce.id) {
-      setAssignFormOpen(null);
-    } else {
-      setAssignFormOpen(nce.id);
-      setNoteFormOpen(null);
-      setAssignee(null);
-      loadUsers();
-    }
-  };
-
-  // Submit assignment
-  const submitAssign = (nceId) => {
-    if (!assignee || !assignee.id) {
-      addNotification({
-        kind: "warning",
-        title: intl.formatMessage({
-          id: "notification.warning",
-        }),
-        message: intl.formatMessage({
-          id: "nce.assign.selectUser",
-        }),
-      });
-      return;
-    }
-
-    const payload = {
-      nceId: Number(nceId),
-      assignedTo: assignee.id,
-    };
-    postToOpenElisServer(
-      "/rest/nce/assign",
-      JSON.stringify(payload),
-      (status) => {
-        if (status >= 200 && status < 300) {
-          addNotification({
-            kind: "success",
-            title: intl.formatMessage({
-              id: "notification.success",
-            }),
-            message: intl.formatMessage({
-              id: "nce.assign.success",
-            }),
-          });
-          setAssignFormOpen(null);
-          setAssignee(null);
-          loadNceData();
-        } else {
-          addNotification({
-            kind: "error",
-            title: intl.formatMessage({
-              id: "notification.error",
-            }),
-            message: intl.formatMessage({
-              id: "nce.assign.error",
-            }),
-          });
-        }
-      },
-    );
-  };
-
-  // Toggle inline note form
-  const handleAddNote = (nce) => {
-    if (noteFormOpen === nce.id) {
-      setNoteFormOpen(null);
-    } else {
-      setNoteFormOpen(nce.id);
-      setAssignFormOpen(null);
-      setNoteText("");
-    }
-  };
-
-  // Submit note
-  const submitNote = (nceId) => {
-    if (!noteText.trim()) {
-      addNotification({
-        kind: "warning",
-        title: intl.formatMessage({
-          id: "notification.warning",
-        }),
-        message: intl.formatMessage({
-          id: "nce.note.empty",
-        }),
-      });
-      return;
-    }
-
-    const payload = {
-      nceId: Number(nceId),
-      activity: "NOTE_ADDED",
-      description: noteText,
-    };
-    postToOpenElisServer(
-      "/rest/nce/history",
-      JSON.stringify(payload),
-      (status) => {
-        if (status >= 200 && status < 300) {
-          addNotification({
-            kind: "success",
-            title: intl.formatMessage({
-              id: "notification.success",
-            }),
-            message: intl.formatMessage({
-              id: "nce.note.success",
-            }),
-          });
-          setNoteFormOpen(null);
-          setNoteText("");
-          loadNceData();
-        } else {
-          addNotification({
-            kind: "error",
-            title: intl.formatMessage({
-              id: "notification.error",
-            }),
-            message: intl.formatMessage({
-              id: "nce.note.error",
-            }),
-          });
-        }
-      },
-    );
-  };
-
-  // Navigate to report NCE
-  const handleReportNce = () => {
-    history.push("/ReportNonConformingEvent");
-  };
-
-  // Navigate to NCE details
-  const handleViewDetails = (nce) => {
-    history.push(`/ViewNonConformingEvent?nceNumber=${nce.nceNumber}`);
-  };
-
-  // Handle attachment download with authentication
-  const handleDownloadAttachment = async (attachmentId, fileName) => {
-    try {
-      const url = `${config.serverBaseUrl}/rest/nce/attachments/${attachmentId}/download`;
-      const response = await fetch(url, {
-        method: "GET",
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        throw new Error("Download failed");
-      }
-
-      const blob = await response.blob();
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = downloadUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(downloadUrl);
-    } catch (error) {
-      console.error("Error downloading attachment:", error);
-      addNotification({
-        kind: "error",
-        title: intl.formatMessage({
-          id: "notification.error",
-        }),
-        message: intl.formatMessage({
-          id: "nce.attachment.downloadError",
-        }),
-      });
-    }
-  };
-
-  // Handle attachment view (for images and PDFs) with authentication
-  const handleViewAttachment = async (attachmentId, fileType) => {
-    try {
-      const url = `${config.serverBaseUrl}/rest/nce/attachments/${attachmentId}/download`;
-      const response = await fetch(url, {
-        method: "GET",
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        throw new Error("View failed");
-      }
-
-      const blob = await response.blob();
-      const viewUrl = window.URL.createObjectURL(blob);
-      const newWindow = window.open(viewUrl, "_blank");
-      // Revoke object URL after the new window loads to free memory
-      if (newWindow) {
-        newWindow.addEventListener("load", () => {
-          window.URL.revokeObjectURL(viewUrl);
+    if (!atOwner) return;
+    let alive = true;
+    const params = new URLSearchParams({
+      ...criteria.query,
+      page: String(criteria.page),
+      pageSize: String(criteria.pageSize),
+    });
+    history.replace({ pathname: location.pathname, search: `?${params}` });
+    scope
+      .run((signal, owner) =>
+        readNceWorkspace(
+          criteria.query,
+          criteria.page,
+          criteria.pageSize,
+          signal,
+          owner,
+        ),
+      )
+      .then((v) => {
+        if (
+          !alive ||
+          seq !== queryEpoch.current ||
+          !scope.isCurrent(atOwner, atEpoch)
+        )
+          return;
+        setState({
+          phase: "success",
+          owner: atOwner,
+          epoch: atEpoch,
+          criteria,
+          value: v,
         });
-      } else {
-        // Fallback: revoke after a timeout if popup was blocked
-        setTimeout(() => window.URL.revokeObjectURL(viewUrl), 60000);
-      }
-    } catch (error) {
-      console.error("Error viewing attachment:", error);
-      addNotification({
-        kind: "error",
-        title: intl.formatMessage({
-          id: "notification.error",
-        }),
-        message: intl.formatMessage({
-          id: "nce.attachment.viewError",
-        }),
+      })
+      .catch((error) => {
+        if (
+          alive &&
+          seq === queryEpoch.current &&
+          scope.isCurrent(atOwner, atEpoch)
+        )
+          setState({
+            phase: "error",
+            owner: atOwner,
+            epoch: atEpoch,
+            criteria,
+            errorKind: error.kind,
+          });
       });
-    }
+    return () => {
+      alive = false;
+      cleanupUrls();
+    };
+  }, [criteria, refresh, scope.owner, scope.epoch]);
+  useEffect(() => () => cleanupUrls(), []);
+  const changeFilter = (key, v) => {
+    setDraftQuery((q) => ({ ...q, [key]: v }));
+    setCriteria((c) => ({ ...c, query: { ...c.query, [key]: v }, page: 1 }));
+    setFeedback(null);
   };
-
-  // Check if file type is viewable in browser
-  const isViewableFileType = (fileType) => {
-    if (!fileType) return false;
-    return (
-      fileType.startsWith("image/") ||
-      fileType === "application/pdf" ||
-      fileType.startsWith("text/")
+  const search = () => {
+    setCriteria((c) => ({ ...c, query: { ...draftQuery }, page: 1 }));
+    setFeedback(null);
+  };
+  const closeRegistration = () => {
+    setRegistration(false);
+    if (registrationOpen)
+      history.replace({ pathname: "/NceDashboard", search: location.search });
+  };
+  const scopeUnavailable = (errorKind) => {
+    queryEpoch.current += 1;
+    cleanupUrls();
+    setExpanded({});
+    setPending(pendingNceOperation(scope.owner));
+    setState({
+      phase: "error",
+      owner: scope.owner,
+      epoch: scope.epoch,
+      criteria,
+      errorKind,
+    });
+  };
+  const saved = (receipt, errorKind) => {
+    closeRegistration();
+    setAction(null);
+    setPending(null);
+    setFeedback(
+      receipt
+        ? {
+            kind: "success",
+            id: "nce.workspace.applied",
+            number: receipt.nceNumber,
+          }
+        : {
+            kind: "warning",
+            id: ["forbidden", "scope", "unauthenticated"].includes(errorKind)
+              ? "nce.workspace.error.forbidden"
+              : "nce.workspace.eventChanged",
+          },
     );
+    setRefresh((n) => n + 1);
   };
-
-  // Format file size for display
-  const formatFileSize = (bytes) => {
-    if (!bytes) return "";
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  // Get category name
-  const getCategoryName = (categoryId) => {
-    for (const cat of categories) {
-      if (cat.id === String(categoryId)) return cat.name;
-    }
-    return "";
-  };
-
-  // Get type name
-  const getTypeName = (categoryId, typeId) => {
-    for (const cat of categories) {
-      if (cat.id === String(categoryId) && cat.types) {
-        const type = cat.types.find((t) => t.id === String(typeId));
-        if (type) return type.name;
+  const checkReceipt = async () => {
+    if (!scope.owner || !pending || receiptLock.current) return;
+    const atOwner = scope.owner,
+      atEpoch = scope.epoch;
+    receiptLock.current = true;
+    setReceiptBusy(true);
+    try {
+      const receipt = await scope.run((signal, owner) =>
+        readNceReceipt(
+          pending.requestId,
+          pending.operation,
+          pending.eventId,
+          signal,
+          owner,
+        ),
+      );
+      if (!scope.isCurrent(atOwner, atEpoch)) return;
+      if (receipt.outcome === "APPLIED") {
+        clearNceOperation(atOwner, receipt.requestId);
+        saved(receipt);
+      } else
+        setFeedback({ kind: "warning", id: "nce.workspace.notFoundReceipt" });
+    } catch (error) {
+      if (scope.isCurrent(atOwner, atEpoch)) {
+        setFeedback({ kind: "warning", id: "nce.workspace.unknown" });
+        if (["scope", "unauthenticated", "forbidden"].includes(error.kind))
+          setState({
+            phase: "error",
+            owner: atOwner,
+            epoch: atEpoch,
+            criteria,
+            errorKind: error.kind,
+          });
+      }
+    } finally {
+      if (scope.isCurrent(atOwner, atEpoch)) {
+        receiptLock.current = false;
+        setReceiptBusy(false);
       }
     }
-    return "";
   };
-
-  if (loading) {
-    return (
-      <div className="nce-dashboard-loading">
-        <Loading
-          description={intl.formatMessage({ id: "nce.dashboard.loading" })}
-          withOverlay={false}
-        />
-      </div>
-    );
-  }
-
+  const download = async (row, attachment, preview = false) => {
+    if (!active || downloadLock.current) return;
+    const atOwner = scope.owner,
+      atEpoch = scope.epoch,
+      atCriteria = criteria;
+    downloadLock.current = true;
+    setAttachmentBusy(attachment.id);
+    try {
+      const blob = await scope.run((signal, owner) =>
+        readNceAttachment(attachment, row.id, signal, owner),
+      );
+      if (
+        !scope.isCurrent(atOwner, atEpoch) ||
+        atCriteria !== criteriaRef.current
+      )
+        return;
+      if (
+        preview &&
+        ![
+          "application/pdf",
+          "image/png",
+          "image/jpeg",
+          "image/gif",
+          "text/plain",
+        ].includes(blob.type)
+      )
+        throw new Error("previewUnavailable");
+      const url = URL.createObjectURL(blob);
+      if (preview) {
+        const opened = window.open(url, "_blank");
+        if (!opened) {
+          URL.revokeObjectURL(url);
+          throw new Error("previewBlocked");
+        }
+        opened.opener = null;
+      } else {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = (attachment.fileName || "attachment").replace(
+          /[\u0000-\u001f\u007f/\\]/g,
+          "_",
+        );
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+      const timer = setTimeout(() => {
+        URL.revokeObjectURL(url);
+        urls.current.delete(url);
+      }, 60000);
+      urls.current.set(url, timer);
+    } catch (error) {
+      if (
+        scope.isCurrent(atOwner, atEpoch) &&
+        atCriteria === criteriaRef.current
+      ) {
+        setFeedback({
+          kind: "error",
+          id: preview
+            ? "nce.attachment.viewError"
+            : "nce.attachment.downloadError",
+        });
+        if (["scope", "unauthenticated", "forbidden"].includes(error.kind))
+          setState({
+            phase: "error",
+            owner: atOwner,
+            epoch: atEpoch,
+            criteria,
+            errorKind: error.kind,
+          });
+      }
+    } finally {
+      if (
+        scope.isCurrent(atOwner, atEpoch) &&
+        atCriteria === criteriaRef.current
+      ) {
+        downloadLock.current = false;
+        setAttachmentBusy(null);
+      }
+    }
+  };
+  const categories = value?.categories || [];
   return (
     <div className="nce-dashboard">
-      {/* Header */}
       <div className="nce-dashboard-header">
-        <div className="nce-dashboard-title">
-          <span className="nce-breadcrumb">
-            {intl.formatMessage({ id: "nce.breadcrumb" })}
-          </span>
-          <h1>
-            <Warning size={24} />
-            <FormattedMessage id="nce.dashboard.title" />
-          </h1>
-          <p className="nce-dashboard-subtitle">
-            <FormattedMessage id="nce.dashboard.subtitle" />
-          </p>
+        <div>
+          <h1>{t("nce.dashboard.title")}</h1>
+          <p>{t("nce.dashboard.subtitle")}</p>
         </div>
-        <Button renderIcon={Add} onClick={handleReportNce}>
-          <FormattedMessage id="nce.button.reportNce" />
+        <Button
+          renderIcon={Add}
+          disabled={!active || !value.canCreate || !!pending}
+          onClick={() => setRegistration(true)}
+        >
+          {t("nce.button.reportNce")}
         </Button>
       </div>
-
-      {/* Filters */}
-      <div className="nce-dashboard-filters">
+      {active && !value.canCreate && (
+        <p className="nce-helper-text">{t("nce.workspace.createDenied")}</p>
+      )}
+      <div className="nce-filter-bar">
         <Search
-          labelText=""
-          placeholder={intl.formatMessage({
-            id: "nce.search.placeholder",
-          })}
-          closeButtonLabelText={intl.formatMessage({
-            id: "carbon.search.clear",
-          })}
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="nce-search"
+          id="nce-workspace-keyword"
+          labelText={t("nce.search.placeholder")}
+          placeholder={t("nce.search.placeholder")}
+          value={draftQuery.keyword}
+          onChange={(e) => {
+            queryEpoch.current += 1;
+            setDraftQuery((q) => ({ ...q, keyword: e.target.value }));
+            setState({ phase: "idle", owner: scope.owner, epoch: scope.epoch });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") search();
+          }}
         />
+        <Button kind="tertiary" onClick={search}>
+          {t("label.button.search")}
+        </Button>
         <Select
-          id="status-filter"
-          labelText=""
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="nce-filter-select"
+          id="nce-filter-status"
+          labelText={t("nce.filter.allStatus")}
+          value={draftQuery.status}
+          onChange={(e) => changeFilter("status", e.target.value)}
         >
-          <SelectItem
-            value=""
-            text={intl.formatMessage({
-              id: "nce.filter.allStatus",
-            })}
-          />
-          <SelectItem
-            value="Pending"
-            text={intl.formatMessage({ id: "nce.status.open" })}
-          />
-          <SelectItem
-            value="Under Investigation"
-            text={intl.formatMessage({ id: "nce.status.underInvestigation" })}
-          />
-          <SelectItem
-            value="Corrective Action"
-            text={intl.formatMessage({ id: "nce.status.correctiveAction" })}
-          />
-          <SelectItem
-            value="Closed"
-            text={intl.formatMessage({ id: "nce.status.closed" })}
-          />
-        </Select>
-        <Select
-          id="category-filter"
-          labelText=""
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="nce-filter-select"
-        >
-          <SelectItem
-            value=""
-            text={intl.formatMessage({
-              id: "nce.filter.allCategories",
-            })}
-          />
-          {categories.map((cat) => (
-            <SelectItem key={cat.id} value={cat.id} text={cat.name} />
+          <SelectItem value="" text={t("nce.filter.allStatus")} />
+          {Object.keys(NCE_STATUS_KEYS).map((s) => (
+            <SelectItem key={s} value={s} text={nceStatusLabel(s, intl)} />
           ))}
         </Select>
         <Select
-          id="severity-filter"
-          labelText=""
-          value={severityFilter}
-          onChange={(e) => setSeverityFilter(e.target.value)}
-          className="nce-filter-select"
+          id="nce-filter-category"
+          labelText={t("nce.filter.allCategories")}
+          value={draftQuery.categoryId}
+          onChange={(e) => changeFilter("categoryId", e.target.value)}
         >
-          <SelectItem
-            value=""
-            text={intl.formatMessage({
-              id: "nce.filter.allSeverities",
-            })}
-          />
-          <SelectItem
-            value="CRITICAL"
-            text={intl.formatMessage({ id: "nce.severity.critical" })}
-          />
-          <SelectItem
-            value="MAJOR"
-            text={intl.formatMessage({ id: "nce.severity.major" })}
-          />
-          <SelectItem
-            value="MINOR"
-            text={intl.formatMessage({ id: "nce.severity.minor" })}
-          />
-          <SelectItem
-            value="LOW"
-            text={intl.formatMessage({ id: "nce.severity.low" })}
-          />
+          <SelectItem value="" text={t("nce.filter.allCategories")} />
+          {categories.map((c) => (
+            <SelectItem
+              key={c.id}
+              value={c.id}
+              text={nceOptionLabel(c, intl)}
+            />
+          ))}
         </Select>
-        <Button kind="ghost" onClick={clearFilters}>
-          <FormattedMessage id="nce.filter.clearAll" />
+        <Select
+          id="nce-filter-severity"
+          labelText={t("nce.filter.allSeverities")}
+          value={draftQuery.severity}
+          onChange={(e) => changeFilter("severity", e.target.value)}
+        >
+          <SelectItem value="" text={t("nce.filter.allSeverities")} />
+          {["CRITICAL", "MAJOR", "MINOR"].map((s) => (
+            <SelectItem
+              key={s}
+              value={s}
+              text={t(`nce.severity.${s.toLowerCase()}`)}
+            />
+          ))}
+        </Select>
+        <Button
+          kind="ghost"
+          onClick={() => {
+            setDraftQuery(emptyQuery);
+            setCriteria((c) => ({ ...c, query: emptyQuery, page: 1 }));
+          }}
+        >
+          {t("nce.filter.clearAll")}
         </Button>
       </div>
-
-      {/* Summary Cards */}
-      <div className="nce-summary-cards">
-        <Tile className="nce-summary-card nce-summary-critical">
-          <span className="nce-summary-icon">
-            <Warning size={20} />
-          </span>
-          <span className="nce-summary-label">
-            <FormattedMessage id="nce.summary.critical" />
-          </span>
-          <span className="nce-summary-count">{summaryCounts.critical}</span>
-        </Tile>
-        <Tile className="nce-summary-card nce-summary-major">
-          <span className="nce-summary-icon">
-            <Warning size={20} />
-          </span>
-          <span className="nce-summary-label">
-            <FormattedMessage id="nce.summary.major" />
-          </span>
-          <span className="nce-summary-count">{summaryCounts.major}</span>
-        </Tile>
-        <Tile className="nce-summary-card nce-summary-minor">
-          <span className="nce-summary-icon">
-            <Warning size={20} />
-          </span>
-          <span className="nce-summary-label">
-            <FormattedMessage id="nce.summary.minor" />
-          </span>
-          <span className="nce-summary-count">{summaryCounts.minor}</span>
-        </Tile>
-        <Tile className="nce-summary-card nce-summary-overdue">
-          <span className="nce-summary-icon">
-            <Time size={20} />
-          </span>
-          <span className="nce-summary-label">
-            <FormattedMessage id="nce.summary.overdue" />
-          </span>
-          <span className="nce-summary-count">{summaryCounts.overdue}</span>
-        </Tile>
-      </div>
-
-      {/* NCE List */}
-      <div className="nce-list">
-        {getPaginatedData().map((nce) => (
-          <div key={nce.id} className="nce-list-item">
-            <div
-              className="nce-list-item-header"
-              onClick={() => toggleRowExpansion(nce.id)}
+      {feedback &&
+        scope.owner &&
+        state.owner === scope.owner &&
+        state.epoch === scope.epoch && (
+          <InlineNotification
+            lowContrast
+            kind={feedback.kind}
+            hideCloseButton
+            title={intl.formatMessage(
+              { id: feedback.id },
+              { number: feedback.number },
+            )}
+          />
+        )}
+      {pending && (
+        <div className="nce-receipt-check">
+          <p>{t("nce.workspace.unknown")}</p>
+          <Button kind="tertiary" disabled={receiptBusy} onClick={checkReceipt}>
+            {t("nce.workspace.checkReceipt")}
+          </Button>
+        </div>
+      )}
+      {state.phase === "loading" && (
+        <p role="status">{t("nce.dashboard.loading")}</p>
+      )}
+      {!scope.owner && (
+        <p role="alert">{t("nce.workspace.error.unauthenticated")}</p>
+      )}
+      {state.phase === "error" && scope.owner && (
+        <div role="alert">
+          <p>
+            {t(
+              state.errorKind === "forbidden"
+                ? "nce.workspace.error.forbidden"
+                : "nce.workspace.error.unavailable",
+            )}
+          </p>
+          <Button kind="tertiary" onClick={() => setRefresh((n) => n + 1)}>
+            {t("nce.workspace.retry")}
+          </Button>
+          {criteria.page > 1 && (
+            <Button
+              kind="tertiary"
+              onClick={() => setCriteria((q) => ({ ...q, page: 1 }))}
             >
-              <div className="nce-list-item-main">
-                <input
-                  type="checkbox"
-                  className="nce-checkbox"
-                  onClick={(e) => e.stopPropagation()}
-                />
-                <div className="nce-item-info">
-                  <div className="nce-item-top">
-                    <span className="nce-number">{nce.nceNumber}</span>
-                    {nce.linkedSpecimens && nce.linkedSpecimens.length > 0 && (
-                      <span className="nce-linked-badge">
-                        <DataBase size={14} />
-                        {nce.linkedSpecimens.map((spec, idx) => (
-                          <span key={idx} className="nce-linked-specimen">
-                            {spec.labOrderNumber}
-                            {spec.sampleType && ` (${spec.sampleType})`}
-                            {idx < nce.linkedSpecimens.length - 1 && ", "}
-                          </span>
-                        ))}
-                      </span>
-                    )}
-                    <Tag
-                      type={STATUS_CONFIG[nce.status]?.type || "gray"}
-                      size="sm"
-                    >
-                      {STATUS_CONFIG[nce.status]?.labelKey
-                        ? intl.formatMessage({
-                            id: STATUS_CONFIG[nce.status].labelKey,
-                          })
-                        : nce.status}
-                    </Tag>
-                    {isOverdue(nce) && (
-                      <Tag type="red" size="sm">
-                        <FormattedMessage id="nce.tag.overdue" />
+              {t("nce.workspace.firstPage")}
+            </Button>
+          )}
+        </div>
+      )}
+      {state.phase === "idle" && <p>{t("nce.workspace.searchNeeded")}</p>}
+      {active && !value.nceList.length && (
+        <p className="nce-empty-state">{t("nce.list.empty")}</p>
+      )}
+      {active && (
+        <div className="nce-list">
+          {value.nceList.map((row) => {
+            const category = categories.find((c) => c.id === row.nceCategoryId),
+              type = category?.types.find((c) => c.id === row.nceTypeId);
+            return (
+              <article key={row.id} className="nce-list-item">
+                <Button
+                  kind="ghost"
+                  className="nce-list-item-header"
+                  aria-expanded={!!expanded[row.id]}
+                  aria-controls={`nce-details-${row.id}`}
+                  renderIcon={expanded[row.id] ? ChevronUp : ChevronDown}
+                  onClick={() =>
+                    setExpanded((p) => ({ ...p, [row.id]: !p[row.id] }))
+                  }
+                >
+                  <span className="nce-item-info">
+                    <span className="nce-item-top">
+                      <strong className="nce-number">
+                        {row.nceNumber || "—"}
+                      </strong>
+                      <Tag
+                        type={
+                          row.statusCode === "CAPA"
+                            ? "purple"
+                            : row.statusCode === "Completed" ||
+                                row.statusCode === "Closed"
+                              ? "gray"
+                              : "blue"
+                        }
+                      >
+                        {nceStatusLabel(row.statusCode, intl)}
+                        {!NCE_STATUS_KEYS[row.statusCode] && row.statusCode
+                          ? ` · ${row.statusCode}`
+                          : ""}
                       </Tag>
-                    )}
-                  </div>
-                  <div className="nce-item-title">
-                    {nce.title || nce.description}
-                  </div>
-                  <div className="nce-item-meta">
-                    <span>{getCategoryName(nce.nceCategoryId)}</span>
-                    {nce.nceTypeId && (
-                      <>
-                        <span> - </span>
-                        <span>
-                          {getTypeName(nce.nceCategoryId, nce.nceTypeId)}
-                        </span>
-                      </>
-                    )}
-                    {nce.assignedTo && (
-                      <>
-                        <span>
-                          {" - "}
-                          {intl.formatMessage({ id: "nce.assignedToLabel" })}
-                          :{" "}
-                        </span>
-                        <span>{nce.assignedToName}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="nce-item-days">
-                {getDaysSince(nce.dateOfEvent) !== null && (
-                  <span className={isOverdue(nce) ? "overdue" : ""}>
-                    {intl.formatMessage(
-                      { id: "nce.daysSince" },
-                      { count: getDaysSince(nce.dateOfEvent) },
-                    )}
+                      <span>
+                        {row.severity
+                          ? intl.messages[
+                              `nce.severity.${row.severity.toLowerCase()}`
+                            ]
+                            ? t(`nce.severity.${row.severity.toLowerCase()}`)
+                            : row.severity
+                          : "—"}
+                      </span>
+                    </span>
+                    <span className="nce-item-title">
+                      {row.title || row.description || "—"}
+                    </span>
+                    <span className="nce-item-meta">
+                      {category ? nceOptionLabel(category, intl) : "—"}
+                      {type ? ` · ${nceOptionLabel(type, intl)}` : ""}
+                      {row.assignedToName
+                        ? ` · ${t("nce.assignedToLabel")}: ${row.assignedToName}`
+                        : ""}
+                    </span>
                   </span>
-                )}
-              </div>
-            </div>
-
-            {expandedRows[nce.id] && (
-              <div className="nce-list-item-details">
-                <Tabs>
-                  <TabList
-                    aria-label={intl.formatMessage({
-                      id: "nce.tabs.ariaLabel",
-                    })}
+                </Button>
+                {expanded[row.id] && (
+                  <div
+                    id={`nce-details-${row.id}`}
+                    className="nce-list-item-details"
                   >
-                    <Tab>
-                      <FormattedMessage id="nce.tab.eventDetails" />
-                    </Tab>
-                    <Tab>
-                      <FormattedMessage id="nce.tab.investigation" />
-                    </Tab>
-                    <Tab>
-                      <FormattedMessage id="nce.tab.capa" /> (
-                      {nce.capaCount || 0})
-                    </Tab>
-                    <Tab>
-                      <FormattedMessage id="nce.tab.history" />
-                    </Tab>
-                  </TabList>
-                  <TabPanels>
-                    {/* Event Details Tab */}
-                    <TabPanel>
-                      <div className="nce-detail-section">
-                        <h4>
-                          <FormattedMessage id="nce.field.description" />
-                        </h4>
-                        <p>{nce.description || "-"}</p>
-                      </div>
-                      <div className="nce-detail-section">
-                        <h4>
-                          <FormattedMessage id="nce.field.immediateAction" />
-                        </h4>
-                        <p>{nce.immediateAction || "-"}</p>
-                      </div>
-                      {nce.triggerSourceType && (
-                        <div className="nce-detail-section">
-                          <h4>
-                            <FormattedMessage id="nce.field.trigger" />
-                          </h4>
-                          <p>{nce.triggerSourceType}</p>
-                        </div>
-                      )}
-                      {nce.linkedSpecimens &&
-                        nce.linkedSpecimens.length > 0 && (
-                          <div className="nce-detail-section">
-                            <h4>
-                              <FormattedMessage id="nce.field.linkedItems" />
-                            </h4>
-                            <div className="nce-linked-items">
-                              {nce.linkedSpecimens.map((specimen, idx) => (
-                                <div key={idx} className="nce-linked-item">
-                                  <DataBase size={16} />
-                                  <span>
-                                    Specimen #{specimen.sampleItemId}
-                                    {specimen.sampleType
-                                      ? ` — ${specimen.sampleType}`
-                                      : ""}
-                                    {specimen.labOrderNumber
-                                      ? ` (${specimen.labOrderNumber})`
-                                      : ""}
-                                  </span>
-                                  {specimen.testName && (
-                                    <span style={{ marginLeft: "0.25rem" }}>
-                                      <Chemistry size={16} />
-                                      {` Test: ${specimen.testName}`}
-                                    </span>
-                                  )}
-                                </div>
-                              ))}
-                              {nce.linkedResults &&
-                                nce.linkedResults.map((result, idx) => (
-                                  <div key={idx} className="nce-linked-item">
-                                    <Chemistry size={16} />
-                                    <span>Result: {result.testName}</span>
-                                  </div>
-                                ))}
+                    <Tabs>
+                      <TabList aria-label={t("nce.tabs.ariaLabel")}>
+                        {[
+                          "nce.tab.eventDetails",
+                          "nce.tab.investigation",
+                          "nce.tab.capa",
+                          "nce.tab.history",
+                        ].map((id) => (
+                          <Tab key={id}>{t(id)}</Tab>
+                        ))}
+                      </TabList>
+                      <TabPanels>
+                        <TabPanel>
+                          <dl className="nce-detail-grid">
+                            {["description", "immediateAction"].map((k) => (
+                              <div key={k}>
+                                <dt>{t(`nce.field.${k}`)}</dt>
+                                <dd>{row[k] || "—"}</dd>
+                              </div>
+                            ))}
+                            <div>
+                              <dt>{t("nce.field.dateOfEvent")}</dt>
+                              <dd>{row.dateOfEvent || "—"}</dd>
                             </div>
-                          </div>
-                        )}
-                      {/* Attachments section */}
-                      {nce.attachments && nce.attachments.length > 0 && (
-                        <div className="nce-detail-section">
-                          <h4>
-                            <FormattedMessage id="nce.field.attachments" />
-                          </h4>
-                          <div className="nce-attachments-list">
-                            {nce.attachments.map((attachment) => (
-                              <div
-                                key={attachment.id}
-                                className="nce-attachment-item"
+                            <div>
+                              <dt>{t("nce.field.reporterName")}</dt>
+                              <dd>{row.nameOfReporter || "—"}</dd>
+                            </div>
+                          </dl>
+                          <h4>{t("nce.field.linkedItems")}</h4>
+                          <ul>
+                            {row.linkedSpecimens.map((s) => (
+                              <li
+                                key={`${s.sampleItemId}:${s.analysisId || ""}`}
                               >
-                                <Document size={16} />
-                                <span className="nce-attachment-name">
-                                  {attachment.fileName}
-                                </span>
-                                <span className="nce-attachment-size">
-                                  {formatFileSize(attachment.fileSize)}
-                                </span>
-                                <div className="nce-attachment-actions">
-                                  {isViewableFileType(attachment.fileType) && (
-                                    <Button
-                                      kind="ghost"
-                                      size="sm"
-                                      hasIconOnly
-                                      iconDescription={intl.formatMessage({
-                                        id: "label.button.view",
-                                      })}
-                                      renderIcon={View}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleViewAttachment(
-                                          attachment.id,
-                                          attachment.fileType,
-                                        );
-                                      }}
-                                    />
-                                  )}
+                                {s.labNumber} · {s.typeName || "—"} ·{" "}
+                                {t("nce.workspace.specimenRecord")}{" "}
+                                {s.sampleItemId}
+                                {s.testName ? ` · ${s.testName}` : ""}
+                              </li>
+                            ))}
+                          </ul>
+                          <h4>{t("nce.field.attachments")}</h4>
+                          <ul>
+                            {row.attachments.map((a) => (
+                              <li key={a.id}>
+                                <Button
+                                  kind="ghost"
+                                  size="sm"
+                                  renderIcon={Download}
+                                  disabled={attachmentBusy !== null}
+                                  onClick={() => download(row, a)}
+                                >
+                                  {a.fileName ||
+                                    `${t("nce.field.attachments")} ${a.id}`}
+                                </Button>
+                                {[
+                                  "application/pdf",
+                                  "image/png",
+                                  "image/jpeg",
+                                  "image/gif",
+                                  "text/plain",
+                                ].includes(a.fileType) && (
                                   <Button
                                     kind="ghost"
                                     size="sm"
-                                    hasIconOnly
-                                    iconDescription={intl.formatMessage({
-                                      id: "nce.attachment.download",
-                                    })}
-                                    renderIcon={Download}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDownloadAttachment(
-                                        attachment.id,
-                                        attachment.fileName,
-                                      );
-                                    }}
-                                  />
-                                </div>
+                                    renderIcon={View}
+                                    disabled={attachmentBusy !== null}
+                                    aria-label={`${t("nce.attachment.view")} ${a.fileName || a.id}`}
+                                    onClick={() => download(row, a, true)}
+                                  >
+                                    {t("nce.attachment.view")}
+                                  </Button>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </TabPanel>
+                        <TabPanel>
+                          <dl className="nce-detail-grid">
+                            {["suspectedCauses", "proposedAction"].map((k) => (
+                              <div key={k}>
+                                <dt>{t(`nce.field.${k}`)}</dt>
+                                <dd>{row[k] || "—"}</dd>
                               </div>
                             ))}
-                          </div>
-                        </div>
-                      )}
-                      {/* Notes section */}
-                      {nce.notes && nce.notes.length > 0 && (
-                        <div className="nce-detail-section">
-                          <h4>
-                            <FormattedMessage id="nce.field.notes" /> (
-                            {nce.notes.length})
-                          </h4>
-                          <div className="nce-notes-list">
-                            {nce.notes.map((note) => (
-                              <div key={note.id} className="nce-note-item">
-                                <p className="nce-note-text">{note.text}</p>
-                                <div className="nce-note-meta">
-                                  <span className="nce-note-user">
-                                    {note.userName ||
-                                      intl.formatMessage({
-                                        id: "nce.history.system",
-                                      })}
-                                  </span>
-                                  <span className="nce-note-time">
-                                    {parseTimestamp(
-                                      note.timestamp,
-                                    )?.toLocaleString() ?? ""}
-                                  </span>
-                                </div>
-                              </div>
+                          </dl>
+                          <h4>{t("nce.field.notes")}</h4>
+                          <ul>
+                            {row.notes.map((n, i) => (
+                              <li key={n.id || i}>{n.text || "—"}</li>
                             ))}
-                          </div>
-                        </div>
-                      )}
-                      <div className="nce-detail-footer">
-                        <span>
-                          {nce.notesCount || 0}{" "}
-                          <FormattedMessage id="nce.field.notes" />
-                        </span>
-                        <span>
-                          {nce.attachments ? nce.attachments.length : 0}{" "}
-                          <FormattedMessage id="nce.field.attachments" />
-                        </span>
-                      </div>
-                    </TabPanel>
-
-                    {/* Investigation Tab */}
-                    <TabPanel>
-                      <div className="nce-detail-section">
-                        <h4>
-                          <FormattedMessage id="nce.field.suspectedCauses" />
-                        </h4>
-                        <p>{nce.suspectedCauses || "-"}</p>
-                      </div>
-                      <div className="nce-detail-section">
-                        <h4>
-                          <FormattedMessage id="nce.field.proposedAction" />
-                        </h4>
-                        <p>{nce.proposedAction || "-"}</p>
-                      </div>
-                    </TabPanel>
-
-                    {/* CAPA Tab */}
-                    <TabPanel>
-                      <p>
-                        <FormattedMessage id="nce.capa.noItems" />
+                          </ul>
+                        </TabPanel>
+                        <TabPanel>
+                          <p>{t("nce.capa.notLoaded")}</p>
+                          <Button
+                            kind="tertiary"
+                            onClick={() => history.push("/NCECorrectiveAction")}
+                          >
+                            {t("nce.workspace.openCapa")}
+                          </Button>
+                        </TabPanel>
+                        <TabPanel>
+                          {row.history.length ? (
+                            <ul>
+                              {row.history.map((h, i) => (
+                                <li key={h.id || i}>
+                                  {nceHistoryActivity(h, intl)} ·{" "}
+                                  {nceHistoryDescription(h, intl)} ·{" "}
+                                  {h.userName || t("nce.history.system")} ·{" "}
+                                  {h.timestamp || "—"}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p>{t("nce.history.noItems")}</p>
+                          )}
+                        </TabPanel>
+                      </TabPanels>
+                    </Tabs>
+                    <div className="nce-detail-actions">
+                      {[
+                        [
+                          "ACKNOWLEDGE",
+                          "canAcknowledge",
+                          "nce.action.acknowledge",
+                        ],
+                        ["ASSIGN", "canAssign", "nce.action.assignTo"],
+                        ["ADD_NOTE", "canAddNote", "nce.action.addNote"],
+                      ].map(([op, cap, id]) => (
+                        <Button
+                          key={op}
+                          kind="tertiary"
+                          size="sm"
+                          disabled={!row[cap] || !!pending}
+                          title={
+                            !row[cap]
+                              ? t(
+                                  op === "ACKNOWLEDGE" &&
+                                    row.statusCode !== "Pending"
+                                    ? "nce.workspace.acknowledgeNotPending"
+                                    : "nce.workspace.updateDenied",
+                                )
+                              : undefined
+                          }
+                          onClick={() => setAction({ row, type: op })}
+                        >
+                          {t(id)}
+                        </Button>
+                      ))}
+                    </div>
+                    {row.actionUnavailableReason && (
+                      <p className="nce-helper-text">
+                        {t("nce.workspace.updateDenied")}
                       </p>
-                    </TabPanel>
-
-                    {/* History Tab */}
-                    <TabPanel>
-                      {nce.history && nce.history.length > 0 ? (
-                        <div className="nce-history-list">
-                          {nce.history.map((entry, idx) => (
-                            <div
-                              key={entry.id || idx}
-                              className="nce-history-item"
-                            >
-                              <div className="nce-history-activity">
-                                {entry.activity}
-                              </div>
-                              {entry.description && (
-                                <div className="nce-history-description">
-                                  {entry.description}
-                                </div>
-                              )}
-                              <div className="nce-history-meta">
-                                <span className="nce-history-user">
-                                  {entry.userName ||
-                                    intl.formatMessage({
-                                      id: "nce.history.system",
-                                    })}
-                                </span>
-                                <span className="nce-history-time">
-                                  {parseTimestamp(
-                                    entry.timestamp,
-                                  )?.toLocaleString() ?? ""}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p>
-                          <FormattedMessage id="nce.history.noItems" />
-                        </p>
-                      )}
-                    </TabPanel>
-                  </TabPanels>
-                </Tabs>
-
-                {/* Action buttons */}
-                <div className="nce-detail-actions">
-                  <Button
-                    kind="primary"
-                    size="sm"
-                    onClick={() => handleAcknowledge(nce)}
-                  >
-                    <FormattedMessage id="nce.action.acknowledge" />
-                  </Button>
-                  <Button
-                    kind={assignFormOpen === nce.id ? "secondary" : "tertiary"}
-                    size="sm"
-                    renderIcon={UserFollow}
-                    onClick={() => handleAssign(nce)}
-                  >
-                    <FormattedMessage id="nce.action.assignTo" />
-                  </Button>
-                  <Button
-                    kind={noteFormOpen === nce.id ? "secondary" : "ghost"}
-                    size="sm"
-                    renderIcon={DocumentAdd}
-                    onClick={() => handleAddNote(nce)}
-                  >
-                    <FormattedMessage id="nce.action.addNote" />
-                  </Button>
-                </div>
-
-                {/* Inline assign form */}
-                {assignFormOpen === nce.id && (
-                  <div className="nce-inline-form">
-                    <ComboBox
-                      id={`assign-user-${nce.id}`}
-                      titleText={intl.formatMessage({
-                        id: "nce.modal.selectUser",
-                      })}
-                      placeholder={intl.formatMessage({
-                        id: "nce.modal.searchUser",
-                      })}
-                      items={users}
-                      itemToString={(user) => {
-                        if (!user) return "";
-                        const name =
-                          user.displayName ||
-                          `${user.firstName || ""} ${user.lastName || ""}`.trim();
-                        if (name && user.loginName) {
-                          return `${name} (${user.loginName})`;
-                        }
-                        return name || user.loginName || "";
-                      }}
-                      shouldFilterItem={({ item, inputValue }) => {
-                        if (!inputValue) return true;
-                        const name =
-                          item.displayName ||
-                          `${item.firstName || ""} ${item.lastName || ""}`.trim();
-                        const label =
-                          `${name} (${item.loginName || ""})`.toLowerCase();
-                        return label.includes(inputValue.toLowerCase());
-                      }}
-                      selectedItem={assignee}
-                      onChange={({ selectedItem }) => setAssignee(selectedItem)}
-                    />
-                    <div className="nce-inline-form-buttons">
-                      <Button
-                        kind="primary"
-                        size="sm"
-                        onClick={() => submitAssign(nce.id)}
-                      >
-                        <FormattedMessage id="label.button.assign" />
-                      </Button>
-                      <Button
-                        kind="secondary"
-                        size="sm"
-                        onClick={() => setAssignFormOpen(null)}
-                      >
-                        <FormattedMessage id="label.button.cancel" />
-                      </Button>
-                    </div>
+                    )}
                   </div>
                 )}
-
-                {/* Inline note form */}
-                {noteFormOpen === nce.id && (
-                  <div className="nce-inline-form">
-                    <TextArea
-                      labelText={intl.formatMessage({
-                        id: "nce.modal.addNote",
-                      })}
-                      placeholder={intl.formatMessage({
-                        id: "nce.modal.notePlaceholder",
-                      })}
-                      value={noteText}
-                      onChange={(e) => setNoteText(e.target.value)}
-                      rows={3}
-                    />
-                    <div className="nce-inline-form-buttons">
-                      <Button
-                        kind="primary"
-                        size="sm"
-                        onClick={() => submitNote(nce.id)}
-                      >
-                        <FormattedMessage id="label.button.save" />
-                      </Button>
-                      <Button
-                        kind="secondary"
-                        size="sm"
-                        onClick={() => setNoteFormOpen(null)}
-                      >
-                        <FormattedMessage id="label.button.cancel" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-
-        {filteredList.length === 0 && (
-          <div className="nce-empty-state">
-            <p>
-              <FormattedMessage id="nce.list.empty" />
-            </p>
-          </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+      {active && (
+        <Pagination
+          page={value.paging.currentPage}
+          pageSize={value.paging.pageSize}
+          pageSizes={NCE_PAGE_SIZES}
+          totalItems={value.paging.totalResults}
+          onChange={({ page, pageSize }) =>
+            setCriteria((c) =>
+              page === c.page && pageSize === c.pageSize
+                ? c
+                : { ...c, page: pageSize !== c.pageSize ? 1 : page, pageSize },
+            )
+          }
+          itemsPerPageText={t("pagination.items-per-page")}
+          backwardText={t("pagination.backward")}
+          forwardText={t("pagination.forward")}
+          pageSelectLabelText={(total) =>
+            intl.formatMessage({ id: "pagination.page-select" }, { total })
+          }
+          pageRangeText={(_, total) =>
+            intl.formatMessage({ id: "pagination.page-range" }, { total })
+          }
+          itemRangeText={(min, max, total) =>
+            intl.formatMessage(
+              { id: "pagination.item-range" },
+              { min, max, total },
+            )
+          }
+        />
+      )}
+      {registration && scope.owner && (
+        <NceRegistrationModal
+          key={`${scope.owner}:${scope.epoch}`}
+          onClose={closeRegistration}
+          onSaved={saved}
+          onScopeUnavailable={scopeUnavailable}
+        />
+      )}
+      {action &&
+        scope.owner &&
+        state.owner === scope.owner &&
+        state.epoch === scope.epoch && (
+          <NceEventActionModal
+            key={`${action.row.id}:${scope.owner}:${scope.epoch}`}
+            {...action}
+            onClose={() => setAction(null)}
+            onSaved={saved}
+            onScopeUnavailable={scopeUnavailable}
+          />
         )}
-      </div>
-
-      {/* Pagination */}
-      <Pagination
-        totalItems={filteredList.length}
-        pageSize={pageSize}
-        pageSizes={[10, 25, 50, 100]}
-        page={currentPage}
-        forwardText={intl.formatMessage({ id: "pagination.forward" })}
-        backwardText={intl.formatMessage({ id: "pagination.backward" })}
-        itemRangeText={(min, max, total) =>
-          intl.formatMessage(
-            { id: "pagination.item-range" },
-            { min, max, total },
-          )
-        }
-        itemsPerPageText={intl.formatMessage({
-          id: "pagination.items-per-page",
-        })}
-        itemText={(min, max) =>
-          intl.formatMessage({ id: "pagination.item" }, { min, max })
-        }
-        pageNumberText={intl.formatMessage({ id: "pagination.page-number" })}
-        pageRangeText={(_current, total) =>
-          intl.formatMessage({ id: "pagination.page-range" }, { total })
-        }
-        pageText={(page, pagesUnknown) =>
-          intl.formatMessage(
-            { id: "pagination.page" },
-            { page: pagesUnknown ? "" : page },
-          )
-        }
-        onChange={({ page, pageSize: newPageSize }) => {
-          setCurrentPage(page);
-          setPageSize(newPageSize);
-        }}
-      />
     </div>
   );
 };
-
 export default NceDashboard;

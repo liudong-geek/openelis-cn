@@ -203,6 +203,9 @@
             this persistence unit excludes unlisted classes, its entity must be registered
             explicitly just as it is in the production persistence unit. -->
         <class>org.openelisglobal.qachecklist.valueholder.SampleQaChecklist</class>
+        <!-- Durable NCE registration/action receipt; keep the production and test units aligned. -->
+        <class>org.openelisglobal.qaevent.valueholder.NceRegistrationReceipt</class>
+
         <!-- Barcode Label Presets (OGC-285 M2) -->
         <class>org.openelisglobal.labelpreset.valueholder.LabelPreset</class>
         <class>org.openelisglobal.labelpreset.valueholder.LabelPresetField</class>

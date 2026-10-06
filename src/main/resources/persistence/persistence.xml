@@ -120,6 +120,9 @@
         <!-- UOM type mapping (OGC-356 environmental workflow) -->
         <class>org.openelisglobal.unitofmeasure.valueholder.UomTypeMap</class>
 
+        <!-- Durable NCE registration/action receipt; keep the production and test units aligned. -->
+        <class>org.openelisglobal.qaevent.valueholder.NceRegistrationReceipt</class>
+
         <!-- QA Checklist domain (OGC-356 step 4) -->
         <class>org.openelisglobal.qachecklist.valueholder.SampleQaChecklist</class>
         <class>org.openelisglobal.sample.valueholder.SpecimenIntakeDecision</class>

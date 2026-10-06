@@ -35,6 +35,7 @@ export const NceFileAttachment = ({
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
+  const selecting = useRef(false);
 
   const validateFile = (file) => {
     const extension = "." + file.name.split(".").pop().toLowerCase();
@@ -54,11 +55,12 @@ export const NceFileAttachment = ({
   };
 
   const handleFileChange = async (event) => {
-    const files = event.target.files || event.dataTransfer?.files;
-    if (!files || files.length === 0) return;
-
+    if (disabled || uploading || selecting.current) return;
+    const files = Array.from(
+      event.target.files || event.dataTransfer?.files || [],
+    );
+    if (files.length === 0) return;
     setError(null);
-
     if (attachments.length + files.length > maxFiles) {
       setError(
         intl.formatMessage(
@@ -68,50 +70,41 @@ export const NceFileAttachment = ({
       );
       return;
     }
-
     for (const file of files) {
       const validationError = validateFile(file);
       if (validationError) {
         setError(validationError);
         return;
       }
-
-      setUploading(true);
-      try {
-        // Create attachment object with file info
+    }
+    selecting.current = true;
+    setUploading(true);
+    try {
+      const added = [];
+      for (const file of files) {
         const attachment = {
           id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           fileName: file.name,
           fileType: file.type,
           fileSize: file.size,
-          file: file, // Keep reference to actual file for upload
+          file,
           isNew: true,
         };
-
-        if (onAdd) {
-          await onAdd(attachment);
-        }
-        if (onAttachmentsChange) {
-          onAttachmentsChange([...attachments, attachment]);
-        }
-      } catch (err) {
-        setError(
-          intl.formatMessage({ id: "nce.attachment.error.upload" }) +
-            ": " +
-            err.message,
-        );
-      } finally {
-        setUploading(false);
+        if (onAdd) await onAdd(attachment);
+        added.push(attachment);
       }
-    }
-
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+      onAttachmentsChange?.([...attachments, ...added]);
+    } catch {
+      setError(intl.formatMessage({ id: "nce.attachment.error.upload" }));
+    } finally {
+      selecting.current = false;
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
   const handleRemove = (attachmentId) => {
+    if (disabled || uploading || selecting.current) return;
     if (onRemove) {
       onRemove(attachmentId);
     }
@@ -151,6 +144,7 @@ export const NceFileAttachment = ({
 
       <div className="nce-attachment-dropzone">
         <FileUploaderDropContainer
+          multiple
           accept={ACCEPTED_FILE_TYPES}
           labelText={intl.formatMessage({
             id: "nce.attachment.dropzone",
@@ -166,6 +160,7 @@ export const NceFileAttachment = ({
           onChange={handleFileChange}
           accept={ACCEPTED_FILE_TYPES.join(",")}
           multiple
+          disabled={disabled || uploading}
           style={{ display: "none" }}
         />
       </div>

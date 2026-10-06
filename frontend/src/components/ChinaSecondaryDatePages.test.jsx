@@ -2,6 +2,11 @@ import React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
+import { waitFor } from "@testing-library/dom";
+import {
+  session as nceActor,
+  metadata as nceMetadata,
+} from "./nonconform/common/nceWorkspace.testData";
 import { MemoryRouter } from "react-router-dom";
 import zhMessages from "../languages/zh.json";
 import enMessages from "../languages/en.json";
@@ -56,6 +61,11 @@ vi.mock("./utils/Utils", async (importOriginal) => {
   };
 });
 
+vi.mock("./nonconform/common/nceWorkspaceRequest", async (importOriginal) => ({
+  ...(await importOriginal()),
+  readNceMetadata: vi.fn(async () => nceMetadata()),
+}));
+
 vi.mock("./coldStorage/api", () => ({
   fetchReportExcursions: vi.fn().mockResolvedValue([]),
   fetchAuditTrail: vi.fn().mockResolvedValue([]),
@@ -91,6 +101,7 @@ const renderPage = (
     intlLocale = "zh-CN",
     messages = zhMessages,
     withConfigurationProvider = true,
+    actor = { authenticated: false },
   } = {},
 ) => {
   const content = withConfigurationProvider ? (
@@ -110,7 +121,7 @@ const renderPage = (
       <IntlProvider locale={intlLocale} messages={messages} onError={() => {}}>
         <NotificationContext.Provider value={notificationContext}>
           <UserSessionDetailsContext.Provider
-            value={{ userSessionDetails: { authenticated: false } }}
+            value={{ userSessionDetails: actor }}
           >
             {content}
           </UserSessionDetailsContext.Provider>
@@ -155,8 +166,11 @@ describe("中国交付次级页面日期控件", () => {
     expectChineseDateInputs(["expiration-date"]);
   });
 
-  test("不符合项主表单与内嵌表单都使用年/月/日", () => {
-    renderPage(<ReportNonConformingEvent />);
+  test("不符合项主表单与内嵌表单都使用年/月/日", async () => {
+    renderPage(<ReportNonConformingEvent />, { actor: nceActor });
+    await waitFor(() =>
+      expect(document.getElementById("date-of-event")).not.toBeNull(),
+    );
     expectChineseDateInputs(["date-of-event"]);
     expect(screen.getByTestId("locale-date-picker")).toHaveAttribute(
       "data-max-date",
@@ -164,8 +178,13 @@ describe("中国交付次级页面日期控件", () => {
     );
 
     cleanup();
-    renderPage(<InlineNceForm resultRow={null} onClose={vi.fn()} />);
-    expectChineseDateInputs(["inline-nce-date"]);
+    renderPage(<InlineNceForm resultRow={null} onClose={vi.fn()} />, {
+      actor: nceActor,
+    });
+    await waitFor(() =>
+      expect(document.getElementById("date-of-event")).not.toBeNull(),
+    );
+    expectChineseDateInputs(["date-of-event"]);
   });
 
   test("标本转运看板与转运报表都使用年/月/日", () => {

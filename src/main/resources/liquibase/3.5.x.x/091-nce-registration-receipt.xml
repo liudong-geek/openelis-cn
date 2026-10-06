@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+ xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+ <changeSet id="3.5.0-091-nce-registration-receipt" author="local-chinese-edition">
+  <createTable schemaName="clinlims" tableName="nce_registration_receipt">
+   <column name="request_id" type="varchar(36)"><constraints nullable="false" primaryKey="true" primaryKeyName="pk_nce_registration_receipt"/></column>
+   <column name="created_by" type="varchar(20)"><constraints nullable="false"/></column>
+   <column name="operation" type="varchar(24)"><constraints nullable="false"/></column>
+   <column name="request_hash" type="varchar(64)"><constraints nullable="false"/></column>
+   <column name="hash_version" type="varchar(24)"><constraints nullable="false"/></column>
+   <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+   <column name="event_id" type="integer"/>
+   <column name="response_json" type="text"/>
+   <column name="last_updated" type="timestamp"><constraints nullable="false"/></column>
+  </createTable>
+  <addForeignKeyConstraint baseTableSchemaName="clinlims" baseTableName="nce_registration_receipt" baseColumnNames="event_id"
+   referencedTableSchemaName="clinlims" referencedTableName="nc_event" referencedColumnNames="id" constraintName="fk_nce_registration_receipt_event"/>
+  <!-- Destructive rollback requires an authorized backup; never discard completed receipts during ordinary deployment. -->
+  <rollback>
+   <sql splitStatements="false"><![CDATA[LOCK TABLE clinlims.nce_registration_receipt IN ACCESS EXCLUSIVE MODE;
+   DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM clinlims.nce_registration_receipt) THEN
+     RAISE EXCEPTION 'NCE_RECEIPT_ROLLBACK_REQUIRES_EMPTY_TABLE';
+    END IF;
+   END $$;]]></sql>
+   <dropTable schemaName="clinlims" tableName="nce_registration_receipt"/>
+  </rollback>
+ </changeSet>
+</databaseChangeLog>

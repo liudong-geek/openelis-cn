@@ -215,4 +215,5 @@
   <include relativeToChangelogFile="true" file="088-specimen-recollection.xml"/>
   <include relativeToChangelogFile="true" file="089-critical-result-alert.xml"/>
   <include relativeToChangelogFile="true" file="090-his-result-outbox.xml"/>
+  <include relativeToChangelogFile="true" file="091-nce-registration-receipt.xml"/>
 </databaseChangeLog>
