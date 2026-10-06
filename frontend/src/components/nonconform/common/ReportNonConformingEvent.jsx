@@ -21,6 +21,8 @@ import {
   getCarbonDateFormat,
   getDatePickerPlaceholderMessage,
   parseDateForLocale,
+  usesDayFirstDate,
+  usesYearFirstDate,
 } from "../../common/dateLocaleUtils";
 import { formatPatientDisplayName } from "../../common/patientDisplayName";
 import NceFileAttachment from "./NceFileAttachment";
@@ -64,6 +66,11 @@ export const ReportNonConformingEvent = ({
   const { configurationProperties = {} } =
     useContext(ConfigurationContext) || {};
   const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "zh-CN";
+  const calendarLocale = usesYearFirstDate(intl.locale)
+    ? "zh"
+    : usesDayFirstDate(intl.locale)
+      ? "fr"
+      : "en";
   const [form, setForm] = useState({
     dateOfEvent: isoDay(new Date()),
     reportingUnit: "",
@@ -511,6 +518,40 @@ export const ReportNonConformingEvent = ({
                 <DatePicker
                   datePickerType="single"
                   dateFormat={getCarbonDateFormat(dateLocale)}
+                  locale={calendarLocale}
+                  onOpen={(_dates, _text, calendar) => {
+                    if (calendarLocale !== "zh" || !calendar?.calendarContainer)
+                      return;
+                    // Carbon places year-first month labels outside the header,
+                    // but its month-change hook only updates labels inside it.
+                    calendar.monthElements?.forEach((month, index) => {
+                      const header = calendar.yearElements?.[index]?.closest(
+                        ".flatpickr-current-month",
+                      );
+                      if (
+                        !header ||
+                        !calendar.calendarContainer.contains(header) ||
+                        !month?.classList.contains("cur-month")
+                      )
+                        return;
+                      if (month.parentElement !== header)
+                        header.appendChild(month);
+                      // A typed date can change the month before the first open.
+                      const label =
+                        calendar.l10n?.months?.longhand?.[
+                          calendar.currentMonth
+                        ];
+                      if (label) month.textContent = label;
+                    });
+                  }}
+                  prevMonthAriaLabel={intl.formatMessage({
+                    id: "datepicker.previousMonth",
+                    defaultMessage: "Previous month",
+                  })}
+                  nextMonthAriaLabel={intl.formatMessage({
+                    id: "datepicker.nextMonth",
+                    defaultMessage: "Next month",
+                  })}
                   value={dateText}
                   maxDate={formatDateForLocale(new Date(), dateLocale)}
                   onChange={(dates) => {
