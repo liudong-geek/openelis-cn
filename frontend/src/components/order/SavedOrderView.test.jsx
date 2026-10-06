@@ -339,3 +339,31 @@ test("modify preflight hanging during session check is bounded and late permissi
   expect(history.location.pathname).toBe("/order/view");
   expect(screen.queryByText("刘洋")).not.toBeInTheDocument();
 });
+
+test("saved SAMPLE rejected state uses the existing Chinese semantic label without changing its ID", async () => {
+  detail.samples[0].statusCode = "SampleRejected";
+  detail.samples[0].statusName = "Sample Rejected";
+  mount();
+  await loaded();
+  expect(
+    screen.getByText(chinese["sample.management.sampleStatus.SampleRejected"]),
+  ).toBeVisible();
+  expect(screen.queryByText("Sample Rejected")).not.toBeInTheDocument();
+  expect(detail.samples[0].statusId).toBe("4");
+});
+
+test("saved ANALYSIS nonconformity uses its existing historical Chinese state, preserving read-only flow", async () => {
+  detail.samples[0].analyses[0].statusCode = "NonConforming_depricated";
+  detail.samples[0].analyses[0].statusName = "NonConforming";
+  mount();
+  await loaded();
+  expect(
+    screen.getByText(
+      chinese["sample.management.analysisStatus.NonConforming_depricated"],
+    ),
+  ).toBeVisible();
+  expect(screen.queryByText("NonConforming")).not.toBeInTheDocument();
+  expect(
+    fetcher.mock.calls.every(([, options]) => options.method === "GET"),
+  ).toBe(true);
+});

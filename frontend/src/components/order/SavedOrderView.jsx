@@ -194,8 +194,30 @@ export default function SavedOrderView() {
     value == null || value === ""
       ? message("common.notRecorded")
       : String(value);
-  const statusName = (row) =>
-    row.statusName || message("order.saved.unknownStatus");
+  const statusName = (row) => {
+    const codes =
+      row.statusType === "SAMPLE"
+        ? new Set(["Entered", "SampleRejected", "Canceled", "Disposed"])
+        : row.statusType === "ANALYSIS"
+          ? new Set([
+              "SampleRejected",
+              "NotStarted",
+              "Canceled",
+              "TechnicalAcceptance",
+              "TechnicalRejected",
+              "BiologistRejected",
+              "NonConforming_depricated",
+              "Finalized",
+            ])
+          : null;
+    // Translate only the server-verified category and known semantic code.
+    // Retain the actual identity and never infer a state from a name or numeric ID.
+    if (codes?.has(row.statusCode)) {
+      const category = row.statusType === "SAMPLE" ? "sample" : "analysis";
+      return message(`sample.management.${category}Status.${row.statusCode}`);
+    }
+    return row.statusName || message("order.saved.unknownStatus");
+  };
   const warnings = (codes = []) =>
     codes.length > 0 && (
       <ul className="saved-order-view__warnings">
