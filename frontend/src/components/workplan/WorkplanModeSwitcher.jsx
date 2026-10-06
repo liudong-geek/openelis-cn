@@ -61,6 +61,13 @@ export default function WorkplanModeSwitcher({ type }) {
           item ? intl.formatMessage({ id: item.labelId }) : ""
         }
         onChange={handleChange}
+        translateWithId={(messageId) => {
+          if (messageId === "open.menu")
+            return intl.formatMessage({ id: "carbon.open.menu" });
+          if (messageId === "close.menu")
+            return intl.formatMessage({ id: "carbon.close.menu" });
+          return messageId;
+        }}
       />
     </section>
   );

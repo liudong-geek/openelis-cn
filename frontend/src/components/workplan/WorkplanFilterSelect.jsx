@@ -15,6 +15,7 @@ export default function WorkplanFilterSelect({
   placeholderId,
   title,
   value,
+  localizePriority = false,
 }) {
   const intl = useIntl();
   const { userSessionDetails } = useContext(UserSessionDetailsContext) || {};
@@ -63,13 +64,29 @@ export default function WorkplanFilterSelect({
       .then((response) => {
         if (!current()) return;
         ended = true;
+        // i18n-keys: order.priority.option.*
+        const localizedItems = localizePriority
+          ? response.map((item) =>
+              ["ROUTINE", "ASAP", "STAT", "TIMED", "FUTURE_STAT"].includes(
+                item.id,
+              )
+                ? {
+                    ...item,
+                    value: intl.formatMessage({
+                      id: `order.priority.option.${item.id}`,
+                      defaultMessage: item.value,
+                    }),
+                  }
+                : item,
+            )
+          : response;
         const selected =
-          response.find((item) => item.id === requestedId) || null;
+          localizedItems.find((item) => item.id === requestedId) || null;
         controlled.current = { phase: "ready", selected };
         valueRef.current(selected?.id || "", selected?.value || placeholder, {
           restored: true,
         });
-        setItems(response);
+        setItems(localizedItems);
         setSelectedItem(selected);
         setPhase("ready");
       })
@@ -80,7 +97,15 @@ export default function WorkplanFilterSelect({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [endpoint, queryParameter, placeholder, owner, retry]);
+  }, [
+    endpoint,
+    queryParameter,
+    placeholder,
+    owner,
+    retry,
+    localizePriority,
+    intl,
+  ]);
   const handleChange = ({ selectedItem: next }) => {
     if (
       controlled.current.phase !== "ready" ||
@@ -104,6 +129,15 @@ export default function WorkplanFilterSelect({
         placeholder={placeholder}
         onChange={handleChange}
         shouldFilterItem={shouldFilterWorkplanItem}
+        translateWithId={(messageId) => {
+          if (messageId === "open.menu")
+            return intl.formatMessage({ id: "carbon.open.menu" });
+          if (messageId === "close.menu")
+            return intl.formatMessage({ id: "carbon.close.menu" });
+          if (messageId === "clear.selection" || messageId === "clear.all")
+            return intl.formatMessage({ id: "workplan.options.clear" });
+          return messageId;
+        }}
         disabled={phase !== "ready"}
       />
       {phase === "error" && (

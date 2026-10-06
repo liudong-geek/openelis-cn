@@ -7,6 +7,8 @@ import WorkplanFilterSelect, {
   shouldFilterWorkplanItem,
 } from "./WorkplanFilterSelect";
 import messages from "../../languages/en.json";
+import chineseMessages from "../../languages/zh_CN.json";
+import PrioritySelectForm from "./PrioritySelectForm";
 import { readWorkplanOptions } from "./workplanRequest";
 vi.mock("./workplanRequest", () => ({
   readWorkplanOptions: vi.fn(),
@@ -116,7 +118,12 @@ test("endpoint ABA ignores late catalogues, even if the transport ignores abort"
   await act(async () => newA.resolve([{ id: "9", value: "Current" }]));
   await act(async () => oldA.resolve(items));
   await act(async () => b.resolve(items));
-  fireEvent.click(screen.getByRole("button", { name: "Open", exact: true }));
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: messages["carbon.open.menu"],
+      exact: true,
+    }),
+  );
   expect(screen.getByRole("option", { name: "Current" })).toBeInTheDocument();
   expect(
     screen.queryByRole("option", { name: "Haemoglobin" }),
@@ -149,4 +156,78 @@ test("options timeout aborts and displays failure rather than an empty catalogue
   expect(
     screen.getByText(messages["workplan.options.failed"]),
   ).toBeInTheDocument();
+});
+
+const priorityOptions = [
+  { id: "ROUTINE", value: "Routine" },
+  { id: "ASAP", value: "ASAP" },
+  { id: "STAT", value: "STAT" },
+  { id: "TIMED", value: "Timed" },
+  { id: "FUTURE_STAT", value: "Future STAT" },
+];
+const priorityPicker = (value) => (
+  <UserSessionDetailsContext.Provider
+    value={{ userSessionDetails: { owner: "actor-A" } }}
+  >
+    <IntlProvider locale="zh-CN" messages={chineseMessages}>
+      <PrioritySelectForm title="优先级" value={value} />
+    </IntlProvider>
+  </UserSessionDetailsContext.Provider>
+);
+test("Chinese priority options preserve actual enum IDs and localize clear/open controls", async () => {
+  readWorkplanOptions.mockResolvedValue(priorityOptions);
+  const value = vi.fn();
+  render(priorityPicker(value));
+  await waitFor(() =>
+    expect(screen.getByRole("combobox", { name: "优先级" })).toBeEnabled(),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "展开选项", exact: true }),
+  );
+  for (const name of ["常规", "尽快处理", "急诊", "指定时间", "预定急诊"]) {
+    expect(
+      screen.getByRole("option", { name, exact: true }),
+    ).toBeInTheDocument();
+  }
+  expect(
+    screen.queryByRole("option", { name: "Routine", exact: true }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "收起选项", exact: true }),
+  ).toBeInTheDocument();
+  fireEvent.change(screen.getByRole("combobox", { name: "优先级" }), {
+    target: { value: "急诊" },
+  });
+  expect(
+    screen.queryByRole("option", { name: "常规", exact: true }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("option", { name: "急诊", exact: true }));
+  expect(value).toHaveBeenLastCalledWith("STAT", "急诊", { restored: false });
+  fireEvent.click(
+    screen.getByRole("button", { name: "清除所选条件", exact: true }),
+  );
+  expect(value).toHaveBeenLastCalledWith(
+    "",
+    chineseMessages["input.placeholder.selectPriority"],
+    { restored: false },
+  );
+});
+test("Chinese priority restoration uses enum ID and retains the restored page intent", async () => {
+  window.history.replaceState(
+    {},
+    "",
+    "/WorkPlanByPriority?type=priority&priority=FUTURE_STAT&page=2&pageSize=10",
+  );
+  readWorkplanOptions.mockResolvedValue(priorityOptions);
+  const value = vi.fn();
+  render(priorityPicker(value));
+  await waitFor(() =>
+    expect(screen.getByRole("combobox", { name: "优先级" })).toHaveValue(
+      "预定急诊",
+    ),
+  );
+  expect(value).toHaveBeenLastCalledWith("FUTURE_STAT", "预定急诊", {
+    restored: true,
+  });
+  expect(window.location.search).toContain("page=2");
 });

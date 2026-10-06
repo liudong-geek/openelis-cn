@@ -7,6 +7,7 @@ export default function PrioritySelectForm({ title, value }) {
       id="workplan-priority-filter"
       endpoint="/rest/displayList/ORDER_PRIORITY"
       queryParameter="priority"
+      localizePriority
       placeholderId="input.placeholder.selectPriority"
       title={title}
       value={value}

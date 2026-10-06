@@ -53,14 +53,14 @@ const historyFor = (url) => {
   window.history.replaceState({}, "", url);
   return createMemoryHistory({ initialEntries: [url] });
 };
-const mount = (history) =>
+const mount = (history, type = "unit") =>
   render(
     <Router history={history}>
       <IntlProvider locale="zh" messages={messages}>
         <UserSessionDetailsContext.Provider
           value={{ userSessionDetails: session }}
         >
-          <Workplan type="unit" />
+          <Workplan type={type} />
         </UserSessionDetailsContext.Provider>
       </IntlProvider>
     </Router>,
@@ -78,6 +78,11 @@ beforeEach(() => {
         return json([
           { id: "7", value: "生化" },
           { id: "8", value: "血液学" },
+        ]);
+      if (url.includes("/rest/displayList/ORDER_PRIORITY"))
+        return json([
+          { id: "ROUTINE", value: "Routine" },
+          { id: "STAT", value: "STAT" },
         ]);
       if (url.includes("/rest/Workplan?")) {
         const params = new URLSearchParams(url.split("?")[1]);
@@ -202,7 +207,10 @@ test("real parent, Carbon selector, query and PDF adapter preserve page 2 and pr
   ).toBe("7");
   expect(new URLSearchParams(history.location.search).get("page")).toBe("1");
   fireEvent.click(
-    screen.getByRole("button", { name: "Clear selected item", exact: true }),
+    screen.getByRole("button", {
+      name: messages["workplan.options.clear"],
+      exact: true,
+    }),
   );
   await screen.findByText(messages["workplan.list.idle"]);
   expect(
@@ -211,7 +219,12 @@ test("real parent, Carbon selector, query and PDF adapter preserve page 2 and pr
   expect(
     screen.getByRole("button", { name: "打印当前页", exact: true }),
   ).toBeDisabled();
-  fireEvent.click(screen.getByRole("button", { name: "Open", exact: true }));
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: messages["carbon.open.menu"],
+      exact: true,
+    }),
+  );
   fireEvent.click(
     await screen.findByRole("option", { name: "血液学", exact: true }),
   );
@@ -265,4 +278,26 @@ test("an HTML print response never opens a PDF or reports success in the real co
   expect(
     screen.queryByText(messages["workplan.print.ready"]),
   ).not.toBeInTheDocument();
+});
+
+test("real priority chain displays Chinese labels while querying the actual priority enum", async () => {
+  const history = historyFor("/WorkPlanByPriority?type=priority");
+  mount(history, "priority");
+  await waitFor(() =>
+    expect(screen.getByRole("combobox", { name: "优先级" })).toBeEnabled(),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "展开选项", exact: true }),
+  );
+  fireEvent.click(screen.getByRole("option", { name: "急诊", exact: true }));
+  await waitFor(() =>
+    expect(
+      queries.some(
+        (query) => query.type === "priority" && query.filterId === "STAT",
+      ),
+    ).toBe(true),
+  );
+  await waitFor(() => expect(screen.getAllByRole("checkbox")).toHaveLength(3));
+  expect(history.location.search).toContain("priority=STAT");
+  expect(screen.getByRole("combobox", { name: "优先级" })).toHaveValue("急诊");
 });

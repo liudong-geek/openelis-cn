@@ -10405,6 +10405,7 @@
   "workplan.print.reason.INCOMPLETE_ANALYSIS_IDENTITY": "The specimen or test linkage is incomplete. Correct the records and query again.",
   "workplan.print.reason.PRINT_PERMISSION_DENIED": "Your account cannot print workplans.",
   "workplan.print.reason.UNKNOWN": "This test cannot currently be printed. Query again and review.",
+  "workplan.options.clear": "Clear selected item",
   "workplan.options.failed": "Query options could not be loaded. Reload them.",
   "workplan.options.retry": "Reload options",
   "workplan.print.forbidden": "Your account no longer has workplan printing permission. Query again after checking permissions.",

@@ -10497,6 +10497,7 @@
   "workplan.print.reason.INCOMPLETE_ANALYSIS_IDENTITY": "该项目的标本或检验关联资料不完整，请维护后重新查询。",
   "workplan.print.reason.PRINT_PERMISSION_DENIED": "当前账号没有工作单打印权限。",
   "workplan.print.reason.UNKNOWN": "该项目暂不允许打印，请重新查询核对。",
+  "workplan.options.clear": "清除所选条件",
   "workplan.options.failed": "查询条件加载失败，请重新加载。",
   "workplan.options.retry": "重新加载条件",
   "workplan.print.forbidden": "当前账号没有工作单打印权限，请核对授权后重新查询。",
