@@ -1,24 +1,13 @@
-import React, { useEffect, useRef, useState } from "react";
-import { ComboBox } from "@carbon/react";
+import React, { useContext, useEffect, useRef, useState } from "react";
+import { Button, ComboBox, InlineNotification } from "@carbon/react";
 import { useIntl } from "react-intl";
-import { getFromOpenElisServer } from "../utils/Utils";
-
-const normalizeItems = (response) =>
-  Array.isArray(response)
-    ? response.filter(
-        (item) =>
-          item &&
-          item.id !== undefined &&
-          item.id !== null &&
-          typeof item.value === "string",
-      )
-    : [];
+import UserSessionDetailsContext from "../../UserSessionDetailsContext";
+import { readWorkplanOptions, workplanSessionKey } from "./workplanRequest";
 
 export const shouldFilterWorkplanItem = ({ item, inputValue }) =>
   String(item?.value ?? "")
     .toLocaleLowerCase()
     .includes(String(inputValue ?? "").toLocaleLowerCase());
-
 export default function WorkplanFilterSelect({
   id,
   endpoint,
@@ -28,57 +17,112 @@ export default function WorkplanFilterSelect({
   value,
 }) {
   const intl = useIntl();
-  const mounted = useRef(false);
+  const { userSessionDetails } = useContext(UserSessionDetailsContext) || {};
+  let owner = null;
+  try {
+    owner = workplanSessionKey(userSessionDetails);
+  } catch {}
+  const epoch = useRef(0);
+  const controlled = useRef({ phase: "loading", selected: null });
   const valueRef = useRef(value);
+  valueRef.current = value;
   const [items, setItems] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
+  const [phase, setPhase] = useState("loading");
+  const [retry, setRetry] = useState(0);
   const placeholder = intl.formatMessage({ id: placeholderId });
-
-  valueRef.current = value;
-
   useEffect(() => {
-    mounted.current = true;
+    const generation = ++epoch.current;
+    const controller = new AbortController();
+    let ended = false;
+    const current = () =>
+      !ended && !controller.signal.aborted && epoch.current === generation;
+    controlled.current = { phase: "loading", selected: null };
+    setItems([]);
+    setSelectedItem(null);
+    setPhase("loading");
+    valueRef.current("", placeholder, { restored: true });
+    if (!owner) {
+      setPhase("error");
+      return () => {
+        ended = true;
+        controller.abort();
+      };
+    }
     const requestedId =
       new URLSearchParams(window.location.search).get(queryParameter) || "";
-
-    getFromOpenElisServer(endpoint, (response) => {
-      if (!mounted.current) return;
-
-      const nextItems = normalizeItems(response);
-      const nextSelected =
-        nextItems.find((item) => String(item.id) === requestedId) || null;
-
-      setItems(nextItems);
-      setSelectedItem(nextSelected);
-      valueRef.current(
-        nextSelected ? String(nextSelected.id) : "",
-        nextSelected?.value || placeholder,
-      );
-    });
-
-    return () => {
-      mounted.current = false;
+    const failed = () => {
+      if (current()) {
+        ended = true;
+        setPhase("error");
+        controller.abort();
+      }
     };
-  }, [endpoint, placeholder, queryParameter]);
-
-  const handleChange = ({ selectedItem: nextSelected }) => {
-    setSelectedItem(nextSelected || null);
-    valueRef.current(
-      nextSelected ? String(nextSelected.id) : "",
-      nextSelected?.value || placeholder,
-    );
+    const timer = setTimeout(failed, 20000);
+    readWorkplanOptions(endpoint, controller.signal, owner)
+      .then((response) => {
+        if (!current()) return;
+        ended = true;
+        const selected =
+          response.find((item) => item.id === requestedId) || null;
+        controlled.current = { phase: "ready", selected };
+        valueRef.current(selected?.id || "", selected?.value || placeholder, {
+          restored: true,
+        });
+        setItems(response);
+        setSelectedItem(selected);
+        setPhase("ready");
+      })
+      .catch(failed)
+      .finally(() => clearTimeout(timer));
+    return () => {
+      ended = true;
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [endpoint, queryParameter, placeholder, owner, retry]);
+  const handleChange = ({ selectedItem: next }) => {
+    if (
+      controlled.current.phase !== "ready" ||
+      (next?.id || "") === (controlled.current.selected?.id || "")
+    )
+      return;
+    controlled.current.selected = next || null;
+    setSelectedItem(next || null);
+    valueRef.current(next?.id || "", next?.value || placeholder, {
+      restored: false,
+    });
   };
-
   return (
-    <ComboBox
-      id={id}
-      items={items}
-      itemToString={(item) => item?.value || ""}
-      selectedItem={selectedItem}
-      titleText={title}
-      placeholder={placeholder}
-      onChange={handleChange}
-      shouldFilterItem={shouldFilterWorkplanItem}
-    />
+    <>
+      <ComboBox
+        id={id}
+        items={items}
+        itemToString={(item) => item?.value || ""}
+        selectedItem={selectedItem}
+        titleText={title}
+        placeholder={placeholder}
+        onChange={handleChange}
+        shouldFilterItem={shouldFilterWorkplanItem}
+        disabled={phase !== "ready"}
+      />
+      {phase === "error" && (
+        <>
+          <InlineNotification
+            kind="error"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({ id: "workplan.options.failed" })}
+          />
+          <Button
+            kind="tertiary"
+            size="sm"
+            onClick={() => setRetry((count) => count + 1)}
+          >
+            {intl.formatMessage({ id: "workplan.options.retry" })}
+          </Button>
+        </>
+      )}
+    </>
   );
 }

@@ -33,7 +33,7 @@ public class PrintWorkplanReportRestController extends BaseRestController {
 
     private String reportPath = null;
 
-    @PostMapping(value = "/rest/PrintWorkplanReport")
+    @PostMapping(value = "/rest/PrintWorkplanReport", params = "!queryVersion")
     public void showRestPrintWorkplanReport(HttpServletRequest request, HttpServletResponse response,
             @RequestBody @Validated(PrintWorkplan.class) WorkplanForm form, BindingResult result) {
 

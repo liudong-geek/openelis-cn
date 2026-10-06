@@ -1,130 +1,156 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Button, Column, Form, Grid, Link, Loading } from "@carbon/react";
-import { ArrowLeft, ArrowRight } from "@carbon/react/icons";
-import { FormattedMessage, useIntl } from "react-intl";
-import "../Style.css";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Column, Form, Grid } from "@carbon/react";
+import { FormattedMessage } from "react-intl";
+import { useHistory } from "react-router-dom";
 import TestSectionSelectForm from "./TestSectionSelectForm";
 import TestSelectForm from "./TestSelectForm";
 import PanelSelectForm from "./PanelSelectForm";
 import PrioritySelectForm from "./PrioritySelectForm";
-import { getFromOpenElisServer } from "../utils/Utils";
+import { readWorkplan } from "./workplanRequest";
 
-export default function WorkplanSearchForm(props) {
-  const intl = useIntl();
-  const mounted = useRef(false);
-  const [selectedValue, setSelectedValue] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [nextPage, setNextPage] = useState(null);
-  const [previousPage, setPreviousPage] = useState(null);
-  const [pagination, setPagination] = useState(false);
-  const [currentApiPage, setCurrentApiPage] = useState(null);
-  const [totalApiPages, setTotalApiPages] = useState(null);
-  const [url, setUrl] = useState("");
-
-  let title = "";
-  let urlToPost = "";
-  const type = props.type;
-  switch (type) {
-    case "test":
-      title = <FormattedMessage id="workplan.test.types" />;
-      urlToPost = "/rest/WorkPlanByTest?test_id=";
-      break;
-    case "panel":
-      title = <FormattedMessage id="workplan.panel.types" />;
-      urlToPost = "/rest/WorkPlanByPanel?panel_id=";
-      break;
-    case "unit":
-      title = <FormattedMessage id="workplan.unit.types" />;
-      urlToPost = "/rest/WorkPlanByTestSection?test_section_id=";
-      break;
-    case "priority":
-      title = <FormattedMessage id="workplan.priority.list" />;
-      urlToPost = "/rest/WorkPlanByPriority?priority=";
-      break;
-    default:
-      title = "";
-  }
-
-  const handleSelectedValue = (v, l) => {
-    if (mounted.current) {
-      setSelectedValue(v);
-      props.selectedValue(v);
-      props.selectedLabel(l);
-    }
-  };
-
-  const getTestsList = (res) => {
-    if (mounted.current) {
-      const safeResponse = Array.isArray(res?.workplanTests)
-        ? res
-        : { workplanTests: [], paging: null };
-      props.createTestsList(safeResponse);
-      setPagination(false);
-      setNextPage(null);
-      setPreviousPage(null);
-      setCurrentApiPage(null);
-      setTotalApiPages(null);
-      if (safeResponse.paging) {
-        const { totalPages, currentPage } = safeResponse.paging;
-        if (totalPages > 1) {
-          setPagination(true);
-          setCurrentApiPage(currentPage);
-          setTotalApiPages(totalPages);
-          if (parseInt(currentPage) < parseInt(totalPages)) {
-            setNextPage(parseInt(currentPage) + 1);
-          } else {
-            setNextPage(null);
-          }
-          if (parseInt(currentPage) > 1) {
-            setPreviousPage(parseInt(currentPage) - 1);
-          } else {
-            setPreviousPage(null);
-          }
-        }
-      }
-      setIsLoading(false);
-    }
-  };
-
-  const loadNextResultsPage = () => {
-    setIsLoading(true);
-    getFromOpenElisServer(url + "&page=" + nextPage, getTestsList);
-  };
-
-  const loadPreviousResultsPage = () => {
-    setIsLoading(true);
-    getFromOpenElisServer(url + "&page=" + previousPage, getTestsList);
-  };
-
-  useEffect(() => {
-    mounted.current = true;
-    setNextPage(null);
-    setPreviousPage(null);
-    setPagination(false);
-    if (!selectedValue) {
-      setIsLoading(false);
-      setUrl("");
-      return () => {
-        mounted.current = false;
-      };
-    }
-
-    setIsLoading(true);
-    setUrl(urlToPost + selectedValue);
-    getFromOpenElisServer(urlToPost + selectedValue, getTestsList);
+const FILTER_PARAMETERS = {
+  test: "testId",
+  panel: "panelId",
+  unit: "testSectionId",
+  priority: "priority",
+};
+export default function WorkplanSearchForm({
+  type,
+  owner,
+  pageRequest,
+  onSelectionChange,
+  onQueryStateChange,
+}) {
+  const history = useHistory();
+  const [selection, setSelection] = useState({ id: "", type, owner });
+  const alive = useRef(false);
+  useLayoutEffect(() => {
+    alive.current = true;
     return () => {
-      mounted.current = false;
+      alive.current = false;
     };
-  }, [selectedValue]);
-
-  useEffect(() => {
-    setNextPage(null);
-    setPreviousPage(null);
-    setPagination(false);
   }, []);
-
+  const epoch = useRef(0);
+  const active = useRef(null);
+  const callbacks = useRef({});
+  callbacks.current = { onSelectionChange, onQueryStateChange };
+  const title = (
+    <FormattedMessage
+      id={
+        {
+          test: "workplan.test.types",
+          panel: "workplan.panel.types",
+          unit: "workplan.unit.types",
+          priority: "workplan.priority.list",
+        }[type] || "workplan.mode.label"
+      }
+    />
+  );
+  const selectedValue =
+    selection.type === type && selection.owner === owner ? selection.id : "";
+  const clearActive = () => {
+    epoch.current++;
+    if (active.current) {
+      clearTimeout(active.current.timer);
+      active.current.controller.abort();
+      active.current = null;
+    }
+  };
+  const handleSelectedValue = (filterId, label, meta = {}) => {
+    clearActive();
+    callbacks.current.onSelectionChange?.({
+      filterId,
+      label,
+      restored: meta.restored === true,
+    });
+    callbacks.current.onQueryStateChange?.({
+      phase: filterId && owner ? "loading" : "idle",
+      owner,
+      epoch: epoch.current,
+      query: { type, filterId },
+      rows: [],
+      paging: null,
+      errorCode: null,
+    });
+    setSelection({ id: filterId, type, owner });
+    if (!filterId && !meta.restored)
+      history.replace({
+        ...history.location,
+        search: new URLSearchParams({ type }).toString(),
+      });
+  };
+  useEffect(() => {
+    clearActive();
+    const generation = epoch.current;
+    const query = { type, filterId: selectedValue };
+    const publish = (phase, extra = {}) =>
+      alive.current &&
+      callbacks.current.onQueryStateChange?.({
+        phase,
+        owner,
+        epoch: generation,
+        query,
+        rows: [],
+        paging: null,
+        errorCode: null,
+        ...extra,
+      });
+    if (!selectedValue || !owner) {
+      publish("idle");
+      return clearActive;
+    }
+    const controller = new AbortController();
+    let ended = false;
+    const current = () =>
+      alive.current &&
+      !ended &&
+      epoch.current === generation &&
+      !controller.signal.aborted;
+    publish("loading");
+    const params = new URLSearchParams({
+      type,
+      [FILTER_PARAMETERS[type]]: selectedValue,
+      page: String(pageRequest.page),
+      pageSize: String(pageRequest.pageSize),
+    });
+    history.replace({ ...history.location, search: params.toString() });
+    const timer = setTimeout(() => {
+      if (current()) {
+        ended = true;
+        controller.abort();
+        publish("error", { errorCode: "timeout" });
+      }
+    }, 20000);
+    active.current = { controller, timer };
+    readWorkplan(
+      query,
+      pageRequest.page,
+      pageRequest.pageSize,
+      controller.signal,
+      owner,
+    )
+      .then((result) => {
+        if (current()) {
+          ended = true;
+          publish("success", result);
+        }
+      })
+      .catch((error) => {
+        if (current()) {
+          ended = true;
+          publish("error", { errorCode: error?.kind || "unavailable" });
+        }
+      })
+      .finally(() => clearTimeout(timer));
+    return () => {
+      ended = true;
+      clearTimeout(timer);
+      controller.abort();
+      if (epoch.current === generation) epoch.current++;
+    };
+  }, [type, owner, selectedValue, pageRequest]);
   return (
-    <section className="oe-workplan-filter" aria-busy={isLoading}>
+    <section className="oe-workplan-filter">
       <div className="oe-workplan-filter__heading">
         <h2>
           <FormattedMessage id="label.form.searchby" /> {title}
@@ -134,78 +160,31 @@ export default function WorkplanSearchForm(props) {
         </p>
       </div>
       <Grid fullWidth condensed>
-        <Column sm={4} md={5} lg={7}>
-          <Form className="container-form">
-            {type === "test" && (
-              <TestSelectForm title={title} value={handleSelectedValue} />
-            )}
-            {type === "panel" && (
-              <PanelSelectForm title={title} value={handleSelectedValue} />
-            )}
-            {type === "unit" && (
-              <TestSectionSelectForm
-                title={title}
-                value={handleSelectedValue}
-              />
-            )}
-            {type === "priority" && (
-              <PrioritySelectForm title={title} value={handleSelectedValue} />
-            )}
+        <Column sm={4} md={8} lg={8}>
+          <Form
+            className="container-form"
+            onSubmit={(event) => event.preventDefault()}
+          >
+            <React.Fragment key={`${type}:${owner}`}>
+              {type === "test" && (
+                <TestSelectForm title={title} value={handleSelectedValue} />
+              )}
+              {type === "panel" && (
+                <PanelSelectForm title={title} value={handleSelectedValue} />
+              )}
+              {type === "unit" && (
+                <TestSectionSelectForm
+                  title={title}
+                  value={handleSelectedValue}
+                />
+              )}
+              {type === "priority" && (
+                <PrioritySelectForm title={title} value={handleSelectedValue} />
+              )}
+            </React.Fragment>
           </Form>
         </Column>
-        <Column sm={4} md={3} lg={3}>
-          {isLoading && (
-            <div className="oe-workplan-filter__loading" aria-live="polite">
-              <Loading
-                small
-                withOverlay={false}
-                description={intl.formatMessage({ id: "loading.description" })}
-              />
-              <span>
-                <FormattedMessage id="loading.description" />
-              </span>
-            </div>
-          )}
-        </Column>
       </Grid>
-      {!selectedValue && !isLoading && (
-        <div className="oe-workplan-filter__guidance" role="status">
-          <FormattedMessage id="workplan.filter.required" />
-        </div>
-      )}
-      {pagination && (
-        <Grid condensed className="oe-workplan-api-pagination">
-          <Column sm={4} md={8} lg={16}>
-            <div className="oe-workplan-api-pagination__controls">
-              <Link>
-                {currentApiPage} / {totalApiPages}
-              </Link>
-              <div className="oe-workplan-api-pagination__buttons">
-                <Button
-                  hasIconOnly
-                  id="loadpreviousresults"
-                  onClick={loadPreviousResultsPage}
-                  disabled={previousPage != null ? false : true}
-                  renderIcon={ArrowLeft}
-                  iconDescription={intl.formatMessage({
-                    id: "pagination.previous",
-                  })}
-                ></Button>
-                <Button
-                  hasIconOnly
-                  id="loadnextresults"
-                  onClick={loadNextResultsPage}
-                  disabled={nextPage != null ? false : true}
-                  renderIcon={ArrowRight}
-                  iconDescription={intl.formatMessage({
-                    id: "pagination.next",
-                  })}
-                ></Button>
-              </div>
-            </div>
-          </Column>
-        </Grid>
-      )}
     </section>
   );
 }

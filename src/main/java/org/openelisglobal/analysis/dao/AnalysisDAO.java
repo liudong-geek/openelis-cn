@@ -129,6 +129,14 @@ public interface AnalysisDAO extends BaseDAO<Analysis, String> {
 
     List<Analysis> getAnalysesForStatusId(String statusId) throws LIMSRuntimeException;
 
+    long countWorkplanAnalyses(List<String> statusIds, Set<String> allowedTestIds, String testSectionId,
+            OrderPriority priority);
+
+    List<Analysis> getWorkplanAnalyses(List<String> statusIds, Set<String> allowedTestIds, String testSectionId,
+            OrderPriority priority, int offset, int limit);
+
+    List<Analysis> getWorkplanAnalysesByIds(Set<String> analysisIds);
+
     List<Analysis> getPendingResultAnalyses(List<String> statusIds, Set<String> allowedTestIds, int offset, int limit);
 
     void visitPendingResultSpecimenCounts(List<String> statusIds, Set<String> allowedTestIds,

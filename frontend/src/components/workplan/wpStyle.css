@@ -75,3 +75,109 @@
 .oe-workplan-page .oddRow {
   background: #ffffff;
 }
+
+.oe-workplan-surface {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--oe-border, #e2e9ed);
+  border-radius: var(--oe-surface-radius, 0.5rem);
+  background: var(--oe-surface, #fff);
+}
+.oe-workplan-list-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid var(--oe-border, #e2e9ed);
+}
+.oe-workplan-list-heading h2 {
+  margin: 0;
+  color: var(--oe-text, #203847);
+  font-size: 1rem;
+  font-weight: 600;
+}
+.oe-workplan-list-heading p,
+.oe-workplan-print-controls p {
+  margin: 0.25rem 0 0;
+  color: var(--oe-text-muted, #647985);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.oe-workplan-print-controls {
+  max-width: 20rem;
+}
+.oe-workplan-feedback {
+  padding-inline: 1rem;
+}
+.oe-workplan-feedback > * {
+  margin-block: 1rem;
+}
+.oe-workplan-feedback .cds--inline-notification {
+  width: 100%;
+  max-width: none;
+}
+.oe-workplan-table-scroll {
+  overflow-x: auto;
+}
+.oe-workplan-table {
+  min-width: 56rem;
+  table-layout: fixed;
+}
+.oe-workplan-table th {
+  white-space: nowrap;
+}
+.oe-workplan-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.oe-workplan-table .oe-workplan-column--exclude {
+  width: 6.5rem;
+}
+.oe-workplan-table .oe-workplan-column--accession {
+  width: 16rem;
+}
+.oe-workplan-table .oe-workplan-column--date {
+  width: 8rem;
+}
+.oe-workplan-table td.oe-workplan-column--date {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.oe-workplan-table .oe-workplan-group-label td {
+  color: var(--oe-text, #203847);
+  font-weight: 600;
+  background: var(--oe-surface-subtle, #f9fafc);
+}
+.oe-workplan-table .oe-workplan-row--excluded td {
+  color: var(--oe-text-muted, #647985);
+}
+.oe-workplan-patient-name,
+.oe-workplan-print-reason {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--oe-text-muted, #647985);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.oe-workplan-nonconforming {
+  margin-inline-start: 0.5rem;
+  vertical-align: middle;
+}
+@media (max-width: 41.9375rem) {
+  .oe-workplan-page {
+    width: calc(100% - 2rem);
+  }
+  .oe-workplan-list-heading {
+    flex-direction: column;
+  }
+  .oe-workplan-page .cds--pagination {
+    flex-wrap: wrap;
+    height: auto;
+  }
+  .oe-workplan-page .cds--pagination__left,
+  .oe-workplan-page .cds--pagination__right {
+    flex-wrap: wrap;
+    min-height: 3rem;
+  }
+}

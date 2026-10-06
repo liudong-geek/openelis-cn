@@ -998,6 +998,67 @@ public class AnalysisDAOImpl extends BaseDAOImpl<Analysis, String> implements An
         return list;
     }
 
+    private String workplanConditions(String section, OrderPriority priority) {
+        return " where a.statusId in (:statusIds) and t.id in (:allowedTestIds)"
+                + (section == null ? "" : " and a.testSection.id = :sectionId")
+                + (priority == null ? "" : " and s.priority = :priority");
+    }
+
+    private void workplanParameters(Query<?> query, List<String> statuses, Set<String> tests, String section,
+            OrderPriority priority) {
+        query.setParameterList("statusIds", statuses);
+        query.setParameterList("allowedTestIds", tests);
+        if (section != null)
+            query.setParameter("sectionId", section);
+        if (priority != null)
+            query.setParameter("priority", priority);
+        query.setReadOnly(true);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countWorkplanAnalyses(List<String> statusIds, Set<String> allowedTestIds, String section,
+            OrderPriority priority) {
+        if (statusIds.isEmpty() || allowedTestIds.isEmpty())
+            return 0;
+        Query<Long> query = entityManager.unwrap(Session.class)
+                .createQuery("select count(a.id) from Analysis a join a.sampleItem si join si.sample s join a.test t"
+                        + workplanConditions(section, priority), Long.class);
+        workplanParameters(query, statusIds, allowedTestIds, section, priority);
+        return query.uniqueResult();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Analysis> getWorkplanAnalyses(List<String> statusIds, Set<String> allowedTestIds, String section,
+            OrderPriority priority, int offset, int limit) {
+        if (offset < 0 || limit < 1 || limit > 100)
+            throw new IllegalArgumentException("workplan.invalidQuery");
+        if (statusIds.isEmpty() || allowedTestIds.isEmpty())
+            return List.of();
+        Query<Analysis> query = entityManager.unwrap(Session.class).createQuery(
+                "select a from Analysis a join fetch a.sampleItem si join fetch si.sample s join fetch a.test t left join fetch a.testSection"
+                        + workplanConditions(section, priority) + " order by s.accessionNumber, si.id, a.id",
+                Analysis.class);
+        workplanParameters(query, statusIds, allowedTestIds, section, priority);
+        return query.setFirstResult(offset).setMaxResults(limit).list();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Analysis> getWorkplanAnalysesByIds(Set<String> analysisIds) {
+        if (analysisIds.isEmpty())
+            return List.of();
+        if (analysisIds.size() > 100)
+            throw new IllegalArgumentException("workplan.invalidPrintSelection");
+        Query<Analysis> query = entityManager.unwrap(Session.class).createQuery(
+                "select a from Analysis a join fetch a.sampleItem si join fetch si.sample s join fetch a.test t left join fetch a.testSection where a.id in (:analysisIds) order by s.accessionNumber, si.id, a.id",
+                Analysis.class);
+        query.setParameterList("analysisIds", analysisIds);
+        query.setReadOnly(true);
+        return query.list();
+    }
+
     // Both list/page and scalar summary use this exact scope. The final clause
     // mirrors ResultsLoadUtility's existence rule: no results -> a blank row;
     // parentless result -> a row; multiple active components -> blank component
