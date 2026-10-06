@@ -57,6 +57,15 @@
 .nce-form-section .cds--date-picker__input {
   width: 100%;
 }
+.nce-form-section .cds--date-picker-input__wrapper,
+.nce-form-section .cds--date-picker-input__wrapper > span {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+.nce-form-section .cds--date-picker__input {
+  max-width: 100%;
+}
 .nce-form-wide {
   grid-column: 1 / -1;
 }
