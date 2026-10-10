@@ -81,6 +81,7 @@ test.each([
     expect(mocks.get).toHaveBeenCalledWith(
       `/rest/admin/menu/${id}`,
       expect.any(Function),
+      expect.any(AbortSignal),
     );
     fireEvent.click(container.querySelector(`#${id}_checkbox`));
     const persisted = item(id, false);

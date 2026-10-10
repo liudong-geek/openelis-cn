@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useState } from "react";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   Button,
@@ -116,6 +116,26 @@ function ConfigMenuDisplay(props: ConfigMenuDisplayProps) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [editingRow, setEditingRow] = useState<ConfigTableRow | null>(null);
+  const editingOwner = useRef<ConfigTableRow | null>(null);
+  const savingRef = useRef(false);
+  const openEditor = (row: ConfigTableRow) => {
+    if (savingRef.current) return;
+    const owner = { ...row };
+    editingOwner.current = owner;
+    setEditingRow(owner);
+  };
+  const closeEditor = () => {
+    if (savingRef.current) return false;
+    editingOwner.current = null;
+    setEditingRow(null);
+    return true;
+  };
+  useEffect(
+    () => () => {
+      editingOwner.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     props.onEditorStateChange?.(Boolean(editingRow));
@@ -167,7 +187,7 @@ function ConfigMenuDisplay(props: ConfigMenuDisplayProps) {
       const presentation = getConfigPresentation(
         row.name,
         row.description,
-        intl.locale,
+        intl,
       );
       return [
         row.name,
@@ -180,7 +200,7 @@ function ConfigMenuDisplay(props: ConfigMenuDisplayProps) {
         .toLocaleLowerCase()
         .includes(query);
     });
-  }, [rows, searchText, intl.locale]);
+  }, [rows, searchText, intl]);
 
   useEffect(() => {
     const lastPage = Math.max(1, Math.ceil(visibleRows.length / pageSize));
@@ -201,7 +221,7 @@ function ConfigMenuDisplay(props: ConfigMenuDisplayProps) {
       const presentation = getConfigPresentation(
         sourceRow.name,
         sourceRow.description,
-        intl.locale,
+        intl,
       );
       return (
         <TableCell key={cell.id}>
@@ -261,7 +281,7 @@ function ConfigMenuDisplay(props: ConfigMenuDisplayProps) {
             kind="ghost"
             size="sm"
             renderIcon={Edit}
-            onClick={() => sourceRow && setEditingRow(sourceRow)}
+            onClick={() => sourceRow && openEditor(sourceRow)}
           >
             <FormattedMessage id="config.workspace.edit" />
           </Button>
@@ -488,21 +508,26 @@ function ConfigMenuDisplay(props: ConfigMenuDisplayProps) {
             ? getConfigPresentation(
                 editingRow.name,
                 editingRow.description,
-                intl.locale,
+                intl,
               ).name
             : ""
         }
-        onRequestClose={() => setEditingRow(null)}
+        onRequestClose={closeEditor}
       >
         {editingRow && (
           <GenericConfigEdit
+            key={`${props.menuType}:${editingRow.id}`}
             menuType={getEditorMenuType(props.menuType)}
             ID={editingRow.id}
             embedded
-            onCancel={() => setEditingRow(null)}
+            onCancel={closeEditor}
+            onSavingChange={(saving) => {
+              if (editingOwner.current === editingRow)
+                savingRef.current = saving;
+            }}
             onSaved={() => {
-              setEditingRow(null);
-              loadConfigurations(true);
+              if (editingOwner.current === editingRow && closeEditor())
+                loadConfigurations(true);
             }}
           />
         )}

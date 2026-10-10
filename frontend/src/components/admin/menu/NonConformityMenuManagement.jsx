@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect, useRef } from "react";
+import React, { useContext, useState } from "react";
 import {
   Form,
   InlineNotification,
@@ -10,16 +10,10 @@ import {
   Column,
   Section,
 } from "@carbon/react";
-import {
-  getFromOpenElisServer,
-  postToOpenElisServerFullResponse,
-} from "../../utils/Utils";
+import useMenuConfiguration from "./useMenuConfiguration";
 import { MenuCheckBox } from "./MenuUtil";
 import { NotificationContext } from "../../layout/Layout";
-import {
-  AlertDialog,
-  NotificationKinds,
-} from "../../common/CustomNotification";
+import { AlertDialog } from "../../common/CustomNotification";
 import { FormattedMessage, useIntl } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 
@@ -35,85 +29,16 @@ function NonConformityMenuManagement({
   embedded = false,
   onEditorStateChange,
 } = {}) {
-  const { notificationVisible, setNotificationVisible, addNotification } =
-    useContext(NotificationContext);
-
+  const { notificationVisible } = useContext(NotificationContext);
   const intl = useIntl();
-
-  const componentMounted = useRef(false);
-
-  const [loading, setLoading] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [readFailed, setReadFailed] = useState(false);
-  useEffect(() => {
-    onEditorStateChange?.({ dirty, busy: isSubmitting });
-  }, [dirty, isSubmitting, onEditorStateChange]);
+  const { menuItem, phase, updateMenuItem, submit } = useMenuConfiguration(
+    "menu_nonconformity",
+    onEditorStateChange,
+  );
+  const isSubmitting = phase === "saving";
+  const readFailed = phase === "error";
+  const loading = phase === "loading";
   const [showChildren, setShowChildren] = useState(false);
-  const [menuItem, setMenuItem] = useState({ menu: {}, childMenus: [] });
-
-  async function displayStatus(res) {
-    setNotificationVisible(true);
-    if (res?.status == "200") {
-      var body;
-      try {
-        body = await res.json();
-      } finally {
-        setIsSubmitting(false);
-      }
-      addNotification({
-        kind: NotificationKinds.success,
-        title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "success.add.edited.msg" }),
-      });
-      setMenuItem(body);
-      setDirty(false);
-    } else {
-      setIsSubmitting(false);
-      addNotification({
-        kind: NotificationKinds.error,
-        title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "error.add.edited.msg" }),
-      });
-    }
-  }
-
-  function handleSubmit(event) {
-    event.preventDefault();
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    postToOpenElisServerFullResponse(
-      "/rest/menu/menu_nonconformity",
-      JSON.stringify(menuItem),
-      displayStatus,
-    );
-  }
-
-  const handleMenuItems = (res) => {
-    if (res?.menu?.elementId === "menu_nonconformity") {
-      setReadFailed(false);
-      setMenuItem(res);
-    } else {
-      setReadFailed(true);
-      setNotificationVisible(true);
-      addNotification({
-        kind: NotificationKinds.error,
-        title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "server.error.msg" }),
-      });
-    }
-  };
-
-  useEffect(() => {
-    componentMounted.current = true;
-    getFromOpenElisServer(
-      "/rest/admin/menu/menu_nonconformity",
-      handleMenuItems,
-    );
-    return () => {
-      componentMounted.current = false;
-    };
-  }, []);
 
   return (
     <>
@@ -139,7 +64,7 @@ function NonConformityMenuManagement({
               </Section>
             )}
             <Section>
-              <Form onSubmit={handleSubmit}>
+              <Form onSubmit={submit}>
                 <br></br>
                 <Toggle
                   id="toggleShowChildren"
@@ -153,6 +78,7 @@ function NonConformityMenuManagement({
                   labelB={intl.formatMessage({
                     id: "config.workspace.boolean.true",
                   })}
+                  disabled={isSubmitting}
                   toggled={showChildren}
                   onToggle={() => {
                     setShowChildren(!showChildren);
@@ -164,10 +90,8 @@ function NonConformityMenuManagement({
                   menuItem={menuItem}
                   curMenuItem={menuItem}
                   path="$"
-                  setMenuItem={(next) => {
-                    setDirty(true);
-                    setMenuItem(next);
-                  }}
+                  setMenuItem={updateMenuItem}
+                  disabled={phase !== "ready"}
                   labelKey="menu.nonconform.active"
                   recurse={showChildren}
                 />
@@ -175,9 +99,7 @@ function NonConformityMenuManagement({
                 <div>
                   <Button
                     type="submit"
-                    disabled={
-                      isSubmitting || readFailed || !menuItem.menu.elementId
-                    }
+                    disabled={phase !== "ready" || !menuItem.menu.elementId}
                   >
                     <FormattedMessage id="label.button.submit" />
                     {isSubmitting && <Loading small={true} />}

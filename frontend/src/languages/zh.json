@@ -10888,5 +10888,19 @@
   "notify.saved.noPush": "站内通知已保存。接收人尚未启用浏览器推送。",
   "notify.saved.pushFailed": "站内通知已保存，浏览器推送未完成。请勿重复发送。",
   "notify.saved.pushAccepted": "站内通知已保存，推送服务已接受。接收设备送达尚未确认。",
-  "notify.history.saved": "已保存"
+  "notify.history.saved": "已保存",
+  "config.report.additionalSiteInfo.name": "报告页眉附加信息",
+  "config.report.additionalSiteInfo.description": "报告页眉中补充显示的机构信息。",
+  "config.report.headerLeftImage.name": "报告页眉左侧标识",
+  "config.report.headerLeftImage.description": "报告页眉左侧显示的标识图片。",
+  "config.report.headerRightImage.name": "报告页眉右侧标识",
+  "config.report.headerRightImage.description": "报告页眉右侧显示的标识图片。",
+  "config.report.labDirector.name": "检验科负责人姓名",
+  "config.report.labDirector.description": "报告中显示的检验科负责人姓名。",
+  "config.report.labDirectorName.name": "报告负责人署名",
+  "config.report.labDirectorName.description": "报告中显示的负责人署名。",
+  "config.report.labDirectorTitle.name": "报告负责人职称",
+  "config.report.labDirectorTitle.description": "报告中显示的负责人职称。",
+  "config.report.labDirectorSignature.name": "报告负责人签名图片",
+  "config.report.labDirectorSignature.description": "报告中显示的负责人签名图片。"
 }

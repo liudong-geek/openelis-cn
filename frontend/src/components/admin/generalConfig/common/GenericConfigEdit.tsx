@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, SyntheticEvent } from "react";
 import {
   Button,
@@ -30,6 +30,7 @@ interface GenericConfigEditProps {
   embedded?: boolean;
   onCancel?: () => void;
   onSaved?: () => void;
+  onSavingChange?: (saving: boolean) => void;
 }
 
 interface ConfigLocalization {
@@ -64,6 +65,7 @@ const GenericConfigEdit = ({
   embedded = false,
   onCancel,
   onSaved,
+  onSavingChange,
 }: GenericConfigEditProps) => {
   const intl = useIntl();
   const [config, setConfig] = useState<FormEntryConfig | null>(null);
@@ -74,6 +76,9 @@ const GenericConfigEdit = ({
   const [removeImage, setRemoveImage] = useState(false);
   const [img, setImg] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
+  const savingRef = useRef(false);
+  const editorOwner = useRef<object | null>(null);
+  const activeSave = useRef<object | null>(null);
 
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext) as unknown as NotificationContextValue;
@@ -88,6 +93,11 @@ const GenericConfigEdit = ({
   };
 
   useEffect(() => {
+    const owner = {};
+    editorOwner.current = owner;
+    activeSave.current = null;
+    savingRef.current = false;
+    setIsSaving(false);
     setIsLoading(true);
     setConfig(null);
     setFile(null);
@@ -96,6 +106,7 @@ const GenericConfigEdit = ({
     getFromOpenElisServer(
       `/rest/${menuType}?ID=${ID}`,
       (response?: FormEntryConfig) => {
+        if (editorOwner.current !== owner) return;
         if (!response) {
           setIsLoading(false);
           showAlertMessage(
@@ -128,6 +139,7 @@ const GenericConfigEdit = ({
           getFromOpenElisServer(
             `/dbImage/siteInformation/${response.paramName}`,
             (logoResponse?: { value?: string }) => {
+              if (editorOwner.current !== owner) return;
               setImg(logoResponse?.value || null);
             },
           );
@@ -135,11 +147,18 @@ const GenericConfigEdit = ({
         setIsLoading(false);
       },
     );
+    return () => {
+      if (editorOwner.current === owner) {
+        editorOwner.current = null;
+        activeSave.current = null;
+      }
+    };
     // Alert helpers use the current locale and notification context.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [menuType, ID]);
 
   const updateConfig = (newState: Partial<FormEntryConfig>) => {
+    if (savingRef.current) return;
     setConfig((previous) =>
       previous ? { ...previous, ...newState } : previous,
     );
@@ -150,6 +169,7 @@ const GenericConfigEdit = ({
   ) => updateConfig({ value: event.target.value });
 
   const handleInputEnglishChange = (event: ChangeEvent<HTMLInputElement>) => {
+    if (savingRef.current) return;
     const english = event.target.value;
     setTextInputEnglishValue(english);
     updateConfig({
@@ -158,6 +178,7 @@ const GenericConfigEdit = ({
   };
 
   const handleInputFrenchChange = (event: ChangeEvent<HTMLInputElement>) => {
+    if (savingRef.current) return;
     const french = event.target.value;
     setTextInputFrenchValue(french);
     updateConfig({
@@ -165,8 +186,12 @@ const GenericConfigEdit = ({
     });
   };
 
-  const handleSubmit = (status: number) => {
+  const handleSubmit = (status: number, owner: object, request: object) => {
+    if (editorOwner.current !== owner || activeSave.current !== request) return;
+    activeSave.current = null;
+    savingRef.current = false;
     setIsSaving(false);
+    onSavingChange?.(false);
     if (status === 200) {
       showAlertMessage(
         intl.formatMessage({ id: "save.config.success.msg" }),
@@ -183,25 +208,36 @@ const GenericConfigEdit = ({
   };
 
   const handleSubmitButton = () => {
-    if (!config || isSaving) return;
+    const owner = editorOwner.current;
+    if (!config || !owner || savingRef.current) return;
+    const request = {};
+    activeSave.current = request;
+    savingRef.current = true;
     setIsSaving(true);
-    if (config.valueType === "logoUpload") {
-      const formData = new FormData();
-      if (file && !removeImage) formData.append("logoFile", file);
-      formData.append("logoName", config.paramName);
-      formData.append("removeImage", removeImage ? "true" : "false");
-      postToOpenElisServerFormData("/rest/logoUpload", formData, handleSubmit);
-      return;
+    onSavingChange?.(true);
+    const complete = (status: number) => handleSubmit(status, owner, request);
+    try {
+      if (config.valueType === "logoUpload") {
+        const formData = new FormData();
+        if (file && !removeImage) formData.append("logoFile", file);
+        formData.append("logoName", config.paramName);
+        formData.append("removeImage", removeImage ? "true" : "false");
+        postToOpenElisServerFormData("/rest/logoUpload", formData, complete);
+        return;
+      }
+      postToOpenElisServer(
+        `/rest/${menuType}?ID=${ID}`,
+        JSON.stringify(config),
+        complete,
+      );
+    } catch {
+      complete(0);
     }
-    postToOpenElisServer(
-      `/rest/${menuType}?ID=${ID}`,
-      JSON.stringify(config),
-      handleSubmit,
-    );
   };
 
   const MAX_LOGO_SIZE = 2 * 1024 * 1024;
   const handleFileUpload = (event: SyntheticEvent<HTMLElement>) => {
+    if (savingRef.current) return;
     const input = event.target as HTMLInputElement;
     const selectedFile = input.files?.[0];
     if (!selectedFile) return;
@@ -221,6 +257,7 @@ const GenericConfigEdit = ({
   };
 
   const cancel = () => {
+    if (savingRef.current) return;
     if (onCancel) onCancel();
     else refreshCurrentRoute();
   };
@@ -260,18 +297,12 @@ const GenericConfigEdit = ({
               <FormattedMessage id="admin.page.configuration.formEntryConfigMenu.name" />
             </span>
             <strong title={config.paramName}>
-              {getConfigPresentation(
-                config.paramName,
-                config.description,
-                intl.locale,
-              ).name || "—"}
+              {getConfigPresentation(config.paramName, config.description, intl)
+                .name || "—"}
             </strong>
             <p>
-              {getConfigPresentation(
-                config.paramName,
-                config.description,
-                intl.locale,
-              ).description || "—"}
+              {getConfigPresentation(config.paramName, config.description, intl)
+                .description || "—"}
             </p>
           </div>
 
@@ -283,6 +314,7 @@ const GenericConfigEdit = ({
                   id: "admin.page.configuration.formEntryConfigMenu.value",
                 })}
                 value={config.value}
+                disabled={isSaving}
                 onChange={(event) =>
                   updateConfig({ value: event.target.value })
                 }
@@ -309,6 +341,7 @@ const GenericConfigEdit = ({
                   id: "admin.page.configuration.formEntryConfigMenu.value",
                 })}
                 value={config.value}
+                disabled={isSaving}
                 onChange={(event) =>
                   updateConfig({ value: event.target.value })
                 }
@@ -328,7 +361,8 @@ const GenericConfigEdit = ({
                     })}
                     buttonKind="secondary"
                     size="sm"
-                    filenameStatus="edit"
+                    filenameStatus={isSaving ? "uploading" : "edit"}
+                    disabled={isSaving}
                     accept={[".jpg", ".jpeg", ".png", ".gif"]}
                     multiple={false}
                     iconDescription={intl.formatMessage({
@@ -354,7 +388,9 @@ const GenericConfigEdit = ({
                   })}
                   id={`config-remove-image-${ID}`}
                   checked={removeImage}
+                  disabled={isSaving}
                   onChange={(_event, state) => {
+                    if (savingRef.current) return;
                     const checked = Boolean(state.checked);
                     setRemoveImage(checked);
                     if (checked) {
@@ -375,6 +411,7 @@ const GenericConfigEdit = ({
                     id: "admin.page.configuration.formEntryConfigMenu.value",
                   })}
                   value={config.value}
+                  disabled={isSaving}
                   rows={5}
                   onChange={handleInputChange}
                 />
@@ -385,6 +422,7 @@ const GenericConfigEdit = ({
                     id: "admin.page.configuration.formEntryConfigMenu.value",
                   })}
                   value={config.value}
+                  disabled={isSaving}
                   onChange={handleInputChange}
                 />
               ))}
@@ -396,12 +434,14 @@ const GenericConfigEdit = ({
                     id={`config-english-${ID}`}
                     labelText={<FormattedMessage id="english.label" />}
                     value={textInputEnglishValue}
+                    disabled={isSaving}
                     onChange={handleInputEnglishChange}
                   />
                   <TextInput
                     id={`config-french-${ID}`}
                     labelText={<FormattedMessage id="french.label" />}
                     value={textInputFrenchValue}
+                    disabled={isSaving}
                     onChange={handleInputFrenchChange}
                   />
                 </div>

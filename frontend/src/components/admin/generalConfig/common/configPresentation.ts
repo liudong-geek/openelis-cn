@@ -1,63 +1,58 @@
-// Display labels only: configuration keys and values remain server-owned.
-const reportLabels: Record<
+import type { IntlShape } from "react-intl";
+
+// Match server-owned keys and descriptions only. All display text comes from
+// the active application catalog; hospital-specific descriptions stay intact.
+const reportFields: Record<
   string,
-  { name: string; descriptions: Record<string, string> }
+  { messagePrefix: string; description: string }
 > = {
   "additional site info": {
-    name: "报告页眉附加信息",
-    descriptions: {
-      "additional information for report header":
-        "报告页眉中补充显示的机构信息。",
-    },
+    messagePrefix: "config.report.additionalSiteInfo",
+    description: "additional information for report header",
   },
   headerLeftImage: {
-    name: "报告页眉左侧标识",
-    descriptions: {
-      "image for the left side of report header":
-        "报告页眉左侧显示的标识图片。",
-    },
+    messagePrefix: "config.report.headerLeftImage",
+    description: "image for the left side of report header",
   },
   headerRightImage: {
-    name: "报告页眉右侧标识",
-    descriptions: {
-      "image for the right side of report header":
-        "报告页眉右侧显示的标识图片。",
-    },
+    messagePrefix: "config.report.headerRightImage",
+    description: "image for the right side of report header",
   },
   "lab director": {
-    name: "检验科负责人姓名",
-    descriptions: {
-      "the lab directors name for the reports":
-        "报告中显示的检验科负责人姓名。",
-    },
+    messagePrefix: "config.report.labDirector",
+    description: "the lab directors name for the reports",
   },
   labDirectorName: {
-    name: "报告负责人署名",
-    descriptions: { "image for lab director name": "报告中显示的负责人署名。" },
+    messagePrefix: "config.report.labDirectorName",
+    description: "image for lab director name",
   },
   labDirectorTitle: {
-    name: "报告负责人职称",
-    descriptions: {
-      "image for lab director title": "报告中显示的负责人职称。",
-    },
+    messagePrefix: "config.report.labDirectorTitle",
+    description: "image for lab director title",
   },
   labDirectorSignature: {
-    name: "报告负责人签名图片",
-    descriptions: {
-      "image for lab director signature": "报告中显示的负责人签名图片。",
-    },
+    messagePrefix: "config.report.labDirectorSignature",
+    description: "image for lab director signature",
   },
 };
 
 export const getConfigPresentation = (
   name: string,
   description: string,
-  locale: string,
+  intl: IntlShape,
 ) => {
-  const label = /^zh(?:-|$)/i.test(locale) ? reportLabels[name] : undefined;
+  // i18n-keys: config.report.*
+  const field = reportFields[name];
+  if (!field) return { name, description };
+  const translated = (id: string, fallback: string) =>
+    Object.prototype.hasOwnProperty.call(intl.messages, id)
+      ? intl.formatMessage({ id })
+      : fallback;
   return {
-    name: label?.name || name,
+    name: translated(`${field.messagePrefix}.name`, name),
     description:
-      label?.descriptions[description.trim().toLowerCase()] || description,
+      description.trim().toLowerCase() === field.description
+        ? translated(`${field.messagePrefix}.description`, description)
+        : description,
   };
 };

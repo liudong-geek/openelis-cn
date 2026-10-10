@@ -10683,5 +10683,19 @@
   "notify.saved.noPush": "The in-app notification was saved. The recipient has not enabled browser push.",
   "notify.saved.pushFailed": "The in-app notification was saved, but browser push did not complete. Do not send it again.",
   "notify.saved.pushAccepted": "The in-app notification was saved and accepted by the push service. Delivery to the device is not confirmed.",
-  "notify.history.saved": "Saved"
+  "notify.history.saved": "Saved",
+  "config.report.additionalSiteInfo.name": "additional site info",
+  "config.report.headerLeftImage.name": "headerLeftImage",
+  "config.report.headerRightImage.name": "headerRightImage",
+  "config.report.labDirector.name": "lab director",
+  "config.report.labDirectorName.name": "labDirectorName",
+  "config.report.labDirectorTitle.name": "labDirectorTitle",
+  "config.report.labDirectorSignature.name": "labDirectorSignature",
+  "config.report.additionalSiteInfo.description": "Additional information for report header",
+  "config.report.headerLeftImage.description": "Image for the left side of report header",
+  "config.report.headerRightImage.description": "Image for the right side of report header",
+  "config.report.labDirector.description": "The lab directors name for the reports",
+  "config.report.labDirectorName.description": "Image for lab director name",
+  "config.report.labDirectorTitle.description": "Image for lab director title",
+  "config.report.labDirectorSignature.description": "Image for lab director signature"
 }
