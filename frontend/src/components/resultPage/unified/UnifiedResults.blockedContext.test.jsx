@@ -5,6 +5,7 @@ import { IntlProvider } from "react-intl";
 import { Router } from "react-router-dom";
 import { createMemoryHistory } from "history";
 import UnifiedResults from "./UnifiedResults";
+import { diagnosticFixture } from "./resultRestriction.testFixtures";
 import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
 import { ConfigurationContext, NotificationContext } from "../../layout/Layout";
 import zh from "../../../languages/zh.json";
@@ -206,6 +207,9 @@ test("missing real tube identity keeps explicit row warnings rather than merging
   ]);
   expect(screen.getAllByText(zh[reason])).toHaveLength(2);
   expect(
+    screen.getAllByText(zh["results.restriction.targetMissing"]),
+  ).toHaveLength(2);
+  expect(
     screen.queryByRole("region", {
       name: zh["results.workbench.blocked.title"],
     }),
@@ -241,18 +245,68 @@ test("selected specimen explanations stay with their subject and apply the stric
   ).toBeNull();
 });
 
-test("Reception lookup opens only the original order list without invented object parameters", () => {
-  open([blocked("101")]);
-  expandReasons();
-  expect(
-    within(blockRegion()).getByText(
-      zh["results.workbench.blocked.orderLookupHelp"],
-    ),
-  ).toBeVisible();
-  fireEvent.click(lookupButton());
-  expect(history.location.pathname).toBe("/order");
-  expect(history.location.search).toBe("");
-  expect(io.save).not.toHaveBeenCalled();
+test("Reception inspects the true analysis and never opens an empty order list before authoritative target validation", async () => {
+  const identity = {
+    analysisId: "101",
+    sampleItemId: "201",
+    testId: "401",
+    labNumber: "SIM-ORDER-301",
+    analysisLastupdated: "1000",
+  };
+  const reads = vi.fn(
+    async (url) =>
+      new Response(
+        JSON.stringify(
+          String(url).endsWith("/session")
+            ? session.userSessionDetails
+            : diagnosticFixture(identity),
+        ),
+        { headers: { "Content-Type": "application/json" } },
+      ),
+  );
+  vi.stubGlobal("fetch", reads);
+  try {
+    open([blocked("101")]);
+    expandReasons();
+    expect(
+      within(blockRegion()).getByText(
+        zh["results.workbench.blocked.orderLookupHelp"],
+      ),
+    ).toBeVisible();
+    fireEvent.click(lookupButton());
+    expect(history.location.pathname).toBe("/Results");
+    const dialog = await screen.findByRole("dialog", {
+      name: zh["results.restriction.title"],
+    });
+    expect(
+      await within(dialog).findByText(
+        zh["results.restriction.diagnostic.RECEIPT_NOT_RECORDED"],
+      ),
+    ).toBeVisible();
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: zh["results.restriction.openIntake"],
+      }),
+    );
+    await screen.findByText(zh["results.restriction.loading"]);
+    await vi.waitFor(() =>
+      expect(history.location.pathname).toBe("/order/result-intake"),
+    );
+    const query = new URLSearchParams(history.location.search);
+    expect(query.get("analysisId")).toBe("101");
+    expect(query.get("sampleItemId")).toBe("201");
+    expect(query.get("labNumber")).toBe("SIM-ORDER-301");
+    expect(query.get("analysisLastupdated")).toBe("1000");
+    expect(query.get("returnTo")).toBe(
+      "/Results?scope=pending&page=1&pageSize=25",
+    );
+    expect(
+      reads.mock.calls.filter(([url]) => String(url).includes("/restriction?")),
+    ).toHaveLength(2);
+    expect(io.save).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
 
 test("a Results-only role receives a permission explanation without a handoff button", () => {
@@ -527,4 +581,36 @@ test("a row action selects its specimen and focuses the matching reason without 
   expect(resultRow("模拟项目103").getByRole("spinbutton")).toHaveValue(8);
   expect(io.save).not.toHaveBeenCalled();
   expect(history.location.pathname).toBe("/Results");
+});
+
+test("a fresh returned query restores its local page without caching previous clinical rows", () => {
+  window.history.replaceState(
+    {},
+    "",
+    "/Results?accessionNumber=SIM-ORDER-301&testSectionId=9&status=4&page=2&pageSize=25",
+  );
+  history.replace(
+    "/Results?accessionNumber=SIM-ORDER-301&testSectionId=9&status=4&page=2&pageSize=25",
+  );
+  const values = Array.from({ length: 30 }, (_, index) =>
+    blocked(String(101 + index), String(201 + index)),
+  );
+  open(values);
+  expect(
+    io.read.mock.calls.find(([url]) =>
+      url.startsWith("/rest/LogbookResults"),
+    )[0],
+  ).toBe(
+    "/rest/LogbookResults?labNumber=SIM-ORDER-301&testSectionId=9&doRange=false&finished=false",
+  );
+  expect(resultRow("模拟项目126")).toBeDefined();
+  expect(screen.queryByText("模拟项目101")).toBeNull();
+  expect(screen.getByLabelText("页码，共2页")).toHaveValue("2");
+});
+test("a fresh returned result page clamps after the authorized list has shrunk", () => {
+  window.history.replaceState({}, "", "/Results?page=9&pageSize=25");
+  history.replace("/Results?page=9&pageSize=25");
+  open([blocked("101")]);
+  expect(resultRow("模拟项目101")).toBeDefined();
+  expect(screen.getByLabelText("页码，共1页")).toHaveValue("1");
 });

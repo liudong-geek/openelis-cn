@@ -15,8 +15,8 @@ import org.openelisglobal.sample.dao.OrderDashboardDAO;
 import org.openelisglobal.sample.dao.SpecimenLookupCandidateDAO;
 import org.openelisglobal.sample.dao.SpecimenLookupCandidateDAO.Candidate;
 import org.openelisglobal.sample.form.OrderDashboardCriteria;
-import org.openelisglobal.sample.form.SpecimenIntakeFacts;
 import org.openelisglobal.sample.form.SpecimenIntakeEvidence;
+import org.openelisglobal.sample.form.SpecimenIntakeFacts;
 import org.openelisglobal.sample.valueholder.SpecimenIntakeDecision;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.access.AccessDeniedException;
@@ -26,6 +26,7 @@ public class SpecimenLookupServiceTest {
     private EntryCurrentStateReader currentStates;
     private OrderDashboardDAO dashboard;
     private OrderDashboardAccess access;
+    private org.openelisglobal.result.service.ResultRestrictionAccess clinicalAccess;
     private SpecimenLookupService service;
     private MockHttpServletRequest request;
     private OrderDashboardAccess.Scope scope;
@@ -41,9 +42,20 @@ public class SpecimenLookupServiceTest {
         request = new MockHttpServletRequest();
         scope = scope(false);
         when(access.bind(request)).thenReturn(scope);
-        when(dashboard.findIntakeFacts(anyString(), any())).thenReturn(Optional.of(
-                new SpecimenIntakeFacts(true, false, false, false, false, false, false, false)));
+        when(dashboard.findIntakeFacts(anyString(), any())).thenReturn(
+                Optional.of(new SpecimenIntakeFacts(true, false, false, false, false, false, false, false)));
         service = new SpecimenLookupService(candidates, currentStates, dashboard, access, configuration);
+        clinicalAccess = mock(org.openelisglobal.result.service.ResultRestrictionAccess.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "clinicalAccess", clinicalAccess);
+    }
+
+    @Test
+    public void currentReceptionSelectRevocationPrecedesUnknownOutcomeReadbackAndPatientCompilation() {
+        doThrow(new AccessDeniedException("current Reception SELECT denied")).when(clinicalAccess).bindForActor(
+                eq(request), eq(org.openelisglobal.result.service.ResultRestrictionAccess.Phase.RECEPTION),
+                eq(org.openelisglobal.result.service.ResultRestrictionAccess.Action.SELECT), eq("7"));
+        assertThrows(AccessDeniedException.class, () -> service.lookup("SIM.1.1", request));
+        verifyZeroInteractions(candidates, currentStates, dashboard);
     }
 
     private OrderDashboardAccess.Scope scope(boolean masked) throws Exception {
@@ -58,27 +70,27 @@ public class SpecimenLookupServiceTest {
     private EntryCurrentStateReader.Snapshot snapshot() {
         var patient = new EntryCurrentStateReader.PatientView("601", "SECRET-NATIONAL-ID", "小明", "王", "M",
                 "1990-01-02");
-        var requested = List.of(new EntryCurrentStateReader.RequestView("701", 0, "31", 1.0, null,
-                List.of("41"), List.of(), "COLLECTED", "801", null, null));
-        var physical = List.of(new EntryCurrentStateReader.SpecimenView("801", "701", "1", "31", 1.0, null,
-                "12", false, false, "2026-09-26T01:00:00Z", "2026-09-26T02:00:00Z", "collector", null,
+        var requested = List.of(new EntryCurrentStateReader.RequestView("701", 0, "31", 1.0, null, List.of("41"),
+                List.of(), "COLLECTED", "801", null, null));
+        var physical = List.of(new EntryCurrentStateReader.SpecimenView("801", "701", "1", "31", 1.0, null, "12", false,
+                false, "2026-09-26T01:00:00Z", "2026-09-26T02:00:00Z", "collector", null,
                 List.of(new EntryCurrentStateReader.AnalysisView("901", "41", "13", null))));
-        return new EntryCurrentStateReader.Snapshot(1, true, "301", "SIM.1", "clinical", "11", null, patient,
-                requested, physical);
+        return new EntryCurrentStateReader.Snapshot(1, true, "301", "SIM.1", "clinical", "11", null, patient, requested,
+                physical);
     }
 
     private EntryCurrentStateReader.Snapshot decisionSnapshot(String received, String state, String operation,
             String requestVersion) {
         var original = snapshot();
-        var requested = List.of(new EntryCurrentStateReader.RequestView("701", 0, "31", 1.0, null,
-                List.of("41"), List.of(), "COLLECTED", "801", "2026-09-26T00:00:00Z", requestVersion));
-        var physical = List.of(new EntryCurrentStateReader.SpecimenView("801", "701", "1", "31", 1.0, null,
-                "12", false, false, "2026-09-26T01:00:00Z", received, "collector", "2026-09-26T02:01:00Z",
+        var requested = List.of(new EntryCurrentStateReader.RequestView("701", 0, "31", 1.0, null, List.of("41"),
+                List.of(), "COLLECTED", "801", "2026-09-26T00:00:00Z", requestVersion));
+        var physical = List.of(new EntryCurrentStateReader.SpecimenView("801", "701", "1", "31", 1.0, null, "12", false,
+                false, "2026-09-26T01:00:00Z", received, "collector", "2026-09-26T02:01:00Z",
                 List.of(new EntryCurrentStateReader.AnalysisView("901", "41", "13", "2026-09-26T01:02:00Z"))));
         var decisions = List.of(new SpecimenIntakeDecisionReader.Tube("801", state,
                 "RECORDED".equals(state) ? "ACCEPTED" : null, operation, null, null, null, false, null));
-        return new EntryCurrentStateReader.Snapshot(1, true, "301", "SIM.1", "clinical", "11",
-                "2026-09-26T01:00:00Z", original.patient(), requested, physical, null, null, decisions);
+        return new EntryCurrentStateReader.Snapshot(1, true, "301", "SIM.1", "clinical", "11", "2026-09-26T01:00:00Z",
+                original.patient(), requested, physical, null, null, decisions);
     }
 
     private void found(Candidate... matches) {
@@ -118,8 +130,8 @@ public class SpecimenLookupServiceTest {
     @Test
     public void signedUndecidedTubeExposesTheSameEvidenceDigestAsTheWriteContract() {
         found(new Candidate("301", "SIM.1", "H", "801", "1"));
-        when(currentStates.readCurrentClinical("301", "7")).thenReturn(
-                decisionSnapshot("2026-09-26T02:00:00Z", "NOT_RECORDED", null, "2026-09-26T01:01:00Z"));
+        when(currentStates.readCurrentClinical("301", "7"))
+                .thenReturn(decisionSnapshot("2026-09-26T02:00:00Z", "NOT_RECORDED", null, "2026-09-26T01:01:00Z"));
 
         var tube = service.lookup("SIM.1.1", request).current().physicalSpecimens().get(0);
         var expected = new SpecimenIntakeEvidence(1, "2026-09-26T01:00:00Z", "2026-09-26T01:01:00Z",
@@ -136,8 +148,8 @@ public class SpecimenLookupServiceTest {
                 .thenReturn(decisionSnapshot(null, "NOT_RECORDED", null, "2026-09-26T01:01:00Z"));
         assertNull(service.lookup("SIM.1.1", request).current().physicalSpecimens().get(0).expectedEvidenceDigest());
 
-        when(currentStates.readCurrentClinical("301", "7")).thenReturn(
-                decisionSnapshot("2026-09-26T02:00:00Z", "NOT_RECORDED", null, null));
+        when(currentStates.readCurrentClinical("301", "7"))
+                .thenReturn(decisionSnapshot("2026-09-26T02:00:00Z", "NOT_RECORDED", null, null));
         assertNull(service.lookup("SIM.1.1", request).current().physicalSpecimens().get(0).expectedEvidenceDigest());
     }
 
@@ -145,8 +157,8 @@ public class SpecimenLookupServiceTest {
     public void recordedDecisionReturnsOperationIdButNeverOffersANewDigest() {
         found(new Candidate("301", "SIM.1", "H", "801", "1"));
         String operation = "11111111-2222-4333-8444-555555555555";
-        when(currentStates.readCurrentClinical("301", "7")).thenReturn(
-                decisionSnapshot("2026-09-26T02:00:00Z", "RECORDED", operation, "2026-09-26T01:01:00Z"));
+        when(currentStates.readCurrentClinical("301", "7"))
+                .thenReturn(decisionSnapshot("2026-09-26T02:00:00Z", "RECORDED", operation, "2026-09-26T01:01:00Z"));
 
         var tube = service.lookup("SIM.1.1", request).current().physicalSpecimens().get(0);
         assertEquals(operation, tube.operationId());
@@ -162,14 +174,13 @@ public class SpecimenLookupServiceTest {
                 "2026-09-26T01:00:00Z", "容器不合格");
         var reasons = new SpecimenIntakeDecisionReader.Reasons(1, "READY", List.of(reason));
         var decision = new SpecimenIntakeDecisionReader.Tube("801", "RECORDED", "REJECTED",
-                "11111111-2222-4333-8444-555555555555", reason, "7", "2026-09-26T02:00:00Z", false,
-                "a".repeat(64));
-        var rejected = new EntryCurrentStateReader.SpecimenView("801", "701", "1", "31", 1.0, null,
-                "12", false, true, "2026-09-26T01:00:00Z", "2026-09-26T02:00:00Z", "collector", null,
+                "11111111-2222-4333-8444-555555555555", reason, "7", "2026-09-26T02:00:00Z", false, "a".repeat(64));
+        var rejected = new EntryCurrentStateReader.SpecimenView("801", "701", "1", "31", 1.0, null, "12", false, true,
+                "2026-09-26T01:00:00Z", "2026-09-26T02:00:00Z", "collector", null,
                 original.physicalSpecimens().get(0).analyses());
         var current = new EntryCurrentStateReader.Snapshot(1, true, "301", "SIM.1", "clinical", "11", null,
-                original.patient(), original.requestedSpecimens(), List.of(rejected), null, null,
-                List.of(decision), reasons);
+                original.patient(), original.requestedSpecimens(), List.of(rejected), null, null, List.of(decision),
+                reasons);
         when(currentStates.readCurrentClinical("301", "7")).thenReturn(current);
 
         var result = service.lookup("SIM.1.1", request).current();
@@ -190,8 +201,7 @@ public class SpecimenLookupServiceTest {
 
     @Test
     public void orderAndTubeCodeCollisionIsAmbiguousBeforePatientRead() {
-        found(new Candidate("301", "SIM.1", "H", null, null),
-                new Candidate("302", "SIM", "H", "802", "1"));
+        found(new Candidate("301", "SIM.1", "H", null, null), new Candidate("302", "SIM", "H", "802", "1"));
         var failure = assertThrows(SpecimenLookupService.Failure.class, () -> service.lookup("SIM.1", request));
         assertEquals("SPECIMEN_LOOKUP_AMBIGUOUS", failure.code());
         verifyZeroInteractions(currentStates);
@@ -214,8 +224,8 @@ public class SpecimenLookupServiceTest {
         assertTrue(result.current().patientMasked());
         assertNull(result.current().patient());
         assertFalse(result.toString().contains("小明"));
-        when(currentStates.readCurrentClinical("301", "7")).thenReturn(
-                decisionSnapshot("2026-09-26T02:00:00Z", "NOT_RECORDED", null, "2026-09-26T01:01:00Z"));
+        when(currentStates.readCurrentClinical("301", "7"))
+                .thenReturn(decisionSnapshot("2026-09-26T02:00:00Z", "NOT_RECORDED", null, "2026-09-26T01:01:00Z"));
         assertNull(service.lookup("SIM.1", request).current().physicalSpecimens().get(0).expectedEvidenceDigest());
     }
 

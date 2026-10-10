@@ -39,6 +39,8 @@ public class SpecimenReceiptService {
     private final UserService users;
     private final ReferenceTablesService references;
     private final DefaultConfigurationProperties configuration;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.openelisglobal.result.service.ResultRestrictionAccess clinicalAccess;
 
     public SpecimenReceiptService(SpecimenReceiptDAO dao, OrderEntryActorGuard actors, SampleItemService items,
             UserService users, ReferenceTablesService references, DefaultConfigurationProperties configuration) {
@@ -69,6 +71,9 @@ public class SpecimenReceiptService {
         }
         dao.requireCleanContext();
         var actor = actors.bind(request);
+        var currentPermission = clinicalAccess.bindForActor(request,
+                org.openelisglobal.result.service.ResultRestrictionAccess.Phase.RECEPTION,
+                org.openelisglobal.result.service.ResultRestrictionAccess.Action.UPDATE, actor.userId());
         var input = SpecimenReceiptCommand.fromJson(body);
         var sample = dao.lockOrder(input.sampleId());
         String domain = configuration.getPropertyValue("domain.human");
@@ -169,6 +174,7 @@ public class SpecimenReceiptService {
                 requirePermission(actor.userId(), commitTests);
             }
         });
+        clinicalAccess.requireUnchanged(request, currentPermission);
         List<TubeReceipt> result = new ArrayList<>();
         for (var row : pending) {
             var item = row.baseline();
@@ -191,6 +197,7 @@ public class SpecimenReceiptService {
         }
         dao.flush();
         actors.requireUnchanged(request, actor);
+        clinicalAccess.requireUnchanged(request, currentPermission);
         requirePermission(actor.userId(), permissionTests);
         return new Result(true, input.sampleId(), input.labNo(), input.patientId(), List.copyOf(result));
     }

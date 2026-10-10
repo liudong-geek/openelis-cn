@@ -462,10 +462,21 @@
   font-weight: 600;
 }
 
-.tile-icon {
-  position: absolute !important;
-  top: var(--cds-spacing-03, 0.5rem);
-  right: var(--cds-spacing-03, 0.5rem);
+.home-dashboard .dashboard-detail-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--cds-spacing-04, 0.75rem);
+}
+
+.dashboard-detail-heading__summary {
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.dashboard-detail-return {
+  flex: 0 0 auto;
 }
 
 .home-dashboard .dashboard-view > .dashboard-tile {

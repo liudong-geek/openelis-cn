@@ -85,7 +85,10 @@ const humanizeElementId = (elementId = "") =>
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Unnamed menu";
 
-export function LegacyGlobalMenuManagement() {
+export function LegacyGlobalMenuManagement({
+  embedded = false,
+  onEditorStateChange,
+} = {}) {
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
   const intl = useIntl();
@@ -98,6 +101,9 @@ export function LegacyGlobalMenuManagement() {
   const [menuTree, setMenuTree] = useState([]);
   const [dirty, setDirty] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  useEffect(() => {
+    onEditorStateChange?.({ dirty, busy: isSubmitting });
+  }, [dirty, isSubmitting, onEditorStateChange]);
 
   const menuLabel = (row) =>
     row.displayKey
@@ -205,11 +211,9 @@ export function LegacyGlobalMenuManagement() {
         />
       )}
       <div className="adminPageContent admin-list-workspace security-menu-page">
-        <PageBreadCrumb breadcrumbs={breadcrumbs} />
-        <ProductPageHeader
-          title={<FormattedMessage id="menu.global.title" />}
-          subtitle={<FormattedMessage id="security.menu.subtitle" />}
-          actions={
+        {!embedded && <PageBreadCrumb breadcrumbs={breadcrumbs} />}
+        {embedded ? (
+          <div className="admin-entry-workspace__actions">
             <>
               <Button
                 kind="secondary"
@@ -226,8 +230,31 @@ export function LegacyGlobalMenuManagement() {
                 <FormattedMessage id="security.menu.save" />
               </Button>
             </>
-          }
-        />
+          </div>
+        ) : (
+          <ProductPageHeader
+            title={<FormattedMessage id="menu.global.title" />}
+            subtitle={<FormattedMessage id="security.menu.subtitle" />}
+            actions={
+              <>
+                <Button
+                  kind="secondary"
+                  disabled={!dirty || isSubmitting}
+                  onClick={loadMenu}
+                >
+                  <FormattedMessage id="security.menu.discard" />
+                </Button>
+                <Button
+                  renderIcon={Save}
+                  disabled={!dirty || isSubmitting}
+                  onClick={() => setConfirmOpen(true)}
+                >
+                  <FormattedMessage id="security.menu.save" />
+                </Button>
+              </>
+            }
+          />
+        )}
 
         <div className="admin-list-workspace__overview">
           <article>

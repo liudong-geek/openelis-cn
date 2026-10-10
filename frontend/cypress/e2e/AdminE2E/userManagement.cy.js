@@ -148,7 +148,6 @@ describe("User Management", function () {
 
     it("Save User", function () {
       userManagement.saveChanges();
-      cy.wait(2000);
     });
   });
 
@@ -210,7 +209,7 @@ describe("User Management", function () {
   });
 
   describe("Modify First User", function () {
-    it("Modify User and Save", function () {
+    it("Modify User, apply and independently verify copied permissions", function () {
       userManagement.searchUser(usersData[0].fName);
       userManagement.checkUser("2", usersData[0].fName);
       userManagement.modifyUser();
@@ -221,8 +220,7 @@ describe("User Management", function () {
       userManagement.checkActive();
       userManagement.copyPermisionsFromUser(usersData[1].lName);
       userManagement.applyChanges();
-      cy.wait(1000);
-      userManagement.saveChanges();
+      userManagement.verifyCopiedPermissionsPersisted();
     });
 
     it("Navigate to User Management", function () {
@@ -267,15 +265,14 @@ describe("User Management", function () {
     it("Login with Deactivated User", () => {
       loginPage.enterUsername(usersData[1].username);
       loginPage.enterPassword(usersData[1].password);
-      loginPage.signIn();
-      cy.contains("Username or Password are incorrect").should("be.visible");
+      loginPage.signInExpectingRejection();
     });
 
     it("Login with Active user", () => {
       loginPage.clearInputs();
       loginPage.enterUsername(usersData[0].username);
       loginPage.enterPassword(usersData[0].password);
-      loginPage.signIn();
+      loginPage.signInExpectingSuccess(usersData[0].username);
     });
   });
 });

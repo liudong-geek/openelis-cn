@@ -28,6 +28,7 @@ describe("Global Menu Configuration", function () {
     menuConfigPage.turnOnToggleSwitch();
   });
   it("User checks the menu items and submits", function () {
+    menuConfigPage.beginGlobalSelection();
     menuConfigPage.checkMenuItem("home");
     menuConfigPage.checkMenuItem("order");
     menuConfigPage.checkMenuItem("billing");
@@ -48,9 +49,11 @@ describe("Global Menu Configuration", function () {
   it("User relogs in to verify the menu changes", function () {
     // Initialize LoginPage object and navigate to the menu
     loginPage = new LoginPage();
+    loginPage.ensureLoggedOut();
     loginPage.visit();
 
     homePage = loginPage.goToHomePage();
-    menuConfigPage = homePage.openNavigationMenu();
+    homePage.openNavigationMenu();
+    menuConfigPage.verifyGlobalMenuAfterLogin();
   });
 });

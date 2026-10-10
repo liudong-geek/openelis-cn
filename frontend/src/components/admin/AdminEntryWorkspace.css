@@ -1,0 +1,21 @@
+.admin-entry-workspace__category {
+  max-width: 30rem;
+  margin: 1rem 0;
+}
+.admin-entry-workspace > .adminPageContent {
+  padding: 0;
+  margin: 0;
+}
+.admin-entry-workspace__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.admin-entry-workspace .formInlineDiv {
+  width: auto;
+  max-width: 48rem;
+}
+.admin-entry-workspace form > div:last-child {
+  margin-top: 1.25rem;
+}

@@ -1,55 +1,33 @@
 import LoginPage from "../pages/LoginPage";
+import CurrentChinaHelpPage from "../pages/CurrentChinaHelpPage";
 
-describe("Interacts with Help options", function () {
-  let loginPage, homePage, helpPage;
+let homePage = null;
+let helpPage = null;
 
+// Explicit replacement of the four retired foreign documentation contracts.
+// The existing English/VL/DBS files remain preserved as compatibility files.
+describe("Interacts with current China LIS help", function () {
   before(() => {
-    loginPage = new LoginPage();
+    const loginPage = new LoginPage();
     loginPage.visit();
-
     homePage = loginPage.goToHomePage();
+    helpPage = new CurrentChinaHelpPage();
+  });
+
+  it("User opens current Chinese manual from the header help panel", function () {
     helpPage = homePage.goToHelp();
+    helpPage.openActualHeaderManual();
   });
 
-  it("User navigates to User Manual", function () {
-    cy.window().then((win) => {
-      cy.stub(win, "open").as("windowOpen"); // Stub to prevent opening a new tab
-    });
-
-    helpPage.clickUserManual();
-
-    cy.get("@windowOpen").should("be.calledWithMatch", /\/docs\/UserManual/);
+  it("User follows the operation directory to the application and specimen section", function () {
+    helpPage.followOperationDirectory();
   });
 
-  describe("User navigates to Process Documentation", function () {
-    it("Navigates to Help", function () {
-      helpPage.clickProcessDocumentation();
-    });
+  it("User downloads the actual bundled Chinese manual PDF", function () {
+    helpPage.downloadActualPDF();
+  });
 
-    it("User opens VL Form", function () {
-      cy.window().then((win) => {
-        cy.stub(win, "open").as("windowOpen"); // Stub to prevent opening a new tab
-      });
-
-      helpPage.clickVLForm();
-
-      cy.get("@windowOpen").should(
-        "be.calledWithMatch",
-        /\/documentation\/FICHE_DEMANDE_CHARGE_VIRALE_VF_\d+\.pdf/,
-      );
-    });
-
-    it("User opens DBS Form", function () {
-      cy.window().then((win) => {
-        cy.stub(win, "open").as("windowOpen"); // Stub to prevent opening a new tab
-      });
-
-      helpPage.clickDBSForm();
-
-      cy.get("@windowOpen").should(
-        "be.calledWithMatch",
-        /\/documentation\/DBS_Identn_\d+[A-Za-z]+\d+\.pdf/,
-      );
-    });
+  it("User invokes browser printing and sees the actual fallback feedback", function () {
+    helpPage.invokeActualBrowserPrint();
   });
 });

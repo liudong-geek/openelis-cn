@@ -30,7 +30,8 @@ import { Add, Renew, WarningAltFilled } from "@carbon/icons-react";
 import PageBreadCrumb from "../common/PageBreadCrumb";
 import { ConfigurationContext, NotificationContext } from "../layout/Layout";
 import { AlertDialog, NotificationKinds } from "../common/CustomNotification";
-import { getFromOpenElisServer } from "../utils/Utils";
+import { getFromOpenElisServer, Roles } from "../utils/Utils";
+import { hasPatientManagementMenu } from "../layout/navigationMenuAvailability";
 import BarcodeScannerBar from "./BarcodeScannerBar";
 import { useOrderContext } from "./OrderContext";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
@@ -99,8 +100,14 @@ const OrderDashboardContent = () => {
   const initial = useRef(location.state?.listState || {}).current;
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
-  const { configurationProperties = {} } =
+  const { configurationProperties = {}, navigationMenuItems = null } =
     useContext(ConfigurationContext) || {};
+  const showPatientManagement =
+    sessionAvailable &&
+    session?.userSessionDetails?.authenticated === true &&
+    Array.isArray(session.userSessionDetails.roles) &&
+    session.userSessionDetails.roles.includes(Roles.RECEPTION) &&
+    hasPatientManagementMenu(navigationMenuItems);
   const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "en-US";
   const { loadOrder, resetOrder } = useOrderContext();
   const statusOptions = STATUS_OPTIONS.map((option) => ({
@@ -578,13 +585,15 @@ const OrderDashboardContent = () => {
         subtitle={<FormattedMessage id="order.dashboard.subtitle" />}
         actions={
           <div className="intake-header-actions">
-            <Button
-              kind="ghost"
-              size="md"
-              onClick={() => openFromList("/PatientManagement")}
-            >
-              <FormattedMessage id="intake.workspace.patient" />
-            </Button>
+            {showPatientManagement && (
+              <Button
+                kind="ghost"
+                size="md"
+                onClick={() => openFromList("/PatientManagement")}
+              >
+                <FormattedMessage id="intake.workspace.patient" />
+              </Button>
+            )}
             <Button
               kind="ghost"
               size="md"

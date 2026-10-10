@@ -1,124 +1,79 @@
-import React, { useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useHistory, useLocation } from "react-router-dom";
 import { FormattedMessage, useIntl } from "react-intl";
-import { Button, Dropdown, Search, Tag } from "@carbon/react";
-import { ArrowRight } from "@carbon/icons-react";
+import { Select, SelectItem } from "@carbon/react";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import ProductPageHeader from "../../common/ProductPageHeader";
+import ConfigMenuDisplay from "../generalConfig/common/ConfigMenuDisplay";
+import "../AdminEntryWorkspace.css";
 
-export const WORKFLOW_REPORT_GROUPS = [
-  { id: "all", label: "workspace.workflowReport.group.all" },
-  { id: "site", label: "workspace.workflowReport.group.site" },
-  { id: "entry", label: "workspace.workflowReport.group.entry" },
-  { id: "identity", label: "workspace.workflowReport.group.identity" },
-  { id: "report", label: "workspace.workflowReport.group.report" },
-];
-
-export const WORKFLOW_REPORT_AREAS = [
+export const WORKFLOW_PARAMETER_CATEGORIES = [
   {
-    title: "sidenav.label.admin.formEntry.siteInfoconfig",
-    description: "workspace.workflowReport.siteInformation.helper",
-    path: "SiteInformationMenu",
-    group: "site",
+    id: "SiteInformationMenu",
+    label: "sidenav.label.admin.formEntry.siteInfoconfig",
   },
   {
-    title: "site.branding.title",
-    description: "site.branding.description",
-    path: "SiteBrandingMenu",
-    group: "site",
+    id: "SampleEntryConfigMenu",
+    label: "sidenav.label.admin.formEntry.sampleEntryconfig",
   },
   {
-    title: "sidenav.label.admin.formEntry.sampleEntryconfig",
-    description: "workspace.workflowReport.orderEntry.helper",
-    path: "SampleEntryConfigurationMenu",
-    group: "entry",
+    id: "PatientConfigurationMenu",
+    label: "sidenav.label.admin.formEntry.patientconfig",
   },
   {
-    title: "sidenav.label.admin.formEntry.patientconfig",
-    description: "workspace.workflowReport.patientEntry.helper",
-    path: "PatientConfigurationMenu",
-    group: "entry",
+    id: "WorkplanConfigurationMenu",
+    label: "sidenav.label.admin.formEntry.Workplanconfig",
   },
   {
-    title: "sidenav.label.admin.formEntry.Workplanconfig",
-    description: "workspace.workflowReport.workplan.helper",
-    path: "WorkPlanConfigurationMenu",
-    group: "entry",
+    id: "ResultConfigurationMenu",
+    label: "sidenav.label.admin.formEntry.resultConfig",
   },
   {
-    title: "sidenav.label.admin.labNumber",
-    description: "workspace.workflowReport.labNumber.helper",
-    path: "labNumber",
-    group: "identity",
+    id: "ValidationConfigurationMenu",
+    label: "sidenav.label.admin.formEntry.validationconfig",
   },
   {
-    title: "admin.labelPresets.title",
-    description: "workspace.workflowReport.labels.helper",
-    path: "labelPresets",
-    group: "identity",
+    id: "PrintedReportsConfigurationMenu",
+    label: "sidenav.label.admin.formEntry.PrintedReportsconfig",
   },
   {
-    title: "sidenav.label.admin.formEntry.resultConfig",
-    description: "workspace.workflowReport.resultEntry.helper",
-    path: "ResultConfigurationMenu",
-    group: "report",
+    id: "NonConformityConfigurationMenu",
+    label: "sidenav.label.admin.formEntry.nonconformityconfig",
   },
   {
-    title: "sidenav.label.admin.formEntry.validationconfig",
-    description: "workspace.workflowReport.validation.helper",
-    path: "ValidationConfigurationMenu",
-    group: "report",
-  },
-  {
-    title: "sidenav.label.admin.formEntry.PrintedReportsconfig",
-    description: "workspace.workflowReport.printedReports.helper",
-    path: "PrintedReportsConfigurationMenu",
-    group: "report",
-  },
-  {
-    title: "resultreporting.browse.title",
-    description: "workspace.workflowReport.delivery.helper",
-    path: "resultReportingConfiguration",
-    group: "report",
-  },
-  {
-    title: "testnotificationconfig.browse.title",
-    description: "workspace.workflowReport.notification.helper",
-    path: "testNotificationConfigMenu",
-    group: "report",
+    id: "MenuStatementConfigMenu",
+    label: "sidenav.label.admin.formEntry.menustatementconfig",
   },
 ];
 
 export default function WorkflowReportWorkspace() {
   const intl = useIntl();
   const { pathname } = useLocation();
+  const history = useHistory();
   const base = pathname.startsWith("/admin") ? "/admin" : "/MasterListsPage";
-  const [searchText, setSearchText] = useState("");
-  const [selectedGroup, setSelectedGroup] = useState(WORKFLOW_REPORT_GROUPS[0]);
-
-  const visibleAreas = useMemo(() => {
-    const query = searchText.trim().toLocaleLowerCase();
-    return WORKFLOW_REPORT_AREAS.filter((area) => {
-      if (selectedGroup.id !== "all" && area.group !== selectedGroup.id) {
-        return false;
+  const [categoryId, setCategoryId] = useState(
+    WORKFLOW_PARAMETER_CATEGORIES[0].id,
+  );
+  const [editorOpen, setEditorOpen] = useState(false);
+  useEffect(
+    () => history.block(() => (editorOpen ? false : undefined)),
+    [history, editorOpen],
+  );
+  useEffect(() => {
+    const beforeUnload = (event) => {
+      if (editorOpen) {
+        event.preventDefault();
+        event.returnValue = "";
       }
-      if (!query) return true;
-      return [area.title, area.description].some((messageId) =>
-        intl
-          .formatMessage({ id: messageId })
-          .toLocaleLowerCase()
-          .includes(query),
-      );
-    });
-  }, [intl, searchText, selectedGroup]);
-
-  const clearFilters = () => {
-    setSearchText("");
-    setSelectedGroup(WORKFLOW_REPORT_GROUPS[0]);
-  };
-
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [editorOpen]);
+  const category = WORKFLOW_PARAMETER_CATEGORIES.find(
+    (item) => item.id === categoryId,
+  );
   return (
-    <div className="adminPageContent workflow-report-workspace">
+    <div className="adminPageContent admin-entry-workspace">
       <PageBreadCrumb
         breadcrumbs={[
           { label: "home.label", link: "/" },
@@ -126,103 +81,34 @@ export default function WorkflowReportWorkspace() {
         ]}
       />
       <ProductPageHeader
-        title={<FormattedMessage id="workspace.workflowReport.title" />}
-        subtitle={<FormattedMessage id="workspace.workflowReport.helper" />}
+        title={<FormattedMessage id="admin.entry.workflow.title" />}
+        subtitle={<FormattedMessage id="admin.entry.workflow.description" />}
       />
-      <section
-        className="workflow-report-workspace__filters"
-        aria-label={intl.formatMessage({
-          id: "workspace.workflowReport.filters.label",
-        })}
-      >
-        <Search
-          id="workflow-report-search"
-          labelText={intl.formatMessage({
-            id: "workspace.workflowReport.search.label",
-          })}
-          placeholder={intl.formatMessage({
-            id: "workspace.workflowReport.search.placeholder",
-          })}
-          closeButtonLabelText={intl.formatMessage({
-            id: "workspace.workflowReport.search.clear",
-          })}
-          value={searchText}
-          onChange={(event) => setSearchText(event.target.value)}
-        />
-        <Dropdown
-          id="workflow-report-group"
-          titleText={intl.formatMessage({
-            id: "workspace.workflowReport.group.label",
-          })}
-          label={intl.formatMessage({
-            id: "workspace.workflowReport.group.label",
-          })}
-          items={WORKFLOW_REPORT_GROUPS}
-          itemToString={(item) =>
-            item ? intl.formatMessage({ id: item.label }) : ""
-          }
-          selectedItem={selectedGroup}
-          onChange={({ selectedItem }) =>
-            setSelectedGroup(selectedItem || WORKFLOW_REPORT_GROUPS[0])
-          }
-        />
-      </section>
-      <p className="workflow-report-workspace__summary" role="status">
-        <FormattedMessage
-          id="workspace.workflowReport.results"
-          values={{ count: visibleAreas.length }}
-        />
-      </p>
-      {visibleAreas.length === 0 ? (
-        <section className="workflow-report-workspace__empty">
-          <h2>
-            <FormattedMessage id="workspace.workflowReport.empty.title" />
-          </h2>
-          <p>
-            <FormattedMessage id="workspace.workflowReport.empty.helper" />
-          </p>
-          <Button kind="tertiary" size="sm" onClick={clearFilters}>
-            <FormattedMessage id="workspace.workflowReport.clearFilters" />
-          </Button>
-        </section>
-      ) : (
-        <div className="workflow-report-workspace__grid">
-          {visibleAreas.map((area) => (
-            <section
-              className="workflow-report-workspace__card"
-              data-testid="workflow-report-area"
-              key={area.path}
-            >
-              <Tag type="cool-gray" size="sm">
-                <FormattedMessage
-                  id={
-                    WORKFLOW_REPORT_GROUPS.find(
-                      (group) => group.id === area.group,
-                    )?.label
-                  }
-                />
-              </Tag>
-              <h2>
-                <Link to={`${base}/${area.path}`}>
-                  <FormattedMessage id={area.title} />
-                </Link>
-              </h2>
-              <p>
-                <FormattedMessage id={area.description} />
-              </p>
-              <Button
-                as={Link}
-                to={`${base}/${area.path}`}
-                kind="primary"
-                size="sm"
-                renderIcon={ArrowRight}
-              >
-                <FormattedMessage id="common.openManagement" />
-              </Button>
-            </section>
+      <div className="admin-entry-workspace__category">
+        <Select
+          id="workflow-parameter-category"
+          labelText={intl.formatMessage({ id: "admin.entry.category" })}
+          value={categoryId}
+          disabled={editorOpen}
+          onChange={(event) => setCategoryId(event.target.value)}
+        >
+          {WORKFLOW_PARAMETER_CATEGORIES.map((item) => (
+            <SelectItem
+              key={item.id}
+              value={item.id}
+              text={intl.formatMessage({ id: item.label })}
+            />
           ))}
-        </div>
-      )}
+        </Select>
+      </div>
+      <ConfigMenuDisplay
+        key={category.id}
+        id={category.label}
+        label={intl.formatMessage({ id: category.label })}
+        menuType={category.id}
+        embedded
+        onEditorStateChange={setEditorOpen}
+      />
     </div>
   );
 }

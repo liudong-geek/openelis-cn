@@ -3,6 +3,7 @@ package org.openelisglobal.organization.form;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import java.sql.Timestamp;
 import java.util.Collection;
 import java.util.List;
@@ -70,6 +71,7 @@ public class OrganizationForm extends BaseForm {
     private Collection states;
 
     @URL
+    @Size(max = 40)
     private String internetAddress = "";
 
     @OptionalNotBlank(formFields = { Field.MLS })

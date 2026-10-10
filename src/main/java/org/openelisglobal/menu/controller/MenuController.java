@@ -9,6 +9,7 @@ import org.openelisglobal.menu.util.MenuItem;
 import org.openelisglobal.menu.util.MenuUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,16 +33,19 @@ public class MenuController {
     }
 
     @GetMapping(value = "/rest/admin/menu/{elementId}", produces = MediaType.APPLICATION_JSON_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
     public Optional<MenuItem> getEditableMenuItem(@PathVariable String elementId) {
         return findMenuItem(elementId, MenuUtil.getUnfilteredMenuTree());
     }
 
     @PostMapping("/rest/menu")
+    @PreAuthorize("hasRole('ADMIN')")
     public List<MenuItem> postMenuTree(@RequestBody List<MenuItem> menuItems) {
         return menuService.save(menuItems);
     }
 
     @PostMapping("/rest/menu/{elementId}")
+    @PreAuthorize("hasRole('ADMIN')")
     public MenuItem postMenuTree(@PathVariable String elementId, @RequestBody MenuItem menuItem) {
         return menuService.save(menuItem);
     }

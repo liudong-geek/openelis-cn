@@ -10,7 +10,10 @@ import {
 } from "@carbon/react";
 import { Add, Send, TrashCan } from "@carbon/icons-react";
 import { FormattedMessage, useIntl } from "react-intl";
-import { getFromOpenElisServer, postToOpenElisServer } from "../utils/Utils";
+import {
+  getFromOpenElisServer,
+  postToOpenElisServerJsonResponse,
+} from "../utils/Utils";
 import { AlertDialog, NotificationKinds } from "../common/CustomNotification";
 import PageBreadCrumb from "../common/PageBreadCrumb";
 import ProductPageHeader from "../common/ProductPageHeader";
@@ -65,28 +68,45 @@ export default function PushNotificationPage() {
     }
     setSending(true);
     setError("");
-    postToOpenElisServer(
+    postToOpenElisServerJsonResponse(
       `/rest/notification/${userId}`,
       JSON.stringify({ message }),
-      (status) => {
-        const ok = String(status) === "200" || status === true || status?.ok;
+      (receipt) => {
+        const httpStatus = receipt?.statusCode ?? receipt?.status;
+        const saved =
+          receipt?.saved === true &&
+          /^[1-9][0-9]*$/.test(String(receipt.id)) &&
+          ["NOT_SUBSCRIBED", "FAILED", "ACCEPTED"].includes(
+            receipt.pushStatus,
+          ) &&
+          (httpStatus === undefined || Number(httpStatus) === 200);
         setSending(false);
+        const savedMessage = {
+          NOT_SUBSCRIBED: "notify.saved.noPush",
+          FAILED: "notify.saved.pushFailed",
+          ACCEPTED: "notify.saved.pushAccepted",
+        };
         notification?.addNotification?.({
           title: intl.formatMessage({ id: "notification.title" }),
           message: intl.formatMessage({
-            id: ok ? "notify.user.success.notification" : "server.error.msg",
+            id: saved ? savedMessage[receipt.pushStatus] : "server.error.msg",
           }),
-          kind: ok ? NotificationKinds.success : NotificationKinds.error,
+          kind: !saved
+            ? NotificationKinds.error
+            : receipt.pushStatus === "FAILED"
+              ? NotificationKinds.warning
+              : NotificationKinds.success,
         });
         notification?.setNotificationVisible?.(true);
-        if (ok) {
+        if (saved) {
           persistHistory([
             {
-              id: `${Date.now()}`,
+              id: String(receipt.id),
               recipient: selectedUser?.displayName || String(userId),
               message: message.trim(),
               sentAt: new Date().toISOString(),
-              status: "SENT",
+              status: "SAVED",
+              pushStatus: receipt.pushStatus,
             },
             ...history,
           ]);
@@ -302,10 +322,29 @@ export default function PushNotificationPage() {
                     <h3>
                       {item.recipient}{" "}
                       <Tag type="green">
-                        <FormattedMessage id="notify.history.sent" />
+                        <FormattedMessage
+                          id={
+                            item.status === "SAVED"
+                              ? "notify.history.saved"
+                              : "notify.history.sent"
+                          }
+                        />
                       </Tag>
                     </h3>
                     <p>{item.message}</p>
+                    {item.status === "SAVED" && (
+                      <p>
+                        <FormattedMessage
+                          id={
+                            {
+                              NOT_SUBSCRIBED: "notify.saved.noPush",
+                              FAILED: "notify.saved.pushFailed",
+                              ACCEPTED: "notify.saved.pushAccepted",
+                            }[item.pushStatus]
+                          }
+                        />
+                      </p>
+                    )}
                     <small>{new Date(item.sentAt).toLocaleString()}</small>
                   </div>
                 </article>

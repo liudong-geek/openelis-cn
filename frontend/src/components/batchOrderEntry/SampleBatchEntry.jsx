@@ -27,6 +27,7 @@ import PatientInfo from "../addOrder/PatientInfo";
 import { createOrderEntryValidationSchema } from "../formModel/validationSchema/OrderEntryValidationSchema";
 import LabelsSection from "../barcodeWorkflow/LabelsSection";
 import PostSavePrintDialog from "../barcodeWorkflow/PostSavePrintDialog";
+import { parseDateForLocale } from "../common/dateLocaleUtils";
 
 const normalizeQuantity = (value) => {
   const parsed = Number.parseInt(value, 10);
@@ -92,14 +93,17 @@ const SampleBatchEntry = (props) => {
   const [generateSaveButtonDisabled, setGenerateSaveButtonDisabled] =
     useState(false);
   const [buttonDisabled, setButtonDisabled] = useState(true);
-  const [labNoGenerated, setLabNoGenerated] = useState(false);
+  const generatingAccession = useRef(false);
+  const savingOrder = useRef(false);
+  const currentOrder = useRef(orderFormValues);
+  const generationSnapshot = useRef(null);
+  currentOrder.current = orderFormValues;
 
   let breadcrumbs = [{ label: "home.label", link: "/" }];
 
   useEffect(() => {
     componentMounted.current = true;
     getFromOpenElisServer("/rest/SamplePatientEntry", getSampleEntryPreform);
-    setLabNoGenerated(true);
     window.scrollTo(0, 0);
     return () => {
       componentMounted.current = false;
@@ -107,16 +111,23 @@ const SampleBatchEntry = (props) => {
   }, []);
 
   useEffect(() => {
+    let current = true;
     createOrderEntryValidationSchema(configurationProperties)
       .validate(orderFormValues, { abortEarly: false })
-      .then((validData) => {
-        setErrors([]);
-        console.debug("Valid Data:", validData);
+      .then(() => {
+        if (current) setErrors([]);
       })
-      .catch((errors) => {
-        setErrors(errors);
-        console.error("Validation Errors:", errors.errors);
+      .catch((error) => {
+        if (!current) return;
+        if (error.name === "ValidationError") {
+          setErrors(error);
+        } else {
+          console.error("Batch order validation failed:", error);
+        }
       });
+    return () => {
+      current = false;
+    };
   }, [configurationProperties, orderFormValues]);
 
   useEffect(() => {
@@ -163,93 +174,241 @@ const SampleBatchEntry = (props) => {
     }
   };
   function fetchGeneratedAccessionNo(res) {
-    if (res.status) {
-      setOrderFormValues({
-        ...orderFormValues,
-        sampleOrderItems: {
-          ...orderFormValues.sampleOrderItems,
-          labNo: res.body,
-        },
-      });
-      if (orderFormValues.method === "On Demand") {
-        setGeneratedLabNos((prevLabNos) => [...prevLabNos, res.body]);
-      }
-      setNotificationVisible(false);
+    generatingAccession.current = false;
+    if (!componentMounted.current) return;
+    if (!res?.status || typeof res.body !== "string" || !res.body) {
+      setGenerateSaveButtonDisabled(false);
+      showAlertMessage(
+        <FormattedMessage id="error.save.order" />,
+        NotificationKinds.error,
+      );
+      return;
+    }
+    if (JSON.stringify(currentOrder.current) !== generationSnapshot.current) {
+      setGenerateSaveButtonDisabled(false);
+      showAlertMessage(
+        <FormattedMessage id="error.save.order" />,
+        NotificationKinds.error,
+      );
+      return;
+    }
+    const generatedOrder = {
+      ...orderFormValues,
+      sampleOrderItems: {
+        ...orderFormValues.sampleOrderItems,
+        labNo: res.body,
+      },
+    };
+    setOrderFormValues(generatedOrder);
+    setNotificationVisible(false);
+    if (generatedOrder.method === "On Demand") {
+      // Generation is the save trigger. Typing or changing state is never one.
+      post(generatedOrder);
+    } else {
+      setGenerateSaveButtonDisabled(false);
     }
   }
 
-  function post() {
-    if ("years" in orderFormValues.patientProperties) {
-      delete orderFormValues.patientProperties.years;
-    }
-    if ("months" in orderFormValues.patientProperties) {
-      delete orderFormValues.patientProperties.months;
-    }
-    if ("days" in orderFormValues.patientProperties) {
-      delete orderFormValues.patientProperties.days;
-    }
-    if (!orderFormValues.currentDate) {
-      orderFormValues.currentDate = "";
-    }
+  function post(formValues = orderFormValues) {
+    if (savingOrder.current || !formValues.sampleOrderItems.labNo) return;
+    savingOrder.current = true;
+    setGenerateSaveButtonDisabled(true);
+    setSaveResponse(null);
+    const { years, months, days, ...patientProperties } =
+      formValues.patientProperties;
     const normalizedOrderLabels = extractSampleXmlLabelQuantity(
-      orderFormValues.sampleXML,
+      formValues.sampleXML,
       "numOrderLabels",
     );
     const normalizedSpecimenLabels = extractSampleXmlLabelQuantity(
-      orderFormValues.sampleXML,
+      formValues.sampleXML,
       "numSpecimenLabels",
     );
     const payload = {
-      ...orderFormValues,
+      ...formValues,
+      patientProperties,
+      currentDate: formValues.currentDate || "",
       sampleXML: updateSampleXmlLabelQuantities(
-        orderFormValues.sampleXML,
+        formValues.sampleXML,
         normalizedOrderLabels,
         normalizedSpecimenLabels,
       ),
     };
-    const body = JSON.stringify(payload);
     postToOpenElisServerJsonResponse(
       "/rest/SamplePatientEntryBatch",
-      body,
-      printLabelSets,
+      JSON.stringify(payload),
+      (response) => {
+        if (!componentMounted.current) return;
+        verifySavedOrder(response, payload);
+      },
     );
   }
-  useEffect(() => {
-    if (
-      componentMounted.current &&
-      orderFormValues.sampleOrderItems.labNo != "" &&
-      labNoGenerated &&
-      (orderFormValues.method === "On Demand" ? !buttonDisabled : true)
-    ) {
-      post();
-    } else {
-      componentMounted.current = true;
-    }
-  }, [
-    orderFormValues.sampleOrderItems.labNo,
-    orderFormValues.method,
-    buttonDisabled,
-  ]);
 
   const handleLabNoGeneration = (e) => {
-    if (e) {
-      e.preventDefault();
-    }
+    if (e) e.preventDefault();
+    if (
+      generatingAccession.current ||
+      savingOrder.current ||
+      generateSaveButtonDisabled
+    )
+      return;
+    generatingAccession.current = true;
+    generationSnapshot.current = JSON.stringify(orderFormValues);
+    setGenerateSaveButtonDisabled(true);
     getFromOpenElisServer(
       "/rest/SampleEntryGenerateScanProvider",
       fetchGeneratedAccessionNo,
     );
   };
 
-  const printLabelSets = (res) => {
-    const responseStatus = res?.statusCode ?? res?.status ?? 200;
-    if (!res?.error && responseStatus < 400) {
-      showAlertMessage(
-        <FormattedMessage id="save.order.success.msg" />,
-        NotificationKinds.success,
+  const savedOrderMatches = (saved, payload) => {
+    if (
+      !saved ||
+      saved.queryVersion !== "2" ||
+      saved.labNumber !== payload.sampleOrderItems.labNo ||
+      !/^[1-9]\d*$/.test(String(saved.orderId || "")) ||
+      !/^[1-9]\d*$/.test(String(saved.patient?.patientId || ""))
+    )
+      return false;
+    const patient = payload.patientProperties;
+    if (
+      ["firstName", "lastName", "nationalId", "gender"].some(
+        (field) =>
+          String(saved.patient[field] ?? "") !== String(patient[field] ?? ""),
+      )
+    )
+      return false;
+    if (
+      patient.patientPK &&
+      String(patient.patientPK) !== saved.patient.patientId
+    )
+      return false;
+    const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "en-US";
+    const sameDate = (left, right) => {
+      const parse = (value) =>
+        /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(String(value))
+          ? parseDateForLocale(String(value).replaceAll("-", "/"), "zh-CN")
+          : parseDateForLocale(value, dateLocale);
+      const leftDate = parse(left);
+      const rightDate = parse(right);
+      return (
+        leftDate &&
+        rightDate &&
+        ["year", "month", "day"].every(
+          (field) => leftDate[field] === rightDate[field],
+        )
       );
-      setSaveResponse(res);
+    };
+    // Date of birth is optional in the current batch setup. An omitted value
+    // must remain omitted in the persisted patient; any supplied date still
+    // requires the same parsed calendar date.
+    const savedBirthDate = String(saved.patient.birthDate ?? "");
+    const sentBirthDate = String(patient.birthDateForDisplay ?? "");
+    if (
+      (savedBirthDate || sentBirthDate) &&
+      !sameDate(savedBirthDate, sentBirthDate)
+    )
+      return false;
+    if (
+      ["referringSiteId", "referringSiteDepartmentId"].some(
+        (field) =>
+          String(saved.sampleOrderItems?.[field] || "") !==
+          String(payload.sampleOrderItems[field] || ""),
+      )
+    )
+      return false;
+    if (
+      !sameDate(
+        saved.sampleOrderItems?.receivedDateForDisplay,
+        payload.sampleOrderItems.receivedDateForDisplay,
+      )
+    )
+      return false;
+    const xml = new DOMParser().parseFromString(
+      payload.sampleXML,
+      "application/xml",
+    );
+    if (xml.querySelector("parsererror")) return false;
+    const sentSamples = [...xml.querySelectorAll("samples > sample")];
+    if (
+      !sentSamples.length ||
+      !Array.isArray(saved.samples) ||
+      saved.samples.length !== sentSamples.length
+    )
+      return false;
+    const csv = (value) =>
+      String(value || "")
+        .split(",")
+        .filter(Boolean);
+    return sentSamples.every((sent, index) => {
+      const actual = saved.samples[index];
+      if (
+        actual.sampleTypeId !== sent.getAttribute("sampleID") ||
+        !Array.isArray(actual.analyses) ||
+        !sameDate(actual.collectionDate, sent.getAttribute("date"))
+      )
+        return false;
+      const tests = new Set(actual.analyses.map((analysis) => analysis.testId));
+      const expectedTests = new Set(csv(sent.getAttribute("tests")));
+      const panels = new Set(
+        actual.analyses.map((analysis) => analysis.panelId).filter(Boolean),
+      );
+      return (
+        tests.size === expectedTests.size &&
+        [...expectedTests].every((id) => tests.has(id)) &&
+        csv(sent.getAttribute("panels")).every((id) => panels.has(id))
+      );
+    });
+  };
+
+  const verifySavedOrder = (res, payload) => {
+    const responseStatus =
+      typeof res?.statusCode === "number"
+        ? res.statusCode
+        : typeof res?.status === "number"
+          ? res.status
+          : 200;
+    if (
+      !res ||
+      res.error ||
+      res.status === false ||
+      responseStatus < 200 ||
+      responseStatus >= 400
+    ) {
+      savingOrder.current = false;
+      setGenerateSaveButtonDisabled(false);
+      showAlertMessage(
+        <FormattedMessage id="error.save.order" />,
+        NotificationKinds.error,
+      );
+      return;
     }
+    // The legacy POST can return HTTP200 with an unsaved form. Only a fresh
+    // query of this exact clinical object establishes that it was saved.
+    getFromOpenElisServer(
+      "/rest/order/saved?queryVersion=2&labNumber=" +
+        encodeURIComponent(payload.sampleOrderItems.labNo),
+      (saved) => {
+        savingOrder.current = false;
+        if (!componentMounted.current) return;
+        if (!savedOrderMatches(saved, payload)) {
+          // The commit outcome is uncertain; keep this label locked for review.
+          // Do not issue another clinical POST or advertise a saved barcode.
+          showAlertMessage(
+            <FormattedMessage id="error.save.order" />,
+            NotificationKinds.error,
+          );
+          return;
+        }
+        showAlertMessage(
+          <FormattedMessage id="save.order.success.msg" />,
+          NotificationKinds.success,
+        );
+        setGeneratedLabNos((previous) => [...previous, saved.labNumber]);
+        setSaveResponse(res);
+        setButtonDisabled(false);
+      },
+    );
   };
 
   const handleLabelsSectionChange = (labelsModel) => {
@@ -425,11 +584,16 @@ const SampleBatchEntry = (props) => {
                 </Grid>
               </div>
               {orderFormValues.PatientInfoCheck && (
-                <PatientInfo
-                  orderFormValues={orderFormValues}
-                  setOrderFormValues={setOrderFormValues}
-                  error={elementError}
-                />
+                <fieldset
+                  disabled={generateSaveButtonDisabled}
+                  style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+                >
+                  <PatientInfo
+                    orderFormValues={orderFormValues}
+                    setOrderFormValues={setOrderFormValues}
+                    error={elementError}
+                  />
+                </fieldset>
               )}
               {orderFormValues.method === "On Demand" && (
                 <div className="orderLegendBody">
@@ -459,14 +623,13 @@ const SampleBatchEntry = (props) => {
                         </>
                       }
                       id="labNo"
+                      invalid={Boolean(elementError("sampleOrderItems.labNo"))}
+                      invalidText={elementError("sampleOrderItems.labNo")}
+                      disabled={generateSaveButtonDisabled}
                     />
                     <Link
                       href="#"
-                      onClick={(e) => {
-                        handleLabNoGeneration(e);
-                        setButtonDisabled(false);
-                        setGenerateSaveButtonDisabled(true);
-                      }}
+                      onClick={handleLabNoGeneration}
                       disabled={generateSaveButtonDisabled}
                       data-testid="generate-barcode-link-BatchOrderEntry"
                     >
@@ -502,6 +665,7 @@ const SampleBatchEntry = (props) => {
                       onClick={() => {
                         setButtonDisabled(true);
                         setGenerateSaveButtonDisabled(false);
+                        setSaveResponse(null);
                         setOrderFormValues({
                           ...orderFormValues,
                           sampleOrderItems: {
@@ -541,6 +705,9 @@ const SampleBatchEntry = (props) => {
                         </>
                       }
                       id="labNo"
+                      invalid={Boolean(elementError("sampleOrderItems.labNo"))}
+                      invalidText={elementError("sampleOrderItems.labNo")}
+                      disabled={generateSaveButtonDisabled}
                     />
                     <FormattedMessage id="label.order.scan.text" />{" "}
                     <Link href="#" onClick={(e) => handleLabNoGeneration(e)}>
@@ -567,15 +734,11 @@ const SampleBatchEntry = (props) => {
                   </Column>
                   <Column lg={16}>
                     <Button
-                      onClick={() => {
-                        setLabNoGenerated(true);
-                        setGenerateSaveButtonDisabled(false);
-                        setGeneratedLabNos((prevLabNos) => [
-                          ...prevLabNos,
-                          orderFormValues.sampleOrderItems.labNo,
-                        ]);
-                      }}
-                      disabled={generateSaveButtonDisabled}
+                      onClick={() => post()}
+                      disabled={
+                        generateSaveButtonDisabled ||
+                        !orderFormValues.sampleOrderItems.labNo
+                      }
                       data-testid="generate-barcode-btn-BatchOrderEntry"
                     >
                       <FormattedMessage id="column.name.save" />

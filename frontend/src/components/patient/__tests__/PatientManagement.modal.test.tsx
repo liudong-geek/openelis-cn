@@ -8,6 +8,7 @@ import { IntlProvider } from "react-intl";
 import messages from "../../../languages/zh_CN.json";
 import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
 import PatientManagement from "../PatientManagement";
+import { ConfigurationContext } from "../../layout/Layout";
 const mocks = vi.hoisted(() => ({
   form: vi.fn(),
   list: vi.fn(),
@@ -95,34 +96,71 @@ vi.mock("../PatientMasterList", () => ({
         >
           SIM view
         </button>
-        <button onClick={() => props.onOpenResults({ patientPK: "42" })}>
-          SIM results
-        </button>
+        {props.onOpenResults && (
+          <button onClick={() => props.onOpenResults({ patientPK: "42" })}>
+            SIM results
+          </button>
+        )}
         <button onClick={props.onNewPatient}>SIM new</button>
       </div>
     );
   },
 }));
 vi.mock("../SearchPatientForm", () => ({ default: () => null }));
-const mount = (path = "/PatientManagement", actor = "SIM-A") => {
+const patientMenus = (historyFlag = true) => [
+  {
+    menu: { elementId: "menu_patient", isActive: true },
+    childMenus: [
+      { menu: { elementId: "menu_patient_add_or_edit", isActive: true } },
+      { menu: { elementId: "menu_patienthistory", isActive: historyFlag } },
+      { menu: { elementId: "menu_patient_create", isActive: false } },
+    ],
+  },
+];
+const mount = (
+  path = "/PatientManagement",
+  actor = "SIM-A",
+  initialMenus = patientMenus(),
+) => {
+  let menus = initialMenus;
+  let currentSession: Record<string, unknown>;
   const history = createMemoryHistory({ initialEntries: [path] });
-  const content = (session: Record<string, unknown>) => (
-    <UserSessionDetailsContext.Provider value={{ userSessionDetails: session }}>
-      <Router history={history}>
-        <IntlProvider locale="zh-CN" messages={messages}>
-          <Route path="/PatientManagement/:patientId?">
-            <PatientManagement />
-          </Route>
-        </IntlProvider>
-      </Router>
-    </UserSessionDetailsContext.Provider>
-  );
+  const content = (session: Record<string, unknown>) => {
+    currentSession = session;
+    const userId = String(session.userName || actor);
+    return (
+      <UserSessionDetailsContext.Provider
+        value={{
+          userSessionDetails: {
+            userId,
+            sessionId: `${userId}-session`,
+            roles: ["Reception"],
+            ...session,
+          },
+        }}
+      >
+        <ConfigurationContext.Provider value={{ navigationMenuItems: menus }}>
+          <Router history={history}>
+            <IntlProvider locale="zh-CN" messages={messages}>
+              <Route path="/PatientManagement/:patientId?">
+                <PatientManagement />
+              </Route>
+            </IntlProvider>
+          </Router>
+        </ConfigurationContext.Provider>
+      </UserSessionDetailsContext.Provider>
+    );
+  };
   const view = render(
     content({ authenticated: true, userName: actor, csrf: "token-A" }),
   );
   return {
     history,
     ...view,
+    rerenderMenus: (next) => {
+      menus = next;
+      view.rerender(content(currentSession));
+    },
     rerenderSession: (session: Record<string, unknown>) =>
       view.rerender(content(session)),
   };
@@ -303,5 +341,58 @@ describe("patient list maintenance modal", () => {
     const previousListCalls = mocks.list.mock.calls.length;
     act(() => oldSaved("42"));
     expect(mocks.list.mock.calls.length).toBe(previousListCalls);
+  });
+});
+
+describe("current history shortcut menu visibility", () => {
+  test.each([null, patientMenus(false)])(
+    "unknown or OFF history %j withholds results and keeps ordinary maintenance",
+    (menus) => {
+      mount("/PatientManagement", "SIM-A", menus);
+      expect(
+        screen.queryByRole("button", { name: "SIM results" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "新患者" })).toBeEnabled();
+      fireEvent.click(screen.getByRole("button", { name: "SIM view" }));
+      expect(screen.getByText("SIM editor")).toBeVisible();
+    },
+  );
+  test("results withdrawal blocks an old callback immediately without navigation", () => {
+    const view = mount();
+    const oldCallback = mocks.list.mock.calls.at(-1)[0].onOpenResults;
+    expect(screen.getByRole("button", { name: "SIM results" })).toBeVisible();
+    view.rerenderMenus(patientMenus(false));
+    expect(
+      screen.queryByRole("button", { name: "SIM results" }),
+    ).not.toBeInTheDocument();
+    act(() => oldCallback({ patientPK: "42" }));
+    expect(view.history.location.pathname).toBe("/PatientManagement");
+    view.rerenderMenus(patientMenus(true));
+    fireEvent.click(screen.getByRole("button", { name: "SIM results" }));
+    expect(view.history.location.pathname).toBe("/PatientResults/42");
+  });
+  test("research-only patient creation OFF does not prevent ordinary new patient modal", () => {
+    const view = mount();
+    expect(
+      patientMenus()[0].childMenus.find(
+        (entry) => entry.menu.elementId === "menu_patient_create",
+      ).menu.isActive,
+    ).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "新患者" }));
+    expect(screen.getByText("SIM editor")).toBeVisible();
+    expect(view.history.location.pathname).toBe("/PatientManagement");
+  });
+  test("a role withdrawal cannot retain a results shortcut from an old snapshot", () => {
+    const view = mount();
+    view.rerenderSession({
+      authenticated: true,
+      userName: "SIM-A",
+      csrf: "token-A",
+      roles: ["User Account Administrator"],
+    });
+    expect(
+      screen.queryByRole("button", { name: "SIM results" }),
+    ).not.toBeInTheDocument();
+    expect(view.history.location.pathname).toBe("/PatientManagement");
   });
 });

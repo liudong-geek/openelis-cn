@@ -8,13 +8,17 @@ import messages from "../../languages/en.json";
 import chineseMessages from "../../languages/zh.json";
 import OrderDashboard from "./OrderDashboard";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
+import { ConfigurationContext } from "../layout/Layout";
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   load: vi.fn(),
   reset: vi.fn(),
 }));
-vi.mock("../utils/Utils", () => ({ getFromOpenElisServer: mocks.get }));
+vi.mock("../utils/Utils", () => ({
+  getFromOpenElisServer: mocks.get,
+  Roles: { RECEPTION: "Reception" },
+}));
 vi.mock("./OrderContext", () => ({
   useOrderContext: () => ({ loadOrder: mocks.load, resetOrder: mocks.reset }),
 }));
@@ -40,7 +44,29 @@ const order = {
   stepProgress: { enter: true },
   samples: [],
 };
-const mount = (state, locale = "en") => {
+const patientMenu = (rootActive = true, childActive = true) => [
+  {
+    menu: { elementId: "menu_patient", isActive: rootActive },
+    childMenus: [
+      {
+        menu: {
+          elementId: "menu_patient_add_or_edit",
+          isActive: childActive,
+        },
+        childMenus: [],
+      },
+    ],
+  },
+];
+const receptionSession = {
+  userSessionDetails: {
+    authenticated: true,
+    userId: "SIM-order-user",
+    sessionId: "SIM-order-session",
+    roles: ["Reception"],
+  },
+};
+const mount = (state, locale = "en", options = {}) => {
   const history = createMemoryHistory({
     initialEntries: [{ pathname: "/order", state }],
   });
@@ -50,7 +76,16 @@ const mount = (state, locale = "en") => {
         locale={locale}
         messages={locale === "zh" ? chineseMessages : messages}
       >
-        <OrderDashboard />
+        <UserSessionDetailsContext.Provider value={options.session || {}}>
+          <ConfigurationContext.Provider
+            value={{
+              configurationProperties: {},
+              navigationMenuItems: options.menuItems ?? null,
+            }}
+          >
+            <OrderDashboard />
+          </ConfigurationContext.Provider>
+        </UserSessionDetailsContext.Provider>
       </IntlProvider>
     </Router>,
   );
@@ -93,9 +128,13 @@ test("restores the list filters and page and opens an identified request for edi
 });
 
 test("keeps common intake tasks on the workbench and preserves the list origin", async () => {
-  const history = mount({
-    listState: { page: 2, pageSize: 25, statusFilter: "collection_pending" },
-  });
+  const history = mount(
+    {
+      listState: { page: 2, pageSize: 25, statusFilter: "collection_pending" },
+    },
+    "en",
+    { session: receptionSession, menuItems: patientMenu() },
+  );
   await screen.findByRole("row", { name: /DEMO-12/ });
 
   fireEvent.click(
@@ -634,3 +673,53 @@ test("opens a saved order in its own read-only workspace without loading a mutab
   });
   expect(mocks.load).not.toHaveBeenCalled();
 });
+
+test.each([
+  ["root off", patientMenu(false, true)],
+  ["child off", patientMenu(true, false)],
+  ["unknown", null],
+  ["empty", []],
+  ["child missing", [{ menu: { elementId: "menu_patient", isActive: true } }]],
+])(
+  "%s hides patient maintenance without disabling new request entry",
+  async (_name, menuItems) => {
+    const history = mount(undefined, "en", {
+      session: receptionSession,
+      menuItems,
+    });
+    await screen.findByRole("row", { name: /DEMO-12/ });
+    expect(
+      screen.queryByRole("button", {
+        name: messages["intake.workspace.patient"],
+      }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: messages["order.new"] }),
+    );
+    expect(history.location.pathname).toBe("/order/enter");
+    expect(mocks.reset).toHaveBeenCalled();
+    expect(
+      mocks.get.mock.calls.every(([url]) => url.startsWith("/rest/order/")),
+    ).toBe(true);
+  },
+);
+
+test.each([
+  ["no Reception", { authenticated: true, roles: ["Results"] }],
+  ["unknown roles", { authenticated: true }],
+  ["malformed roles", { authenticated: true, roles: "Reception" }],
+  ["logged out", { authenticated: false, roles: ["Reception"] }],
+])(
+  "active patient menus do not grant permission to %s",
+  (_name, userSessionDetails) => {
+    mount(undefined, "en", {
+      session: { userSessionDetails },
+      menuItems: patientMenu(),
+    });
+    expect(
+      screen.queryByRole("button", {
+        name: messages["intake.workspace.patient"],
+      }),
+    ).toBeNull();
+  },
+);

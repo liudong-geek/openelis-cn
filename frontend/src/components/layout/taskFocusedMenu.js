@@ -182,6 +182,38 @@ const CHINA_ADMIN_TASKS = Object.freeze([
     allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
   },
   {
+    elementId: "menu_configuration_dictionaries",
+    displayKey: "sidenav.china.configuration.dictionaries",
+    actionURL: "/MasterListsPage/DictionaryMenu",
+    workspace: "configuration",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+    requiresExplicitRole: true,
+  },
+  {
+    elementId: "menu_configuration_numbering",
+    displayKey: "sidenav.china.configuration.numbering",
+    actionURL: "/MasterListsPage/labNumber",
+    workspace: "configuration",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+    requiresExplicitRole: true,
+  },
+  {
+    elementId: "menu_configuration_programs",
+    displayKey: "sidenav.china.configuration.programs",
+    actionURL: "/MasterListsPage/program",
+    workspace: "configuration",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+    requiresExplicitRole: true,
+  },
+  {
+    elementId: "menu_configuration_workflow_parameters",
+    displayKey: "sidenav.china.configuration.workflowParameters",
+    actionURL: "/MasterListsPage/workflowReportWorkspace",
+    workspace: "configuration",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+    requiresExplicitRole: true,
+  },
+  {
     elementId: "menu_management_users",
     displayKey: "sidenav.china.management.users",
     actionURL: "/MasterListsPage/userManagement",
@@ -194,6 +226,22 @@ const CHINA_ADMIN_TASKS = Object.freeze([
     actionURL: "/MasterListsPage/globalMenuManagement",
     workspace: "management",
     allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+  },
+  {
+    elementId: "menu_management_menu_configuration",
+    displayKey: "sidenav.china.management.menuConfiguration",
+    actionURL: "/MasterListsPage/menuConfiguration",
+    workspace: "management",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+    requiresExplicitRole: true,
+  },
+  {
+    elementId: "menu_management_notify",
+    displayKey: "sidenav.china.management.notify",
+    actionURL: "/MasterListsPage/NotifyUser",
+    workspace: "management",
+    allowedRoles: [ROLE_NAMES.GLOBAL_ADMIN],
+    requiresExplicitRole: true,
   },
   {
     elementId: "menu_management_system_properties",
@@ -900,8 +948,10 @@ const splitManagementDestinations = (destinations, options = {}) => {
   });
 
   const administrationTasks = configurationWorkspace
-    ? CHINA_ADMIN_TASKS.filter(({ allowedRoles }) =>
-        canUseRoleSlice(roleSet, allowedRoles),
+    ? CHINA_ADMIN_TASKS.filter(({ allowedRoles, requiresExplicitRole }) =>
+        requiresExplicitRole
+          ? allowedRoles.some((role) => roleSet.has(role))
+          : canUseRoleSlice(roleSet, allowedRoles),
       ).map(({ elementId, displayKey, actionURL, workspace }) => ({
         workspace,
         destination: createDestination(elementId, displayKey, actionURL),

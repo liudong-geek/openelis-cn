@@ -108,8 +108,7 @@ a.cds--header__name.cds--header__name > span {
 
 .slide-over-panel {
   position: absolute;
-  top: 53px;
-  /* Adjust this value based on the height of your header */
+  top: var(--oe-slideover-header-offset, 53px);
   transition:
     transform 0.4s ease-in-out,
     opacity 0.4s ease-in-out;
@@ -118,7 +117,7 @@ a.cds--header__name.cds--header__name > span {
   max-width: 90%;
   /* Use percentage for max-width */
   border-radius: 10px;
-  height: calc(100% - 20px);
+  height: calc(100% - var(--oe-slideover-header-offset, 53px));
 }
 
 @media (min-width: 768px) {

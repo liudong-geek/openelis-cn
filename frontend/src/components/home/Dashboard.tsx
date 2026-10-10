@@ -1,6 +1,7 @@
 import React from "react";
 import {
   Tile,
+  InlineNotification,
   ClickableTile,
   Loading,
   Grid,
@@ -58,6 +59,7 @@ const TILE_ICONS: Record<string, any> = {
 import { useState, useEffect, useRef, useContext } from "react";
 import {
   getFromOpenElisServer,
+  type LegacyApiResponse,
   convertAlphaNumLabNumForDisplay,
   hasRole,
   Roles,
@@ -127,27 +129,33 @@ export const getDashboardLabNumberRoute = (
   return null;
 };
 
+const EMPTY_TIME_METRICS = {
+  receptionToResult: 0,
+  resultToValidation: 0,
+  receptionToValidation: 0,
+};
+
 const HomeDashBoard: React.FC<DashBoardProps> = () => {
   const intl = useIntl();
   const history = useHistory();
 
   const [counts, setCounts] = useState(EMPTY_COUNTS);
 
-  const [timeMetrics, setTimeMetrics] = useState({
-    receptionToResult: 0,
-    resultToValidation: 0,
-    receptionToValidation: 0,
-  });
+  const [timeMetrics, setTimeMetrics] = useState(EMPTY_TIME_METRICS);
+  const [detailReadFailed, setDetailReadFailed] = useState(false);
+  const [detailReloadVersion, setDetailReloadVersion] = useState(0);
 
   const [data, setData] = useState([]);
-  const [testSections, setTestSections] = useState([]);
+  const [testSections, setTestSections] = useState<
+    Array<{ id: string; value: string }>
+  >([]);
   const [selectedTestSection, setSelectedTestSection] = useState("");
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const componentMounted = useRef(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
-  const [selectedTile, setSelectedTile] = useState<Tile>(null);
+  const [selectedTile, setSelectedTile] = useState<Tile | null>(null);
   const [nextPage, setNextPage] = useState(null);
   const [previousPage, setPreviousPage] = useState(null);
   const [pagination, setPagination] = useState(false);
@@ -156,6 +164,49 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
   const [url, setUrl] = useState("");
   const sessionContext = useContext(UserSessionDetailsContext);
   const { userSessionDetails } = sessionContext;
+  const readOwner = JSON.stringify([
+    userSessionDetails?.authenticated === true,
+    userSessionDetails?.userId ?? null,
+    userSessionDetails?.sessionId ?? null,
+    userSessionDetails?.loginLabUnit ?? null,
+    userSessionDetails?.roles ?? [],
+    userSessionDetails?.userLabRolesMap ?? {},
+  ]);
+  const [displayOwner, setDisplayOwner] = useState(readOwner);
+  const readOwnerRef = useRef(readOwner);
+  readOwnerRef.current = readOwner;
+  const activeReads = useRef<Record<string, AbortController>>({});
+  const [resumeVersion, setResumeVersion] = useState(0);
+  const cancelReads = () => {
+    Object.values(activeReads.current).forEach((controller) =>
+      controller.abort(),
+    );
+    activeReads.current = {};
+  };
+  const readDashboard = <T = LegacyApiResponse,>(
+    channel: "metrics" | "sections" | "detail",
+    endpoint: string,
+    callback: (response: T | undefined) => void,
+  ) => {
+    if (!componentMounted.current) return;
+    activeReads.current[channel]?.abort();
+    const controller = new AbortController();
+    activeReads.current[channel] = controller;
+    getFromOpenElisServer<T>(
+      endpoint,
+      (response) => {
+        if (
+          !componentMounted.current ||
+          controller.signal.aborted ||
+          activeReads.current[channel] !== controller ||
+          readOwnerRef.current !== readOwner
+        )
+          return;
+        callback(response);
+      },
+      controller.signal,
+    );
+  };
   const resultSummary = usePendingResultSummary(sessionContext);
   const reviewSummary = usePendingReviewSummary(sessionContext);
   const resultCount = resultSummary.summary?.analysisCount ?? null;
@@ -172,34 +223,67 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
   }, []);
 
   useEffect(() => {
-    getFromOpenElisServer("/rest/home-dashboard/metrics", loadCount);
-
-    return () => {
-      // This code runs when component is unmounted
+    componentMounted.current = true;
+    setCounts(EMPTY_COUNTS);
+    setData([]);
+    setTimeMetrics(EMPTY_TIME_METRICS);
+    setTestSections([]);
+    setSelectedTestSection("");
+    setSelectedTile(null);
+    setLastUpdated(null);
+    setNextPage(null);
+    setPreviousPage(null);
+    setPagination(false);
+    setCurrentApiPage(null);
+    setTotalApiPages(null);
+    setPage(1);
+    setDetailReadFailed(false);
+    setDisplayOwner(readOwner);
+    const hide = () => {
       componentMounted.current = false;
+      cancelReads();
     };
-  }, []);
+    const resume = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      componentMounted.current = true;
+      setResumeVersion((version) => version + 1);
+    };
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", resume);
+    return () => {
+      hide();
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", resume);
+    };
+  }, [readOwner]);
+
+  useEffect(() => {
+    setLoading(true);
+    readDashboard("metrics", "/rest/home-dashboard/metrics", loadCount);
+  }, [readOwner, resumeVersion]);
 
   const refreshMetrics = () => {
     setLoading(true);
-    getFromOpenElisServer("/rest/home-dashboard/metrics", loadCount);
+    readDashboard("metrics", "/rest/home-dashboard/metrics", loadCount);
     resultSummary.refresh();
     reviewSummary.refresh();
   };
 
   useEffect(() => {
-    if (selectedTile != null) {
+    if (selectedTile != null && displayOwner === readOwner) {
       setNextPage(null);
       setPreviousPage(null);
       setPagination(false);
       setLoading(true);
       if (selectedTile.type == "AVERAGE_TURN_AROUND_TIME") {
-        getFromOpenElisServer(
+        readDashboard(
+          "detail",
           "/rest/home-dashboard/turn-around-time-metrics",
           loadTimeMetrics,
         );
       } else if (selectedTile.type == "ORDERS_FOR_USER") {
-        getFromOpenElisServer(
+        readDashboard(
+          "detail",
           "/rest/home-dashboard/" +
             selectedTile.type +
             "?systemUserId=" +
@@ -207,27 +291,43 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
           loadData,
         );
       } else {
-        getFromOpenElisServer(
+        readDashboard(
+          "detail",
           "/rest/home-dashboard/" + selectedTile.type,
           loadData,
         );
       }
     }
-  }, [selectedTile]);
+    return () => activeReads.current.detail?.abort();
+  }, [
+    selectedTile,
+    displayOwner,
+    readOwner,
+    resumeVersion,
+    detailReloadVersion,
+  ]);
 
   useEffect(() => {
-    getFromOpenElisServer(
+    readDashboard(
+      "sections",
       "/rest/user-test-sections/ALL",
       (fetchedTestSections) => {
         fetchTestSections(fetchedTestSections);
       },
     );
-    return () => {
-      componentMounted.current = false;
-    };
-  }, []);
+    return () => activeReads.current.sections?.abort();
+  }, [readOwner, resumeVersion]);
 
   const fetchTestSections = (res) => {
+    if (!Array.isArray(res)) {
+      addNotification({
+        kind: NotificationKinds.error,
+        title: intl.formatMessage({ id: "dashboard.error.title" }),
+        message: intl.formatMessage({ id: "dashboard.error.load" }),
+      });
+      setNotificationVisible(true);
+      return;
+    }
     setTestSections(res);
     hasRole(userSessionDetails, "Global Administrator")
       ? setSelectedTestSection("all")
@@ -235,16 +335,20 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
   };
 
   const loadNextResultsPage = () => {
+    if (selectedTile === null) return;
     setLoading(true);
-    getFromOpenElisServer(
+    readDashboard(
+      "detail",
       "/rest/home-dashboard/" + selectedTile.type + "?page=" + nextPage,
       loadData,
     );
   };
 
   const loadPreviousResultsPage = () => {
+    if (selectedTile === null) return;
     setLoading(true);
-    getFromOpenElisServer(
+    readDashboard(
+      "detail",
       "/rest/home-dashboard/" + selectedTile.type + "?page=" + previousPage,
       loadData,
     );
@@ -267,7 +371,23 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
     }
   };
 
+  const reportDetailFailure = () => {
+    setDetailReadFailed(true);
+    setLoading(false);
+    addNotification({
+      kind: NotificationKinds.error,
+      title: intl.formatMessage({ id: "dashboard.error.title" }),
+      message: intl.formatMessage({ id: "dashboard.error.load" }),
+    });
+    setNotificationVisible(true);
+  };
+
   const loadData = (res) => {
+    if (res === undefined) {
+      reportDetailFailure();
+      return;
+    }
+    setDetailReadFailed(false);
     // If the response object is not null and has displayItems array with length greater than 0 then set it as data.
     if (res && res.displayItems && res.displayItems.length > 0) {
       setData(res.displayItems);
@@ -307,6 +427,11 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
   };
 
   const loadTimeMetrics = (data) => {
+    if (data === undefined) {
+      reportDetailFailure();
+      return;
+    }
+    setDetailReadFailed(false);
     setTimeMetrics(data);
     setLoading(false);
   };
@@ -521,6 +646,10 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
   );
 
   const handleMinimizeClick = () => {
+    if (selectedTile === null) return;
+    setData([]);
+    setTimeMetrics(EMPTY_TIME_METRICS);
+    setDetailReadFailed(false);
     if (selectedTile.type == "ORDERS_FOR_USER") {
       const tile: Tile = {
         title: <FormattedMessage id="dashboard.user.orders.label" />,
@@ -541,6 +670,9 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
       testSections?.length > 0 ||
       hasRole(userSessionDetails, "Global Administrator")
     ) {
+      setData([]);
+      setTimeMetrics(EMPTY_TIME_METRICS);
+      setDetailReadFailed(false);
       setSelectedTile(tile);
     } else {
       setNotificationVisible(true);
@@ -570,6 +702,9 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
       value: value,
       id: row.id,
     };
+    setData([]);
+    setTimeMetrics(EMPTY_TIME_METRICS);
+    setDetailReadFailed(false);
     setSelectedTile(tile);
   };
 
@@ -583,6 +718,7 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
     }
   };
   const renderCell = (cell, row) => {
+    if (selectedTile === null) return null;
     if (cell.info.header === "labNumber" && cell.value) {
       const targetRoute = getDashboardLabNumberRoute(
         selectedTile.type,
@@ -674,6 +810,12 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
       header: intl.formatMessage({ id: "dashboard.user.orders.count" }),
     },
   ];
+
+  if (displayOwner !== readOwner) {
+    return (
+      <Loading description={intl.formatMessage({ id: "dashboard.loading" })} />
+    );
+  }
 
   return (
     <section className="home-dashboard" aria-labelledby="dashboard-title">
@@ -1039,30 +1181,54 @@ const HomeDashBoard: React.FC<DashBoardProps> = () => {
           <Tile className="dashboard-tile">
             <Grid>
               <Column lg={16} md={8} sm={4}>
-                <h2 className="dashboard-tile__title-view">
-                  {selectedTile.title}
-                </h2>
-                <p className="dashboard-tile__subtitle-view">
-                  {selectedTile.subTitle ?? " "}
-                </p>
-                <h1 className="dashboard-tile__value-view">
-                  {selectedTile.value}
-                </h1>
-                <Button
-                  id="minimizeIcon"
-                  className="tile-icon"
-                  kind="ghost"
-                  size="md"
-                  hasIconOnly
-                  renderIcon={Minimize}
-                  iconDescription={intl.formatMessage({
-                    id: "dashboard.back.to.overview",
-                  })}
-                  onClick={handleMinimizeClick}
-                />
+                <div className="dashboard-detail-heading">
+                  <div className="dashboard-detail-heading__summary">
+                    <h2 className="dashboard-tile__title-view">
+                      {selectedTile.title}
+                    </h2>
+                    <p className="dashboard-tile__subtitle-view">
+                      {selectedTile.subTitle ?? " "}
+                    </p>
+                    <h1 className="dashboard-tile__value-view">
+                      {selectedTile.value}
+                    </h1>
+                  </div>
+                  <Button
+                    id="minimizeIcon"
+                    className="dashboard-detail-return"
+                    kind="ghost"
+                    size="md"
+                    renderIcon={Minimize}
+                    onClick={handleMinimizeClick}
+                  >
+                    <FormattedMessage id="dashboard.back.to.overview" />
+                  </Button>
+                </div>
               </Column>
             </Grid>
             <div className="gridBoundary">
+              {detailReadFailed && (
+                <>
+                  <InlineNotification
+                    kind="error"
+                    lowContrast
+                    hideCloseButton
+                    title={intl.formatMessage({ id: "dashboard.error.title" })}
+                    subtitle={intl.formatMessage({
+                      id: "dashboard.error.load",
+                    })}
+                  />
+                  <Button
+                    kind="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setDetailReloadVersion((version) => version + 1)
+                    }
+                  >
+                    {intl.formatMessage({ id: "dashboard.refresh" })}
+                  </Button>
+                </>
+              )}
               {selectedTile.type == "AVERAGE_TURN_AROUND_TIME" ? (
                 <>
                   <div className="home-dashboard-container">

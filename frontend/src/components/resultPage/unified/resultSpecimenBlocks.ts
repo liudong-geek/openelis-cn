@@ -1,3 +1,4 @@
+import { restrictionIdentity } from "./resultRestrictionHandoff";
 import { worklistRowKey } from "./PolymorphicResultCell";
 import { EntryRow, entryBlocked, positiveId } from "./resultEntryState";
 import {
@@ -21,6 +22,7 @@ export interface SpecimenBlock<T extends EntryRow> {
   id: string;
   reason: string;
   group: ResultSpecimenGroup<T>;
+  representative: T;
   analysisCount: number;
   rowKeys: Set<string>;
 }
@@ -60,6 +62,11 @@ export function resultSpecimenBlocks<T extends EntryRow>(
         id: `result-specimen-block-${groupIndex}-${reasonIndex}`,
         reason,
         group,
+        representative:
+          rows.find(
+            (row) =>
+              visibleKeys.has(worklistRowKey(row)) && restrictionIdentity(row),
+          ) || rows.find((row) => visibleKeys.has(worklistRowKey(row)))!,
         analysisCount: new Set(rows.map((row) => row.analysisId)).size,
         rowKeys,
       });

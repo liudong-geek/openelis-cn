@@ -53,6 +53,8 @@ public class SpecimenIntakeDecisionService {
     private final UserService users;
     private final AuditTrailService audit;
     private final DefaultConfigurationProperties configuration;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.openelisglobal.result.service.ResultRestrictionAccess clinicalAccess;
 
     @Autowired
     public SpecimenIntakeDecisionService(SpecimenReceiptDAO graphDao, SpecimenIntakeDecisionWriteDAO decisions,
@@ -87,6 +89,9 @@ public class SpecimenIntakeDecisionService {
         }
         graphDao.requireCleanContext();
         var actor = actors.bind(request);
+        var currentPermission = clinicalAccess.bindForActor(request,
+                org.openelisglobal.result.service.ResultRestrictionAccess.Phase.RECEPTION,
+                org.openelisglobal.result.service.ResultRestrictionAccess.Action.UPDATE, actor.userId());
         var input = SpecimenIntakeDecisionCommand.parse(body);
         var graph = lockGraph(input);
         Set<String> permittedTests = targetTests(graph);
@@ -105,6 +110,7 @@ public class SpecimenIntakeDecisionService {
             requirePermission(actor.userId(), permittedTests);
             String frozen = fingerprint(graph, graph.item());
             Runnable verify = () -> {
+                clinicalAccess.requireUnchanged(request, currentPermission);
                 verifyGraph(graph, graph.item(), input, actor, request, permittedTests, frozen);
                 decisions.requireManaged(List.of(row));
                 validateReplay(row, input, actor.userId());
@@ -173,6 +179,7 @@ public class SpecimenIntakeDecisionService {
         String originalStatus = graph.item().getStatusId(), originalReason = graph.item().getRejectReasonId();
         boolean originalRejected = graph.item().isRejected();
         Runnable precheck = () -> {
+            clinicalAccess.requireUnchanged(request, currentPermission);
             decisions.requireManaged(List.of(graph.item()));
             verifyGraph(graph, graph.item(), input, actor, request, permittedTests, frozenGraph);
             requireNewState(graph);
@@ -245,6 +252,7 @@ public class SpecimenIntakeDecisionService {
         };
         postcheck.run();
         register(postcheck);
+        clinicalAccess.requireUnchanged(request, currentPermission);
         return result(savedRow, false);
     }
 

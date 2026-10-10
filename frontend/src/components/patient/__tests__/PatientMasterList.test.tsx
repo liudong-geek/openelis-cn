@@ -493,3 +493,27 @@ describe("PatientMasterList", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+it("keeps record maintenance when the parent withholds the results callback", async () => {
+  getFromOpenElisServer.mockImplementation((_url, callback) =>
+    callback({ patients, page: 1, pageSize: 20, totalItems: 1, totalPages: 1 }),
+  );
+  const onOpenPatient = vi.fn();
+  render(
+    <IntlProvider locale="en" messages={enMessages}>
+      <PatientMasterList onOpenPatient={onOpenPatient} onNewPatient={vi.fn()} />
+    </IntlProvider>,
+  );
+  expect(await screen.findByText("Ming Li")).toBeVisible();
+  expect(
+    screen.queryByRole("button", {
+      name: enMessages["patient.management.list.results"],
+    }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", { name: enMessages["patient.management.open"] }),
+  );
+  expect(onOpenPatient).toHaveBeenCalledWith(
+    expect.objectContaining({ patientPK: "22" }),
+  );
+});

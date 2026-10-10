@@ -22,13 +22,14 @@ describe("Study Menu Configuration", function () {
   describe("Deactivate Study Menu", () => {
     it("Deactivate Study Menu and submit", function () {
       menuConfigPage.validateToggleStatus("Off");
-      menuConfigPage.checkMenuItem("studyConfig");
+      menuConfigPage.uncheckStudyMenu();
       menuConfigPage.submitButton();
       cy.reload();
     });
 
     it("Validate Study is Deactivated", () => {
       menuConfigPage.navigateToMainMenu();
+      menuConfigPage.validateStudyOff();
     });
   });
 
@@ -53,6 +54,7 @@ describe("Study Menu Configuration", function () {
 
     it("Verify menu changes", function () {
       menuConfigPage.navigateToMainMenu();
+      menuConfigPage.validateStudyOn();
     });
   });
 });

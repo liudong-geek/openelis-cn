@@ -1,13 +1,14 @@
 import React, { useState, useContext, useEffect } from "react";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { ConfigurationContext } from "../layout/Layout";
-import { Route, useLocation } from "react-router-dom";
+import { Route, useLocation, useHistory } from "react-router-dom";
 import { useIdleTimer } from "react-idle-timer";
 import { confirmAlert } from "react-confirm-alert";
 import "react-confirm-alert/src/react-confirm-alert.css"; // Import css
 import { Loading, Modal } from "@carbon/react/";
 import config from "../../config.json";
 import { Roles } from "../utils/Utils";
+import { getPublicLoginPath } from "../utils/NavigationUtils";
 import { FormattedMessage, useIntl } from "react-intl";
 
 const idleTimeout = 1000 * 60 * 30; // milliseconds until idle warning will appear
@@ -21,6 +22,7 @@ function SecureRoute(props) {
 
   const intl = useIntl();
   const location = useLocation();
+  const history = useHistory();
 
   const {
     userSessionDetails,
@@ -73,9 +75,16 @@ function SecureRoute(props) {
         confirmAlert(options);
       }
     } else if ("authenticated" in userSessionDetails) {
-      window.location.href = config.loginRedirect;
+      const publicLogin = getPublicLoginPath(config.loginRedirect);
+      if (publicLogin) history.replace(publicLogin);
+      else window.location.href = config.loginRedirect;
     }
-  }, [userSessionDetails, errorLoadingSessionDetails, location.pathname]);
+  }, [
+    userSessionDetails,
+    errorLoadingSessionDetails,
+    location.pathname,
+    history,
+  ]);
 
   const hasPermission = (userDetails = userSessionDetails) => {
     var hasRole =

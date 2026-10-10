@@ -46,7 +46,11 @@ export const MenuCheckBox = (props) => {
                   ? curMenuItem.menu.displayKey
                   : "missing display key",
             })}
-            disabled={curMenuItem.menu.elementId === "menu_sidenav"}
+            disabled={
+              props.disabled === true ||
+              curMenuItem.menu.elementId === "menu_sidenav"
+            }
+            indeterminate={path === "$" && props.indeterminate === true}
             checked={curMenuItem?.menu.isActive}
             onChange={(_, { checked }) => {
               if (path === "$" || !path) {

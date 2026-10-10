@@ -25,6 +25,7 @@ import PageBreadCrumb from "../../common/PageBreadCrumb";
 import ProductPageHeader from "../../common/ProductPageHeader";
 import AutoComplete from "../../common/AutoComplete";
 import { navigateToInternalPath } from "../../utils/NavigationUtils";
+import { organizationWebsiteError } from "./organizationWebsiteValidation";
 import "../AdminFormWorkspace.css";
 
 interface OrganizationType {
@@ -293,13 +294,11 @@ function OrganizationAddModify({
     setOrgInfoPost((current) => ({ ...current, [field]: value }));
   };
 
-  const internetAddressInvalid = useMemo(() => {
-    const value = String(orgInfo.internetAddress || "").trim();
-    return Boolean(
-      value &&
-      !/^(https?:\/\/)?(www\.)?[\w-]+\.[a-z]{2,}(\.[a-z]{2,})?$/i.test(value),
-    );
-  }, [orgInfo.internetAddress]);
+  const internetAddressError = useMemo(
+    () => organizationWebsiteError(orgInfo.internetAddress),
+    [orgInfo.internetAddress],
+  );
+  const internetAddressInvalid = Boolean(internetAddressError);
 
   const toggleType = (typeId: string) => {
     setDirty(true);
@@ -495,7 +494,13 @@ function OrganizationAddModify({
                   value={String(orgInfo.internetAddress || "")}
                   invalid={internetAddressInvalid}
                   invalidText={intl.formatMessage({
-                    id: "notification.organization.post.internetAddress",
+                    id:
+                      internetAddressError === "length"
+                        ? "organization.internetaddress.maxlength"
+                        : "notification.organization.post.internetAddress",
+                  })}
+                  helperText={intl.formatMessage({
+                    id: "organization.internetaddress.help",
                   })}
                   onChange={(event: ChangeEvent<HTMLInputElement>) =>
                     updateField("internetAddress", event.target.value.trim())

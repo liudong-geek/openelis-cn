@@ -143,7 +143,19 @@ class PatientEntryPage {
           const nextButton = [...$buttons].find((button) =>
             nextPagePattern.test(
               String(
-                button.getAttribute("aria-label") || button.textContent || "",
+                button.getAttribute("aria-label") ||
+                  String(button.getAttribute("aria-labelledby") || "")
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .map(
+                      (id) =>
+                        button.ownerDocument.getElementById(id)?.textContent ||
+                        "",
+                    )
+                    .join(" ")
+                    .trim() ||
+                  button.textContent ||
+                  "",
               ),
             ),
           );
@@ -255,16 +267,31 @@ class PatientEntryPage {
   }
 
   clickNewPatientTab() {
+    // The current product opens a modal in the retained patient-list workspace.
     cy.contains(
       ".oe-page-header__actions button",
       messagePattern("new.patient.label"),
     )
       .should("be.visible")
+      .and("be.enabled")
       .click();
-    cy.location("pathname").should("eq", "/PatientManagement/new");
-    this.getPatientEntryPageTitle()
+    cy.location("pathname").should("eq", "/PatientManagement");
+    cy.get(".patient-create-modal.is-visible")
+      .should("have.length", 1)
+      .and("be.visible");
+    cy.get(".patient-create-modal .cds--modal-header__heading")
       .invoke("text")
       .should("match", messagePattern("patient.management.new.title"));
+  }
+
+  patientFormField(selector) {
+    return cy.get("body").then(($body) => {
+      const modal = ".patient-create-modal.is-visible";
+      if ($body.find(modal).length) {
+        return cy.get(modal).should("have.length", 1).find(selector);
+      }
+      return cy.get(selector);
+    });
   }
 
   getDateOfBirthForCurrentLocale(year = 2001, month = 5, day = 12) {
@@ -272,8 +299,7 @@ class PatientEntryPage {
     const mm = String(month).padStart(2, "0");
     const dd = String(day).padStart(2, "0");
 
-    return cy
-      .get(this.dateOfBirth)
+    return this.patientFormField(this.dateOfBirth)
       .should("be.visible")
       .invoke("attr", "placeholder")
       .then((placeholder = "") => {
@@ -295,30 +321,60 @@ class PatientEntryPage {
     NationalId,
     dateOfBirth,
   ) {
-    cy.enterText(this.subjectNumber, subjectNumber);
-    cy.enterText(this.nationalId, NationalId);
-    cy.enterText(this.lastNameSelector, lastName);
-    cy.enterText(this.firstNameSelector, firstName);
-    cy.enterText(this.dateOfBirth, dateOfBirth);
+    this.patientFormField(this.subjectNumber)
+      .should("be.visible")
+      .clear()
+      .type(subjectNumber);
+    this.patientFormField(this.nationalId)
+      .should("be.visible")
+      .clear()
+      .type(NationalId);
+    this.patientFormField(this.lastNameSelector)
+      .should("be.visible")
+      .clear()
+      .type(lastName);
+    this.patientFormField(this.firstNameSelector)
+      .should("be.visible")
+      .clear()
+      .type(firstName);
+    this.patientFormField(this.dateOfBirth)
+      .should("be.visible")
+      .clear()
+      .type(dateOfBirth);
     this.selectCreatePatientMaleGender();
   }
 
   assertEnteredPatientInfo(patient) {
-    cy.get(this.subjectNumber).should("have.value", patient.subjectNumber);
-    cy.get(this.nationalId).should("have.value", patient.nationalId);
-    cy.get(this.lastNameSelector).should("have.value", patient.lastName);
-    cy.get(this.firstNameSelector).should("have.value", patient.firstName);
-    cy.get(this.dateOfBirth).should("have.value", patient.dateOfBirth);
-    cy.get("#radio-1").should("be.checked");
+    this.patientFormField(this.subjectNumber).should(
+      "have.value",
+      patient.subjectNumber,
+    );
+    this.patientFormField(this.nationalId).should(
+      "have.value",
+      patient.nationalId,
+    );
+    this.patientFormField(this.lastNameSelector).should(
+      "have.value",
+      patient.lastName,
+    );
+    this.patientFormField(this.firstNameSelector).should(
+      "have.value",
+      patient.firstName,
+    );
+    this.patientFormField(this.dateOfBirth).should(
+      "have.value",
+      patient.dateOfBirth,
+    );
+    this.patientFormField("#radio-1").should("be.checked");
   }
 
   selectCreatePatientMaleGender() {
-    cy.get("label[for='radio-1']")
+    this.patientFormField("label[for='radio-1']")
       .should("be.visible")
       .invoke("text")
       .should("match", messagePattern("patient.male"));
-    cy.get("label[for='radio-1']").click();
-    cy.get("#radio-1").should("be.checked");
+    this.patientFormField("label[for='radio-1']").click();
+    this.patientFormField("#radio-1").should("be.checked");
   }
 
   clickSavePatientButton() {
@@ -327,11 +383,14 @@ class PatientEntryPage {
 
   savePatientAndVerifyDetails(patient) {
     cy.intercept("POST", "**/rest/PatientManagement").as("savePatient");
-    cy.intercept("GET", "**/rest/patient-details?*").as("savedPatientDetails");
     this.clickSavePatientButton();
 
     return cy.wait("@savePatient").then(({ request, response }) => {
       expect(response?.statusCode, "patient save status").to.eq(200);
+      expect(
+        response?.headers?.["content-type"],
+        "patient save JSON",
+      ).to.contain("application/json");
       expect(response?.body?.status, "patient save response state").to.eq(
         "success",
       );
@@ -344,27 +403,59 @@ class PatientEntryPage {
       expect(request.body).not.to.have.property("years");
       expect(request.body).not.to.have.property("months");
       expect(request.body).not.to.have.property("days");
-
       const savedPatientId = String(
         response?.body?.patientId || response?.body?.patientPK || "",
       );
       expect(savedPatientId, "saved patient database id").to.match(
         /^[1-9][0-9]*$/,
       );
-
       cy.contains(
         "[role='status']",
         messagePattern("success.save.patient"),
       ).should("be.visible");
-      cy.location("pathname").should(
-        "eq",
-        `/PatientManagement/${savedPatientId}`,
+      cy.get(".patient-create-modal").should("not.exist");
+      cy.location("pathname").should("eq", "/PatientManagement");
+
+      // Reopen the actual saved record through the current list action; a save
+      // notification alone does not prove the durable patient fields.
+      this.openAdvancedSearch();
+      this.runAdvancedSearch(
+        { patientId: patient.nationalId },
+        {
+          targetPatientId: savedPatientId,
+          expectedResult: {
+            patientID: savedPatientId,
+            nationalId: patient.nationalId,
+            firstName: patient.firstName,
+            lastName: patient.lastName,
+          },
+          rowValues: [patient.nationalId, patient.firstName, patient.lastName],
+        },
       );
+      cy.intercept("GET", "**/rest/patient-details?*", (read) => {
+        if (
+          new URL(read.url).searchParams.get("patientID") === savedPatientId
+        ) {
+          read.alias = "savedPatientDetails";
+        }
+      });
+      cy.contains(
+        `[data-cy='patient-result-row-${savedPatientId}'] button`,
+        messagePattern("patient.management.open"),
+      )
+        .should("be.visible")
+        .and("be.enabled")
+        .click();
 
       return cy.wait("@savedPatientDetails").then(({ request, response }) => {
-        const requestUrl = new URL(request.url);
-        expect(requestUrl.searchParams.get("patientID")).to.eq(savedPatientId);
+        expect(new URL(request.url).searchParams.get("patientID")).to.eq(
+          savedPatientId,
+        );
         expect(response?.statusCode, "saved patient detail status").to.eq(200);
+        expect(
+          response?.headers?.["content-type"],
+          "saved patient detail JSON",
+        ).to.contain("application/json");
         expect(String(response?.body?.patientPK)).to.eq(savedPatientId);
         expect(response?.body?.subjectNumber).to.eq(patient.subjectNumber);
         expect(response?.body?.nationalId).to.eq(patient.nationalId);
@@ -372,11 +463,15 @@ class PatientEntryPage {
         expect(response?.body?.firstName).to.eq(patient.firstName);
         expect(response?.body?.gender).to.eq("M");
         expect(response?.body?.birthDateForDisplay).to.eq(patient.dateOfBirth);
-
-        this.getPatientEntryPageTitle()
+        cy.get(".patient-create-modal.is-visible").should("be.visible");
+        cy.get(".patient-create-modal .cds--modal-header__heading")
           .invoke("text")
-          .should("match", messagePattern("patient.management.edit.title"));
+          .should("match", messagePattern("patient.maintenance.view.title"));
         this.assertEnteredPatientInfo(patient);
+        cy.get(".patient-create-modal .cds--modal-close")
+          .should("be.visible")
+          .click();
+        cy.get(".patient-create-modal").should("not.exist");
         return cy.wrap(savedPatientId, { log: false });
       });
     });
@@ -455,7 +550,7 @@ class PatientEntryPage {
   }
 
   clearPatientInfo() {
-    cy.get("#clear").should("be.visible").click();
+    this.patientFormField("#clear").should("be.visible").click();
   }
 
   assertPatientInfoCleared() {
@@ -465,9 +560,11 @@ class PatientEntryPage {
       this.lastNameSelector,
       this.firstNameSelector,
       this.dateOfBirth,
-    ].forEach((selector) => cy.get(selector).should("have.value", ""));
-    cy.get("#radio-1").should("not.be.checked");
-    cy.get("#radio-2").should("not.be.checked");
+    ].forEach((selector) =>
+      this.patientFormField(selector).should("have.value", ""),
+    );
+    this.patientFormField("#radio-1").should("not.be.checked");
+    this.patientFormField("#radio-2").should("not.be.checked");
   }
 
   getSubmitButton() {

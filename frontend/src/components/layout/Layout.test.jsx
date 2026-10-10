@@ -14,6 +14,7 @@ import Layout, {
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import enMessages from "../../languages/en.json";
 import { getFromOpenElisServer } from "../utils/Utils";
+import { hasPatientManagementMenu } from "./navigationMenuAvailability";
 
 /**
  * Integration tests for Layout.js
@@ -340,6 +341,155 @@ describe("Layout", () => {
   });
 
   describe("context preservation", () => {
+    const patientMenus = [
+      {
+        menu: {
+          elementId: "menu_sample",
+          isActive: true,
+          displayKey: "banner.menu.sample",
+        },
+        childMenus: [
+          {
+            menu: {
+              elementId: "menu_order_dashboard",
+              isActive: true,
+              actionURL: "/order",
+              displayKey: "sidenav.label.order.workflow",
+            },
+            childMenus: [],
+          },
+        ],
+      },
+      {
+        menu: { elementId: "menu_patient", isActive: true },
+        childMenus: [
+          {
+            menu: {
+              elementId: "menu_patient_add_or_edit",
+              isActive: true,
+              actionURL: "/PatientManagement",
+            },
+            childMenus: [],
+          },
+        ],
+      },
+    ];
+    const NavigationConsumer = () => {
+      const { navigationMenuItems } = useContext(ConfigurationContext);
+      return (
+        <output data-testid="navigation-availability">
+          {hasPatientManagementMenu(navigationMenuItems)
+            ? "available"
+            : "unavailable"}
+        </output>
+      );
+    };
+
+    test("shares Header's actual raw patient tree before China removes redundant sidebar items", async () => {
+      getFromOpenElisServer.mockImplementation((url, callback, signal) => {
+        if (url === "/rest/menu") callback(patientMenus);
+        else defaultGetFromServer(url, callback, signal);
+      });
+      renderWithProviders(
+        <Layout>
+          <NavigationConsumer />
+        </Layout>,
+        { route: "/order" },
+      );
+      expect(
+        await screen.findByTestId("navigation-availability"),
+      ).toHaveTextContent("available");
+      expect(
+        getFromOpenElisServer.mock.calls.filter(
+          ([url]) => url === "/rest/menu",
+        ),
+      ).toHaveLength(1);
+      expect(document.querySelector("#menu_patient_add_or_edit")).toBeNull();
+    });
+
+    test("revokes the shared menu on pagehide and only restores a fresh pageshow response", async () => {
+      const reads = [];
+      getFromOpenElisServer.mockImplementation((url, callback, signal) => {
+        if (url === "/rest/menu") reads.push({ callback, signal });
+        else defaultGetFromServer(url, callback, signal);
+      });
+      renderWithProviders(
+        <Layout>
+          <NavigationConsumer />
+        </Layout>,
+        { route: "/order" },
+      );
+      act(() => reads[0].callback(patientMenus));
+      expect(screen.getByTestId("navigation-availability")).toHaveTextContent(
+        "available",
+      );
+      act(() => window.dispatchEvent(new Event("pagehide")));
+      expect(reads[0].signal.aborted).toBe(true);
+      expect(screen.getByTestId("navigation-availability")).toHaveTextContent(
+        "unavailable",
+      );
+      act(() => reads[0].callback(patientMenus));
+      expect(screen.getByTestId("navigation-availability")).toHaveTextContent(
+        "unavailable",
+      );
+      const resumed = new Event("pageshow");
+      Object.defineProperty(resumed, "persisted", { value: true });
+      act(() => window.dispatchEvent(resumed));
+      expect(reads).toHaveLength(2);
+      expect(screen.getByTestId("navigation-availability")).toHaveTextContent(
+        "unavailable",
+      );
+      act(() => reads[1].callback(patientMenus));
+      expect(screen.getByTestId("navigation-availability")).toHaveTextContent(
+        "available",
+      );
+    });
+
+    test("changing the authenticated owner hides a previous menu and rejects its late response", async () => {
+      const reads = [];
+      getFromOpenElisServer.mockImplementation((url, callback, signal) => {
+        if (url === "/rest/menu") reads.push({ callback, signal });
+        else defaultGetFromServer(url, callback, signal);
+      });
+      const tree = (userId) => (
+        <MemoryRouter initialEntries={["/order"]}>
+          <IntlProvider locale="en" messages={enMessages}>
+            <UserSessionDetailsContext.Provider
+              value={{
+                ...mockUserSessionContextValue,
+                userSessionDetails: {
+                  ...mockUserSessionContextValue.userSessionDetails,
+                  userId,
+                },
+              }}
+            >
+              <Layout>
+                <NavigationConsumer />
+              </Layout>
+            </UserSessionDetailsContext.Provider>
+          </IntlProvider>
+        </MemoryRouter>
+      );
+      const view = render(tree("1"));
+      act(() => reads[0].callback(patientMenus));
+      expect(screen.getByTestId("navigation-availability")).toHaveTextContent(
+        "available",
+      );
+      view.rerender(tree("2"));
+      expect(reads[0].signal.aborted).toBe(true);
+      expect(screen.getByTestId("navigation-availability")).toHaveTextContent(
+        "unavailable",
+      );
+      act(() => reads[0].callback(patientMenus));
+      expect(screen.getByTestId("navigation-availability")).toHaveTextContent(
+        "unavailable",
+      );
+      act(() => reads[1].callback(patientMenus));
+      expect(screen.getByTestId("navigation-availability")).toHaveTextContent(
+        "available",
+      );
+    });
+
     /**
      * Test: ConfigurationContext is available to children
      * @see spec.md FR-012: Preserve ConfigurationContext

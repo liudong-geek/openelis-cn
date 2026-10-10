@@ -40,6 +40,8 @@ import type { PatientRecord } from "./types";
 import ProductPageHeader from "../common/ProductPageHeader";
 import { fromList } from "../common/listWorkspace";
 import { getFromOpenElisServer } from "../utils/Utils";
+import { ConfigurationContext } from "../layout/Layout";
+import { canViewPatientHistory } from "../layout/navigationMenuAvailability";
 
 const breadcrumbs = [
   { label: "home.label", link: "/" },
@@ -110,6 +112,13 @@ function PatientManagement() {
   const [actionsContainer, setActionsContainer] =
     useState<HTMLDivElement | null>(null);
   const { userSessionDetails } = useContext(UserSessionDetailsContext);
+  const { navigationMenuItems = null } = useContext(ConfigurationContext) || {};
+  const historyAvailable = canViewPatientHistory(
+    userSessionDetails,
+    navigationMenuItems,
+  );
+  const historyAvailableRef = useRef(historyAvailable);
+  historyAvailableRef.current = historyAvailable;
   const maintenanceActorKey = String(
     userSessionDetails?.userId ||
       userSessionDetails?.loginName ||
@@ -232,10 +241,12 @@ function PatientManagement() {
   const goToEditPatient = (selected: PatientRecord) => {
     if (selected.patientPK) openPatientModal(String(selected.patientPK));
   };
-  const goToPatientResults = (selected: PatientRecord) =>
+  const goToPatientResults = (selected: PatientRecord) => {
+    if (!historyAvailableRef.current || !selected.patientPK) return;
     openFromList(
       `/PatientResults/${encodeURIComponent(String(selected.patientPK))}`,
     );
+  };
   const changeManagementMode = (mode: "list" | "advanced") => {
     listState.current = { ...listState.current, managementMode: mode };
     setManagementMode(mode);
@@ -322,7 +333,9 @@ function PatientManagement() {
                     };
                   }}
                   onOpenPatient={goToEditPatient}
-                  onOpenResults={goToPatientResults}
+                  onOpenResults={
+                    historyAvailable ? goToPatientResults : undefined
+                  }
                   onNewPatient={goToNewPatient}
                 />
               ) : (

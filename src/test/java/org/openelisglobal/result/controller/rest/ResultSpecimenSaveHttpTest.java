@@ -59,6 +59,7 @@ public class ResultSpecimenSaveHttpTest {
     private Object oldForms;
     private Object oldMessages;
     private MockMvc mvc;
+    private Object securedController;
     private MockHttpSession session;
     private OrdinaryResultSaveStateDAO dao;
     private AnalysisService analyses;
@@ -73,6 +74,7 @@ public class ResultSpecimenSaveHttpTest {
     private org.openelisglobal.result.service.ResultService results;
     private org.openelisglobal.systemuser.service.UserService users;
     private LogbookResultsPersistService service;
+    private org.openelisglobal.result.service.ResultRestrictionAccess clinicalAccess;
     private final Map<String, StoredResult> durable = new HashMap<>();
     private final Map<String, StoredResult> staged = new HashMap<>();
     private String flushedStatus;
@@ -246,6 +248,8 @@ public class ResultSpecimenSaveHttpTest {
             }
         };
         ReflectionTestUtils.setField(target, "specimenWriteGuard", new ResultSpecimenWriteGuard(dao, statuses));
+        clinicalAccess = mock(org.openelisglobal.result.service.ResultRestrictionAccess.class);
+        ReflectionTestUtils.setField(target, "clinicalAccess", clinicalAccess);
         ReflectionTestUtils.setField(target, "noteService", notes);
         users = mock(org.openelisglobal.systemuser.service.UserService.class);
         // Use the application role constant; the fixture never grants another unit.
@@ -321,7 +325,8 @@ public class ResultSpecimenSaveHttpTest {
         ProxyFactory secured = new ProxyFactory(controller);
         secured.setProxyTargetClass(true);
         secured.addAdvisor(AuthorizationManagerBeforeMethodInterceptor.preAuthorize());
-        mvc = MockMvcBuilders.standaloneSetup(secured.getProxy()).build();
+        securedController = secured.getProxy();
+        mvc = MockMvcBuilders.standaloneSetup(securedController).build();
         UserSessionData user = new UserSessionData();
         user.setSytemUserId(701);
         session = new MockHttpSession();
@@ -628,6 +633,25 @@ public class ResultSpecimenSaveHttpTest {
         verifyZeroInteractions(dao, results, fhir, alerts, notes);
         assertEquals(0, tx.commits);
         assertEquals(1, tx.rollbacks);
+    }
+
+    @Test
+    public void currentTypedModuleRevocationIsDeniedBeforeClinicalLockOrWrite() throws Exception {
+        // Ordinary standalone MVC has no production security exception filter.
+        // Use its real translation step only here; keep the existing exception-
+        // propagation tests and every 403/no-lock/no-write assertion unchanged.
+        var translator = new org.springframework.security.web.access.ExceptionTranslationFilter(
+                new org.springframework.security.web.authentication.Http403ForbiddenEntryPoint());
+        mvc = MockMvcBuilders.standaloneSetup(securedController).addFilters(translator).build();
+        doThrow(new org.springframework.security.access.AccessDeniedException("current module revoked"))
+                .when(clinicalAccess).bindForActor(any(),
+                        eq(org.openelisglobal.result.service.ResultRestrictionAccess.Phase.RESULTS),
+                        eq(org.openelisglobal.result.service.ResultRestrictionAccess.Action.UPDATE), eq("701"));
+        savePayload(numericPayload("5", "1000", "")).andExpect(status().isForbidden());
+        verify(dao, never()).lockSpecimen(anyString());
+        verify(dao, never()).lockAnalysis(anyString());
+        verifyZeroInteractions(results, notes, fhir, alerts);
+        assertTrue(durable.isEmpty());
     }
 
     private static Throwable rootCause(Throwable failure) {

@@ -16,6 +16,7 @@ package org.openelisglobal.organization.valueholder;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -40,6 +41,7 @@ public class Organization extends EnumValueItemImpl implements SimpleBaseEntity<
     private String id;
 
     @URL
+    @Size(max = 40)
     private String internetAddress;
 
     @Pattern(regexp = ValidationHelper.YES_NO_REGEX)

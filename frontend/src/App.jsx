@@ -1,4 +1,5 @@
-import React, { Suspense, useEffect, useState } from "react";
+import ResultIntakeHandoff from "./components/resultPage/unified/ResultIntakeHandoff";
+import React, { Suspense, useEffect, useRef, useState } from "react";
 import { confirmAlert } from "react-confirm-alert";
 import { IntlProvider } from "react-intl";
 import { Route, BrowserRouter as Router, Switch } from "react-router-dom";
@@ -247,8 +248,42 @@ export default function App() {
     useState(false);
   const [routeRefreshKey, setRouteRefreshKey] = useState(0);
 
+  const sessionRead = useRef(null);
+  const appActive = useRef(true);
+  const sessionEnding = useRef(false);
+  const brandingRead = useRef(null);
+  const cancelledSessionRead = useRef(Symbol("cancelled-session-read"));
+  const brandingOwner = JSON.stringify([
+    userSessionDetails.authenticated === true,
+    userSessionDetails.userId ?? null,
+    userSessionDetails.sessionId ?? null,
+    userSessionDetails.loginLabUnit ?? null,
+    userSessionDetails.roles ?? [],
+    userSessionDetails.userLabRolesMap ?? {},
+  ]);
+
+  const brandingOwnerRef = useRef(brandingOwner);
+  brandingOwnerRef.current = brandingOwner;
+
   useEffect(() => {
+    appActive.current = true;
+    const cancelSession = () => {
+      appActive.current = false;
+      sessionRead.current?.abort();
+    };
+    const resumeSession = (event) => {
+      if (!event.persisted) return;
+      appActive.current = true;
+      getUserSessionDetails();
+    };
     getUserSessionDetails();
+    window.addEventListener("pagehide", cancelSession);
+    window.addEventListener("pageshow", resumeSession);
+    return () => {
+      cancelSession();
+      window.removeEventListener("pagehide", cancelSession);
+      window.removeEventListener("pageshow", resumeSession);
+    };
   }, []);
 
   useEffect(() => {
@@ -264,33 +299,83 @@ export default function App() {
     };
   }, []);
 
-  // Load and apply site branding (colors, favicon)
+  // Each branding read belongs to this mounted session and replaces its predecessor.
   useEffect(() => {
-    loadAndApplyBranding();
-
-    // Listen for branding updates from admin UI
-    const handleBrandingUpdate = () => {
-      loadAndApplyBranding();
+    let controller;
+    let active = true;
+    const cancelBranding = () => controller?.abort();
+    const loadBranding = () => {
+      if (!active || sessionEnding.current) return;
+      cancelBranding();
+      const current = new AbortController();
+      controller = current;
+      brandingRead.current = current;
+      loadAndApplyBranding(
+        undefined,
+        current.signal,
+        () =>
+          active &&
+          !sessionEnding.current &&
+          controller === current &&
+          brandingOwnerRef.current === brandingOwner,
+      );
     };
-    window.addEventListener("branding-updated", handleBrandingUpdate);
-
+    const hideBranding = () => {
+      active = false;
+      cancelBranding();
+    };
+    const resumeBranding = (event) => {
+      if (!event.persisted) return;
+      active = true;
+      loadBranding();
+    };
+    loadBranding();
+    window.addEventListener("branding-updated", loadBranding);
+    window.addEventListener("pagehide", hideBranding);
+    window.addEventListener("pageshow", resumeBranding);
     return () => {
-      window.removeEventListener("branding-updated", handleBrandingUpdate);
+      hideBranding();
+      window.removeEventListener("branding-updated", loadBranding);
+      window.removeEventListener("pagehide", hideBranding);
+      window.removeEventListener("pageshow", resumeBranding);
     };
-  }, []);
+  }, [brandingOwner]);
 
   const getUserSessionDetails = async () => {
+    if (sessionEnding.current) return cancelledSessionRead.current;
+    sessionRead.current?.abort();
+    const controller = new AbortController();
+    sessionRead.current = controller;
+    const isCurrent = () =>
+      appActive.current &&
+      sessionRead.current === controller &&
+      !controller.signal.aborted;
+    const waitToRetry = () =>
+      new Promise((resolve) => {
+        const done = () => {
+          clearTimeout(timer);
+          controller.signal.removeEventListener("abort", done);
+          resolve();
+        };
+        const timer = setTimeout(done, 1000);
+        controller.signal.addEventListener("abort", done, { once: true });
+        if (controller.signal.aborted) done();
+      });
     const maxRetries = 10;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
+      if (!isCurrent()) return cancelledSessionRead.current;
       try {
         const response = await fetch(config.serverBaseUrl + `/session`, {
           credentials: "include",
+          signal: controller.signal,
           headers: {
             "Accept-Language": getRequestLocale(),
           },
         });
+        if (!isCurrent()) return cancelledSessionRead.current;
         if (response.status === 200) {
           const jsonResp = await response.json();
+          if (!isCurrent()) return cancelledSessionRead.current;
           if (jsonResp.authenticated) {
             localStorage.setItem("CSRF", jsonResp.csrf);
           }
@@ -303,9 +388,10 @@ export default function App() {
           );
         }
       } catch (error) {
+        if (!isCurrent()) return cancelledSessionRead.current;
         console.error(error);
         if (attempt < maxRetries - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+          await waitToRetry();
         } else {
           const options = {
             title: messages["app.session.error.title"] || "系统连接失败",
@@ -327,10 +413,14 @@ export default function App() {
         }
       }
     }
-    setErrorLoadingSessionDetails(true);
+    if (isCurrent()) setErrorLoadingSessionDetails(true);
+    else return cancelledSessionRead.current;
   };
 
   const logout = () => {
+    sessionEnding.current = true;
+    sessionRead.current?.abort();
+    brandingRead.current?.abort();
     if (userSessionDetails.loginMethod === "SAML") {
       fetch(config.serverBaseUrl + "/Logout?useSAML=true", {
         //includes the browser sessionId in the Header for Authentication on the backend server
@@ -364,11 +454,13 @@ export default function App() {
             form.submit();
           } else {
             // No SAML form in response — fall back to a direct redirect
+            sessionEnding.current = false;
             getUserSessionDetails();
             window.location.href = config.loginRedirect;
           }
         })
         .catch((error) => {
+          sessionEnding.current = false;
           console.error(error);
         });
     } else {
@@ -383,10 +475,12 @@ export default function App() {
       })
         .then((response) => response.status)
         .then(() => {
+          sessionEnding.current = false;
           getUserSessionDetails();
           window.location.href = config.loginRedirect;
         })
         .catch((error) => {
+          sessionEnding.current = false;
           console.error(error);
         });
     }
@@ -428,8 +522,11 @@ export default function App() {
   };
 
   const refresh = async (callback) => {
-    await getUserSessionDetails();
-    if (typeof callback === "function") {
+    const session = await getUserSessionDetails();
+    if (
+      session !== cancelledSessionRead.current &&
+      typeof callback === "function"
+    ) {
       callback();
     }
   };
@@ -692,6 +789,12 @@ export default function App() {
                   exact
                   component={() => <SavedOrderView />}
                   role={Roles.RECEPTION}
+                />
+                <SecureRoute
+                  path="/order/result-intake"
+                  exact
+                  component={() => <ResultIntakeHandoff />}
+                  role={Roles.RESULTS}
                 />
                 {/* Decoupled Sample Collection Workflow - NAV-2 */}
                 {/* Use Route with render to wrap all /order/* paths in shared OrderProvider */}

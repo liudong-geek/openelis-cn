@@ -133,3 +133,20 @@ export const jsonResponse = (v, status = 200) =>
     },
   });
 export const urlPath = (url) => new URL(url, "http://localhost").pathname;
+
+// Unit-test menu input only: actual acceptance must read the authenticated
+// server tree and current capabilities instead of using these fixture flags.
+export const navigationMenus = (flags = {}) => {
+  const menu = (elementId, isActive, childMenus = []) => ({
+    menu: { elementId, isActive },
+    childMenus,
+  });
+  return [
+    menu("menu_nonconformity", flags.root ?? true, [
+      menu("menu_nce_dashboard", flags.dashboard ?? true),
+      menu("menu_non_conforming_report", flags.registration ?? true),
+      menu("menu_non_conforming_view", flags.view ?? true),
+      menu("menu_non_conforming_corrective_actions", flags.capa ?? true),
+    ]),
+  ];
+};

@@ -69,6 +69,8 @@ public class ReviewSubmissionService {
     private final QCReleaseGateService qcReleaseGate;
     private final ReviewScopeService reviewScopes;
     private final ObjectMapper mapper = new ObjectMapper();
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.openelisglobal.result.service.ResultRestrictionAccess clinicalAccess;
 
     public ReviewSubmissionService(ReviewWriteGuard guard, AnalysisService analyses, IStatusService statuses,
             NoteService notes, SampleService samples, SampleHumanService sampleHumans,
@@ -108,8 +110,12 @@ public class ReviewSubmissionService {
 
     private void saveWithinTransaction(HttpServletRequest request, String actor, List<AnalysisItem> rows,
             ReviewSignature credentials, ReviewScopeSnapshot expectedPolicy) {
+        var currentPermission = clinicalAccess.bindForActor(request,
+                org.openelisglobal.result.service.ResultRestrictionAccess.Phase.VALIDATION,
+                org.openelisglobal.result.service.ResultRestrictionAccess.Action.UPDATE, actor);
         var session = request.getSession(false);
         Runnable verifyActor = () -> {
+            clinicalAccess.requireUnchanged(request, currentPermission);
             if (expectedPolicy == null || !Objects.equals(actor, expectedPolicy.actor()))
                 throw ReviewWriteGuard.forbidden();
             reviewScopes.requireUnchanged(expectedPolicy);
@@ -123,6 +129,7 @@ public class ReviewSubmissionService {
         try {
             verifyActor.run();
             var locked = guard.begin(actor, rows);
+            clinicalAccess.requireAnalysisIds(currentPermission, locked.analyses().keySet());
             qcReleaseGate.requireReleasable(locked.analyses(), locked.decisions());
             boolean esigEnabled = signatures.isEsigEnabled();
             String login = null;

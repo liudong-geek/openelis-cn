@@ -94,6 +94,13 @@ import { resultReviewHandoffPath } from "./resultReviewHandoff";
 import ResultSpecimenBlockSummary from "./ResultSpecimenBlockSummary";
 import { resultSpecimenBlocks, SpecimenBlock } from "./resultSpecimenBlocks";
 import { resultReadSessionKey } from "./resultReadSession";
+import {
+  restrictionIdentity,
+  RestrictionIdentity,
+  resultReturnPath,
+  resultReturnPaging,
+} from "./resultRestrictionHandoff";
+import ResultRestrictionDialog from "./ResultRestrictionDialog";
 
 /**
  * OGC-1020 (R1 of OGC-811) — unified /Results worklist.
@@ -360,8 +367,16 @@ const UnifiedResults: React.FC = () => {
   const [editingAnalysisId, setEditingAnalysisId] = useState<string | null>(
     null,
   );
-  const [page, setPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(25);
+  const returnPaging = useMemo(
+    () => resultReturnPaging(window.location.search),
+    [],
+  );
+  const restoreInitialPage = useRef(true);
+  const initialDisplayEffect = useRef(true);
+  const [page, setPage] = useState<number>(returnPaging.page);
+  const [pageSize, setPageSize] = useState<number>(returnPaging.pageSize);
+  const [restrictionTarget, setRestrictionTarget] =
+    useState<RestrictionIdentity | null>(null);
   const [selectedSpecimenKey, setSelectedSpecimenKey] = useState<string | null>(
     null,
   );
@@ -630,7 +645,21 @@ const UnifiedResults: React.FC = () => {
       setRowStates(states);
       setStaleInfo({});
       setEditingAnalysisId(null);
-      setPage(1);
+      const visibleCount = loaded.filter(
+        (row) =>
+          initialUrlState.get("status") == null ||
+          initialUrlState.get("status") === "ALL" ||
+          row.analysisStatusId === initialUrlState.get("status"),
+      ).length;
+      setPage(
+        restoreInitialPage.current
+          ? Math.min(
+              returnPaging.page,
+              Math.max(1, Math.ceil(visibleCount / returnPaging.pageSize)),
+            )
+          : 1,
+      );
+      restoreInitialPage.current = false;
       worklistLoading.current = false;
       setLoading(false);
       setHasLoaded(true);
@@ -791,6 +820,16 @@ const UnifiedResults: React.FC = () => {
     );
   }, [statusFilter]);
 
+  // Keep applied paging with the criteria for browser-back and direct refresh.
+  // Clinical rows, drafts and permissions remain outside the address.
+  useEffect(() => {
+    if (window.location.pathname !== "/Results") return;
+    const params = new URLSearchParams(window.location.search);
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
+    window.history.replaceState(null, "", "/Results?" + params.toString());
+  }, [page, pageSize]);
+
   const pendingTaskCount = useMemo(
     () => new Set(rows.map((row) => row.analysisId)).size,
     [rows],
@@ -829,7 +868,8 @@ const UnifiedResults: React.FC = () => {
     // A status/filter change may remove the selected specimen. Reconcile the
     // queue and detail together; never leave a stale identity above other rows.
     if (selectedSpecimenKey && !activeSpecimenKey) setSelectedSpecimenKey(null);
-    setPage(1);
+    if (initialDisplayEffect.current) initialDisplayEffect.current = false;
+    else setPage(1);
   }, [activeSpecimenKey, statusFilter]);
 
   const selectSpecimen = (key: string | null) => {
@@ -1464,21 +1504,51 @@ const UnifiedResults: React.FC = () => {
     if (path && path === displayedPath) history.push(path);
   };
 
-  const openOrderLookup = () => {
-    // This opens the existing list for manual lookup, not an object handoff.
-    // Recheck refs at click time so an old rendered button cannot leave a draft
-    // or navigate after the actor, permissions or worklist changed.
+  const openOrderLookup = (row: WorklistRow) => {
     if (
       !mounted.current ||
       !ready() ||
-      !hasRole(sessionRef.current.userSessionDetails, Roles.RECEPTION) ||
       worklistLoading.current ||
       pendingSaves.current.size > 0 ||
       drafts.current.size > 0
     )
       return;
-    history.push("/order");
+    const current = rowsRef.current.find(
+      (entry) => worklistRowKey(entry) === worklistRowKey(row),
+    );
+    const identity = restrictionIdentity(current);
+    if (
+      identity &&
+      JSON.stringify(identity) === JSON.stringify(restrictionIdentity(row))
+    )
+      setRestrictionTarget(identity);
   };
+  const restrictionRowCurrent =
+    !restrictionTarget ||
+    pagedRows.some(
+      (row) =>
+        JSON.stringify(restrictionIdentity(row)) ===
+        JSON.stringify(restrictionTarget),
+    );
+  const restrictionEnabled =
+    ready() &&
+    !loading &&
+    !loadErrorKey &&
+    readContentConfirmed &&
+    pendingSaves.current.size === 0 &&
+    drafts.current.size === 0 &&
+    restrictionRowCurrent;
+  const restrictionScope = JSON.stringify([
+    renderedReadKey,
+    readGeneration.current,
+    loadEpoch.current,
+    page,
+    pageSize,
+    statusFilter,
+    activeSpecimenKey,
+    restrictionEnabled,
+    rows.map((row) => restrictionIdentity(row)),
+  ]);
 
   return (
     <>
@@ -1487,6 +1557,15 @@ const UnifiedResults: React.FC = () => {
         message={intl.formatMessage({ id: "security.loginUnsavedWarning" })}
       />
       <AlertDialog />
+      {restrictionTarget && (
+        <ResultRestrictionDialog
+          identity={restrictionTarget}
+          returnPath={resultReturnPath(window.location.search, page, pageSize)}
+          scopeToken={restrictionScope}
+          enabled={restrictionEnabled}
+          onClose={() => setRestrictionTarget(null)}
+        />
+      )}
       <main className="results-workbench" aria-labelledby="results-title">
         <PageBreadCrumb
           breadcrumbs={[
@@ -1944,6 +2023,25 @@ const UnifiedResults: React.FC = () => {
                                     <FormattedMessage id="results.workbench.blocked.rowReference" />
                                   </Button>
                                 )}
+                                {isResultEntryBlocked(row) && !sharedBlock && (
+                                  <Button
+                                    kind="ghost"
+                                    size="sm"
+                                    disabled={
+                                      !restrictionEnabled ||
+                                      !restrictionIdentity(row)
+                                    }
+                                    onClick={() => openOrderLookup(row)}
+                                  >
+                                    <FormattedMessage id="results.restriction.inspect" />
+                                  </Button>
+                                )}
+                                {isResultEntryBlocked(row) &&
+                                  !restrictionIdentity(row) && (
+                                    <span role="note">
+                                      <FormattedMessage id="results.restriction.targetMissing" />
+                                    </span>
+                                  )}
                                 {reviewPath && (
                                   <Button
                                     kind="ghost"

@@ -3,6 +3,7 @@ import { Button, InlineNotification, Tag } from "@carbon/react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { EntryRow } from "./resultEntryState";
 import { specimenSubject } from "./ResultSpecimenQueue";
+import { restrictionIdentity } from "./resultRestrictionHandoff";
 import { SpecimenBlock } from "./resultSpecimenBlocks";
 import "./result-specimen-blocks.scss";
 
@@ -14,7 +15,7 @@ interface Props<T extends EntryRow> {
   hasDrafts: boolean;
   lookupReady: boolean;
   countsAvailable?: boolean;
-  onLookupOrders: () => void;
+  onLookupOrders: (row: T) => void;
 }
 
 export default function ResultSpecimenBlockSummary<T extends EntryRow>({
@@ -113,6 +114,27 @@ export default function ResultSpecimenBlockSummary<T extends EntryRow>({
               aria-live="off"
               title={intl.formatMessage({ id: summary.reason })}
             />
+            {!hasDrafts && lookupReady && (
+              <Button
+                kind="tertiary"
+                size="sm"
+                disabled={!restrictionIdentity(summary.representative)}
+                onClick={() => onLookupOrders(summary.representative)}
+              >
+                <FormattedMessage
+                  id={
+                    canLookupOrders
+                      ? "results.workbench.blocked.openOrders"
+                      : "results.restriction.inspect"
+                  }
+                />
+              </Button>
+            )}
+            {!restrictionIdentity(summary.representative) && (
+              <p>
+                <FormattedMessage id="results.restriction.targetMissing" />
+              </p>
+            )}
           </div>
         ))}
         <div className="result-specimen-blocks__guidance">
@@ -134,11 +156,6 @@ export default function ResultSpecimenBlockSummary<T extends EntryRow>({
             <p>
               <FormattedMessage id="results.workbench.blocked.lookupUnavailable" />
             </p>
-          )}
-          {canLookupOrders && !hasDrafts && lookupReady && (
-            <Button kind="tertiary" size="sm" onClick={onLookupOrders}>
-              <FormattedMessage id="results.workbench.blocked.openOrders" />
-            </Button>
           )}
         </div>
       </div>

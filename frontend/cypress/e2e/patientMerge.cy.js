@@ -1,5 +1,4 @@
 import LoginPage from "../pages/LoginPage";
-import PatientMergePage from "../pages/PatientMergePage";
 import enMessages from "../../src/languages/en.json";
 import zhMessages from "../../src/languages/zh.json";
 import zhCNMessages from "../../src/languages/zh_CN.json";
@@ -124,8 +123,7 @@ describe("Patient Merge", function () {
   });
 
   it("should complete full merge workflow with test patients", function () {
-    patientMergePage = new PatientMergePage();
-    patientMergePage.visit();
+    patientMergePage = homePage.goToPatientMerge();
 
     // Step 1: Select patients - patient1 (Alice) as primary, patient2 (Bob) to merge
     patientMergePage.searchAndSelectPatient1({
@@ -286,8 +284,7 @@ describe("Patient Merge", function () {
     // The frontend does NOT filter out merged patients from search results
     // Backend validation will reject the merge attempt at execution time
 
-    patientMergePage = new PatientMergePage();
-    patientMergePage.visit();
+    patientMergePage = homePage.goToPatientMerge();
 
     // Search for the merged patient (Bob) in the merge UI
     patientMergePage.enterPatient1LastName(testData.patient2.lastName);

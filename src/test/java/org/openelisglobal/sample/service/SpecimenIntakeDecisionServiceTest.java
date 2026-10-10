@@ -76,6 +76,8 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 public class SpecimenIntakeDecisionServiceTest {
     private static final String VERSION = "2026-09-01T01:01:00.123456Z";
     private final ObjectMapper json = new ObjectMapper();
+    private final org.openelisglobal.result.service.ResultRestrictionAccess clinicalAccess = mock(
+            org.openelisglobal.result.service.ResultRestrictionAccess.class);
     private final SpecimenReceiptDAO graph = mock(SpecimenReceiptDAO.class);
     private final SpecimenIntakeDecisionWriteDAO dao = mock(SpecimenIntakeDecisionWriteDAO.class);
     private final SampleItemService items = mock(SampleItemService.class);
@@ -280,6 +282,7 @@ public class SpecimenIntakeDecisionServiceTest {
             return null;
         }).when(graph).flush();
         target = new SpecimenIntakeDecisionService(graph, dao, actor, items, permissions, audit, configuration);
+        ReflectionTestUtils.setField(target, "clinicalAccess", clinicalAccess);
         var proxy = new ProxyFactory(target);
         proxy.setProxyTargetClass(true);
         transactions.setRollbackOnCommitFailure(true);
@@ -303,6 +306,18 @@ public class SpecimenIntakeDecisionServiceTest {
         var result = new SampleItem();
         BeanUtils.copyProperties(item, result);
         return result;
+    }
+
+    @Test
+    public void currentReceptionUpdateRevocationPrecedesAcceptanceClaim() throws Exception {
+        doThrow(new org.springframework.security.access.AccessDeniedException("current Reception UPDATE denied"))
+                .when(clinicalAccess).bindForActor(any(),
+                        eq(org.openelisglobal.result.service.ResultRestrictionAccess.Phase.RECEPTION),
+                        eq(org.openelisglobal.result.service.ResultRestrictionAccess.Action.UPDATE), eq("7"));
+        send(body(false, 0), 403);
+        verify(graph, never()).lockOrder(anyString());
+        verify(dao, never()).insert(any());
+        verify(items, never()).update(any());
     }
 
     private ObjectNode body(boolean refuse, int index) {

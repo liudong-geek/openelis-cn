@@ -22,8 +22,10 @@ import * as Yup from "yup";
 import { AlertDialog, NotificationKinds } from "./common/CustomNotification";
 import { NotificationContext } from "./layout/Layout";
 import UserSessionDetailsContext from "../UserSessionDetailsContext";
+import { useHistory } from "react-router-dom";
 
 function ChangePassword() {
+  const history = useHistory();
   const intl = useIntl();
   const { notificationVisible, addNotification, setNotificationVisible } =
     useContext(NotificationContext);
@@ -58,7 +60,7 @@ function ChangePassword() {
             if (userSessionDetails.authenticated) {
               logout();
             } else {
-              window.location.href = "/login";
+              history.replace("/login");
             }
           }, 2000);
         } else {
@@ -304,7 +306,7 @@ function ChangePassword() {
                           data-cy="exitPasswordReset"
                           kind="secondary"
                           onClick={() => {
-                            window.location.href = "/";
+                            history.push("/");
                           }}
                         >
                           <FormattedMessage id="label.button.exit" />

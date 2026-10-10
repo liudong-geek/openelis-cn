@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+  <!-- Repair missing optimistic-lock versions only on these already enabled audit registrations.
+       Existing versions and history settings are retained; no clinical rows are changed.
+       This is a forward-only data repair: downgrades must not restore invalid NULL versions. -->
+  <changeSet id="3.5.0-092-intake-audit-reference-version" author="local-chinese-edition" runInTransaction="true">
+    <preConditions onFail="HALT" onError="HALT">
+      <dbms type="postgresql"/>
+      <tableExists schemaName="clinlims" tableName="reference_tables"/>
+      <columnExists schemaName="clinlims" tableName="reference_tables" columnName="name"/>
+      <columnExists schemaName="clinlims" tableName="reference_tables" columnName="keep_history"/>
+      <columnExists schemaName="clinlims" tableName="reference_tables" columnName="lastupdated"/>
+    </preConditions>
+    <update schemaName="clinlims" tableName="reference_tables">
+      <column name="lastupdated" valueComputed="CURRENT_TIMESTAMP"/>
+      <where>lower(name) IN ('sample_item', 'specimen_intake_decision') AND keep_history = 'Y' AND lastupdated IS NULL</where>
+    </update>
+  </changeSet>
+</databaseChangeLog>

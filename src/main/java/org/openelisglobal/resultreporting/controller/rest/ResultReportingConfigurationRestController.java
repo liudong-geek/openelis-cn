@@ -27,6 +27,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
+import org.springframework.validation.ObjectError;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -84,8 +86,10 @@ public class ResultReportingConfigurationRestController extends BaseController {
     public ResultReportingConfigurationForm showUpdateResultReportingConfiguration(HttpServletRequest request,
             @RequestBody @Validated(ResultReportingConfigurationForm.ResultReportConfig.class) ResultReportingConfigurationForm form,
             BindingResult result) {
-        if (result.hasErrors()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid report channel configuration");
+        for (ObjectError error : result.getAllErrors()) {
+            if (!isUnchangedDisabledLegacyUrlError(form, error)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid report channel configuration");
+            }
         }
         if (form.getReports() == null || form.getReports().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Report channels are required");
@@ -131,6 +135,50 @@ public class ResultReportingConfigurationRestController extends BaseController {
         // redirectAttributes.addFlashAttribute(FWD_SUCCESS, true);
         // return findForward(FWD_SUCCESS_INSERT, form);
         return form;
+    }
+
+    /**
+     * Retain only the server-owned, unchanged legacy placeholder of an explicitly
+     * disabled channel.
+     */
+    private boolean isUnchangedDisabledLegacyUrlError(ResultReportingConfigurationForm form, ObjectError error) {
+        if (!(error instanceof FieldError fieldError) || fieldError.isBindingFailure()
+                || !"URL".equals(fieldError.getCode()) || !"disable".equals(fieldError.getRejectedValue())
+                || form.getReports() == null) {
+            return false;
+        }
+        java.util.regex.Matcher field = java.util.regex.Pattern.compile("reports\\[([0-9]+)\\]\\.url")
+                .matcher(fieldError.getField());
+        if (!field.matches()) {
+            return false;
+        }
+        int index;
+        try {
+            index = Integer.parseInt(field.group(1));
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        if (index >= form.getReports().size()) {
+            return false;
+        }
+        ReportingConfiguration config = form.getReports().get(index);
+        if (config == null || !"disable".equals(config.getEnabled()) || !"disable".equals(config.getUrl())
+                || config.getUrlId() == null || !config.getUrlId().matches("[1-9][0-9]*")
+                || config.getEnabledId() == null || !config.getEnabledId().matches("[1-9][0-9]*")) {
+            return false;
+        }
+        SiteInformation url = siteInformationService.getMatch("id", config.getUrlId()).orElse(null);
+        SiteInformation enabled = siteInformationService.getMatch("id", config.getEnabledId()).orElse(null);
+        return isReportChannelInformation(url, config.getUrlId(), "url")
+                && isReportChannelInformation(enabled, config.getEnabledId(), "enable")
+                && url.getGroup() == enabled.getGroup() && "disable".equals(url.getValue())
+                && ("boolean".equals(enabled.getValueType()) ? "false".equals(enabled.getValue())
+                        : "disable".equals(enabled.getValue()));
+    }
+
+    private boolean isReportChannelInformation(SiteInformation information, String id, String tag) {
+        return information != null && id.equals(information.getId()) && information.getDomain() != null
+                && "resultReporting".equals(information.getDomain().getName()) && tag.equals(information.getTag());
     }
 
     private CronScheduler setScheduleInformationFor(ReportingConfiguration config, SiteInformation url,

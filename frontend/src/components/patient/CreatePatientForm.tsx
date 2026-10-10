@@ -1411,6 +1411,17 @@ function CreatePatientForm(props: CreatePatientFormProps) {
     props.selectedPatient?.mergedIntoNationalId ||
     props.selectedPatient?.mergedIntoPatientId;
 
+  const clearDraft = (resetForm: FormikProps<PatientRecord>["resetForm"]) => {
+    // Age, photo and pending documents are Formik fields and reset together.
+    resetForm({
+      values: defaultNationality
+        ? { ...CreatePatientFormValues, nationality: defaultNationality }
+        : CreatePatientFormValues,
+    });
+    setHealthDistricts([]);
+    props.onClear?.();
+  };
+
   return (
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
@@ -2726,26 +2737,29 @@ function CreatePatientForm(props: CreatePatientFormProps) {
                           disabled={
                             !!props.disabled || isSubmitting || documentBusy
                           }
-                          onClick={() => {
-                            // resetForm resets years/months/days alongside
-                            // birthDateForDisplay — they're real Formik fields
-                            // now, no parallel state to reset.
-                            resetForm({
-                              values: defaultNationality
-                                ? {
-                                    ...CreatePatientFormValues,
-                                    nationality: defaultNationality,
-                                  }
-                                : CreatePatientFormValues,
-                            });
-                            setHealthDistricts([]);
-                            props.onClear?.();
-                          }}
+                          onClick={() => clearDraft(resetForm)}
                         >
                           <FormattedMessage id="label.button.clear" />
                         </Button>
                       )}
                     </Column>
+                    {props.onCancel &&
+                      !props.maintenanceMode &&
+                      !isExistingPatient && (
+                        <Column lg={4} md={4} sm={4}>
+                          <Button
+                            id="clear"
+                            type="button"
+                            kind="danger"
+                            disabled={
+                              !!props.disabled || isSubmitting || documentBusy
+                            }
+                            onClick={() => clearDraft(resetForm)}
+                          >
+                            <FormattedMessage id="label.button.clear" />
+                          </Button>
+                        </Column>
+                      )}
                   </PatientActionPortal>
                 )}
               </Grid>

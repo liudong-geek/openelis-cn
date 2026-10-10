@@ -16,6 +16,7 @@ import {
   event,
   jsonResponse,
   metadata,
+  navigationMenus,
   order,
   orders,
   receipt,
@@ -39,7 +40,7 @@ const deferred = () => {
   });
   return { promise, resolve };
 };
-const providers = (content, actor = session) => (
+const providers = (content, actor = session, menus = navigationMenus()) => (
   <Router history={history}>
     <IntlProvider locale="zh-CN" messages={zh}>
       <NotificationContext.Provider
@@ -51,6 +52,7 @@ const providers = (content, actor = session) => (
           <ConfigurationContext.Provider
             value={{
               configurationProperties: { DEFAULT_DATE_LOCALE: "zh-CN" },
+              navigationMenuItems: menus,
             }}
           >
             {content}
@@ -920,10 +922,16 @@ test.each(["CREATE", "ADD_NOTE"])(
       });
       fireEvent.click(screen.getByRole("button", { name: "保存" }));
     }
-    const dialog = screen.getByRole("dialog", {
-      name: operation === "CREATE" ? "登记不符合项" : "添加处理备注",
+    // Rebind to the current mounted dialog on each retry, so a replaced modal
+    // body cannot make the accessibility query inspect a detached old node.
+    const dialogName = operation === "CREATE" ? "登记不符合项" : "添加处理备注";
+    await waitFor(() => {
+      const currentDialog = screen.getByRole("dialog", { name: dialogName });
+      expect(
+        within(currentDialog).getByRole("button", { name: "核对保存结果" }),
+      ).toBeEnabled();
     });
-    await within(dialog).findByRole("button", { name: "核对保存结果" });
+    const dialog = screen.getByRole("dialog", { name: dialogName });
     expect(screen.queryAllByText("NCE-2026-00001")).toHaveLength(0);
     expect(
       screen.queryByRole("textbox", { name: "登记人" }),
@@ -1238,5 +1246,306 @@ test("receipt permission failure clears metadata and cannot be undone by an alre
   expect(
     JSON.parse(sessionStorage.getItem("openelis.nce.pending.v2"))["1"],
   ).toMatchObject({ requestId, operation: "CREATE" });
+  expect(getPost()).toHaveLength(0);
+});
+
+// CHG-076 menu regressions use real Carbon controls and existing detached NCE
+// contracts. These are prepared unit scenarios, not evidence of real UI/API runs.
+test.each(["root", "dashboard", "registration"])(
+  "original %s OFF blocks the registration dialog despite a server ADD capability",
+  async (flag) => {
+    render(
+      providers(
+        <NceDashboard registrationOpen />,
+        session,
+        navigationMenus({ [flag]: false }),
+      ),
+    );
+    await screen.findByText("NCE-2026-00001");
+    expect(
+      screen.queryByRole("button", { name: zh["nce.button.reportNce"] }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: zh["nce.button.reportNce"] }),
+    ).not.toBeInTheDocument();
+    expect(
+      fetcher.mock.calls.some(([url]) =>
+        urlPath(url).endsWith("/registration/meta"),
+      ),
+    ).toBe(false);
+    expect(getPost()).toHaveLength(0);
+  },
+);
+
+test("unknown navigation cannot inherit registration or detail entries from capabilities", async () => {
+  render(providers(<NceDashboard registrationOpen />, session, null));
+  const header = await screen.findByRole("button", { name: /NCE-2026-00001/ });
+  expect(header).toBeDisabled();
+  expect(header).toHaveAttribute("aria-expanded", "false");
+  expect(
+    screen.queryByRole("button", { name: zh["nce.button.reportNce"] }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(getPost()).toHaveLength(0);
+});
+
+test("menu ON cannot open registration when the fresh server denies ADD", async () => {
+  const original = fetcher.getMockImplementation();
+  fetcher.mockImplementation((url, opts) =>
+    urlPath(url).endsWith("/nce/workspace")
+      ? Promise.resolve(
+          jsonResponse({
+            ...workspace(),
+            canCreate: false,
+            createUnavailableReason: "NCE_ADD_PERMISSION_DENIED",
+          }),
+        )
+      : original(url, opts),
+  );
+  render(providers(<NceDashboard registrationOpen />));
+  await screen.findByText("NCE-2026-00001");
+  const register = screen.getByRole("button", {
+    name: zh["nce.button.reportNce"],
+  });
+  expect(register).toBeDisabled();
+  fireEvent.click(register);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(getPost()).toHaveLength(0);
+});
+
+test("the legacy registration route opens its current full dialog only after menu and server ADD agree", async () => {
+  render(providers(<NceDashboard registrationOpen />));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await findForm();
+  expect(
+    screen.getByRole("dialog", { name: zh["nce.button.reportNce"] }),
+  ).toBeVisible();
+  expect(getPost()).toHaveLength(0);
+});
+
+test("registration flag loss closes an already opened dialog and restoring it does not reopen the ordinary dashboard", async () => {
+  const view = render(providers(<NceDashboard />));
+  await screen.findByText("NCE-2026-00001");
+  fireEvent.click(
+    screen.getByRole("button", { name: zh["nce.button.reportNce"] }),
+  );
+  await findForm();
+  view.rerender(
+    providers(
+      <NceDashboard />,
+      session,
+      navigationMenus({ registration: false }),
+    ),
+  );
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  view.rerender(providers(<NceDashboard />));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(getPost()).toHaveLength(0);
+});
+
+test("view OFF keeps the server SELECT list and search but removes actual details, attachments and handling entries", async () => {
+  render(
+    providers(<NceDashboard />, session, navigationMenus({ view: false })),
+  );
+  const header = await screen.findByRole("button", { name: /NCE-2026-00001/ });
+  expect(header).toBeDisabled();
+  fireEvent.click(header);
+  expect(header).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: zh["nce.action.addNote"] }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: zh["nce.workspace.openCapa"] }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("searchbox")).toBeEnabled();
+  fireEvent.click(
+    screen.getByRole("button", { name: zh["label.button.search"] }),
+  );
+  await waitFor(() =>
+    expect(
+      fetcher.mock.calls.filter(([url]) =>
+        urlPath(url).endsWith("/nce/workspace"),
+      ),
+    ).toHaveLength(2),
+  );
+  expect(
+    fetcher.mock.calls.some(([url]) => urlPath(url).includes("/attachments/")),
+  ).toBe(false);
+  expect(getPost()).toHaveLength(0);
+});
+
+test.each([
+  null,
+  navigationMenus({ root: false }),
+  navigationMenus({ view: false }),
+])(
+  "navigation snapshot loss %j closes expanded detail and an unsubmitted handling modal",
+  async (menus) => {
+    const view = render(providers(<NceDashboard />));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /NCE-2026-00001/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: zh["nce.action.addNote"] }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: zh["nce.modal.addNote"] }),
+    ).toBeVisible();
+    view.rerender(providers(<NceDashboard />, session, menus));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /NCE-2026-00001/ }),
+    ).toHaveAttribute("aria-expanded", "false");
+    view.rerender(providers(<NceDashboard />));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(getPost()).toHaveLength(0);
+  },
+);
+
+test("CAPA OFF hides its real launch but leaves independently authorized detail handling intact", async () => {
+  render(
+    providers(<NceDashboard />, session, navigationMenus({ capa: false })),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: /NCE-2026-00001/ }),
+  );
+  fireEvent.click(screen.getByRole("tab", { name: zh["nce.tab.capa"] }));
+  expect(
+    screen.queryByRole("button", { name: zh["nce.workspace.openCapa"] }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: zh["nce.action.addNote"] }),
+  ).toBeEnabled();
+  expect(history.location.pathname).not.toBe("/NCECorrectiveAction");
+  expect(getPost()).toHaveLength(0);
+});
+
+test.each([false])(
+  "CAPA menu ON cannot grant denied current object UPDATE capability %j",
+  async (canUpdate) => {
+    const original = fetcher.getMockImplementation();
+    fetcher.mockImplementation((url, opts) =>
+      urlPath(url).endsWith("/nce/workspace")
+        ? Promise.resolve(
+            jsonResponse({
+              ...workspace(),
+              nceList: [
+                { ...event(), canAssign: canUpdate, canAddNote: canUpdate },
+              ],
+            }),
+          )
+        : original(url, opts),
+    );
+    render(providers(<NceDashboard />));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /NCE-2026-00001/ }),
+    );
+    fireEvent.click(screen.getByRole("tab", { name: zh["nce.tab.capa"] }));
+    expect(
+      screen.queryByRole("button", { name: zh["nce.workspace.openCapa"] }),
+    ).not.toBeInTheDocument();
+    expect(getPost()).toHaveLength(0);
+  },
+);
+
+test("CAPA ON with current object UPDATE uses the existing real corrective action destination", async () => {
+  render(providers(<NceDashboard />));
+  fireEvent.click(
+    await screen.findByRole("button", { name: /NCE-2026-00001/ }),
+  );
+  fireEvent.click(screen.getByRole("tab", { name: zh["nce.tab.capa"] }));
+  fireEvent.click(
+    screen.getByRole("button", { name: zh["nce.workspace.openCapa"] }),
+  );
+  expect(history.location.pathname).toBe("/NCECorrectiveAction");
+  expect(getPost()).toHaveLength(0);
+});
+
+test.each([false, true])(
+  "a late attachment cannot open after view flag loss even when restored=%s",
+  async (restoreMenu) => {
+    const original = fetcher.getMockImplementation(),
+      late = deferred(),
+      attachment = {
+        id: "8",
+        fileName: "menu-late.pdf",
+        fileType: "application/pdf",
+        fileSize: 5,
+        uploadedDate: "2026-10-06T01:02:03Z",
+      };
+    fetcher.mockImplementation((url, opts) =>
+      urlPath(url).endsWith("/nce/workspace")
+        ? Promise.resolve(
+            jsonResponse({
+              ...workspace(),
+              nceList: [{ ...event(), attachments: [attachment] }],
+            }),
+          )
+        : urlPath(url).endsWith("/attachments/8")
+          ? late.promise
+          : original(url, opts),
+    );
+    const create = vi.fn(() => "blob:menu-late"),
+      revoke = vi.fn();
+    vi.stubGlobal(
+      "URL",
+      class extends URL {
+        static createObjectURL = create;
+        static revokeObjectURL = revoke;
+      },
+    );
+    const open = vi.spyOn(window, "open").mockReturnValue({ opener: null });
+    const view = render(providers(<NceDashboard />));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /NCE-2026-00001/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "查看附件 menu-late.pdf" }),
+    );
+    await waitFor(() =>
+      expect(
+        fetcher.mock.calls.some(([url]) =>
+          urlPath(url).endsWith("/attachments/8"),
+        ),
+      ).toBe(true),
+    );
+    view.rerender(
+      providers(<NceDashboard />, session, navigationMenus({ view: false })),
+    );
+    if (restoreMenu) view.rerender(providers(<NceDashboard />));
+    await act(async () =>
+      late.resolve(
+        new Response("bytes", {
+          headers: { "content-type": "application/pdf" },
+        }),
+      ),
+    );
+    expect(create).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    expect(getPost()).toHaveLength(0);
+  },
+);
+
+test("unknown navigation retains an already pending request receipt without opening registration", async () => {
+  const requestId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  sessionStorage.setItem(
+    "openelis.nce.pending.v2",
+    JSON.stringify({
+      1: { actor: "1", requestId, operation: "CREATE", eventId: null },
+    }),
+  );
+  const view = render(providers(<NceDashboard />));
+  await screen.findByText("NCE-2026-00001");
+  expect(
+    screen.getByRole("button", { name: zh["nce.button.reportNce"] }),
+  ).toBeDisabled();
+  view.rerender(providers(<NceDashboard />, session, null));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(
+    JSON.parse(sessionStorage.getItem("openelis.nce.pending.v2"))["1"],
+  ).toMatchObject({ requestId, operation: "CREATE", eventId: null });
   expect(getPost()).toHaveLength(0);
 });

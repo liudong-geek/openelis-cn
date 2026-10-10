@@ -7,11 +7,11 @@ import messages from "../../../../languages/zh.json";
 import { NotificationContext } from "../../../layout/Layout";
 import ConfigMenuDisplay, { normalizeConfigRows } from "./ConfigMenuDisplay";
 
-const mocks = vi.hoisted(() => ({ get: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 
 vi.mock("../../../utils/Utils", () => ({
   getFromOpenElisServer: mocks.get,
-  postToOpenElisServer: vi.fn(),
+  postToOpenElisServer: mocks.post,
   postToOpenElisServerFormData: vi.fn(),
 }));
 
@@ -38,6 +38,7 @@ const renderWorkspace = () =>
 
 beforeEach(() => {
   mocks.get.mockReset();
+  mocks.post.mockReset();
   notificationContext.setNotificationVisible.mockReset();
   notificationContext.addNotification.mockReset();
   mocks.get.mockImplementation((url, callback) => {
@@ -70,6 +71,54 @@ beforeEach(() => {
         valueType: "boolean",
       });
     }
+  });
+});
+
+test("searches Chinese report labels and saves the original key and custom value", async () => {
+  mocks.get.mockImplementation((url, callback) => {
+    if (url === "/rest/SiteInformationMenu") {
+      callback({
+        menuList: [
+          {
+            id: "7",
+            name: "labDirectorName",
+            description: "image for lab director name",
+            value: "张医生",
+            valueType: "text",
+          },
+        ],
+      });
+    } else if (url === "/rest/SiteInformation?ID=7") {
+      callback({
+        paramName: "labDirectorName",
+        description: "image for lab director name",
+        value: "张医生",
+        valueType: "text",
+      });
+    }
+  });
+  renderWorkspace();
+  expect(await screen.findByText("报告负责人署名")).toBeVisible();
+  fireEvent.change(screen.getByRole("searchbox", { name: "搜索配置" }), {
+    target: { value: "labDirectorName" },
+  });
+  expect(screen.getByText("报告负责人署名")).toBeVisible();
+  fireEvent.change(screen.getByRole("searchbox", { name: "搜索配置" }), {
+    target: { value: "负责人署名" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /编辑/ }));
+  expect(await screen.findByRole("dialog")).toHaveTextContent("报告负责人署名");
+  fireEvent.change(screen.getByLabelText("值"), {
+    target: { value: "李医生" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  expect(mocks.post).toHaveBeenCalledTimes(1);
+  const [url, body] = mocks.post.mock.calls[0];
+  expect(url).toBe("/rest/SiteInformation?ID=7");
+  expect(JSON.parse(body)).toMatchObject({
+    paramName: "labDirectorName",
+    description: "image for lab director name",
+    value: "李医生",
   });
 });
 

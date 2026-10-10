@@ -577,6 +577,16 @@ describe("taskFocusedMenu", () => {
         "/MasterListsPage/resultReportingConfiguration",
         "sidenav.china.configuration.reports",
       ],
+      [
+        "/MasterListsPage/DictionaryMenu",
+        "sidenav.china.configuration.dictionaries",
+      ],
+      ["/MasterListsPage/labNumber", "sidenav.china.configuration.numbering"],
+      ["/MasterListsPage/program", "sidenav.china.configuration.programs"],
+      [
+        "/MasterListsPage/workflowReportWorkspace",
+        "sidenav.china.configuration.workflowParameters",
+      ],
     ]);
     const management = findById(result, "menu_management_workspace");
     expect(
@@ -590,6 +600,11 @@ describe("taskFocusedMenu", () => {
         "/MasterListsPage/globalMenuManagement",
         "sidenav.china.management.menuPermissions",
       ],
+      [
+        "/MasterListsPage/menuConfiguration",
+        "sidenav.china.management.menuConfiguration",
+      ],
+      ["/MasterListsPage/NotifyUser", "sidenav.china.management.notify"],
       [
         "/MasterListsPage/commonproperties",
         "sidenav.china.management.systemProperties",
@@ -1338,3 +1353,70 @@ describe("taskFocusedMenu", () => {
     ).toBe(true);
   });
 });
+
+const addedAdminPaths = [
+  "DictionaryMenu",
+  "labNumber",
+  "program",
+  "workflowReportWorkspace",
+  "menuConfiguration",
+  "NotifyUser",
+].map((path) => `/MasterListsPage/${path}`);
+test("exposes all six configuration writes only to the global administrator", () => {
+  const result = buildTaskFocusedMenu(chinaMenuFixture(), {
+    roles: [ROLE_NAMES.GLOBAL_ADMIN],
+  });
+  const paths = ["menu_configuration_workspace", "menu_management_workspace"]
+    .flatMap((id) => findById(result, id)?.childMenus || [])
+    .map(({ menu }) => menu.actionURL);
+  expect(paths).toEqual(expect.arrayContaining(addedAdminPaths));
+});
+test.each([
+  ROLE_NAMES.USER_ACCOUNT_ADMIN,
+  ROLE_NAMES.RESULTS,
+  ROLE_NAMES.VALIDATION,
+  ROLE_NAMES.REPORTS,
+])("does not widen six configuration writes to %s", (role) => {
+  const result = buildTaskFocusedMenu(chinaMenuFixture(), { roles: [role] });
+  const paths = ["menu_configuration_workspace", "menu_management_workspace"]
+    .flatMap((id) => findById(result, id)?.childMenus || [])
+    .map(({ menu }) => menu.actionURL);
+  for (const path of addedAdminPaths) expect(paths).not.toContain(path);
+  if (role === ROLE_NAMES.USER_ACCOUNT_ADMIN)
+    expect(paths).toContain("/MasterListsPage/userManagement");
+});
+
+test.each([
+  ["empty", []],
+  ["unknown", ["Unknown Role"]],
+  ["ROLE_USER", ["ROLE_USER"]],
+  ["User Account Administrator", [ROLE_NAMES.USER_ACCOUNT_ADMIN]],
+])(
+  "requires an explicit global role for the six new entries with %s roles while preserving legacy tasks",
+  (label, roles) => {
+    const result = buildTaskFocusedMenu(chinaMenuFixture(), { roles });
+    const taskPaths = (menu) =>
+      ["menu_configuration_workspace", "menu_management_workspace"]
+        .flatMap((id) => findById(menu, id)?.childMenus || [])
+        .map(({ menu }) => menu.actionURL);
+    const paths = taskPaths(result);
+    for (const path of addedAdminPaths) expect(paths).not.toContain(path);
+    if (label === "User Account Administrator") {
+      expect(paths).toContain("/MasterListsPage/userManagement");
+    } else {
+      const legacyPaths = taskPaths(
+        buildTaskFocusedMenu(chinaMenuFixture(), {
+          roles: [ROLE_NAMES.GLOBAL_ADMIN],
+        }),
+      ).filter(
+        (path) =>
+          path.startsWith("/MasterListsPage/") &&
+          !addedAdminPaths.includes(path),
+      );
+      expect(legacyPaths).toHaveLength(16);
+      expect(
+        paths.filter((path) => path.startsWith("/MasterListsPage/")),
+      ).toEqual(legacyPaths);
+    }
+  },
+);

@@ -46,7 +46,7 @@ export interface PatientListViewState {
 
 interface PatientMasterListProps {
   onOpenPatient: (patient: PatientRecord) => void;
-  onOpenResults: (patient: PatientRecord) => void;
+  onOpenResults?: (patient: PatientRecord) => void;
   onNewPatient: () => void;
   onOpenAdvancedSearch?: () => void;
   initialState?: PatientListViewState;
@@ -506,15 +506,17 @@ const PatientMasterList = ({
                           >
                             <FormattedMessage id="patient.management.open" />
                           </Button>
-                          <Button
-                            type="button"
-                            kind="ghost"
-                            size="sm"
-                            disabled={isMerged}
-                            onClick={() => onOpenResults(patient)}
-                          >
-                            <FormattedMessage id="patient.management.list.results" />
-                          </Button>
+                          {onOpenResults && (
+                            <Button
+                              type="button"
+                              kind="ghost"
+                              size="sm"
+                              disabled={isMerged}
+                              onClick={() => onOpenResults(patient)}
+                            >
+                              <FormattedMessage id="patient.management.list.results" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

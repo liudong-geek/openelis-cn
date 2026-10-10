@@ -1,318 +1,548 @@
+import {
+  adminLabel,
+  adminJsonRead,
+  selectOriginalLab,
+  setVisibleCheckbox,
+} from "./CurrentAdminLabels";
+const MODAL = ".oe-admin-modal.is-visible:has(.user-editor-page)";
+const PAGE = ".user-management-page";
+const parse = (value) =>
+  typeof value === "string" ? JSON.parse(value) : value;
+const permissionScope = (map) =>
+  Object.fromEntries(
+    Object.keys(map)
+      .sort()
+      .map((id) => [id, map[id].map(String).sort()]),
+  );
+const calendarDate = (value) => {
+  const s = String(value);
+  const iso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (iso) return iso.slice(1).map(Number);
+  const display = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  expect(display, "actual account expiry calendar format").not.to.eq(null);
+  return [Number(display[3]), Number(display[1]), Number(display[2])];
+};
 class UserManagementPage {
   constructor() {
-    this.selectors = {
-      pageTitle: "h2",
-      userPageTitle: "h3",
-      span: ".cds--checkbox-label-text",
-      addButton: "[data-cy='add-button']",
-      modifyUser: "[data-cy='modify-button']",
-      deactivateUser: "[data-cy='deactivate-button']",
-      loginName: "#login-name",
-      loginPassword: "#login-password",
-      repeatPassword: "#login-repeat-password",
-      firstName: "#first-name",
-      lastName: "#last-name",
-      passwordExpirationDate: "#password-expire-date",
-      userTimeOut: "#login-timeout",
-      accountLocked: "[for='radio-1']",
-      accountNotLocked: "[for='radio-2']",
-      accountDisabled: "[for='radio-3']",
-      accountEnabled: "[for='radio-4']",
-      isActive: "[for='radio-5']",
-      isNotActive: "[for='radio-6']",
-      copyPermisionsFromUser: "#copy-permissions",
-      autoSuggestion: "[data-cy='auto-suggestion']",
-      applyButton: "[data-cy='apply-button']",
-      addNewPermission: "[data-cy='addNewPermission']",
-      removePermission: "[data-cy='removePermission']",
-      saveButton: "[data-cy='saveButton']",
-      exitButton: "[data-cy='exitButton']",
-      searchBar: "#user-name-search-bar",
-      filters: "#filters",
-      tableData: ".cds--data-table",
-      menuButton: "[data-cy='menuButton']",
-      enterLoginName: "#loginName",
-      enterPassword: "#password",
-      allPermissions: "[data-testid='all-permissions-All-Lab-Units']",
-      allBioPermissions: "[data-testid='all-permissions-Biochemistry']",
-      allHemaPermissions: "[data-testid='all-permissions-Hematology']",
-      allSeroPermissions: "[data-testid='all-permissions-Serology-Immunology']",
-      allImmunoPermissions: "[data-testid='all-permissions-Immunology']",
-      allMolecularPermissions:
-        "[data-testid='all-permissions-Molecular-Biology']",
-      allCytoPermissions: "[data-testid='all-permissions-Cytology']",
-      allSerologyPermissions: "[data-testid='all-permissions-Serology']",
-      allViroPermissions: "[data-testid='all-permissions-Virology']",
-      allPathoPermissions: "[data-testid='all-permissions-Pathology']",
-      allImmunoHistoPermissions:
-        "[data-testid='all-permissions-Immunohistochemistry']",
-      loginButton: "[data-cy='loginButton']",
-      uncheckActiveUser: "#only-active",
-      uncheckAdminUser: "#only-administrator",
-    };
+    this.sequence = 0;
+    this.lastSearch = "";
   }
-
-  enterLoginName(value) {
-    cy.get(this.selectors.enterLoginName).clear().type(value);
-  }
-
-  enterPassword(value) {
-    cy.get(this.selectors.enterPassword).clear().type(value);
-  }
-
-  loginButton() {
-    cy.get(this.selectors.loginButton).click();
-  }
-
   verifyPageTitle() {
-    cy.contains(this.selectors.pageTitle, "User Management").should(
-      "be.visible",
-    );
+    cy.contains(
+      `${PAGE} h1`,
+      adminLabel("unifiedSystemUser.browser.title"),
+    ).should("be.visible");
+    cy.get("#user-name-search-bar").should("be.visible").and("be.enabled");
   }
-
   validatePageTitle() {
-    cy.contains(this.selectors.userPageTitle, "Add User").should("be.visible");
+    cy.get(MODAL).should("have.length", 1).and("be.visible");
+    cy.contains(
+      `${MODAL} .cds--modal-header__heading`,
+      adminLabel("unifiedSystemUser.add.user"),
+    ).should("be.visible");
   }
   clickAddButton() {
-    cy.get(this.selectors.addButton).click();
+    const alias = `actualUserEditor${++this.sequence}`;
+    cy.intercept({
+      method: "GET",
+      pathname: "**/rest/UnifiedSystemUser",
+      query: { ID: "0" },
+    }).as(alias);
+    cy.contains(
+      `${PAGE} .oe-page-header button`,
+      adminLabel("unifiedSystemUser.browser.button.add"),
+    )
+      .should("be.visible")
+      .click();
+    cy.wait(`@${alias}`).then(({ response }) => {
+      expect(response.statusCode).to.eq(200);
+      this.editorInitial = response.body;
+    });
+    cy.get(`${MODAL} #login-name`).should("be.visible");
   }
-
-  modifyUser() {
-    cy.get(this.selectors.modifyUser).click();
-    cy.wait(1000);
+  typeLoginName(v) {
+    this.loginName = v;
+    cy.get(`${MODAL} #login-name`).should("be.visible").clear().type(v);
   }
-
-  deactivateUser() {
-    cy.get(this.selectors.deactivateUser).click();
+  typeLoginPassword(v) {
+    cy.get(`${MODAL} #login-password`).should("be.visible").clear().type(v);
   }
-
-  typeLoginName(value) {
-    cy.wait(1500);
-    cy.get(this.selectors.loginName).clear().type(value);
+  repeatPassword(v) {
+    cy.get(`${MODAL} #login-repeat-password`).clear().type(v);
   }
-
-  typeLoginPassword(value) {
-    cy.get(this.selectors.loginPassword).clear().type(value);
+  enterFirstName(v) {
+    cy.get(`${MODAL} #first-name`).clear().type(v);
   }
-
-  repeatPassword(value) {
-    cy.get(this.selectors.repeatPassword).clear().type(value);
+  enterLastName(v) {
+    cy.get(`${MODAL} #last-name`).clear().type(v);
   }
-
-  enterFirstName(value) {
-    cy.get(this.selectors.firstName).type(value);
+  passwordExpiryDate(v) {
+    // Original fixture m/d/Y denotes the same future calendar date in a Chinese input.
+    const [m, d, y] = v.split("/");
+    expect(y).to.match(/^\d{4}$/);
+    cy.get(`${MODAL} #password-expire-date`)
+      .should("be.visible")
+      .and("be.enabled")
+      .clear()
+      .type(`${y}/${m.padStart(2, "0")}/${d.padStart(2, "0")}`)
+      .blur();
+    cy.get("body").type("{esc}");
+    cy.get(`${MODAL} #password-expire-date`).should("not.have.value", "");
   }
-
-  enterLastName(value) {
-    cy.get(this.selectors.lastName).type(value);
+  enterUserTimeout(v) {
+    cy.get(`${MODAL} #login-timeout`).clear().type(v);
   }
-
-  passwordExpiryDate(value) {
-    // Find the actual input inside the CustomDatePicker component
-    cy.get(this.selectors.passwordExpirationDate)
-      .find("input")
-      .clear({ force: true })
-      .type(value, { force: true });
-    // Close datepicker if open
-    cy.get("body").type("{esc}"); // close datepicker without clicking (0,0) — that pixel is the logo link on desktop
+  setAccount(id, v) {
+    cy.get(`${MODAL} #${id}`).select(v);
+    cy.get(`${MODAL} #${id}`).should("have.value", v);
   }
-
-  enterUserTimeout(value) {
-    cy.get(this.selectors.userTimeOut).clear().type(value);
-  }
-
   checkAccountLocked() {
-    cy.get(this.selectors.accountLocked).click();
+    this.setAccount("account-locked", "Y");
   }
-
   checkAccountNotLocked() {
-    cy.get(this.selectors.accountNotLocked).click();
+    this.setAccount("account-locked", "N");
   }
-
-  checkActive() {
-    cy.get(this.selectors.isActive).click();
-  }
-
-  checkNotActive() {
-    cy.get(this.selectors.isNotActive).click();
-  }
-
-  checkAccountEnabled() {
-    cy.get(this.selectors.accountEnabled).click();
-  }
-
   checkAccountDisabled() {
-    cy.get(this.selectors.accountDisabled).click();
+    this.setAccount("account-disabled", "Y");
   }
-
-  copyPermisionsFromUser(value) {
-    cy.get(this.selectors.copyPermisionsFromUser).type(value);
-    cy.contains(this.selectors.autoSuggestion, value).click();
+  checkAccountEnabled() {
+    this.setAccount("account-disabled", "N");
   }
-
-  applyChanges() {
-    cy.get(this.selectors.applyButton).click();
+  checkActive() {
+    this.setAccount("account-active", "Y");
   }
-
-  removePermission() {
-    cy.get(this.selectors.removePermission).click();
+  checkNotActive() {
+    this.setAccount("account-active", "N");
   }
-  //All Lab Units
   addNewPermission() {
-    cy.get(this.selectors.addNewPermission).click();
+    cy.get(`${MODAL} [data-cy='addNewPermission']`)
+      .should("be.enabled")
+      .click();
+    cy.get(`${MODAL} .admin-form-workspace__permission-card`)
+      .its("length")
+      .should("be.greaterThan", 0);
   }
-
-  selectTestSection(sectionName) {
-    cy.get('select[id^="select-"]').last().select(sectionName);
+  removePermission() {
+    cy.get(`${MODAL} [data-cy='removePermission']`)
+      .last()
+      .should("be.visible")
+      .click();
   }
-
+  selectTestSection(v) {
+    selectOriginalLab(
+      `${MODAL} .admin-form-workspace__permission-card select[id^='select-']:last`,
+      v,
+    );
+  }
+  allSelectedLabPermissions() {
+    cy.get(
+      `${MODAL} .admin-form-workspace__permission-card select[id^='select-']`,
+    )
+      .last()
+      .invoke("val")
+      .then((id) => setVisibleCheckbox(`all-permissions-${id}`, true));
+  }
   allPermissions() {
-    cy.get(this.selectors.allPermissions).check({ force: true });
+    this.allSelectedLabPermissions();
   }
-
   allBioPermissions() {
-    cy.get(this.selectors.allBioPermissions).check({ force: true });
+    this.allSelectedLabPermissions();
   }
-
   allHemaPermissions() {
-    cy.get(this.selectors.allHemaPermissions).check({ force: true });
+    this.allSelectedLabPermissions();
   }
-
   allSeroPermissions() {
-    cy.get(this.selectors.allSeroPermissions).check({ force: true });
+    this.allSelectedLabPermissions();
   }
-
   allImmunoPermissions() {
-    cy.get(this.selectors.allImmunoPermissions).check({ force: true });
+    this.allSelectedLabPermissions();
   }
-
   allMolecularPermissions() {
-    cy.get(this.selectors.allMolecularPermissions).check({ force: true });
+    this.allSelectedLabPermissions();
   }
-
   allCytoPermissions() {
-    cy.get(this.selectors.allCytoPermissions).check({ force: true });
+    this.allSelectedLabPermissions();
   }
-
   allSerologyPermissions() {
-    cy.get(this.selectors.allSerologyPermissions).check({ force: true });
+    this.allSelectedLabPermissions();
   }
-
   allViroPermissions() {
-    cy.get(this.selectors.allViroPermissions).check({ force: true });
+    this.allSelectedLabPermissions();
   }
-
   allPathoPermissions() {
-    cy.get(this.selectors.allPathoPermissions).check({ force: true });
+    this.allSelectedLabPermissions();
   }
-
   allImmunoHistoPermissions() {
-    cy.get(this.selectors.allImmunoHistoPermissions).check({ force: true });
+    this.allSelectedLabPermissions();
   }
-
-  reception() {
-    cy.contains(this.selectors.span, "Reception").click();
+  globalRole(name) {
+    cy.then(() => {
+      const roles = this.editorInitial.globalRoles.filter(
+        (r) => r.roleName === name,
+      );
+      expect(roles, `real available global role ${name}`).to.have.length(1);
+      const id = roles[0].elementID;
+      cy.get(`${MODAL} label[for='${id}']`)
+        .scrollIntoView()
+        .should("be.visible")
+        .click();
+    });
   }
-
-  reports() {
-    cy.contains(this.selectors.span, "Reports").click();
-  }
-
-  results() {
-    cy.contains(this.selectors.span, "Results").click();
-  }
-
-  saveChanges() {
-    cy.get(this.selectors.saveButton).click();
-  }
-
-  exitChanges() {
-    cy.get(this.selectors.exitButton).click();
-  }
-
-  //Global Roles
   analyzerImport() {
-    cy.contains(this.selectors.span, "Analyser Import").click();
+    this.globalRole("Analyser Import");
   }
-
   auditTrail() {
-    cy.contains(this.selectors.span, "Audit Trail").click({ force: true });
+    this.globalRole("Audit Trail");
   }
-
   cytopathologist() {
-    cy.contains(this.selectors.span, "Cytopathologist").click();
+    this.globalRole("Cytopathologist");
   }
-
   globalAdministrator() {
-    cy.contains(this.selectors.span, "Global Administrator").click();
+    this.globalRole("Global Administrator");
   }
-
   pathologist() {
-    cy.contains(this.selectors.span, "Pathologist").click();
+    this.globalRole("Pathologist");
   }
-
   userAccountAdmin() {
-    cy.contains(this.selectors.span, "User Account Administrator").click();
+    this.globalRole("User Account Administrator");
   }
-
+  laboratoryRole(name) {
+    cy.then(() => {
+      const roles = this.editorInitial.labUnitRoles.filter(
+        (r) => r.roleName === name,
+      );
+      expect(roles).to.have.length(1);
+      cy.get(`${MODAL} .admin-form-workspace__permission-card select`)
+        .last()
+        .invoke("val")
+        .then((id) => {
+          cy.get(`label[for='${roles[0].elementID}-${id}']`)
+            .scrollIntoView()
+            .should("be.visible")
+            .click();
+        });
+    });
+  }
+  reception() {
+    this.laboratoryRole("Reception");
+  }
+  reports() {
+    this.laboratoryRole("Reports");
+  }
+  results() {
+    this.laboratoryRole("Results");
+  }
+  watchUserSave() {
+    const alias = `actualUserSave${++this.sequence}`;
+    cy.intercept("POST", "**/rest/UnifiedSystemUser").as(alias);
+    return alias;
+  }
+  savedUserReadback(sent) {
+    return adminJsonRead("/rest/SearchUnifiedSystemUserMenu", {
+      search: "Y",
+      searchString: sent.userLoginName,
+      startingRecNo: 1,
+      filter: "",
+      roleFilter: "",
+    }).then((list) => {
+      const rows = list.menuList.filter(
+        (r) => r.loginName === sent.userLoginName,
+      );
+      expect(rows, "exact saved login identity").to.have.length(1);
+      this.savedUserId = rows[0].combinedUserID;
+      expect(String(rows[0].systemUserId)).to.match(/^[1-9]\d*$/);
+      return adminJsonRead("/rest/UnifiedSystemUser", {
+        ID: this.savedUserId,
+        startingRecNo: 1,
+        roleFilter: "",
+      }).then((actual) => {
+        [
+          "userLoginName",
+          "userFirstName",
+          "userLastName",
+          "accountActive",
+          "accountLocked",
+          "accountDisabled",
+          "timeout",
+        ].forEach((key) =>
+          expect(String(actual[key]), `independent saved ${key}`).to.eq(
+            String(sent[key]),
+          ),
+        );
+        expect(
+          calendarDate(actual.expirationDate),
+          "persisted future expiry date",
+        ).to.deep.eq(calendarDate(sent.expirationDate));
+        if (sent.systemUserIdToCopy && sent.systemUserIdToCopy !== "0") {
+          expect(
+            String(sent.systemUserIdToCopy),
+            "original copied user identity",
+          ).to.eq(String(this.copySource.systemUserId));
+          expect(
+            actual.selectedRoles.map(String).sort(),
+            "real copied global permissions",
+          ).to.deep.eq(this.copySource.selectedRoles.map(String).sort());
+          expect(
+            permissionScope(actual.selectedTestSectionLabUnits),
+            "real copied professional-unit scope",
+          ).to.deep.eq(
+            permissionScope(this.copySource.selectedTestSectionLabUnits),
+          );
+        } else {
+          expect(actual.selectedRoles.map(String).sort()).to.deep.eq(
+            sent.selectedRoles.map(String).sort(),
+          );
+          expect(
+            permissionScope(actual.selectedTestSectionLabUnits),
+          ).to.deep.eq(permissionScope(sent.selectedTestSectionLabUnits));
+        }
+        return actual;
+      });
+    });
+  }
+  consumeSave(alias) {
+    cy.wait(`@${alias}`).then(({ request, response }) => {
+      expect(response.statusCode, "real account save").to.eq(200);
+      expect(response.body).to.be.ok;
+      expect(Boolean(response.body.error)).to.eq(false);
+      const sent = parse(request.body);
+      this.loginName = sent.userLoginName;
+      this.lastSaved = sent;
+      this.savedUserReadback(sent);
+    });
+    cy.get(MODAL).should("not.exist");
+  }
+  saveChanges() {
+    const alias = this.watchUserSave();
+    cy.get(`${MODAL} [data-cy='saveButton']`)
+      .should("be.visible")
+      .and("be.enabled")
+      .click();
+    this.consumeSave(alias);
+  }
+  exitChanges() {
+    const posts = [];
+    cy.intercept("POST", "**/rest/UnifiedSystemUser", (r) => posts.push(r));
+    cy.contains(
+      `${MODAL} .admin-form-workspace__actions button`,
+      adminLabel("label.button.cancel"),
+    )
+      .should("be.enabled")
+      .click();
+    cy.get(MODAL).should("not.exist");
+    adminJsonRead("/rest/SearchUnifiedSystemUserMenu", {
+      search: "Y",
+      searchString: this.loginName,
+      startingRecNo: 1,
+      filter: "",
+      roleFilter: "",
+    }).then((r) => {
+      expect(
+        r.menuList.filter((u) => u.loginName === this.loginName),
+        "cancel creates no account",
+      ).to.have.length(0);
+      expect(posts).to.have.length(0);
+    });
+  }
   searchUser(value) {
-    // Require the search bar to be stable/actionable before typing so cy.type()
-    // can't race a concurrent re-render (Cypress "Cannot read properties of
-    // undefined (reading 'KeyboardEvent')" flake when a filter refetch re-renders
-    // the page mid-keystroke). The input is also briefly DISABLED while a filter
-    // refetch is in flight ("cy.type() failed because it targeted a disabled
-    // element"), so require enabled too.
-    cy.get(this.selectors.searchBar)
+    const alias = `actualUserSearch${++this.sequence}`;
+    this.lastSearch = value;
+    cy.intercept({
+      method: "GET",
+      pathname: "**/rest/SearchUnifiedSystemUserMenu",
+      query: { searchString: value },
+    }).as(alias);
+    cy.get("#user-name-search-bar")
       .should("be.visible")
       .and("be.enabled")
       .clear()
       .type(value);
+    cy.wait(`@${alias}`).then(({ response }) => {
+      expect(response.statusCode).to.eq(200);
+      this.lastList = response.body;
+    });
   }
-
   clearSearchBar() {
-    cy.get(this.selectors.searchBar).clear();
+    cy.get("#user-name-search-bar").clear();
+    this.lastSearch = "";
   }
-
-  searchByFilters(value) {
-    cy.get(this.selectors.filters).select(value);
+  searchByFilters(v) {
+    const alias = `actualUserRoleSearch${++this.sequence}`;
+    cy.intercept("GET", "**/rest/SearchUnifiedSystemUserMenu?*").as(alias);
+    selectOriginalLab("#filters", v);
+    cy.wait(`@${alias}`).then(({ request, response }) => {
+      expect(response.statusCode).to.eq(200);
+      const roleId = new URL(request.url).searchParams.get("roleFilter");
+      expect(roleId).to.match(/^[1-9]\d*$/);
+      expect(response.body.menuList.some((r) => r.firstName === "Willy")).to.eq(
+        true,
+      );
+      this.lastList = response.body;
+    });
   }
-
-  validateColumnContent(columnNum, value) {
-    cy.get(`td:nth-child(${columnNum})`).should("contain", value);
+  validateColumnContent(oldColumn, value) {
+    const field = { 2: "firstName", 3: "lastName", 4: "loginName" }[oldColumn];
+    expect(field).to.be.a("string");
+    cy.then(() => {
+      expect(
+        this.lastList.menuList.some((r) => String(r[field]).includes(value)),
+        `real original ${field} search result`,
+      ).to.eq(true);
+    });
+    const currentColumn = oldColumn === "4" ? 3 : 2;
+    cy.get(`${PAGE} tbody td:nth-child(${currentColumn})`).should(
+      "contain.text",
+      value,
+    );
   }
-
-  inactiveUser(value) {
-    cy.get(this.selectors.tableData).should("not.contain", value);
+  setFilter(id, checked) {
+    const alias = `actualUserFilter${++this.sequence}`;
+    cy.intercept("GET", "**/rest/SearchUnifiedSystemUserMenu?*").as(alias);
+    cy.get(`#${id}`).then(($input) => {
+      if (Boolean($input.prop("checked")) !== checked) {
+        cy.get(`label[for='${id}']`).should("be.visible").click();
+        cy.wait(`@${alias}`).then(({ response }) => {
+          expect(response.statusCode).to.eq(200);
+          this.lastList = response.body;
+        });
+      } else {
+        adminJsonRead("/rest/SearchUnifiedSystemUserMenu", {
+          search: this.lastSearch ? "Y" : "N",
+          searchString: this.lastSearch,
+          startingRecNo: 1,
+          filter: [
+            ...(Cypress.$("#only-active").prop("checked") ? ["isActive"] : []),
+            ...(Cypress.$("#only-administrator").prop("checked")
+              ? ["isAdmin"]
+              : []),
+          ].join(","),
+          roleFilter: Cypress.$("#filters").val() || "",
+        }).then((r) => {
+          this.lastList = r;
+        });
+      }
+    });
+    cy.get(`#${id}`).should(checked ? "be.checked" : "not.be.checked");
   }
-
-  nonAdminUser(value) {
-    cy.get(this.selectors.tableData).should("not.contain", value);
-  }
-
   activeUser() {
-    cy.contains(this.selectors.span, "Only Active").click();
-    // Let the filter's async table re-render settle before any subsequent typing,
-    // so a following searchUser() cy.type() does not race the re-render.
-    cy.get(this.selectors.tableData).should("be.visible");
+    cy.get("#only-active").then(($i) =>
+      this.setFilter("only-active", !$i.prop("checked")),
+    );
   }
-
-  uncheckActiveUser() {
-    cy.wait(900);
-    cy.get(this.selectors.uncheckActiveUser).uncheck({ force: true });
-  }
-
-  checkUser(columnNum, value) {
-    cy.get(`td:nth-child(${columnNum})`).should("contain", value).click();
-  }
-
   adminUser() {
-    cy.contains(this.selectors.span, "Only Administrator").click();
+    cy.get("#only-administrator").then(($i) =>
+      this.setFilter("only-administrator", !$i.prop("checked")),
+    );
   }
-
+  uncheckActiveUser() {
+    this.setFilter("only-active", false);
+  }
   uncheckAdminUser() {
-    cy.wait(900);
-    cy.get(this.selectors.uncheckAdminUser).uncheck({ force: true });
+    this.setFilter("only-administrator", false);
+  }
+  inactiveUser(value) {
+    cy.get(PAGE).should("not.contain.text", value);
+  }
+  nonAdminUser(value) {
+    cy.get(PAGE).should("not.contain.text", value);
+  }
+  checkUser(_column, value) {
+    this.selectedName = value;
+    cy.contains(`${PAGE} tbody tr`, value)
+      .should("have.length", 1)
+      .within(() =>
+        cy.get("label.cds--checkbox-label").should("be.visible").click(),
+      );
+  }
+  modifyUser() {
+    const alias = `actualExistingUser${++this.sequence}`;
+    cy.intercept("GET", "**/rest/UnifiedSystemUser?*").as(alias);
+    cy.contains(`${PAGE} tbody tr`, this.selectedName).within(() =>
+      cy
+        .contains("button", adminLabel("externalconnections.action.edit"))
+        .should("be.visible")
+        .click(),
+    );
+    cy.wait(`@${alias}`).then(({ response }) => {
+      expect(response.statusCode).to.eq(200);
+      this.editorInitial = response.body;
+      this.loginName = response.body.userLoginName;
+    });
+    cy.get(`${MODAL} #login-name`).should("be.visible");
+  }
+  copyPermisionsFromUser(value) {
+    adminJsonRead("/rest/SearchUnifiedSystemUserMenu", {
+      search: "Y",
+      searchString: value,
+      startingRecNo: 1,
+      filter: "",
+      roleFilter: "",
+    }).then((r) => {
+      const users = r.menuList.filter((u) => u.lastName === value);
+      expect(users).to.have.length(1);
+      adminJsonRead("/rest/UnifiedSystemUser", {
+        ID: users[0].combinedUserID,
+        startingRecNo: 1,
+        roleFilter: "",
+      }).then((u) => {
+        this.copySource = u;
+      });
+    });
+    cy.get(`${MODAL} #copy-permissions`).should("be.visible").type(value);
+    cy.contains(`${MODAL} [data-cy='auto-suggestion']`, value)
+      .should("be.visible")
+      .click();
+  }
+  applyChanges() {
+    const alias = this.watchUserSave();
+    cy.get(`${MODAL} [data-cy='apply-button']`)
+      .should("be.visible")
+      .and("be.enabled")
+      .click();
+    this.consumeSave(alias);
+  }
+  verifyCopiedPermissionsPersisted() {
+    cy.then(() => {
+      expect(this.lastSaved.systemUserIdToCopy).not.to.eq("0");
+      this.savedUserReadback(this.lastSaved);
+    });
+  }
+  deactivateUser() {
+    const alias = `actualUserDeactivate${++this.sequence}`;
+    cy.intercept("POST", "**/rest/DeleteUnifiedSystemUser?*").as(alias);
+    cy.contains(
+      `${PAGE} button`,
+      adminLabel("externalconnections.action.deactivate"),
+    )
+      .should("be.enabled")
+      .click();
+    cy.contains(
+      ".oe-admin-modal.is-visible .cds--modal-footer button",
+      adminLabel("externalconnections.action.deactivate"),
+    )
+      .should("be.visible")
+      .click();
+    cy.wait(`@${alias}`).then(({ request, response }) => {
+      expect(response.statusCode).to.eq(200);
+      const ids = parse(request.body).selectedIDs;
+      expect(ids).to.have.length(1);
+      adminJsonRead("/rest/UnifiedSystemUser", {
+        ID: ids[0],
+        startingRecNo: 1,
+        roleFilter: "",
+      }).then((u) =>
+        expect(u.accountActive, "independent account deactivation").to.eq("N"),
+      );
+    });
+  }
+  enterLoginName(v) {
+    cy.get("#loginName").clear().type(v);
+  }
+  enterPassword(v) {
+    cy.get("#password").clear().type(v);
+  }
+  loginButton() {
+    cy.get("[data-cy='loginButton']").click();
   }
 }
-
 export default UserManagementPage;

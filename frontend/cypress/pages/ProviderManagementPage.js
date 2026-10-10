@@ -23,11 +23,13 @@ const PAGE = ".provider-management-page";
 const VISIBLE_MODAL = ".cds--modal.is-visible";
 
 class ProviderManagementPage {
-  observeList(alias) {
+  observeList(alias, appliedSearch = "") {
     cy.intercept({
       method: "GET",
-      pathname: `${PROVIDER_PATH}/ProviderMenu`,
-      query: { paging: "1", startingRecNo: "1" },
+      pathname: `${PROVIDER_PATH}/${appliedSearch ? "SearchProviderMenu" : "ProviderMenu"}`,
+      query: appliedSearch
+        ? { search: "Y", startingRecNo: "1", searchString: appliedSearch }
+        : { paging: "1", startingRecNo: "1" },
     }).as(alias);
   }
 
@@ -108,7 +110,14 @@ class ProviderManagementPage {
 
   saveProvider(provider, active, editing) {
     cy.intercept("POST", `**/rest/Provider/FhirUuid*`).as("saveProvider");
-    this.observeList("providerListAfterSave");
+    let appliedSearch;
+    cy.get("#provider-search-bar")
+      .should("be.visible")
+      .invoke("val")
+      .then((value) => {
+        appliedSearch = String(value || "");
+        this.observeList("providerListAfterSave", appliedSearch);
+      });
     this.modal(
       editing ? "provider.modal.update.heading" : "provider.modal.add.heading",
     )
@@ -149,6 +158,12 @@ class ProviderManagementPage {
       }
     });
     this.waitForList("providerListAfterSave");
+    cy.get("#provider-search-bar").should(($input) => {
+      expect(
+        String($input.val() || ""),
+        "the applied filter survives saving",
+      ).to.eq(appliedSearch);
+    });
     cy.get(VISIBLE_MODAL).should("not.exist");
     this.searchProvider(provider, active);
     this.confirmProvider(provider, active);
@@ -283,7 +298,14 @@ class ProviderManagementPage {
       )
       .should("be.visible");
     cy.intercept("POST", "**/rest/DeleteProvider*").as("deactivateProvider");
-    this.observeList("providerListAfterDeactivate");
+    let appliedSearch;
+    cy.get("#provider-search-bar")
+      .should("be.visible")
+      .invoke("val")
+      .then((value) => {
+        appliedSearch = String(value || "");
+        this.observeList("providerListAfterDeactivate", appliedSearch);
+      });
     this.modal("provider.management.deactivate.confirm.title")
       .contains("button", labelPattern("externalconnections.action.deactivate"))
       .should("be.visible")
@@ -299,6 +321,12 @@ class ProviderManagementPage {
       expect(response.statusCode).to.eq(200);
     });
     this.waitForList("providerListAfterDeactivate");
+    cy.get("#provider-search-bar").should(($input) => {
+      expect(
+        String($input.val() || ""),
+        "the applied filter survives deactivation",
+      ).to.eq(appliedSearch);
+    });
     cy.get(VISIBLE_MODAL).should("not.exist");
     this.searchProvider(provider, false);
     this.confirmProvider(provider, false);

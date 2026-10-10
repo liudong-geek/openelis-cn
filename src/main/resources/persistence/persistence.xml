@@ -131,6 +131,11 @@
         <!-- Sample Type Request (OGC-356) -->
         <class>org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest</class>
         <class>org.openelisglobal.fhir.valueholder.FhirIntakeReceipt</class>
+
+        <!-- Frozen patient report and release entities -->
+        <class>org.openelisglobal.report.valueholder.ReportDocument</class>
+        <class>org.openelisglobal.report.valueholder.ReportDocumentMember</class>
+        <class>org.openelisglobal.report.valueholder.PatientReportRelease</class>
         <class>org.openelisglobal.integration.outbox.HisResultOutbox</class>
         <!-- Electronic Signature entities (21 CFR Part 11 Compliance) -->
         <class>org.openelisglobal.esig.valueholder.ElectronicSignature</class>
@@ -153,7 +158,7 @@
 
         <properties>
             <property name="hibernate.cfg_xml_file"
-                value="classpath:hibernate/hibernate.cfg.xml" />
+                value="hibernate/hibernate.cfg.xml" />
             <property name="hibernate.search.backend.directory.type" value="local-filesystem" />
             <property name="hibernate.search.backend.directory.root" value="/var/lib/lucene_index" />
             <property name="hibernate.search.backend.analysis.configurer" value="class:org.openelisglobal.hibernate.search.analysis.CustomLuceneAnalysisConfigurer"/>

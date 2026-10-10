@@ -1,0 +1,51 @@
+.result-intake-handoff {
+  display: grid;
+  gap: var(--cds-spacing-05, 1rem);
+  min-width: 0;
+  padding: var(--cds-spacing-05, 1rem);
+  h1 {
+    font-size: 1.5rem;
+    line-height: 1.4;
+  }
+  .cds--inline-notification {
+    max-width: none;
+  }
+}
+.result-restriction-facts {
+  display: grid;
+  gap: var(--cds-spacing-04, 0.75rem);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  p {
+    line-height: 1.5;
+  }
+  dl {
+    margin: 0;
+  }
+  &__identity {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 2rem;
+  }
+  &__facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: 0.75rem;
+  }
+  dt {
+    color: var(--cds-text-secondary, #525252);
+    font-size: 0.875rem;
+  }
+  dd {
+    margin: 0.25rem 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  ul {
+    padding-inline-start: 1.25rem;
+    list-style: disc;
+    line-height: 1.5;
+  }
+}

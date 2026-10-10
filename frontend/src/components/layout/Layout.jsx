@@ -4,23 +4,27 @@ import React, {
   useEffect,
   useContext,
   useCallback,
+  useRef,
 } from "react";
 import { useLocation } from "react-router-dom";
 import { useIntl } from "react-intl";
 import Header from "./Header";
 import Footer from "./Footer";
-import { Content, Theme } from "@carbon/react";
+import { Button, Content, InlineNotification, Theme } from "@carbon/react";
 import UserSessionDetailsContext from "../../UserSessionDetailsContext";
 import { getFromOpenElisServer } from "../utils/Utils";
 import { defaultLanguages, buildLanguagesFromConfig } from "../../languages";
 import RouteErrorBoundary from "../common/RouteErrorBoundary";
 import config from "../../config.json";
 import { resolveNavigationProfile } from "./navigationProfile";
+import { navigationMenuOwner } from "./navigationMenuAvailability";
 
 /**
  * @typedef {Object} LayoutConfigurationValue
  * @property {Record<string, string | null>} configurationProperties
  * @property {() => void} reloadConfiguration
+ * @property {Array<object> | null} navigationMenuItems
+ * @property {import("react").Dispatch<import("react").SetStateAction<{owner: string | null, items: Array<object> | null}>>} publishNavigationMenu
  * @property {Array<{localeCode: string, displayName: string, fallback?: boolean}>} supportedLocales
  * @property {ReturnType<typeof buildLanguagesFromConfig>} enabledLanguages
  *
@@ -115,7 +119,46 @@ export default function Layout(props) {
   const intl = useIntl();
   const { userSessionDetails } = useContext(UserSessionDetailsContext);
   const [resetConfig, setResetConfig] = useState(false);
-  const [configurationProperties, setConfigurationProperties] = useState({});
+  const menuOwner = navigationMenuOwner(userSessionDetails);
+  const [navigationSnapshot, publishNavigationMenu] = useState(
+    /** @type {{owner: string | null, items: Array<object> | null}} */ ({
+      owner: null,
+      items: null,
+    }),
+  );
+  const navigationMenuItems =
+    menuOwner && navigationSnapshot.owner === menuOwner
+      ? navigationSnapshot.items
+      : null;
+  const configurationAuthenticated = userSessionDetails.authenticated === true;
+  // Public configuration has no anonymous-session scope. Resolving or rotating
+  // an anonymous session must not remove an already displayed login form.
+  const configurationOwner = configurationAuthenticated
+    ? JSON.stringify([
+        true,
+        userSessionDetails.userId ?? null,
+        userSessionDetails.sessionId ?? null,
+        userSessionDetails.loginLabUnit ?? null,
+        userSessionDetails.roles ?? [],
+        userSessionDetails.userLabRolesMap ?? {},
+      ])
+    : "public";
+  const configurationOwnerRef = useRef(configurationOwner);
+  configurationOwnerRef.current = configurationOwner;
+  const configurationRead = useRef(null);
+  const configurationActive = useRef(true);
+  const [configurationSnapshot, setConfigurationSnapshot] = useState({
+    owner: configurationOwner,
+    value: {},
+    failed: false,
+  });
+  const configurationProperties =
+    configurationSnapshot.owner === configurationOwner
+      ? configurationSnapshot.value
+      : {};
+  const configurationFailed =
+    configurationSnapshot.owner === configurationOwner &&
+    configurationSnapshot.failed;
   const [notificationVisible, setNotificationVisible] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [supportedLocales, setSupportedLocales] = useState([]);
@@ -195,55 +238,110 @@ export default function Layout(props) {
     setNotifications(newNotifications);
   };
 
-  const fetchConfigurationProperties = (res) => {
-    setConfigurationProperties(res);
-  };
-
   const loadConfigurationProperties = useCallback(
     (afterLoad) => {
-      const handleConfigurationProperties = (res) => {
-        fetchConfigurationProperties(res);
-        if (afterLoad) {
-          afterLoad();
-        }
-      };
-
-      if (userSessionDetails.authenticated) {
-        getFromOpenElisServer(
-          "/rest/configuration-properties",
-          handleConfigurationProperties,
-        );
-      } else {
-        getFromOpenElisServer(
-          "/rest/open-configuration-properties",
-          handleConfigurationProperties,
-        );
-      }
+      if (!configurationActive.current) return;
+      configurationRead.current?.abort();
+      const controller = new AbortController();
+      configurationRead.current = controller;
+      getFromOpenElisServer(
+        configurationAuthenticated
+          ? "/rest/configuration-properties"
+          : "/rest/open-configuration-properties",
+        (res) => {
+          if (
+            controller.signal.aborted ||
+            configurationRead.current !== controller ||
+            configurationOwnerRef.current !== configurationOwner
+          )
+            return;
+          setConfigurationSnapshot((previous) => ({
+            owner: configurationOwner,
+            value:
+              res ??
+              (previous.owner === configurationOwner ? previous.value : {}),
+            failed: res === undefined,
+          }));
+          if (afterLoad) afterLoad();
+        },
+        controller.signal,
+      );
     },
-    [userSessionDetails.authenticated],
+    [configurationOwner, configurationAuthenticated],
   );
 
   useEffect(() => {
+    configurationActive.current = true;
+    const hide = () => {
+      configurationActive.current = false;
+      configurationRead.current?.abort();
+    };
+    const resume = (event) => {
+      if (!event.persisted) return;
+      configurationActive.current = true;
+      loadConfigurationProperties();
+    };
     loadConfigurationProperties();
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", resume);
+    return () => {
+      hide();
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", resume);
+    };
   }, [loadConfigurationProperties]);
 
   useEffect(() => {
-    if (!resetConfig) {
-      return;
-    }
-    loadConfigurationProperties(() => setResetConfig(false));
+    if (!resetConfig) return;
+    setResetConfig(false);
+    loadConfigurationProperties();
   }, [loadConfigurationProperties, resetConfig]);
 
-  // Fetch supported locales from backend
   useEffect(() => {
-    getFromOpenElisServer("/rest/supportedlocales/active", (response) => {
-      if (response && Array.isArray(response)) {
-        setSupportedLocales(response);
-        const builtLanguages = buildLanguagesFromConfig(response);
-        setEnabledLanguages(builtLanguages);
+    let controller;
+    let active = true;
+    const loadLocales = () => {
+      if (!active) return;
+      controller?.abort();
+      const current = new AbortController();
+      controller = current;
+      getFromOpenElisServer(
+        "/rest/supportedlocales/active",
+        (response) => {
+          if (
+            !active ||
+            current.signal.aborted ||
+            controller !== current ||
+            configurationOwnerRef.current !== configurationOwner
+          )
+            return;
+          if (response && Array.isArray(response)) {
+            setSupportedLocales(response);
+            setEnabledLanguages(buildLanguagesFromConfig(response));
+          }
+        },
+        current.signal,
+      );
+    };
+    const hide = () => {
+      active = false;
+      controller?.abort();
+    };
+    const resume = (event) => {
+      if (event.persisted) {
+        active = true;
+        loadLocales();
       }
-    });
-  }, []);
+    };
+    loadLocales();
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", resume);
+    return () => {
+      hide();
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", resume);
+    };
+  }, [configurationOwner]);
 
   useEffect(() => {
     const activeLocaleCodes = Object.keys(enabledLanguages);
@@ -259,6 +357,8 @@ export default function Layout(props) {
     <ConfigurationContext.Provider
       value={{
         configurationProperties: configurationProperties,
+        navigationMenuItems,
+        publishNavigationMenu,
         reloadConfiguration: () => {
           setResetConfig(true);
         },
@@ -326,6 +426,28 @@ export default function Layout(props) {
               data-page-family={pageFamily}
               className={`oe-main-content ${isLocked ? "content-nav-locked" : ""}`.trim()}
             >
+              {configurationFailed && (
+                <>
+                  <InlineNotification
+                    kind="error"
+                    lowContrast
+                    hideCloseButton
+                    title={intl.formatMessage({
+                      id: "app.session.error.title",
+                    })}
+                    subtitle={intl.formatMessage({
+                      id: "app.session.error.message",
+                    })}
+                  />
+                  <Button
+                    kind="ghost"
+                    size="sm"
+                    onClick={() => loadConfigurationProperties()}
+                  >
+                    {intl.formatMessage({ id: "button.retry" })}
+                  </Button>
+                </>
+              )}
               <RouteErrorBoundary>{children}</RouteErrorBoundary>
             </Content>
           </Theme>

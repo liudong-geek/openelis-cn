@@ -106,41 +106,49 @@ export const getFromOpenElisServer = <T = LegacyApiResponse>(
   endPoint: string,
   callback: (response: T | undefined) => void,
   signal: AbortSignal | null = null,
-): void => {
-  fetch(
-    config.serverBaseUrl + endPoint,
+): Promise<void> => {
+  const controller = new AbortController();
+  const removeListeners = () => {
+    signal?.removeEventListener("abort", cancel);
+    window.removeEventListener("pagehide", cancel);
+  };
+  const cancel = () => {
+    controller.abort();
+    removeListeners();
+  };
+  signal?.addEventListener("abort", cancel, { once: true });
+  window.addEventListener("pagehide", cancel);
+  if (signal?.aborted) cancel();
 
-    {
-      //includes the browser sessionId in the Header for Authentication on the backend server
-      credentials: "include",
-      method: "GET",
-      signal: signal,
-      headers: {
-        "Accept-Language": getRequestLocale(),
-      },
-    },
-  )
-    .then((response) => {
+  // Only a request whose own lifetime ended may suppress delivery. Parse/network
+  // errors from the current request still report and deliver the legacy failure.
+  // The final callback is outside this catch: caller errors must remain errors.
+  const readResponse = async (): Promise<T | undefined> => {
+    try {
+      if (controller.signal.aborted) return undefined;
+      const response = await fetch(config.serverBaseUrl + endPoint, {
+        credentials: "include",
+        method: "GET",
+        signal: controller.signal,
+        headers: { "Accept-Language": getRequestLocale() },
+      });
+      if (controller.signal.aborted) return undefined;
       console.debug("checking response");
-      // if (response.url.includes("LoginPage")) {
-      //     throw "No Login Session";
-      // }
       const contentType = response.headers.get("content-type");
       if (contentType && contentType.indexOf("application/json") !== -1) {
-        return response.json().then((jsonResp) => {
-          callback(jsonResp as T);
-        });
-      } else {
-        callback(undefined);
+        return (await response.json()) as T;
       }
+      return undefined;
+    } catch (error) {
+      if (!controller.signal.aborted) console.error(error);
+      return undefined;
+    }
+  };
+  return readResponse()
+    .then((response) => {
+      if (!controller.signal.aborted) callback(response);
     })
-    .catch((error) => {
-      if (error.name === "AbortError") {
-        return; // Component is unmounting — don't call callback
-      }
-      console.error(error);
-      callback(undefined);
-    });
+    .finally(removeListeners);
 };
 
 export const postToOpenElisServer = <TExtra = unknown>(

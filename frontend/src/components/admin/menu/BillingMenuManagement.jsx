@@ -1,6 +1,7 @@
 import React, { useContext, useState, useEffect, useRef } from "react";
 import {
   Form,
+  InlineNotification,
   Heading,
   TextInput,
   Button,
@@ -30,7 +31,7 @@ let breadcrumbs = [
     link: "/MasterListsPage/billingMenuManagement",
   },
 ];
-function BillingMenuManagement() {
+function BillingMenuManagement({ embedded = false, onEditorStateChange } = {}) {
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
 
@@ -40,20 +41,31 @@ function BillingMenuManagement() {
 
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [readFailed, setReadFailed] = useState(false);
+  useEffect(() => {
+    onEditorStateChange?.({ dirty, busy: isSubmitting });
+  }, [dirty, isSubmitting, onEditorStateChange]);
   const [menuItem, setMenuItem] = useState({ menu: {}, childMenus: [] });
 
   async function displayStatus(res) {
     setNotificationVisible(true);
-    setIsSubmitting(false);
-    if (res.status == "200") {
+    if (res?.status == "200") {
+      var body;
+      try {
+        body = await res.json();
+      } finally {
+        setIsSubmitting(false);
+      }
       addNotification({
         kind: NotificationKinds.success,
         title: intl.formatMessage({ id: "notification.title" }),
         message: intl.formatMessage({ id: "success.add.edited.msg" }),
       });
-      var body = await res.json();
       setMenuItem(body);
+      setDirty(false);
     } else {
+      setIsSubmitting(false);
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -64,6 +76,7 @@ function BillingMenuManagement() {
 
   function handleSubmit(event) {
     event.preventDefault();
+    if (isSubmitting) return;
     setIsSubmitting(true);
     postToOpenElisServerFullResponse(
       "/rest/menu/menu_billing",
@@ -74,8 +87,17 @@ function BillingMenuManagement() {
 
   const handleMenuItems = (res) => {
     setLoading(false);
-    if (res) {
+    if (res?.menu?.elementId === "menu_billing") {
+      setReadFailed(false);
       setMenuItem(res);
+    } else {
+      setReadFailed(true);
+      setNotificationVisible(true);
+      addNotification({
+        kind: NotificationKinds.error,
+        title: intl.formatMessage({ id: "notification.title" }),
+        message: intl.formatMessage({ id: "server.error.msg" }),
+      });
     }
   };
 
@@ -93,14 +115,24 @@ function BillingMenuManagement() {
       {notificationVisible === true ? <AlertDialog /> : ""}
       {loading && <Loading />}
       <div className="adminPageContent">
-        <PageBreadCrumb breadcrumbs={breadcrumbs} />
+        {!embedded && <PageBreadCrumb breadcrumbs={breadcrumbs} />}
+        {readFailed && (
+          <InlineNotification
+            kind="error"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({ id: "server.error.msg" })}
+          />
+        )}
         <Grid fullWidth={true}>
           <Column lg={16} md={8} sm={4}>
-            <Section>
-              <Heading>
-                <FormattedMessage id="menu.billing.title" />
-              </Heading>
-            </Section>
+            {!embedded && (
+              <Section>
+                <Heading>
+                  <FormattedMessage id="menu.billing.title" />
+                </Heading>
+              </Section>
+            )}
             <br />
             <Section>
               <Form onSubmit={handleSubmit}>
@@ -112,6 +144,7 @@ function BillingMenuManagement() {
                     })}
                     value={menuItem.menu.actionURL || ""}
                     onChange={(e) => {
+                      setDirty(true);
                       setMenuItem({
                         ...menuItem,
                         menu: { ...menuItem.menu, actionURL: e.target.value },
@@ -130,6 +163,7 @@ function BillingMenuManagement() {
                     })}
                     checked={menuItem.menu.isActive || false}
                     onChange={(_, { checked }) => {
+                      setDirty(true);
                       setMenuItem({
                         ...menuItem,
                         menu: { ...menuItem.menu, isActive: checked },
@@ -138,7 +172,12 @@ function BillingMenuManagement() {
                   />
                 </div>
                 <div>
-                  <Button type="submit">
+                  <Button
+                    type="submit"
+                    disabled={
+                      isSubmitting || readFailed || !menuItem.menu.elementId
+                    }
+                  >
                     <FormattedMessage id="label.button.submit" />
                     {isSubmitting && <Loading small={true} />}
                   </Button>

@@ -517,3 +517,78 @@ describe("formal report workflow with real transport and server fixtures", () =>
     ).not.toBeInTheDocument();
   });
 });
+
+describe("initial report read is distinct from successful empty state", () => {
+  it("does not treat a group-rule read failure as an empty application list", async () => {
+    const { fetcher } = server();
+    const base = fetcher.getMockImplementation()!;
+    fetcher.mockImplementation(async (u, o) =>
+      String(u).endsWith("/group-rules") ? json({}, 503) : base(u, o),
+    );
+    render(view());
+    await screen.findByText(en["report.release.error.read"]);
+    expect(
+      screen.queryByText(en["report.release.noApplications"]),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: application.accessionNumber }),
+    ).not.toBeInTheDocument();
+    expect(
+      fetcher.mock.calls.every(([, o]) => !o?.method || o.method === "GET"),
+    ).toBe(true);
+  });
+
+  it("ignores a previous patient's late retry and keeps the new successful empty state", async () => {
+    const { fetcher } = server();
+    const base = fetcher.getMockImplementation()!;
+    let attempts = 0;
+    let resolve!: (r: Response) => void;
+    fetcher.mockImplementation(async (u, o) => {
+      if (String(u).includes("applications?patientId=42")) {
+        if (++attempts === 1) return json({}, 503);
+        return new Promise<Response>((r) => {
+          resolve = r;
+        });
+      }
+      return base(u, o);
+    });
+    const ui = render(view());
+    await screen.findByText(en["report.release.error.read"]);
+    fireEvent.click(screen.getByRole("button", { name: en["button.retry"] }));
+    await waitFor(() => expect(resolve).toBeDefined());
+    ui.rerender(view("43"));
+    await screen.findByText(en["report.release.noApplications"]);
+    await act(async () => {
+      resolve(json([application]));
+      await Promise.resolve();
+    });
+    expect(
+      screen.queryByRole("option", { name: application.accessionNumber }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(en["report.release.error.read"]),
+    ).not.toBeInTheDocument();
+    expect(
+      fetcher.mock.calls.every(([, o]) => !o?.method || o.method === "GET"),
+    ).toBe(true);
+  });
+
+  it("shows a failed HTTP read without a false empty result, and retries by GET only", async () => {
+    const { fetcher } = server();
+    fetcher.mockImplementationOnce(async () => json({}, 503));
+    render(view());
+    await screen.findByText(en["report.release.error.read"]);
+    expect(
+      screen.queryByText(en["report.release.noApplications"]),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: en["button.retry"] }));
+    await screen.findByRole("option", { name: application.accessionNumber });
+    expect(
+      screen.queryByText(en["report.release.error.read"]),
+    ).not.toBeInTheDocument();
+    expect(
+      fetcher.mock.calls.every(([, o]) => !o?.method || o.method === "GET"),
+    ).toBe(true);
+    expect(screen.getByLabelText("Application")).toHaveValue("");
+  });
+});

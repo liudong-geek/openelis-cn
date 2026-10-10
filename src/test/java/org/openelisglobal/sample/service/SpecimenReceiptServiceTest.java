@@ -56,6 +56,8 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 public class SpecimenReceiptServiceTest {
     private static final String COLLECTED = "2026-09-01T01:00:00.123456Z", RECEIVED = "2026-09-01T02:00:00.123Z";
     private final ObjectMapper json = new ObjectMapper();
+    private final org.openelisglobal.result.service.ResultRestrictionAccess clinicalAccess = mock(
+            org.openelisglobal.result.service.ResultRestrictionAccess.class);
     private final SpecimenReceiptDAO dao = mock(SpecimenReceiptDAO.class);
     private final SampleItemService items = mock(SampleItemService.class);
     private final UserService permissions = mock(UserService.class);
@@ -187,6 +189,7 @@ public class SpecimenReceiptServiceTest {
             return null;
         }).when(dao).flush();
         target = new SpecimenReceiptService(dao, actor, items, permissions, references, configuration);
+        ReflectionTestUtils.setField(target, "clinicalAccess", clinicalAccess);
         var proxy = new ProxyFactory(target);
         proxy.setProxyTargetClass(true);
         transactions.setRollbackOnCommitFailure(true);
@@ -200,6 +203,18 @@ public class SpecimenReceiptServiceTest {
     public void cleanup() {
         SecurityContextHolder.clearContext();
         RequestContextHolder.resetRequestAttributes();
+    }
+
+    @Test
+    public void currentReceptionUpdateRevocationPrecedesReceiptWrite() throws Exception {
+        doThrow(new org.springframework.security.access.AccessDeniedException("current Reception UPDATE denied"))
+                .when(clinicalAccess).bindForActor(any(),
+                        eq(org.openelisglobal.result.service.ResultRestrictionAccess.Phase.RECEPTION),
+                        eq(org.openelisglobal.result.service.ResultRestrictionAccess.Action.UPDATE), eq("7"));
+        rejects(body(1), 403);
+        verify(dao, never()).lockOrder(anyString());
+        verify(items, never()).update(any());
+        verify(dao, never()).flush();
     }
 
     private ObjectNode body(int count) {

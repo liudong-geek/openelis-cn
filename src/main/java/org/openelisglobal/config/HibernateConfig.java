@@ -52,4 +52,11 @@ public class HibernateConfig {
     public EntryRecoveryTransactionManager entryRecoveryTransactionManager(EntityManagerFactory entityManagerFactory) {
         return new EntryRecoveryTransactionManager(entityManagerFactory, dataSource);
     }
+
+    @Bean(ResultPermissionTransactionManager.BEAN_NAME)
+    public ResultPermissionTransactionManager resultPermissionTransactionManager(
+            EntityManagerFactory entityManagerFactory) {
+        return new ResultPermissionTransactionManager(entityManagerFactory, dataSource);
+    }
+
 }

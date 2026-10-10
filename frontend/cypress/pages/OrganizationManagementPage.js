@@ -36,65 +36,95 @@ class OrganizationManagementPage {
     cy.wait("@organizationParents")
       .its("response.statusCode")
       .should("eq", 200);
-    cy.contains("h1", "新增机构或科室").should("be.visible");
+    cy.get(".cds--modal.is-visible")
+      .should("have.length", 1)
+      .and("be.visible")
+      .contains(".cds--modal-header__heading", "新增机构或科室")
+      .should("be.visible");
+    cy.location("pathname").should(
+      "eq",
+      "/MasterListsPage/organizationManagement",
+    );
+  }
+
+  scrollModalFieldIntoView(selector, text) {
+    const modal = cy.get(".cds--modal.is-visible").should("have.length", 1);
+    const field =
+      text === undefined
+        ? modal.find(selector)
+        : modal.contains(selector, text);
+    return field.should("have.length", 1).then(($field) => {
+      $field[0].scrollIntoView({ block: "center", inline: "nearest" });
+    });
   }
 
   addOrgName(orgName = TEST_ORG_NAME) {
-    cy.get(this.selectors.orgName)
+    this.scrollModalFieldIntoView(this.selectors.orgName)
       .should("be.visible")
-      .clear()
-      .type(orgName)
+      .clear({ scrollBehavior: "center" })
+      .type(orgName, { scrollBehavior: "center" })
       .should("have.value", orgName);
   }
 
   addInstituteName(instituteName = TEST_LAB_NAME) {
-    cy.get(this.selectors.orgName)
+    this.scrollModalFieldIntoView(this.selectors.orgName)
       .should("be.visible")
-      .clear()
-      .type(instituteName)
+      .clear({ scrollBehavior: "center" })
+      .type(instituteName, { scrollBehavior: "center" })
       .should("have.value", instituteName);
   }
 
   activateOrganization() {
-    cy.get(this.selectors.isActive).select("Y").should("have.value", "Y");
+    this.scrollModalFieldIntoView(this.selectors.isActive)
+      .should("be.visible")
+      .select("Y")
+      .should("have.value", "Y");
   }
 
   addPrefix(prefix = TEST_ORG_PREFIX) {
-    cy.get(this.selectors.orgPrefix)
+    this.scrollModalFieldIntoView(this.selectors.orgPrefix)
       .should("be.visible")
-      .clear()
-      .type(prefix)
+      .clear({ scrollBehavior: "center" })
+      .type(prefix, { scrollBehavior: "center" })
       .should("have.value", prefix);
   }
 
   addInstitutePrefix() {
-    cy.get(this.selectors.orgPrefix).should("be.visible").clear();
+    this.scrollModalFieldIntoView(this.selectors.orgPrefix)
+      .should("be.visible")
+      .clear({ scrollBehavior: "center" });
   }
 
   checkReferringClinic() {
-    cy.get(this.selectors.referringClinic)
-      .check({ force: true })
-      .should("be.checked");
+    this.scrollModalFieldIntoView(
+      `label[for="${this.selectors.referringClinic.slice(1)}"]`,
+    )
+      .should("be.visible")
+      .click({ scrollBehavior: "center" });
+    cy.get(this.selectors.referringClinic).should("be.checked");
   }
 
   checkReferalLab() {
-    cy.get(this.selectors.referralLab)
-      .check({ force: true })
-      .should("be.checked");
+    this.scrollModalFieldIntoView(
+      `label[for="${this.selectors.referralLab.slice(1)}"]`,
+    )
+      .should("be.visible")
+      .click({ scrollBehavior: "center" });
+    cy.get(this.selectors.referralLab).should("be.checked");
   }
 
   addParentOrg(parentOrgName = TEST_ORG_NAME) {
-    cy.get(this.selectors.parentOrgName)
+    this.scrollModalFieldIntoView(this.selectors.parentOrgName)
       .should("be.visible")
-      .clear()
-      .type(parentOrgName)
+      .clear({ scrollBehavior: "center" })
+      .type(parentOrgName, { scrollBehavior: "center" })
       .should("have.value", parentOrgName);
     cy.intercept("GET", "**/rest/organization/*").as(
       "selectedOrganizationParent",
     );
-    cy.contains('[data-cy="auto-suggestion"]', parentOrgName)
+    this.scrollModalFieldIntoView('[data-cy="auto-suggestion"]', parentOrgName)
       .should("be.visible")
-      .click();
+      .click({ scrollBehavior: "center" });
     cy.wait("@selectedOrganizationParent").then(({ response }) => {
       expect(response.statusCode).to.eq(200);
       expect(response.body.organizationName).to.eq(parentOrgName);
@@ -103,10 +133,10 @@ class OrganizationManagementPage {
   }
 
   saveOrganization() {
-    cy.get(this.selectors.saveButton)
+    this.scrollModalFieldIntoView(this.selectors.saveButton)
       .should("be.visible")
       .and("not.be.disabled")
-      .click();
+      .click({ scrollBehavior: "center" });
   }
 
   searchOrganzation(orgName = TEST_ORG_NAME) {

@@ -29,8 +29,10 @@ import { getRequestLocale } from "./utils/LocaleUtils";
 import { MENU_PROFILES } from "./layout/taskFocusedMenu";
 import { resolveNavigationProfile } from "./layout/navigationProfile";
 import { navigateToInternalPath } from "./utils/NavigationUtils";
+import { useHistory } from "react-router-dom";
 
 function Login(props) {
+  const history = useHistory();
   const { notificationVisible, addNotification, setNotificationVisible } =
     useContext(NotificationContext);
   const { configurationProperties } = useContext(ConfigurationContext);
@@ -345,7 +347,7 @@ function Login(props) {
                               data-cy="changePassword"
                               type="button"
                               onClick={() => {
-                                window.location.href = "/ChangePasswordLogin";
+                                history.push("/ChangePasswordLogin");
                               }}
                             >
                               <FormattedMessage id="label.button.changepassword" />

@@ -2,6 +2,7 @@ import {
   INTERNAL_ROUTE_REFRESH_EVENT,
   navigateToInternalPath,
   refreshCurrentRoute,
+  getPublicLoginPath,
 } from "./NavigationUtils";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
@@ -40,4 +41,41 @@ describe("navigateToInternalPath", () => {
     expect(refreshListener).toHaveBeenCalledTimes(1);
     window.removeEventListener(INTERNAL_ROUTE_REFRESH_EVENT, refreshListener);
   });
+});
+
+describe("configured public login targets", () => {
+  test.each([
+    "/login",
+    "/login?return=work#form",
+    `${window.location.origin}/login?return=work#form`,
+  ])("retains the local public login path and its query/hash: %s", (target) => {
+    const url = new URL(target, window.location.origin);
+    expect(getPublicLoginPath(target)).toBe(
+      url.pathname + url.search + url.hash,
+    );
+  });
+  test.each([
+    "/LoginPage",
+    "/login-other",
+    "https://example.com/login",
+    "http://[invalid",
+  ])(
+    "preserves full-document navigation for custom or invalid targets: %s",
+    (target) => {
+      expect(getPublicLoginPath(target)).toBeNull();
+    },
+  );
+});
+
+test("a relative custom login target retains the original document URL base", () => {
+  const previous = window.location.href;
+  window.history.replaceState({}, "", "/custom/settings");
+  try {
+    expect(new URL("login", window.location.href).pathname).toBe(
+      "/custom/login",
+    );
+    expect(getPublicLoginPath("login")).toBeNull();
+  } finally {
+    window.history.replaceState({}, "", previous);
+  }
 });

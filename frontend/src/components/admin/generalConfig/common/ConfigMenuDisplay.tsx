@@ -28,12 +28,15 @@ import {
 import PageBreadCrumb from "../../../common/PageBreadCrumb";
 import ProductPageHeader from "../../../common/ProductPageHeader";
 import GenericConfigEdit from "./GenericConfigEdit";
+import { getConfigPresentation } from "./configPresentation";
 import "../../AdminListWorkspace.css";
 
 interface ConfigMenuDisplayProps {
   id: string;
   label: string;
   menuType: string;
+  embedded?: boolean;
+  onEditorStateChange?: (open: boolean) => void;
 }
 
 interface ConfigLocalization {
@@ -114,6 +117,10 @@ function ConfigMenuDisplay(props: ConfigMenuDisplayProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [editingRow, setEditingRow] = useState<ConfigTableRow | null>(null);
 
+  useEffect(() => {
+    props.onEditorStateChange?.(Boolean(editingRow));
+  }, [editingRow, props.onEditorStateChange]);
+
   const breadcrumbs = [
     { label: "home.label", link: "/" },
     { label: "breadcrums.admin.managment", link: "/MasterListsPage" },
@@ -156,13 +163,24 @@ function ConfigMenuDisplay(props: ConfigMenuDisplayProps) {
   const visibleRows = useMemo(() => {
     const query = searchText.trim().toLocaleLowerCase();
     if (!query) return rows;
-    return rows.filter((row) =>
-      [row.name, row.description, row.value]
+    return rows.filter((row) => {
+      const presentation = getConfigPresentation(
+        row.name,
+        row.description,
+        intl.locale,
+      );
+      return [
+        row.name,
+        row.description,
+        row.value,
+        presentation.name,
+        presentation.description,
+      ]
         .join(" ")
         .toLocaleLowerCase()
-        .includes(query),
-    );
-  }, [rows, searchText]);
+        .includes(query);
+    });
+  }, [rows, searchText, intl.locale]);
 
   useEffect(() => {
     const lastPage = Math.max(1, Math.ceil(visibleRows.length / pageSize));
@@ -179,6 +197,22 @@ function ConfigMenuDisplay(props: ConfigMenuDisplayProps) {
     row: CarbonTableRow,
   ): ReactNode => {
     const sourceRow = rows.find((item) => item.id === row.id);
+    if (sourceRow && ["name", "description"].includes(cell.info.header)) {
+      const presentation = getConfigPresentation(
+        sourceRow.name,
+        sourceRow.description,
+        intl.locale,
+      );
+      return (
+        <TableCell key={cell.id}>
+          <span title={cell.value}>
+            {cell.info.header === "name"
+              ? presentation.name
+              : presentation.description || "—"}
+          </span>
+        </TableCell>
+      );
+    }
     if (cell.info.header === "valueType") {
       const typeLabels: Record<string, string> = {
         boolean: intl.formatMessage({ id: "config.workspace.type.switch" }),
@@ -250,11 +284,15 @@ function ConfigMenuDisplay(props: ConfigMenuDisplayProps) {
         />
       )}
       <div className="adminPageContent admin-list-workspace admin-list-workspace--compact config-workspace">
-        <PageBreadCrumb breadcrumbs={breadcrumbs} />
-        <ProductPageHeader
-          title={<FormattedMessage id={props.id} />}
-          subtitle={<FormattedMessage id="config.workspace.subtitle" />}
-        />
+        {!props.embedded && (
+          <>
+            <PageBreadCrumb breadcrumbs={breadcrumbs} />
+            <ProductPageHeader
+              title={<FormattedMessage id={props.id} />}
+              subtitle={<FormattedMessage id="config.workspace.subtitle" />}
+            />
+          </>
+        )}
 
         <div className="admin-list-workspace__overview">
           <article>
@@ -441,10 +479,19 @@ function ConfigMenuDisplay(props: ConfigMenuDisplayProps) {
         open={Boolean(editingRow)}
         passiveModal
         size="md"
+        closeButtonLabel={intl.formatMessage({ id: "button.close" })}
         modalHeading={intl.formatMessage({
           id: "config.workspace.edit.heading",
         })}
-        modalLabel={editingRow?.name || ""}
+        modalLabel={
+          editingRow
+            ? getConfigPresentation(
+                editingRow.name,
+                editingRow.description,
+                intl.locale,
+              ).name
+            : ""
+        }
         onRequestClose={() => setEditingRow(null)}
       >
         {editingRow && (

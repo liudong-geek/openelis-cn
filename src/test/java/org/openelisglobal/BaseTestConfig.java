@@ -4,6 +4,8 @@ import jakarta.persistence.EntityManagerFactory;
 import java.io.IOException;
 import javax.sql.DataSource;
 import liquibase.integration.spring.SpringLiquibase;
+import org.openelisglobal.config.EntryRecoveryTransactionManager;
+import org.openelisglobal.config.ResultPermissionTransactionManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -83,6 +85,23 @@ public class BaseTestConfig {
             transactionManager.setJpaDialect(new HibernateJpaDialect());
         }
         return transactionManager;
+    }
+
+    // AppTestConfig excludes production configuration. Register the actual
+    // managers,
+    // with the same persistence factory/resource keys as production, for proxy
+    // tests.
+    @Bean(EntryRecoveryTransactionManager.BEAN_NAME)
+    @Profile("test")
+    public EntryRecoveryTransactionManager entryRecoveryTransactionManager(EntityManagerFactory entityManagerFactory) {
+        return new EntryRecoveryTransactionManager(entityManagerFactory, dataSource);
+    }
+
+    @Bean(ResultPermissionTransactionManager.BEAN_NAME)
+    @Profile("test")
+    public ResultPermissionTransactionManager resultPermissionTransactionManager(
+            EntityManagerFactory entityManagerFactory) {
+        return new ResultPermissionTransactionManager(entityManagerFactory, dataSource);
     }
 
     private void startPostgreSql() {

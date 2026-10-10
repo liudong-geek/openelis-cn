@@ -5,6 +5,7 @@ import { Link, useLocation } from "react-router-dom";
 
 const SYSTEM_ADMIN_ROUTE_ROOTS = new Set([
   "globalMenuManagement",
+  "menuConfiguration",
   "externalConnections",
   "externalConnectionEdit",
   "billingMenuManagement",

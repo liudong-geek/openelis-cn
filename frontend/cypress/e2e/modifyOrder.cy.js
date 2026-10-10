@@ -1,189 +1,177 @@
 import LoginPage from "../pages/LoginPage";
 import PatientEntryPage from "../pages/PatientEntryPage";
-import OrderEntityPage from "../pages/OrderEntityPage";
-import AdminPage from "../pages/AdminPage";
+import ModifyOrderPage from "../pages/ModifyOrderPage";
 
-let homePage = null;
-let loginPage = null;
-let modifyOrderPage = null;
-let adminPage = new AdminPage();
-let orderEntityPage = new OrderEntityPage();
-let patientPage = new PatientEntryPage();
+// Explicit current contract migration, 19 -> 19. The retired FindOrder search
+// gate and optional generation of a replacement accession are not equivalent to
+// current saved-order editing. Historical source and case mapping are retained.
+const loginPage = new LoginPage();
+const patientPage = new PatientEntryPage();
+const modifyOrderPage = new ModifyOrderPage();
+let homePage;
+let fixturePatient;
+let createdPatient;
 
 before("login", () => {
-  loginPage = new LoginPage();
   loginPage.visit();
+  cy.fixture("Patient").then((patient) => {
+    fixturePatient = patient;
+    const unique = `${Date.now()}${Cypress._.random(100000, 999999)}`;
+    createdPatient = {
+      ...patient,
+      subjectNumber: `MOD-${unique}`,
+      nationalId: `CN-E2E-MOD-${unique}`,
+    };
+  });
 });
 
-describe("Add New Patient", function () {
-  it("User Visits Home Page and goes to Add Add|Modify Patient Page", () => {
-    homePage = loginPage.goToHomePage();
-    patientPage = homePage.goToPatientEntry();
-  });
+const fillCreatedPatient = () =>
+  patientPage
+    .getDateOfBirthForCurrentLocale(2001, 5, 12)
+    .then((dateOfBirth) => {
+      createdPatient.dateOfBirth = dateOfBirth;
+      patientPage.enterPatientInfo(
+        createdPatient.firstName,
+        createdPatient.lastName,
+        createdPatient.subjectNumber,
+        createdPatient.nationalId,
+        dateOfBirth,
+      );
+      patientPage.assertEnteredPatientInfo(createdPatient);
+    });
+const resetPatientSearch = () => {
+  homePage = loginPage.goToHomePage();
+  homePage.goToPatientEntry();
+  patientPage.openAdvancedSearch();
+};
+const sameSeedPatient = () => ({
+  targetPatientId: String(modifyOrderPage.baseline.patient.patientId),
+  expectedResult: {
+    patientID: String(modifyOrderPage.baseline.patient.patientId),
+    firstName: fixturePatient.firstName,
+    lastName: fixturePatient.lastName,
+    nationalId: fixturePatient.nationalId,
+    gender: "M",
+  },
+  rowValues: [
+    fixturePatient.firstName,
+    fixturePatient.lastName,
+    fixturePatient.nationalId,
+  ],
+});
 
-  it("Navigate to create Patient tab", function () {
+describe("Current patient modal before existing-order modification — unique synthetic identity", () => {
+  it("opens patient management from the current intake workspace", () => {
+    homePage = loginPage.goToHomePage();
+    homePage.goToPatientEntry();
+    patientPage.assertPatientManagementBoundary();
+  });
+  it("opens the visible new-patient modal without leaving the list", () => {
     patientPage.clickNewPatientTab();
     patientPage.getSubmitButton().should("be.visible");
   });
-
-  it("Enter patient Information and clear", function () {
-    cy.fixture("Patient").then((patient) => {
-      patientPage.enterPatientInfo(
-        patient.firstName,
-        patient.lastName,
-        patient.subjectNumber,
-        patient.nationalId,
-        patient.DOB,
-      );
-    });
+  it("enters the original John Smith demographic facts with independent unique identifiers", () => {
+    fillCreatedPatient();
   });
-
-  it("Clear new patient information", function () {
+  it("clears every demographic input and selected gender in the modal", () => {
     patientPage.clearPatientInfo();
+    patientPage.assertPatientInfoCleared();
   });
-
-  it("Enter patient Information and save", function () {
-    cy.fixture("Patient").then((patient) => {
-      patientPage.enterPatientInfo(
-        patient.firstName,
-        patient.lastName,
-        patient.subjectNumber,
-        patient.nationalId,
-        patient.DOB,
-      );
-    });
+  it("reenters the same independent patient facts before saving", () => {
+    fillCreatedPatient();
   });
-  it("Save new patient information button", function () {
-    patientPage.clickSavePatientButton();
-    cy.wait(1000);
-    cy.get("div[role='status']").should("be.visible");
-    cy.wait(200).reload();
+  it("saves once and reads back the created patient through the current list", () => {
+    patientPage.savePatientAndVerifyDetails(createdPatient);
+    // The unrelated patient just created is never used to select the seeded order.
   });
 });
 
-describe("Modify Order search by patient ", function () {
-  it("User Visits Home Page and goes to Modify Order Page ", function () {
+describe("Current patient criteria then saved-order editing — replaces retired FindOrder search", () => {
+  it("opens the current saved application list and binds the original fixed patient and accession", () => {
     homePage = loginPage.goToHomePage();
-    modifyOrderPage = homePage.goToModifyOrderPage();
+    homePage.goToModifyOrderPage();
+    modifyOrderPage.assertCurrentList();
+    modifyOrderPage.bindFixtureOrder(fixturePatient);
   });
-
-  it("Should search Patient By First and LastName", function () {
-    cy.wait(1000);
-    cy.fixture("Patient").then((patient) => {
-      patientPage.searchPatientByFirstAndLastName(
-        patient.firstName,
-        patient.lastName,
-      );
-      patientPage.getFirstName().should("have.value", patient.firstName);
-      patientPage.getLastName().should("have.value", patient.lastName);
-
-      patientPage.getLastName().should("not.have.value", patient.inValidName);
-
-      modifyOrderPage.clickSearchPatientButton();
-      patientPage.validatePatientSearchTable(
-        patient.firstName,
-        patient.inValidName,
-      );
-    });
-    cy.wait(200).reload();
+  it("queries first and last name in current patient search and retains the same seeded patient", () => {
+    resetPatientSearch();
+    patientPage.runAdvancedSearch(
+      {
+        firstName: fixturePatient.firstName,
+        lastName: fixturePatient.lastName,
+      },
+      sameSeedPatient(),
+    );
+    patientPage.getFirstName().should("have.value", fixturePatient.firstName);
+    patientPage
+      .getLastName()
+      .should("have.value", fixturePatient.lastName)
+      .and("not.have.value", fixturePatient.inValidName);
+    cy.get(
+      `[data-cy='patient-result-row-${modifyOrderPage.baseline.patient.patientId}']`,
+    ).should("not.contain", fixturePatient.inValidName);
   });
-
-  it("Should be able to search patients By gender", function () {
-    cy.wait(1000);
-    patientPage.getMaleGenderRadioButton().should("be.visible");
-    patientPage.getMaleGenderRadioButton().click();
-    cy.wait(200);
-    modifyOrderPage.clickSearchPatientButton();
-    cy.fixture("Patient").then((patient) => {
-      patientPage.validatePatientByGender("M");
-    });
-    cy.wait(200).reload();
+  it("queries the original male gender and binds the same seeded patient", () => {
+    resetPatientSearch();
+    patientPage.runAdvancedSearch(
+      { gender: "M" },
+      { ...sameSeedPatient(), rowMessageKeys: ["patient.male"] },
+    );
+    cy.get("#search-radio-1").should("be.checked");
   });
-
-  it("should search patient By PatientId", function () {
-    cy.wait(1000);
-    cy.fixture("Patient").then((patient) => {
-      patientPage.searchPatientByPatientId(patient.nationalId);
-      modifyOrderPage.clickSearchPatientButton();
-      patientPage.validatePatientSearchTable(
-        patient.firstName,
-        patient.inValidName,
-      );
-    });
+  it("queries the original national identifier and binds the same seeded patient", () => {
+    resetPatientSearch();
+    patientPage.runAdvancedSearch(
+      { patientId: fixturePatient.nationalId },
+      sameSeedPatient(),
+    );
+    cy.get("#patientId").should("have.value", fixturePatient.nationalId);
   });
-
-  it("Should be able to search by respective patient ", function () {
-    cy.wait(1000);
-    modifyOrderPage.clickRespectivePatient();
-    cy.wait(1000);
+  it("opens that patient's exact saved accession from the current application row", () => {
+    homePage = loginPage.goToHomePage();
+    homePage.goToModifyOrderPage();
+    modifyOrderPage.openSavedOrder(fixturePatient.labNo);
   });
-  it("Opens the existing tests workspace without a program selection step", function () {
+  it("shows all persisted tests without an obsolete program-selection gate", () => {
     modifyOrderPage.checkExistingTestsWorkspace();
   });
-
-  it("should be able to record", function () {
-    cy.wait(1000);
-    modifyOrderPage.assignValues();
+  it("assigns a real available test to its original persisted specimen identity", () => {
+    modifyOrderPage.assignAvailableTest();
   });
-
-  it("Click next, go add order page then submit order", function () {
+  it("keeps the accession while saving the assignment once and reading it back", () => {
     modifyOrderPage.clickNextButton();
-    cy.wait(1000);
-    orderEntityPage.rememberSiteAndRequester();
-    modifyOrderPage.clickSubmitButton();
+    cy.fixture("Order").then((order) =>
+      modifyOrderPage.setOriginalSiteAndRequester(order),
+    );
+    modifyOrderPage.rememberSiteAndRequester();
+    modifyOrderPage.clickSubmitAndReadBack();
   });
-  //TO DO
-  //it("User validates barcode is visible", function () {
-  //cy.window().then((win) => {
-  // cy.stub(win, "open").as("windowOpen");
-  //});
-
-  // modifyOrderPage.clickPrintBarcodeButton();
-
-  // cy.get("@windowOpen").should(
-  // "be.calledWithMatch",
-  // /\/api\/OpenELIS-Global\/LabelMakerServlet\?labNo=/,
-  // );
-  // });
 });
 
-describe("Modify Order search by accession Number", function () {
-  it("User Visits Home Page and goes to Modify Order Page ", function () {
+describe("Current accession-based saved-order editing — preserves the existing application", () => {
+  it("reopens the saved application list after the first durable modification", () => {
     homePage = loginPage.goToHomePage();
-    modifyOrderPage = homePage.goToModifyOrderPage();
+    homePage.goToModifyOrderPage();
+    modifyOrderPage.assertCurrentList();
+    modifyOrderPage.bindFixtureOrder(fixturePatient);
   });
-
-  it("Searche with accession number and submit", () => {
-    cy.wait(200);
-    cy.fixture("Patient").then((patient) => {
-      modifyOrderPage.enterAccessionNo(patient.labNo);
-      modifyOrderPage.clickSubmitAccessionButton();
-    });
-    cy.wait(10000);
+  it("queries the original accession and opens its exact current edit action", () => {
+    modifyOrderPage.openSavedOrder(fixturePatient.labNo);
   });
-
-  it("Opens the existing tests workspace without a program selection step", function () {
+  it("retains the original patient, specimen and persisted-test identities", () => {
     modifyOrderPage.checkExistingTestsWorkspace();
   });
-
-  it("Add Sample", function () {
-    modifyOrderPage.selectSerumSample();
-    orderEntityPage.checkPanelCheckBoxField();
+  it("adds the original Serum and both clinical panels without changing existing tubes", () => {
+    cy.fixture("Order").then((order) =>
+      modifyOrderPage.addSerumWithOriginalPanels(order),
+    );
     modifyOrderPage.clickNextButton();
   });
-
-  it("Add Order", function () {
-    orderEntityPage.generateLabOrderNumber();
-    cy.fixture("Order").then((order) => {
-      orderEntityPage.enterSiteName(order.siteName);
-      orderEntityPage.enterRequesterLastAndFirstName(
-        order.requester.fullName,
-        order.requester.firstName,
-        order.requester.lastName,
-      );
-    });
-    orderEntityPage.rememberSiteAndRequester();
-    modifyOrderPage.clickSubmitButton();
-    cy.wait(1000);
+  it("saves original CAMES MAN and Optimus Prime with the added specimen and reads all changes back", () => {
+    cy.fixture("Order").then((order) =>
+      modifyOrderPage.setOriginalSiteAndRequester(order),
+    );
+    modifyOrderPage.rememberSiteAndRequester();
+    modifyOrderPage.clickSubmitAndReadBack();
   });
 });

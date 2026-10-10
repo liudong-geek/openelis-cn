@@ -146,6 +146,9 @@ class LoginPage {
   signInExpectingSuccess(username) {
     cy.intercept("GET", "**/session").as("loginSession");
     cy.intercept("POST", "**/ValidateLogin?apiCall=true").as("acceptedLogin");
+    cy.intercept("GET", "**/rest/home-dashboard/metrics").as(
+      "loginDashboardMetrics",
+    );
     this.signIn();
     cy.wait("@acceptedLogin").then(({ response }) => {
       expect(response?.statusCode, "credentials accepted").to.eq(200);
@@ -153,6 +156,50 @@ class LoginPage {
     this.waitForAuthenticatedSession(username);
     cy.location("pathname").should("eq", "/Dashboard");
     cy.get("#mainHeader").should("be.visible");
+    cy.wait("@loginDashboardMetrics").then(({ response }) => {
+      expect(response?.statusCode, "current dashboard metrics available").to.eq(
+        200,
+      );
+      const metrics = response?.body;
+      expect(metrics, "dashboard metrics JSON").to.be.an("object");
+      ["ordersInProgress", "ordersReadyForValidation"].forEach((field) => {
+        expect(metrics, `dashboard metric ${field}`).to.have.property(field);
+        // These two actor-scoped counts are null when the role is unavailable.
+        if (metrics[field] !== null) {
+          expect(Number.isInteger(metrics[field]), `${field} is an integer`).to
+            .be.true;
+        }
+      });
+      [
+        "ordersCompletedToday",
+        "patiallyCompletedToday",
+        "orderEnterdByUserToday",
+        "ordersRejectedToday",
+        "unPritendResults",
+        "incomigOrders",
+        "averageTurnAroudTime",
+        "delayedTurnAround",
+      ].forEach((field) => {
+        expect(metrics, `dashboard metric ${field}`).to.have.property(field);
+        expect(Number.isInteger(metrics[field]), `${field} is an integer`).to.be
+          .true;
+      });
+      // This marker is set only after this component consumes a metrics body.
+      cy.get("#dashboard-title").should("be.visible");
+      cy.get(".dashboard-last-updated").should("be.visible");
+      cy.get(".dashboard-shift-item.is-success strong").should(
+        "have.text",
+        String(metrics.ordersCompletedToday),
+      );
+      cy.get(".dashboard-shift-item.is-warning strong").should(
+        "have.text",
+        String(metrics.delayedTurnAround),
+      );
+      cy.get(".dashboard-shift-item.is-neutral strong").should(
+        "have.text",
+        String(metrics.incomigOrders),
+      );
+    });
   }
 
   waitForAuthenticatedSession(username, remaining = 3) {
@@ -209,10 +256,16 @@ class LoginPage {
       loginDocuments: 0,
       configurationRequests: 0,
       sessionRequests: 0,
+      document: null,
+      initialPathname: null,
     };
-    // Exit first loads "/", whose unauthenticated SecureRoute then reloads
-    // "/login". Only requests belonging to that final new document prove the
-    // login form is ready; the intermediate page has its own config/session.
+    cy.document().then((document) => {
+      observation.document = document;
+      observation.initialPathname = document.location.pathname;
+    });
+    // Public routes can return inside this document. If an authenticated
+    // password change uses Logout/SAML/custom document navigation, preserve
+    // the original new-document request ownership checks below.
     cy.then(() => {
       cy.on("window:before:load", (window) => {
         if (window.location.pathname === "/") {
@@ -253,6 +306,64 @@ class LoginPage {
   }
 
   assertReturnedLoginReady(observation) {
+    cy.location("pathname").should("eq", "/login");
+    cy.document().then((document) => {
+      if (document === observation.document) {
+        cy.then(() => {
+          expect(
+            observation.initialPathname,
+            "same document return starts at password reset",
+          ).to.eq("/ChangePasswordLogin");
+          expect(
+            observation.rootDocuments,
+            "same document return has no intermediate document",
+          ).to.eq(0);
+          expect(
+            observation.loginDocuments,
+            "same document return has no new login document",
+          ).to.eq(0);
+        });
+        // Reused configuration/session reads do not produce fresh intercepts.
+        // Check the current real server state and the mounted form together.
+        cy.request({
+          url: `${API_BASE}/rest/open-configuration-properties`,
+          failOnStatusCode: false,
+          log: false,
+        }).then(({ status, body }) => {
+          expect(status, "current public login configuration").to.eq(200);
+          expect(body?.useFormLogin, "form login is configured").to.eq("true");
+        });
+        this.assertUnauthenticated();
+      } else {
+        this.assertReturnedLoginDocumentReady(observation);
+      }
+    });
+    this.getUsernameElement().should("be.visible").and("be.enabled");
+    this.getPasswordElement().should("be.visible").and("be.enabled");
+    cy.get(SELECTORS.LOGIN_BUTTON).should("be.visible").and("be.enabled");
+    cy.get("#mainHeader").should("not.be.visible");
+    cy.get(".oe-app-shell--authenticated").should("not.exist");
+    cy.get(".oe-app-sidenav").should("not.exist");
+  }
+
+  assertReturnedLoginDocumentReady(observation) {
+    if (observation.rootDocuments > 0) {
+      cy.wait(`@${observation.intermediateSessionAlias}`).then(
+        ({ request, response }) => {
+          expect(
+            new URL(request.headers.referer).pathname,
+            "intermediate session document",
+          ).to.eq("/");
+          expect(response?.statusCode, "intermediate session available").to.eq(
+            200,
+          );
+          expect(
+            response?.body?.authenticated,
+            "root page requires login",
+          ).to.eq(false);
+        },
+      );
+    }
     cy.wait(`@${observation.configurationAlias}`).then(
       ({ request, response }) => {
         expect(
@@ -290,10 +401,6 @@ class LoginPage {
         "new login session requested",
       ).to.be.greaterThan(0);
     });
-    cy.location("pathname").should("eq", "/login");
-    this.getUsernameElement().should("be.visible");
-    this.getPasswordElement().should("be.visible");
-    cy.get(SELECTORS.LOGIN_BUTTON).should("be.visible").and("be.enabled");
   }
 
   submitNewPassword() {
@@ -319,27 +426,6 @@ class LoginPage {
   clickExitPasswordReset() {
     const loginReturn = this.observeLoginReturn();
     cy.get("[data-cy='exitPasswordReset']").should("be.visible").click();
-    // SecureRoute must receive the intermediate root page's anonymous session
-    // before it can navigate to /login. Wait on that actual prerequisite, then
-    // begin waiting for the final document's requests with the normal limits.
-    cy.wait(`@${loginReturn.intermediateSessionAlias}`).then(
-      ({ request, response }) => {
-        expect(
-          new URL(request.headers.referer).pathname,
-          "intermediate session document",
-        ).to.eq("/");
-        expect(response?.statusCode, "intermediate session available").to.eq(
-          200,
-        );
-        expect(response?.body?.authenticated, "root page requires login").to.eq(
-          false,
-        );
-        expect(
-          loginReturn.rootDocuments,
-          "new intermediate document observed",
-        ).to.be.greaterThan(0);
-      },
-    );
     this.assertReturnedLoginReady(loginReturn);
     cy.get(SELECTORS.CURRENT_PASSWORD).should("not.exist");
     this.assertUnauthenticated();

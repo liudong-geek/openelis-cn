@@ -51,6 +51,7 @@ import { getBranding } from "../utils/BrandingUtils";
 import config from "../../config.json";
 import { buildTaskFocusedMenu, MENU_PROFILES } from "./taskFocusedMenu";
 import { resolveNavigationProfile } from "./navigationProfile";
+import { navigationMenuOwner } from "./navigationMenuAvailability";
 
 export const resolvePrimaryNavigationPath = (pathname) => {
   const normalizedPath = pathname === "/" ? "/Dashboard" : pathname;
@@ -110,25 +111,27 @@ function OEHeader({
   navContext = "main",
   showSideNav = true,
 }) {
-  const { configurationProperties, enabledLanguages } =
+  const { configurationProperties, enabledLanguages, publishNavigationMenu } =
     useContext(ConfigurationContext);
   const { userSessionDetails, logout } = useContext(UserSessionDetailsContext);
-  const sessionOwner =
-    userSessionDetails.authenticated === true &&
-    typeof userSessionDetails.userId === "string" &&
-    userSessionDetails.userId.trim() &&
-    typeof userSessionDetails.sessionId === "string" &&
-    userSessionDetails.sessionId.trim()
-      ? JSON.stringify([
-          userSessionDetails.userId,
-          userSessionDetails.sessionId,
-        ])
-      : null;
+  const sessionOwner = navigationMenuOwner(userSessionDetails);
   const [endingSessionOwner, setEndingSessionOwner] = useState(null);
   const requestOwner =
     sessionOwner === endingSessionOwner ? null : sessionOwner;
   const requestOwnerRef = useRef(requestOwner);
   requestOwnerRef.current = requestOwner;
+  const headerReadOwner = JSON.stringify([
+    requestOwner,
+    userSessionDetails.authenticated === true,
+    userSessionDetails.userId ?? null,
+    userSessionDetails.sessionId ?? null,
+    userSessionDetails.loginLabUnit ?? null,
+    userSessionDetails.roles ?? [],
+    userSessionDetails.userLabRolesMap ?? {},
+  ]);
+  const headerOwnedCancels = useRef(new Set());
+  const headerReadOwnerRef = useRef(headerReadOwner);
+  headerReadOwnerRef.current = headerReadOwner;
   const notificationsRequestRef = useRef(null);
   // This signal identifies one continuous authenticated lifetime, even if the
   // same user/session text later reappears after logout or an account switch.
@@ -179,49 +182,102 @@ function OEHeader({
   const [helpOpen, setHelpOpen] = useState(false);
   const [isTrainingInstallation, setIsTrainingInstallation] = useState(false);
 
-  // Load branding configuration for header logo
-  // Colors are handled by App.js
-  const loadHeaderLogo = () => {
-    getBranding((response) => {
-      if (response && response.headerLogoUrl) {
-        setHeaderLogoUrl(response.headerLogoUrl);
-        setLogoVersion((prev) => prev + 1);
-      }
-    });
-  };
-
-  // Load header logo on initial mount (for login page)
+  // A logo read belongs to this header/session, including update and page lifecycle.
   useEffect(() => {
-    loadHeaderLogo();
-  }, []);
-
-  // Reload header logo when authentication status changes
-  useEffect(() => {
-    if (userSessionDetails.authenticated) {
-      loadHeaderLogo();
-    }
-  }, [userSessionDetails.authenticated]);
-
-  // Listen for branding update events to refresh logo
-  useEffect(() => {
-    const handleBrandingUpdate = () => {
-      loadHeaderLogo();
-    };
-    window.addEventListener("branding-updated", handleBrandingUpdate);
-    return () => {
-      window.removeEventListener("branding-updated", handleBrandingUpdate);
-    };
-  }, [userSessionDetails.authenticated]);
-
-  useEffect(() => {
-    if (userSessionDetails.authenticated) {
-      getFromOpenElisServer("/rest/database-cleaning/status", (response) => {
-        if (response) {
-          setIsTrainingInstallation(response.trainingInstallation);
+    let controller;
+    let active = true;
+    const owner = headerReadOwner;
+    const cancel = () => controller?.abort();
+    const loadHeaderLogo = () => {
+      if (!active || (sessionOwner && !requestOwner)) return;
+      cancel();
+      const current = new AbortController();
+      controller = current;
+      getBranding((response) => {
+        if (
+          !active ||
+          current.signal.aborted ||
+          controller !== current ||
+          headerReadOwnerRef.current !== owner
+        )
+          return;
+        if (response && response.headerLogoUrl) {
+          setHeaderLogoUrl(response.headerLogoUrl);
+          setLogoVersion((prev) => prev + 1);
         }
-      });
-    }
-  }, [userSessionDetails.authenticated]);
+      }, current.signal);
+    };
+    const hide = () => {
+      active = false;
+      cancel();
+    };
+    const resume = (event) => {
+      if (!event.persisted) return;
+      active = true;
+      loadHeaderLogo();
+    };
+    headerOwnedCancels.current.add(hide);
+    loadHeaderLogo();
+    window.addEventListener("branding-updated", loadHeaderLogo);
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", resume);
+    return () => {
+      hide();
+      headerOwnedCancels.current.delete(hide);
+      window.removeEventListener("branding-updated", loadHeaderLogo);
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", resume);
+    };
+  }, [headerReadOwner, userSessionDetails.authenticated]);
+
+  useEffect(() => {
+    if (!userSessionDetails.authenticated || (sessionOwner && !requestOwner))
+      return;
+    let controller;
+    let active = true;
+    const owner = headerReadOwner;
+    const loadStatus = () => {
+      if (!active) return;
+      controller?.abort();
+      const current = new AbortController();
+      controller = current;
+      getFromOpenElisServer(
+        "/rest/database-cleaning/status",
+        (response) => {
+          if (
+            active &&
+            !current.signal.aborted &&
+            controller === current &&
+            headerReadOwnerRef.current === owner &&
+            response
+          ) {
+            setIsTrainingInstallation(response.trainingInstallation);
+          }
+        },
+        current.signal,
+      );
+    };
+    const hide = () => {
+      active = false;
+      controller?.abort();
+    };
+    const resume = (event) => {
+      if (event.persisted) {
+        active = true;
+        loadStatus();
+      }
+    };
+    headerOwnedCancels.current.add(hide);
+    loadStatus();
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", resume);
+    return () => {
+      hide();
+      headerOwnedCancels.current.delete(hide);
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", resume);
+    };
+  }, [headerReadOwner, userSessionDetails.authenticated]);
 
   const panelSwitchLabel = () => {
     return userSessionDetails.authenticated
@@ -277,20 +333,28 @@ function OEHeader({
   };
 
   useEffect(() => {
-    if (!userSessionDetails.authenticated || navContext !== "main") {
+    publishNavigationMenu?.({ owner: sessionOwner, items: null });
+    setMenus((previous) => ({ ...previous, menu: [] }));
+    if (
+      !userSessionDetails.authenticated ||
+      (sessionOwner && !requestOwner) ||
+      navContext !== "main"
+    ) {
       setMenuLoadState("idle");
       return;
     }
-
+    const owner = headerReadOwner;
     let cancelled = false;
     let retryTimer;
+    let readTimer;
     let activeController;
     let attempt = 0;
     const maxAttempts = 8;
+    const isCurrent = () => !cancelled && headerReadOwnerRef.current === owner;
 
     const scheduleRetry = () => {
       attempt += 1;
-      if (cancelled) return;
+      if (!isCurrent()) return;
       if (attempt >= maxAttempts) {
         setMenuLoadState("error");
         return;
@@ -298,30 +362,33 @@ function OEHeader({
       setMenuLoadState("retrying");
       retryTimer = window.setTimeout(loadMenu, Math.min(1000 * attempt, 4000));
     };
-
     const loadMenu = () => {
-      if (cancelled) return;
+      if (!isCurrent()) return;
+      publishNavigationMenu?.({ owner: sessionOwner, items: null });
       setMenuLoadState(attempt === 0 ? "loading" : "retrying");
-      activeController = new AbortController();
+      activeController?.abort();
+      const controller = new AbortController();
+      activeController = controller;
       let settled = false;
+      const ownsRead = () => isCurrent() && activeController === controller;
       const finishWithRetry = (error) => {
-        if (settled || cancelled) return;
+        if (settled || !ownsRead()) return;
         settled = true;
-        activeController.abort();
+        window.clearTimeout(readTimer);
+        controller.abort();
         console.warn("Navigation menu is not ready; retrying", error);
         scheduleRetry();
       };
-      const timeout = window.setTimeout(
+      readTimer = window.setTimeout(
         () => finishWithRetry(new Error("Menu request timed out")),
         8000,
       );
-
       getFromOpenElisServer(
         "/rest/menu",
         (result) => {
-          if (settled || cancelled) return;
+          if (settled || !ownsRead() || controller.signal.aborted) return;
           settled = true;
-          window.clearTimeout(timeout);
+          window.clearTimeout(readTimer);
           if (!Array.isArray(result) || result.length === 0) {
             console.warn(
               "Navigation menu is not ready; retrying",
@@ -331,27 +398,42 @@ function OEHeader({
             return;
           }
           handleMenuItems("menu", result);
+          publishNavigationMenu?.({ owner: sessionOwner, items: result });
           setMenuLoadState("ready");
         },
-        activeController.signal,
+        controller.signal,
       );
     };
-
-    loadMenu();
-
-    return () => {
+    const hide = () => {
       cancelled = true;
+      publishNavigationMenu?.({ owner: sessionOwner, items: null });
       window.clearTimeout(retryTimer);
+      window.clearTimeout(readTimer);
       activeController?.abort();
     };
+    const resume = (event) => {
+      if (!event.persisted) return;
+      cancelled = false;
+      attempt = 0;
+      loadMenu();
+    };
+    headerOwnedCancels.current.add(hide);
+    loadMenu();
+    window.addEventListener("pagehide", hide);
+    window.addEventListener("pageshow", resume);
+    return () => {
+      hide();
+      headerOwnedCancels.current.delete(hide);
+      window.removeEventListener("pagehide", hide);
+      window.removeEventListener("pageshow", resume);
+    };
   }, [
-    userSessionDetails.authenticated,
-    userSessionDetails.roles,
-    userSessionDetails.userLabRolesMap,
+    headerReadOwner,
     navContext,
     menuReloadToken,
     intl.locale,
     menuProfile,
+    publishNavigationMenu,
   ]);
 
   useEffect(() => {
@@ -434,6 +516,8 @@ function OEHeader({
     // Stop reads before the logout request completes; the session context may
     // still describe the old account until the server response arrives.
     requestOwnerRef.current = null;
+    headerReadOwnerRef.current = null;
+    headerOwnedCancels.current.forEach((cancel) => cancel());
     sessionReadController.abort();
     notificationsRequestRef.current?.controller.abort();
     setEndingSessionOwner(sessionOwner);
@@ -1406,6 +1490,7 @@ function OEHeader({
               open={notificationsOpen}
               setOpen={(open) => setNotificationsOpen(open)}
               slideFrom="right"
+              headerOffset={menuProfile === "china" ? "3.75rem" : "3rem"}
               title={intl.formatMessage({ id: "header.icon.notifications" })}
             >
               <SlideOverNotifications

@@ -29,6 +29,7 @@ describe("Lab Number Management", function () {
   });
 
   it("User selects legacy lab number type and submits", function () {
+    labNumMgtPage.prepareLegacyWrite();
     cy.get("@labNMData").then((labNumberManagementData) => {
       labNumMgtPage.selectLabNumber(
         labNumberManagementData.legacyLabNumberType,

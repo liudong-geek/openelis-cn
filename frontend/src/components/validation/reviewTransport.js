@@ -4,22 +4,55 @@ import { getRequestLocale } from "../utils/LocaleUtils";
 // This endpoint must expose HTTP failures to its caller: a JSON error body is
 // never a review batch, and a login redirect is never a successful submission.
 export const getReviewResults = async (endpoint, callback, signal) => {
+  if (signal?.aborted) return;
+  const controller = new AbortController();
+  let stop;
+  const stopped = new Promise((resolve) => {
+    stop = resolve;
+  });
+  const cancel = () => {
+    controller.abort();
+    stop({ cancelled: true });
+  };
+  const timer = setTimeout(() => {
+    controller.abort();
+    stop({ data: undefined, status: 0 });
+  }, 30000);
+  signal?.addEventListener("abort", cancel, { once: true });
+  let result;
   try {
-    const response = await fetch(config.serverBaseUrl + endpoint, {
-      credentials: "include",
-      method: "GET",
-      signal,
-      headers: { "Accept-Language": getRequestLocale() },
-    });
-    if (response.redirected) return callback(undefined, 401);
-    if (!response.ok) return callback(undefined, response.status);
-    if (!response.headers.get("content-type")?.includes("application/json")) {
-      return callback(undefined, 0);
-    }
-    callback(await response.json(), response.status);
-  } catch (error) {
-    if (error.name !== "AbortError") callback(undefined, 0);
+    result = await Promise.race([
+      stopped,
+      (async () => {
+        const response = await fetch(config.serverBaseUrl + endpoint, {
+          credentials: "include",
+          method: "GET",
+          cache: "no-store",
+          redirect: "manual",
+          signal: controller.signal,
+          headers: { "Accept-Language": getRequestLocale() },
+        });
+        if (response.redirected || response.type === "opaqueredirect")
+          return { data: undefined, status: 401 };
+        if (!response.ok) return { data: undefined, status: response.status };
+        if (
+          !/^application\/json(?:\s*;|$)/i.test(
+            response.headers.get("content-type") || "",
+          )
+        )
+          return { data: undefined, status: 0 };
+        return { data: await response.json(), status: response.status };
+      })(),
+    ]);
+  } catch {
+    result = { data: undefined, status: 0 };
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", cancel);
+    controller.abort();
   }
+  if (!signal?.aborted && !result?.cancelled)
+    callback(result.data, result.status);
 };
 
 export const postReviewResults = async (payload, callback, options = {}) => {

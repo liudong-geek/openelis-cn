@@ -86,6 +86,9 @@ function ReportWorkspace({
     generation = useRef(0),
     busyRef = useRef(false);
   const controllers = useRef(new Set<AbortController>());
+  const [applicationReadState, setApplicationReadState] = useState<
+    "loading" | "ready" | "failed"
+  >("loading");
   const [applications, setApplications] = useState<ReportApplication[]>([]);
   const [rules, setRules] = useState<GroupRules | null>(null);
   const [application, setApplication] = useState<ReportApplication | null>(
@@ -163,16 +166,27 @@ function ReportWorkspace({
       if (c.current()) setLoading(false);
     }
   };
-  useEffect(() => {
-    mounted.current = true;
+  const loadApplications = (g = generation.current) => {
+    setApplicationReadState("loading");
+    setApplications([]);
+    setRules(null);
+    setApplication(null);
+    setDocuments([]);
     void read(async (c) => {
-      const [apps, groupRules] = await Promise.all([
-        api.getReportApplications(patientId, c),
-        api.getReportRules(c),
-      ]);
+      let apps: ReportApplication[], groupRules: GroupRules;
+      try {
+        [apps, groupRules] = await Promise.all([
+          api.getReportApplications(patientId, c),
+          api.getReportRules(c),
+        ]);
+      } catch (e) {
+        if (c.current()) setApplicationReadState("failed");
+        throw e;
+      }
       if (c.current()) {
         setApplications(apps);
         setRules(groupRules);
+        setApplicationReadState("ready");
         // A URL hint can select only a server-listed application for this patient.
         const preferred = apps.find(
           (app) =>
@@ -184,7 +198,11 @@ function ReportWorkspace({
           if (c.current()) setDocuments(rows);
         }
       }
-    });
+    }, g);
+  };
+  useEffect(() => {
+    mounted.current = true;
+    loadApplications();
     return () => {
       mounted.current = false;
       generation.current++;
@@ -445,7 +463,18 @@ function ReportWorkspace({
                   />
                 ))}
               </Select>
-              {!loading && !applications.length && <p>{t("noApplications")}</p>}
+              {!loading &&
+                applicationReadState === "ready" &&
+                !applications.length && <p>{t("noApplications")}</p>}
+              {!loading && applicationReadState === "failed" && (
+                <Button
+                  kind="tertiary"
+                  disabled={busy}
+                  onClick={() => loadApplications(invalidate())}
+                >
+                  {intl.formatMessage({ id: "button.retry" })}
+                </Button>
+              )}
             </div>
             {application && (
               <>

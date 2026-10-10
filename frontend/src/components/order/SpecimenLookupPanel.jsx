@@ -36,6 +36,13 @@ import {
   sameLookupAction,
 } from "./specimenLookupAction";
 
+const lookupErrorKind = (error) =>
+  ["scope", "changed"].includes(error?.kind)
+    ? "conflict"
+    : error?.kind === "timeout"
+      ? "unavailable"
+      : error?.kind || "unavailable";
+
 const STAGE_TAG = {
   requested: "blue",
   collected: "cyan",
@@ -85,6 +92,9 @@ const resultRows = (current) => {
   });
 };
 
+/**
+ * @param {{initialCode?: string, onOpenResults?: (accession: string) => void, active?: boolean, canReturn?: boolean, originalLabNo?: string, onViewChange?: (active: boolean) => void, lookupReader?: (code: string, options?: {signal?: AbortSignal, purpose?: string}) => Promise<any>, fixedTarget?: {sampleId: string, sampleItemId: string, requestId: string, analysisId: string, testId: string, labNumber: string, lookupCode: string} | null, initialLookup?: any, authorityReady?: boolean, intakeWriteAllowed?: boolean, isIntakeWriteCurrent?: () => boolean, isTargetCurrent?: () => boolean, onOperationStateChange?: (state: {busy: boolean, dirty: boolean, unknown: boolean}) => void}} props
+ */
 export default function SpecimenLookupPanel({
   initialCode = "",
   onOpenResults,
@@ -92,6 +102,14 @@ export default function SpecimenLookupPanel({
   canReturn = false,
   originalLabNo = "",
   onViewChange = () => {},
+  lookupReader = lookupSpecimen,
+  fixedTarget = null,
+  initialLookup = null,
+  authorityReady = true,
+  intakeWriteAllowed = true,
+  isIntakeWriteCurrent = () => true,
+  isTargetCurrent = () => true,
+  onOperationStateChange = () => {},
 }) {
   const intl = useIntl();
   const session = useContext(UserSessionDetailsContext);
@@ -114,6 +132,25 @@ export default function SpecimenLookupPanel({
   const activeWrite = useRef(false);
   const requestRef = useRef(null);
   const sequence = useRef(0);
+  const initialLookupConsumed = useRef(false);
+  useEffect(() => {
+    onOperationStateChange({
+      busy: actionBusy,
+      dirty:
+        identityConfirmed || Boolean(reasonId) || decisionChoice !== "ACCEPTED",
+      unknown: writeLocked && Boolean(pendingWrite.current),
+    });
+  }, [actionBusy, identityConfirmed, reasonId, decisionChoice, writeLocked]);
+  useEffect(() => {
+    if (!initialLookupConsumed.current && initialLookup && authorityReady) {
+      initialLookupConsumed.current = true;
+      setResult(initialLookup);
+      setSearchedCode(initialCode);
+      setSelectedRequestId(
+        fixedTarget?.requestId || initialLookup.selection.requestId || null,
+      );
+    }
+  }, [initialLookup, authorityReady]);
 
   const sessionKey = JSON.stringify([
     session?.userSessionDetails?.userId,
@@ -150,9 +187,13 @@ export default function SpecimenLookupPanel({
   };
 
   useEffect(() => {
+    if (fixedTarget) return;
     const timer = setTimeout(invalidate, 0);
     return () => clearTimeout(timer);
   }, [sessionKey]);
+  useEffect(() => {
+    if (fixedTarget && !authorityReady) invalidate();
+  }, [authorityReady, fixedTarget?.sampleItemId]);
 
   const readCredential = (context) => {
     try {
@@ -193,8 +234,15 @@ export default function SpecimenLookupPanel({
     );
   };
 
+  const readLookup = (input, options = {}) =>
+    fixedTarget
+      ? lookupReader(input, options)
+      : options.signal
+        ? lookupReader(input, { signal: options.signal })
+        : lookupReader(input);
+
   const search = async () => {
-    if (activeWrite.current) return;
+    if (activeWrite.current || !authorityReady || !isTargetCurrent()) return;
     const query = code.trim();
     invalidate();
     onViewChange(true);
@@ -208,7 +256,10 @@ export default function SpecimenLookupPanel({
     const currentSequence = sequence.current;
     setBusy(true);
     try {
-      const found = await lookupSpecimen(query, { signal: controller.signal });
+      const found = await readLookup(query, {
+        signal: controller.signal,
+        purpose: pendingWrite.current ? "readback" : "preflight",
+      });
       if (currentSequence !== sequence.current || controller.signal.aborted)
         return;
       setResult(found);
@@ -234,7 +285,7 @@ export default function SpecimenLookupPanel({
     } catch (failure) {
       if (currentSequence !== sequence.current || controller.signal.aborted)
         return;
-      setError(failure.kind || "unavailable");
+      setError(lookupErrorKind(failure));
     } finally {
       if (currentSequence === sequence.current) {
         requestRef.current = null;
@@ -250,6 +301,10 @@ export default function SpecimenLookupPanel({
     const selectedReasonId = reasonId;
     if (
       activeWrite.current ||
+      !authorityReady ||
+      !intakeWriteAllowed ||
+      !isIntakeWriteCurrent() ||
+      !isTargetCurrent() ||
       writeLocked ||
       !identityConfirmed ||
       !expected ||
@@ -265,8 +320,13 @@ export default function SpecimenLookupPanel({
     try {
       // One fresh, exact tube read before dispatch. A changed identity or
       // specimen state invalidates the operator's earlier confirmation.
-      const fresh = await lookupSpecimen(barcode);
-      if (!sameCredential(expected)) throw new Error("session");
+      const fresh = await readLookup(barcode, { purpose: "preflight" });
+      if (
+        !isTargetCurrent() ||
+        !isIntakeWriteCurrent() ||
+        !sameCredential(expected)
+      )
+        throw new Error("session");
       if (!sameLookupAction(initial, fresh, barcode, kind, selectedReasonId)) {
         setResult(fresh);
         setSelectedRequestId(fresh.selection.requestId || null);
@@ -290,7 +350,13 @@ export default function SpecimenLookupPanel({
       } else {
         command = buildLookupAccept(fresh, barcode, crypto.randomUUID());
       }
-      if (!command || !sameCredential(expected)) throw new Error("preflight");
+      if (
+        !command ||
+        !isTargetCurrent() ||
+        !isIntakeWriteCurrent() ||
+        !sameCredential(expected)
+      )
+        throw new Error("preflight");
       pendingWrite.current = { code: barcode, kind, command };
       setWriteLocked(true);
       dispatched = true;
@@ -316,8 +382,11 @@ export default function SpecimenLookupPanel({
       // Even a pre-dispatch failure gets a fresh read; it never triggers POST.
     } finally {
       try {
-        const latest = await lookupSpecimen(barcode);
-        if (sameCredential(expected)) {
+        const latest = await readLookup(barcode, {
+          purpose:
+            dispatched || pendingWrite.current ? "readback" : "preflight",
+        });
+        if (isTargetCurrent() && sameCredential(expected)) {
           setResult(latest);
           setSelectedRequestId(latest.selection.requestId || null);
           setIdentityConfirmed(false);
@@ -345,7 +414,7 @@ export default function SpecimenLookupPanel({
         }
       } catch (failure) {
         invalidate();
-        setError(failure.kind || "unavailable");
+        setError(lookupErrorKind(failure));
         setActionNotice(dispatched ? "unknown" : "changed");
       } finally {
         activeWrite.current = false;
@@ -379,7 +448,12 @@ export default function SpecimenLookupPanel({
   const recollectionResult = result
     ? lookupRecollectionResult(result, searchedCode)
     : null;
-  const writeReady = Boolean(readCredential(session));
+  const writeReady =
+    authorityReady &&
+    intakeWriteAllowed &&
+    isIntakeWriteCurrent() &&
+    isTargetCurrent() &&
+    Boolean(readCredential(session));
 
   return (
     <section className="specimen-lookup" aria-label={t("title")}>
@@ -396,7 +470,7 @@ export default function SpecimenLookupPanel({
                 labelText={t("code")}
                 placeholder={t("placeholder")}
                 value={code}
-                disabled={actionBusy}
+                disabled={actionBusy || Boolean(fixedTarget) || !authorityReady}
                 onChange={(event) => {
                   invalidate();
                   setCode(event.target.value);
@@ -411,7 +485,11 @@ export default function SpecimenLookupPanel({
               />
             </div>
             <div className="specimen-lookup__actions">
-              <Button size="md" onClick={search} disabled={busy || actionBusy}>
+              <Button
+                size="md"
+                onClick={search}
+                disabled={busy || actionBusy || !authorityReady}
+              >
                 {t("search")}
               </Button>
               {active && canReturn && (
@@ -451,7 +529,7 @@ export default function SpecimenLookupPanel({
         </Stack>
       </Tile>
 
-      {active && result && (
+      {active && authorityReady && result && (
         <Tile className="specimen-lookup__result">
           <Stack gap={4}>
             <div className="specimen-lookup__notice" role="note">
@@ -534,7 +612,11 @@ export default function SpecimenLookupPanel({
                             <Button
                               kind="ghost"
                               size="sm"
-                              disabled={selectedRow || actionBusy}
+                              disabled={
+                                selectedRow ||
+                                actionBusy ||
+                                Boolean(fixedTarget)
+                              }
                               onClick={() => {
                                 if (activeWrite.current) return;
                                 setSelectedRequestId(request.id);
@@ -570,7 +652,15 @@ export default function SpecimenLookupPanel({
               onOpenResults && (
                 <Button
                   size="md"
-                  onClick={() => onOpenResults(result.current.labNo)}
+                  disabled={Boolean(fixedTarget) && (actionBusy || writeLocked)}
+                  onClick={() => {
+                    if (
+                      fixedTarget &&
+                      (activeWrite.current || writeLocked || !isTargetCurrent())
+                    )
+                      return;
+                    onOpenResults(result.current.labNo);
+                  }}
                 >
                   {intl.formatMessage({ id: "result.entry.label" })}
                 </Button>
@@ -578,7 +668,7 @@ export default function SpecimenLookupPanel({
             {!scannedRequestSelected && result.matchedKind === "specimen" && (
               <p role="note">{t("action.scanSelectedToAct")}</p>
             )}
-            {actionKind && !writeLocked && (
+            {actionKind && !writeLocked && intakeWriteAllowed && (
               <div
                 className="specimen-lookup__tube-action"
                 role="group"
@@ -662,7 +752,7 @@ export default function SpecimenLookupPanel({
           </Stack>
         </Tile>
       )}
-      {active && recollectionResult && (
+      {active && authorityReady && !fixedTarget && recollectionResult && (
         <RecoveredSpecimenRecollection result={recollectionResult} />
       )}
     </section>

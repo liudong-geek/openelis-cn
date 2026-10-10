@@ -28,6 +28,8 @@ public class PatientReportReleaseServiceImplTest {
     private ReportDocumentService documents;
     @Mock
     private SystemUserService systemUserService;
+    @Mock
+    private org.openelisglobal.result.service.ResultRestrictionAccess clinicalAccess;
     @InjectMocks
     private PatientReportReleaseServiceImpl service;
     private final ReportDocumentSummary document = new ReportDocumentSummary("201", "101", "301", "SIM-CHEM", "SIM-1",

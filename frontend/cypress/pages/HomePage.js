@@ -14,6 +14,9 @@ import StudyReportPage from "./StudyReportPage";
 import DashBoardPage from "./DashBoard";
 import AdminPage from "./AdminPage";
 import HelpPage from "./HelpPage";
+import CurrentChinaReportsPage from "./CurrentChinaReportsPage";
+import CurrentSpecialtyDashboard from "./CurrentSpecialtyDashboard";
+import CurrentChinaHelpPage from "./CurrentChinaHelpPage";
 import enMessages from "../../src/languages/en.json";
 import zhMessages from "../../src/languages/zh.json";
 import zhCNMessages from "../../src/languages/zh_CN.json";
@@ -72,8 +75,9 @@ class HomePage {
       cytologyMenu: "#menu_cytology",
       administrationMenu: "span#menu_administration",
       administrationNav: "#menu_administration_nav",
-      managementWorkspace: "#menu_management_workspace",
-      managementEntry: "#menu_management_workspace a[href='/MasterListsPage']",
+      managementWorkspace: "#menu_configuration_workspace",
+      managementEntry:
+        "#menu_configuration_workspace a[href='/MasterListsPage/DictionaryMenu']",
       helpMenu: "#menu_help",
       minimizeIcon: "#minimizeIcon",
       searchIcon: "#search-Icon",
@@ -142,7 +146,7 @@ class HomePage {
       .should("be.visible")
       .and("not.have.attr", "aria-disabled", "true")
       .click();
-    cy.location("pathname").should("eq", "/MasterListsPage");
+    cy.location("pathname").should("eq", "/MasterListsPage/DictionaryMenu");
     this.closeNavigationMenu();
   }
 
@@ -156,8 +160,22 @@ class HomePage {
 
   goToBatchOrderEntry() {
     this.openNavigationMenu();
-    cy.get(this.selectors.sampleMenu).click();
-    cy.get(this.selectors.batchEntry).click();
+    const intakeToggle = `${this.selectors.intakeWorkspace} button.cds--side-nav__submenu`;
+    cy.get(intakeToggle)
+      .first()
+      .scrollIntoView()
+      .should("be.visible")
+      .then(($button) => {
+        if ($button.attr("aria-expanded") !== "true") cy.wrap($button).click();
+      });
+    cy.get(intakeToggle).first().should("have.attr", "aria-expanded", "true");
+    cy.get("#menu_sample_batch_entry_nav")
+      .scrollIntoView()
+      .should("be.visible")
+      .and("have.attr", "href", "/SampleBatchEntrySetup")
+      .and("not.have.attr", "aria-disabled", "true")
+      .click();
+    cy.location("pathname").should("eq", "/SampleBatchEntrySetup");
     return new BatchOrderEntry();
   }
 
@@ -207,69 +225,109 @@ class HomePage {
 
   // Patient Merge (Admin function)
   goToPatientMerge() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.patientMenu).click();
-    cy.get(this.selectors.patientMerge).should("be.visible").click();
+    this.goToPatientEntry();
+    cy.get(".oe-page-header__actions button[aria-label]")
+      .filter((_, button) =>
+        labelPattern("patient.management.moreActions").test(
+          button.getAttribute("aria-label") || "",
+        ),
+      )
+      .should("have.length", 1)
+      .and("be.visible")
+      .and("be.enabled")
+      .click();
+    cy.contains(
+      ".patient-management-actions__options button",
+      labelPattern("banner.menu.patient.merge"),
+    )
+      .should("be.visible")
+      .and("be.enabled")
+      .click();
+    cy.location("pathname").should("eq", "/PatientMerge");
+    cy.get(".patientMergeProgress").should("be.visible");
+    cy.get("#patient1-patientId").should("be.visible");
+    cy.get("#patient2-patientId").should("be.visible");
     return new PatientMergePage();
   }
 
   // Modify Order related functions
   goToModifyOrderPage() {
     this.openNavigationMenu();
-    cy.get(this.selectors.sampleMenu).should("be.visible").click();
-    cy.get(this.selectors.sampleEditNav).should("be.visible").click();
+    const intakeToggle = `${this.selectors.intakeWorkspace} button.cds--side-nav__submenu`;
+    cy.get(intakeToggle)
+      .first()
+      .scrollIntoView()
+      .should("be.visible")
+      .then(($button) => {
+        if ($button.attr("aria-expanded") !== "true") {
+          cy.wrap($button).click();
+        }
+      });
+    cy.get(intakeToggle).first().should("have.attr", "aria-expanded", "true");
+    cy.get(this.selectors.orderDashboardNav)
+      .scrollIntoView()
+      .should("be.visible")
+      .and("not.have.attr", "aria-disabled", "true")
+      .click();
+    cy.location("pathname").should("eq", "/order");
+    cy.get("#order-dashboard-title").should("be.visible");
     return new ModifyOrderPage();
   }
 
   // Work Plan related functions
   goToWorkPlanPlanByTest() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.workplanMenu).should("be.visible").click();
-    cy.get(this.selectors.workplanTestNav).should("be.visible").click();
-    return new WorkPlan();
+    return this.openWorkplanCategory("test");
   }
 
   goToWorkPlanPlanByPanel() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.workplanMenu).click();
-    cy.get(this.selectors.workplanPanelNav).click();
-    return new WorkPlan();
+    return this.openWorkplanCategory("panel");
   }
 
   goToWorkPlanPlanByUnit() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.workplanMenu).click();
-    cy.get(this.selectors.workplanBenchNav).should("be.visible").click();
-    return new WorkPlan();
+    return this.openWorkplanCategory("unit");
   }
 
   goToWorkPlanPlanByPriority() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.workplanMenu).click();
-    cy.get(this.selectors.workplanPriorityNav).should("be.visible").click();
-    return new WorkPlan();
+    return this.openWorkplanCategory("priority");
   }
 
   // Non-Conforming related functions
   goToReportNCE() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.nonConformityDropdown).click();
-    cy.get(this.selectors.nonConformingReport).should("be.visible").click();
-    return new NonConform();
+    this.openWorkspaceTask(
+      "#menu_quality_workspace",
+      /^\/NceDashboard(?:\?|$)/,
+    );
+    cy.contains(
+      ".nce-dashboard-header button",
+      labelPattern("nce.button.reportNce"),
+    )
+      .should("be.visible")
+      .and("be.enabled")
+      .click();
+    cy.get(".nce-registration-modal.is-visible").should("be.visible");
+    return new NonConform("report");
   }
 
   goToViewNCE() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.nonConformityDropdown).click();
-    cy.get(this.selectors.nonConformingView).should("be.visible").click();
-    return new NonConform();
+    // Protected historical review bookmark, not a current sidebar task.
+    this.openWorkspaceTask(
+      "#menu_quality_workspace",
+      /^\/NceDashboard(?:\?|$)/,
+    );
+    cy.visit("/ViewNonConformingEvent");
+    cy.location("pathname").should("eq", "/ViewNonConformingEvent");
+    return new NonConform("view");
   }
 
   goToCorrectiveActions() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.nonConformityDropdown).click();
-    cy.get(this.selectors.nonConformingActions).should("be.visible").click();
-    return new NonConform();
+    // Protected historical CAPA bookmark retains the existing clinical flow.
+    this.openWorkspaceTask(
+      "#menu_quality_workspace",
+      /^\/NceDashboard(?:\?|$)/,
+    );
+    cy.visit("/NCECorrectiveAction");
+    cy.location("pathname").should("eq", "/NCECorrectiveAction");
+    return new NonConform("capa");
   }
 
   // Results related functions
@@ -317,63 +375,52 @@ class HomePage {
 
   // Validation related functions
   goToValidationByRoutine() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.validationMenu).click();
-    cy.get(this.selectors.routineValidation).click();
-    return new Validation();
+    return this.openReviewCategory("routine");
   }
 
   goToValidationByOrder() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.validationMenu).click();
-    cy.get(this.selectors.accessionValidation).click();
-    return new Validation();
+    return this.openReviewCategory("order");
   }
 
   goToValidationByRangeOrder() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.validationMenu).click();
-    cy.get(this.selectors.rangeOrderValidation).click();
-    return new Validation();
+    return this.openReviewCategory("range");
   }
 
   // Reports related functions
   goToRoutineReports() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.reportsMenu).click();
-    cy.get(this.selectors.reportsRoutine).should("be.visible").click();
-    return new RoutineReportPage();
+    const reportPage = new CurrentChinaReportsPage();
+    reportPage.openRoutineTask("patient");
+    this.closeNavigationMenu();
+    return reportPage;
   }
 
   goToStudyReports() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.reportsMenu).click();
-    cy.get(this.selectors.reportsStudy).should("be.visible").click();
-    return new StudyReportPage();
+    const reportPage = new CurrentChinaReportsPage();
+    reportPage.openStudyCatalog();
+    return reportPage;
   }
 
   goToReports() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.reportsMenu).click();
+    return this.goToRoutineReports();
   }
 
   // Dashboard related functions
   goToPathologyDashboard() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.pathologyNav).should("be.visible").click();
-    return new DashBoardPage();
+    // Optional specialty menus are hidden in China; this protected route
+    // still verifies the user's real business role and laboratory scope.
+    return new CurrentSpecialtyDashboard("pathology").visit();
   }
 
   goToImmunoChemistryDashboard() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.immunochemMenu).click();
-    return new DashBoardPage();
+    // Optional specialty menus are hidden in China; this protected route
+    // still verifies the user's real business role and laboratory scope.
+    return new CurrentSpecialtyDashboard("immunohistochemistry").visit();
   }
 
   goToCytologyDashboard() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.cytologyMenu).click();
-    return new DashBoardPage();
+    // Optional specialty menus are hidden in China; this protected route
+    // still verifies the user's real business role and laboratory scope.
+    return new CurrentSpecialtyDashboard("cytology").visit();
   }
 
   // Admin related functions
@@ -388,9 +435,9 @@ class HomePage {
   }
 
   goToHelp() {
-    this.openNavigationMenu();
-    cy.get(this.selectors.helpMenu).click();
-    return new HelpPage();
+    cy.get(this.selectors.userHelp).should("be.visible").click();
+    cy.get(".cds--header-panel--expanded").should("be.visible");
+    return new CurrentChinaHelpPage();
   }
 
   // UI interaction functions
@@ -415,8 +462,8 @@ class HomePage {
   searchBar() {
     cy.intercept({
       method: "GET",
-      pathname: "**/rest/patient-search",
-      query: { firstName: "Smith" },
+      pathname: "/api/OpenELIS-Global/rest/patient-search-results",
+      query: { quickQuery: "Smith", suppressExternalSearch: "true" },
     }).as("homePatientSearch");
     cy.get(this.selectors.searchIcon).should("be.visible").click();
     cy.get(this.selectors.searchItem).should("be.visible").type("Smith");
@@ -580,8 +627,12 @@ class HomePage {
     // E-01 preserves this navigation scenario. A-02's automatic unprinted
     // report filter is still a product gap; the current card opens Reports.
     this.taskCard("dashboard.task.reports.title").click();
-    cy.location("pathname").should("eq", "/RoutineReports");
-    cy.contains("h1", labelPattern("sidenav.label.reports.routine"), {
+    cy.location("pathname").should("eq", "/RoutineReport");
+    cy.location("search").should(
+      "eq",
+      "?type=patient&report=patientCILNSP_vreduit",
+    );
+    cy.contains("h3", labelPattern("openreports.patientTestStatus"), {
       timeout: 30000,
     }).should("be.visible");
   }
@@ -603,6 +654,86 @@ class HomePage {
 
   selectDelayedTurnAround() {
     this.selectMetric("dashboard.turn.around.label", "DELAYED_TURN_AROUND");
+  }
+
+  openWorkspaceTask(workspaceId, hrefPattern) {
+    this.openNavigationMenu();
+    const toggle = `${workspaceId} button.cds--side-nav__submenu`;
+    cy.get(toggle)
+      .first()
+      .scrollIntoView()
+      .should("be.visible")
+      .then(($button) => {
+        if ($button.attr("aria-expanded") !== "true") cy.wrap($button).click();
+      });
+    cy.get(toggle).first().should("have.attr", "aria-expanded", "true");
+    cy.get(`${workspaceId} a`)
+      .filter((_, element) =>
+        hrefPattern.test(element.getAttribute("href") || ""),
+      )
+      .should("have.length", 1)
+      .scrollIntoView()
+      .should("be.visible")
+      .and("not.have.attr", "aria-disabled", "true")
+      .click();
+    this.closeNavigationMenu();
+  }
+
+  openWorkplanCategory(type) {
+    const modes = {
+      test: ["WorkPlanByTest", "banner.menu.workplan.test"],
+      panel: ["WorkPlanByPanel", "banner.menu.workplan.panel"],
+      unit: ["WorkPlanByTestSection", "banner.menu.workplan.bench"],
+      priority: ["WorkPlanByPriority", "banner.menu.workplan.priority"],
+    };
+    this.openWorkspaceTask(
+      "#menu_testing_workspace",
+      /^\/WorkPlanByTest(?:\?|$)/,
+    );
+    cy.get("#workplan-query-category").should("be.visible");
+    if (type !== "test") {
+      cy.get("#workplan-query-category").click();
+      cy.contains("[role='option']", labelPattern(modes[type][1]))
+        .scrollIntoView()
+        .should("be.visible")
+        .click();
+    }
+    cy.location("pathname").should("eq", `/${modes[type][0]}`);
+    cy.location("search").should("include", `type=${type}`);
+    return new WorkPlan();
+  }
+
+  openReviewCategory(type) {
+    const labels = { routine: "section", order: "order", range: "range" };
+    this.openWorkspaceTask(
+      "#menu_review_report_workspace",
+      /^\/(validation|ResultValidation)(?:\?|$)/,
+    );
+    cy.get("#validation-page-title").should("be.visible");
+    cy.contains(
+      ".validation-search-modes button",
+      labelPattern(`validation.search.mode.${labels[type]}`),
+    )
+      .should("be.visible")
+      .and("be.enabled")
+      .click();
+    cy.location("pathname").should("eq", "/validation");
+    cy.location("search").should("include", `type=${type}`);
+    return new Validation();
+  }
+
+  goToCompatibilityOrderEntry() {
+    this.expectOverview();
+    cy.intercept("GET", "**/rest/SamplePatientEntry").as(
+      "compatibilityEntryForm",
+    );
+    cy.visit("/SamplePatientEntry");
+    cy.location("pathname").should("eq", "/SamplePatientEntry");
+    cy.wait("@compatibilityEntryForm")
+      .its("response.statusCode")
+      .should("eq", 200);
+    cy.get("#local_search").should("be.visible");
+    return new OrderEntityPage();
   }
 }
 

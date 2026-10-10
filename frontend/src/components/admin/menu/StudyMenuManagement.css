@@ -1,0 +1,24 @@
+.study-menu-editor {
+  width: 100%;
+  max-width: 52rem;
+  min-width: 0;
+}
+.study-menu-editor .formInlineDiv {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  gap: 0.75rem;
+}
+.study-menu-editor .cds--checkbox-wrapper {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.study-menu-editor .cds--checkbox-label {
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+}
+.study-menu-editor .cds--checkbox-label-text {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

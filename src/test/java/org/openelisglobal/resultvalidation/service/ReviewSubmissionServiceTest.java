@@ -5,12 +5,12 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import java.util.List;
-import org.openelisglobal.analysis.valueholder.Analysis;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.openelisglobal.analysis.service.AnalysisService;
+import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.action.IActionConstants;
 import org.openelisglobal.common.services.StatusService.AnalysisStatus;
 import org.openelisglobal.common.services.registration.interfaces.IResultUpdate;
@@ -51,6 +51,7 @@ public class ReviewSubmissionServiceTest {
     private QCReleaseGateService qcReleaseGate;
     private ReviewScopeService scopes;
     private ReviewScopeSnapshot policy;
+    private org.openelisglobal.result.service.ResultRestrictionAccess clinicalAccess;
 
     @Before
     public void setup() {
@@ -80,6 +81,8 @@ public class ReviewSubmissionServiceTest {
         service = spy(new ReviewSubmissionService(fixture.guard, analyses, fixture.statuses, notes,
                 mock(SampleService.class), mock(SampleHumanService.class), signatures, users, fixture.specimens, fhir,
                 notifications, qcReleaseGate, scopes));
+        clinicalAccess = mock(org.openelisglobal.result.service.ResultRestrictionAccess.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "clinicalAccess", clinicalAccess);
         updater = mock(IResultUpdate.class);
         doReturn(List.of(updater)).when(service).registeredUpdaters();
         request = new MockHttpServletRequest();
@@ -107,6 +110,19 @@ public class ReviewSubmissionServiceTest {
     @After
     public void cleanup() {
         fixture.cleanup();
+    }
+
+    @Test
+    public void currentTypedValidationMembershipRevocationPrecedesAnyReviewMutation() {
+        doThrow(new org.springframework.security.access.AccessDeniedException("current membership revoked"))
+                .when(clinicalAccess).bindForActor(eq(request),
+                        eq(org.openelisglobal.result.service.ResultRestrictionAccess.Phase.VALIDATION),
+                        eq(org.openelisglobal.result.service.ResultRestrictionAccess.Action.UPDATE), eq("801"));
+        assertThrows(org.springframework.security.access.AccessDeniedException.class, this::save);
+        verifyZeroInteractions(analyses, notes, fhir, notifications, qcReleaseGate);
+        verify(signatures, never()).executeSignatureForSnapshot(anyString(), anyString(), any(), anyString(), anyLong(),
+                any(), any(), any(), anyString());
+        assertNull(credentials.getPassword());
     }
 
     private void save() {

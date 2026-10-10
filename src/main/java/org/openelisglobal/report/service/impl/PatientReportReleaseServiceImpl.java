@@ -53,6 +53,8 @@ public class PatientReportReleaseServiceImpl extends AuditableBaseObjectServiceI
     private org.openelisglobal.esig.service.ElectronicSignatureService signatures;
     @Autowired
     private HisResultOutboxService hisResultOutboxService;
+    @Autowired
+    private org.openelisglobal.result.service.ResultRestrictionAccess clinicalAccess;
 
     public PatientReportReleaseServiceImpl() {
         super(PatientReportRelease.class);
@@ -66,7 +68,11 @@ public class PatientReportReleaseServiceImpl extends AuditableBaseObjectServiceI
     @Override
     @Transactional
     public PatientReportReleaseSummary createDocumentDraft(String documentId, String amendmentReason, String actor) {
+        var permission = clinicalAccess.bindCurrentRequest(
+                org.openelisglobal.result.service.ResultRestrictionAccess.Phase.REPORTS,
+                org.openelisglobal.result.service.ResultRestrictionAccess.Action.UPDATE, actor);
         ReportDocumentSummary document = documents.lockCurrent(documentId, actor);
+        clinicalAccess.requireAnalysisIds(permission, document.analysisIds());
         PatientReportRelease existing = patientReportReleaseDAO.getDraft(documentId);
         if (existing != null) {
             requireOwnership(existing, document);
@@ -222,8 +228,8 @@ public class PatientReportReleaseServiceImpl extends AuditableBaseObjectServiceI
         }
     }
 
-    private record IssuedReportOutboxPayload(int schemaVersion, Long releaseId, String documentId,
-            String reportNumber, int reportVersion, Long supersedesReleaseId, String snapshotSha256, String pdfSha256) {
+    private record IssuedReportOutboxPayload(int schemaVersion, Long releaseId, String documentId, String reportNumber,
+            int reportVersion, Long supersedesReleaseId, String snapshotSha256, String pdfSha256) {
     }
 
     @Override
@@ -374,10 +380,15 @@ public class PatientReportReleaseServiceImpl extends AuditableBaseObjectServiceI
     }
 
     private AuthorizedRelease authorizeRelease(String expectedDocumentId, Long releaseId, String actor, boolean lock) {
+        var permission = lock ? clinicalAccess.bindCurrentRequest(
+                org.openelisglobal.result.service.ResultRestrictionAccess.Phase.REPORTS,
+                org.openelisglobal.result.service.ResultRestrictionAccess.Action.UPDATE, actor) : null;
         if (releaseId == null || releaseId <= 0)
             throw new IllegalArgumentException("Invalid report release identifier");
         PatientReportRelease release = get(releaseId);
         ReportReleaseScope scope = requireScope(release);
+        if (permission != null)
+            clinicalAccess.requireAnalysisIds(permission, scope.analysisIds());
         requireExpectedDocument(expectedDocumentId, scope);
         ReportDocumentSummary document = documents.authorizePersistedScope(scope.documentId(),
                 scope.authorizationScope(), actor, false);

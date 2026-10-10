@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -34,6 +35,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class NotificationRestController extends BaseRestController {
 
     public record PushSubscriptionStatus(boolean subscribed, String pfEndpoint) {
+    }
+
+    public record NotificationSaveReceipt(boolean saved, Long id, String pushStatus) {
     }
 
     private final NotificationDAO notificationDAO;
@@ -63,6 +67,7 @@ public class NotificationRestController extends BaseRestController {
     }
 
     @PostMapping("/notification/{userId}")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> saveNotification(@PathVariable String userId, @RequestBody Notification notification) {
         try {
             // Set user and created date
@@ -74,62 +79,41 @@ public class NotificationRestController extends BaseRestController {
             notificationDAO.save(notification);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to save notification: " + e.getMessage());
+                    .body(new NotificationSaveReceipt(false, null, "NOT_ATTEMPTED"));
         }
 
+        // Persistence has succeeded. Optional browser transport cannot turn it into
+        // an invitation to save the same message again.
         try {
-            // Ensure BouncyCastleProvider is added for cryptographic operations
+            NotificationSubscriptions ns = notificationSubscriptionDAO
+                    .getNotificationSubscriptionByUserId(Long.valueOf(userId));
+            if (ns == null) {
+                return ResponseEntity.ok(new NotificationSaveReceipt(true, notification.getId(), "NOT_SUBSCRIBED"));
+            }
             if (Security.getProvider(BouncyCastleProvider.PROVIDER_NAME) == null) {
                 Security.addProvider(new BouncyCastleProvider());
             }
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to add BouncyCastleProvider: " + e.getMessage());
-        }
-
-        NotificationSubscriptions ns;
-        try {
-            // Get notification subscription by userId
-            ns = notificationSubscriptionDAO.getNotificationSubscriptionByUserId(Long.valueOf(userId));
-            if (ns == null) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Subscription not found for userId: " + userId);
-            }
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to retrieve notification subscription: " + e.getMessage());
-        }
-
-        try {
-            // Configure PushService with VAPID keys
-            PushService pushService = new PushService(env.getProperty("vapid.public.key"),
-                    env.getProperty("vapid.private.key"), "mailto:your-email@example.com");
-
-            String title = "OpenELIS Global Notification";
-            String body = notification.getMessage();
-            String url = "http://localhost";
-
-            // Create a notification message
+            PushService pushService = createPushService();
             Map<String, String> payload = new HashMap<>();
-            payload.put("title", title);
-            payload.put("body", body);
-            payload.put("url", url);
-
-            ObjectMapper objectMapper = new ObjectMapper();
-            String payloadJson = objectMapper.writeValueAsString(payload);
-
-            // Use fully qualified name for web push Notification
+            payload.put("title", "OpenELIS Global Notification");
+            payload.put("body", notification.getMessage());
+            payload.put("url", "http://localhost");
+            String payloadJson = new ObjectMapper().writeValueAsString(payload);
             nl.martijndwars.webpush.Notification webPushNotification = new nl.martijndwars.webpush.Notification(
                     ns.getPfEndpoint(), ns.getPfP256dh(), ns.getPfAuth(), payloadJson);
-
-            // Send push notification
             HttpResponse response = pushService.send(webPushNotification);
-
-            return ResponseEntity.ok()
-                    .body("Push notification sent successfully. Response: " + response.getStatusLine());
+            int status = response.getStatusLine().getStatusCode();
+            // A 2xx response acknowledges the push service, not delivery to a device.
+            String pushStatus = status >= 200 && status < 300 ? "ACCEPTED" : "FAILED";
+            return ResponseEntity.ok(new NotificationSaveReceipt(true, notification.getId(), pushStatus));
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to send push notification: " + e.getMessage());
+            return ResponseEntity.ok(new NotificationSaveReceipt(true, notification.getId(), "FAILED"));
         }
+    }
+
+    protected PushService createPushService() throws Exception {
+        return new PushService(env.getProperty("vapid.public.key"), env.getProperty("vapid.private.key"),
+                "mailto:your-email@example.com");
     }
 
     @GetMapping("/notification/pnconfig")

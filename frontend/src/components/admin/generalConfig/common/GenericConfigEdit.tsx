@@ -22,6 +22,7 @@ import {
 import { NotificationContext } from "../../../layout/Layout";
 import { FormattedMessage, useIntl } from "react-intl";
 import { refreshCurrentRoute } from "../../../utils/NavigationUtils";
+import { getConfigPresentation } from "./configPresentation";
 
 interface GenericConfigEditProps {
   menuType: string;
@@ -258,8 +259,20 @@ const GenericConfigEdit = ({
             <span>
               <FormattedMessage id="admin.page.configuration.formEntryConfigMenu.name" />
             </span>
-            <strong>{config.paramName || "—"}</strong>
-            <p>{config.description || "—"}</p>
+            <strong title={config.paramName}>
+              {getConfigPresentation(
+                config.paramName,
+                config.description,
+                intl.locale,
+              ).name || "—"}
+            </strong>
+            <p>
+              {getConfigPresentation(
+                config.paramName,
+                config.description,
+                intl.locale,
+              ).description || "—"}
+            </p>
           </div>
 
           <div className="config-editor__field">

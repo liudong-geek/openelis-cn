@@ -16,11 +16,11 @@ describe("Batch Test Reassignment and Canelation", function () {
   });
 
   describe("Enter Data and Cancel", () => {
-    it("Select Sample and Tests", () => {
+    it("Select Serum and Amylase; exclude identical replacement", () => {
       batchTestPage.selectSampleType();
       batchTestPage.checkBoxes("currentTest");
-      batchTestPage.checkBoxes("replaceWith");
       batchTestPage.selectTest("1");
+      batchTestPage.checkBoxes("replaceWith");
       batchTestPage.selectTest("0");
     });
 
@@ -30,15 +30,15 @@ describe("Batch Test Reassignment and Canelation", function () {
   });
 
   describe("Enter Data and Save", () => {
-    it("Select Sample and Tests", () => {
+    it("Select Serum and Amylase; exclude identical replacement", () => {
       batchTestPage.selectSampleType();
       batchTestPage.checkBoxes("currentTest");
-      batchTestPage.checkBoxes("replaceWith");
       batchTestPage.selectTest("1");
+      batchTestPage.checkBoxes("replaceWith");
       batchTestPage.selectTest("0");
     });
 
-    it("Save Changes", () => {
+    it("Reject identical replacement without changing pending analyses", () => {
       batchTestPage.clickOk();
     });
   });

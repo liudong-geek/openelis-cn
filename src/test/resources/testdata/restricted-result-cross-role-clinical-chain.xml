@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dataset>
+    <!-- Minimal deterministic clinical order. The test deliberately starts
+        before collection: no sample_item, analysis, result, or intake-decision row
+        is seeded. Every later clinical row is created by the production services. -->
+    <localization id="9701"
+        description="Cross-role clinical chain test" />
+    <localization id="9702"
+        description="Cross-role specimen type" />
+    <localization_value id="9701" localization_id="9701"
+        locale="en" value="Cross-role glucose" />
+    <localization_value id="9702" localization_id="9701"
+        locale="zh" value="跨岗位葡萄糖" />
+    <localization_value id="9703" localization_id="9702"
+        locale="en" value="Cross-role serum" />
+    <localization_value id="9704" localization_id="9702"
+        locale="zh" value="跨岗位血清" />
+    <supported_locale id="9701" locale_code="en"
+        display_name="English" is_active="true" is_fallback="true"
+        sort_order="1" />
+    <supported_locale id="9702" locale_code="zh"
+        display_name="中文" is_active="true" is_fallback="false" sort_order="2" />
+
+    <organization id="9701"
+        name="Cross-role Clinical Laboratory" short_name="CRCL" code="CRCL"
+        lastupdated="2026-10-01 08:00:00" />
+    <test_section id="9701" name="CrossRoleChemistry"
+        description="Cross-role chemistry" org_id="9701" is_external="N"
+        is_active="Y" domain="CLINICAL" sort_order="1"
+        name_localization_id="9701" display_key="test.cross.role.section"
+        lastupdated="2026-10-01 08:00:00" />
+    <!-- Active but unrelated section used only to prove fail-closed section
+        scope. -->
+    <test_section id="9702" name="CrossRoleWrongScope"
+        description="Unrelated clinical section" org_id="9701" is_external="N"
+        is_active="Y" domain="CLINICAL" sort_order="2"
+        name_localization_id="9701" display_key="test.cross.role.wrong.scope"
+        lastupdated="2026-10-01 08:00:00" />
+
+    <!-- Complete named status set used by collection, entry, review, and report. -->
+    <status_of_sample id="9701" name="Test Entered"
+        code="1" status_type="ORDER" is_active="Y"
+        display_key="status.order.entered" description="Entered"
+        lastupdated="2026-10-01 08:00:00" />
+    <status_of_sample id="9702" name="Testing Started"
+        code="2" status_type="ORDER" is_active="Y"
+        display_key="status.order.started" description="Started"
+        lastupdated="2026-10-01 08:00:00" />
+    <status_of_sample id="9703" name="Testing finished"
+        code="3" status_type="ORDER" is_active="Y"
+        display_key="status.order.finished" description="Finished"
+        lastupdated="2026-10-01 08:00:00" />
+    <status_of_sample id="9710" name="Not Tested"
+        code="10" status_type="ANALYSIS" is_active="Y"
+        display_key="status.analysis.not.started" description="Not tested"
+        lastupdated="2026-10-01 08:00:00" />
+    <status_of_sample id="9711"
+        name="Technical Acceptance" code="11" status_type="ANALYSIS"
+        is_active="Y" display_key="status.analysis.tech.accepted"
+        description="Technical acceptance" lastupdated="2026-10-01 08:00:00" />
+    <status_of_sample id="9712" name="Technical Rejected"
+        code="12" status_type="ANALYSIS" is_active="Y"
+        display_key="status.analysis.tech.rejected"
+        description="Technical rejection" lastupdated="2026-10-01 08:00:00" />
+    <status_of_sample id="9713" name="Biologist Rejection"
+        code="13" status_type="ANALYSIS" is_active="Y"
+        display_key="status.analysis.biologist.rejected"
+        description="Returned" lastupdated="2026-10-01 08:00:00" />
+    <status_of_sample id="9714" name="Finalized" code="14"
+        status_type="ANALYSIS" is_active="Y"
+        display_key="status.analysis.finalized" description="Finalized"
+        lastupdated="2026-10-01 08:00:00" />
+    <status_of_sample id="9715" name="Test Canceled"
+        code="15" status_type="ANALYSIS" is_active="Y"
+        display_key="status.analysis.canceled" description="Canceled"
+        lastupdated="2026-10-01 08:00:00" />
+    <status_of_sample id="9716" name="NonConforming"
+        code="16" status_type="ANALYSIS" is_active="N"
+        display_key="status.analysis.nonconforming"
+        description="Nonconforming" lastupdated="2026-10-01 08:00:00" />
+    <status_of_sample id="9717" name="Sample Rejected"
+        code="17" status_type="ANALYSIS" is_active="Y"
+        display_key="status.analysis.sample.rejected"
+        description="Rejected analysis" lastupdated="2026-10-01 08:00:00" />
+    <status_of_sample id="9720" name="SampleEntered"
+        code="20" status_type="SAMPLE" is_active="Y"
+        display_key="status.sample.entered" description="Sample entered"
+        lastupdated="2026-10-01 08:00:00" />
+    <status_of_sample id="9721" name="Sample Rejected"
+        code="21" status_type="SAMPLE" is_active="Y"
+        display_key="status.sample.rejected" description="Sample rejected"
+        lastupdated="2026-10-01 08:00:00" />
+    <status_of_sample id="9722" name="SampleCanceled"
+        code="22" status_type="SAMPLE" is_active="Y"
+        display_key="status.sample.canceled" description="Sample canceled"
+        lastupdated="2026-10-01 08:00:00" />
+    <status_of_sample id="9723" name="SampleDisposed"
+        code="23" status_type="SAMPLE" is_active="Y"
+        display_key="status.sample.disposed" description="Sample disposed"
+        lastupdated="2026-10-01 08:00:00" />
+
+    <unit_of_measure id="9701" name="mmol/L"
+        description="Millimoles per litre" is_active="Y"
+        lastupdated="2026-10-01 08:00:00" />
+    <method id="9701" name="Cross-role enzymatic"
+        description="Enzymatic" name_localization_id="9701"
+        reporting_description="Enzymatic" active_begin="2026-01-01"
+        lastupdated="2026-10-01 08:00:00" />
+    <scriptlet id="9701" name="Cross-role direct" code_type="T"
+        code_source="" lastupdated="2026-10-01 08:00:00" />
+    <label id="9701" name="Cross-role specimen"
+        description="Cross-role specimen" printer_type="L" scriptlet_id="9701"
+        lastupdated="2026-10-01 08:00:00" />
+    <test_trailer id="9701" name="Cross-role trailer"
+        description="Cross-role trailer" text=""
+        lastupdated="2026-10-01 08:00:00" />
+    <test_formats id="9701" lastupdated="2026-10-01 08:00:00" />
+    <type_of_sample id="9701" description="Cross-role serum"
+        domain="H" is_active="true" sort_order="1" name_localization_id="9702"
+        lastupdated="2026-10-01 08:00:00" />
+    <test id="9701" method_id="9701" uom_id="9701"
+        description="Cross-role glucose"
+        reporting_description="Cross-role glucose"
+        active_begin="2026-01-01 00:00:00" active_end="2036-01-01 00:00:00"
+        time_holding="30" time_wait="10" time_ta_average="30"
+        time_ta_warning="60" time_ta_max="120" label_qty="1"
+        lastupdated="2026-10-01 08:00:00" label_id="9701"
+        test_trailer_id="9701" test_section_id="9701" scriptlet_id="9701"
+        test_format_id="9701" local_code="CRGLU" sort_order="1"
+        name="Cross-role glucose" orderable="true"
+        guid="8e10d116-f8f4-4b36-bcbd-000000009701"
+        name_localization_id="9701" reporting_name_localization_id="9701"
+        is_active="Y" is_reportable="Y" antimicrobial_resistance="false" />
+    <sampletype_test id="9701" sample_type_id="9701"
+        test_id="9701" />
+    <test_result id="9701" test_id="9701" result_group="1"
+        flags="" tst_rslt_type="N" value="5.6" significant_digits="1"
+        quant_limit="50.0" cont_level="Normal"
+        lastupdated="2026-10-01 08:00:00" scriptlet_id="9701" sort_order="1"
+        is_quantifiable="true" is_active="true" is_normal="true" />
+    <analyte id="9701" analyte_id="9701" name="Cross-role glucose"
+        is_active="Y" external_id="CRGLU" local_abbrev="CRGLU"
+        lastupdated="2026-10-01 08:00:00" />
+    <test_analyte id="9701" test_id="9701" analyte_id="9701"
+        result_group="1" sort_order="1" testalyt_type="T" is_reportable="Y"
+        lastupdated="2026-10-01 08:00:00" />
+
+    <person id="9701" first_name="真实链" last_name="患者"
+        lastupdated="2026-10-01 08:00:00" />
+    <patient id="9701" person_id="9701"
+        external_id="CR-PATIENT-9701" gender="F" birth_date="1990-01-01"
+        fhir_uuid="8e10d116-f8f4-4b36-bcbd-000000019701"
+        lastupdated="2026-10-01 08:00:00" />
+    <sample id="9701" accession_number="26-CR9701" status_id="9701"
+        domain="H" received_date="2026-10-01 08:00:00"
+        entered_date="2026-10-01 08:00:00" lastupdated="2026-10-01 08:00:00" />
+    <sample_human id="9701" samp_id="9701" patient_id="9701"
+        lastupdated="2026-10-01 08:00:00" />
+    <sample_type_request id="9701" sample_id="9701"
+        type_of_sample_id="9701" sort_order="1" requested_quantity="1.0"
+        requested_tests="9701" status="REQUESTED"
+        created_date="2026-10-01 08:00:00" last_updated="2026-10-01 08:00:00"
+        sysuser_id="1" />
+</dataset>

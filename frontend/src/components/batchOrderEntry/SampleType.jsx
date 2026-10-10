@@ -144,6 +144,7 @@ const SampleType = ({ updateFormValues }) => {
 
     updateFormValues({
       selectedTests: updatedTests,
+      selectedPanels,
       sampleId: selectedType.id,
       sampleName: selectedType.value,
     });

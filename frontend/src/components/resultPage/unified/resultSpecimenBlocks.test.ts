@@ -81,3 +81,14 @@ test("different known facts retain separate explanations without altering the in
   expect(rows[2].readOnly).toBe(false);
   expect(result.every((item) => !item.rowKeys.has("103-primary"))).toBe(true);
 });
+
+test("handoff uses the real visible representative analysis rather than a hidden first row or display index", () => {
+  const rows = [
+    row("101", { testId: "401", analysisLastupdated: "1000" }),
+    row("102", { testId: "402", analysisLastupdated: "1001" }),
+  ];
+  const result = resultSpecimenBlocks(rows, [rows[1]]);
+  expect(result[0].representative).toBe(rows[1]);
+  expect(result[0].representative.analysisId).toBe("102");
+  expect(result[0].representative.id).toBe("0");
+});

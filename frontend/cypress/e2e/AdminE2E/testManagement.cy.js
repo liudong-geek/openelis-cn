@@ -1,40 +1,26 @@
 import LoginPage from "../../pages/LoginPage";
 
 describe("Test Management", function () {
-  let homePage, loginPage, adminPage, testManagementPage;
-
+  let adminPage, testManagementPage;
   before(() => {
-    loginPage = new LoginPage();
+    const loginPage = new LoginPage();
     loginPage.visit();
-    homePage = loginPage.goToHomePage();
-    adminPage = homePage.goToAdminPage();
+    adminPage = loginPage.goToHomePage().goToAdminPage();
   });
-
-  it("Navigate to Test Management Page", () => {
+  // E-01 draft: current catalog cases replace explicitly retired root/guide/column controls.
+  it("Navigate to the current Test Catalog list", () => {
     testManagementPage = adminPage.goToTestManagementPage();
-    testManagementPage.validatePageTitle("Test Management");
+    testManagementPage.validatePageTitle();
   });
-
-  describe("Spelling Corrections", () => {
-    it("Rename Existing Test Names", () => {
-      testManagementPage.clickTestName();
-      testManagementPage.validatePageTitle("Test names");
-      testManagementPage.clickButton("0");
-      testManagementPage.button("Save");
-      testManagementPage.button("Accept");
-    });
+  it("Create an inactive Test Catalog item and read it back", () => {
+    cy.fixture("ReflexTestsConfig").then((fixture) =>
+      testManagementPage.createAndReadBack(fixture.sample),
+    );
   });
-
-  describe("Test Organization", () => {
-    it("Navigate to Test Management Page", () => {
-      testManagementPage = adminPage.goToTestManagementPage();
-      testManagementPage.validatePageTitle("Test Management");
-    });
-
-    it("View Test Catalog", () => {
-      testManagementPage.clickTestCatalog();
-      testManagementPage.toggleSwitch();
-      testManagementPage.selectTests();
-    });
+  it("Keep Test Catalog filters and pagination state", () => {
+    testManagementPage.applyAndKeepListState();
+  });
+  it("Open linked Test Catalog configuration and return to the same list", () => {
+    testManagementPage.linkedEditorAndReturn();
   });
 });

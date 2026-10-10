@@ -41,3 +41,16 @@ export const navigateToInternalPath = (
 export const refreshCurrentRoute = (): void => {
   window.dispatchEvent(new Event(INTERNAL_ROUTE_REFRESH_EVENT));
 };
+
+/** Only the configured same-origin public login route may remain in this document. */
+export const getPublicLoginPath = (target: string): string | null => {
+  try {
+    const resolved = new URL(target, window.location.href);
+    return resolved.origin === window.location.origin &&
+      resolved.pathname === "/login"
+      ? `${resolved.pathname}${resolved.search}${resolved.hash}`
+      : null;
+  } catch {
+    return null;
+  }
+};

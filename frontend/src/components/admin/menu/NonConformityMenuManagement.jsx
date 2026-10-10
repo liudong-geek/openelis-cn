@@ -1,6 +1,7 @@
 import React, { useContext, useState, useEffect, useRef } from "react";
 import {
   Form,
+  InlineNotification,
   Heading,
   Toggle,
   Button,
@@ -30,7 +31,10 @@ let breadcrumbs = [
     link: "/MasterListsPage/nonConformityMenuManagement",
   },
 ];
-function NonConformityMenuManagement() {
+function NonConformityMenuManagement({
+  embedded = false,
+  onEditorStateChange,
+} = {}) {
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
 
@@ -40,21 +44,32 @@ function NonConformityMenuManagement() {
 
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [readFailed, setReadFailed] = useState(false);
+  useEffect(() => {
+    onEditorStateChange?.({ dirty, busy: isSubmitting });
+  }, [dirty, isSubmitting, onEditorStateChange]);
   const [showChildren, setShowChildren] = useState(false);
   const [menuItem, setMenuItem] = useState({ menu: {}, childMenus: [] });
 
   async function displayStatus(res) {
     setNotificationVisible(true);
-    setIsSubmitting(false);
-    if (res.status == "200") {
+    if (res?.status == "200") {
+      var body;
+      try {
+        body = await res.json();
+      } finally {
+        setIsSubmitting(false);
+      }
       addNotification({
         kind: NotificationKinds.success,
         title: intl.formatMessage({ id: "notification.title" }),
         message: intl.formatMessage({ id: "success.add.edited.msg" }),
       });
-      var body = await res.json();
       setMenuItem(body);
+      setDirty(false);
     } else {
+      setIsSubmitting(false);
       addNotification({
         kind: NotificationKinds.error,
         title: intl.formatMessage({ id: "notification.title" }),
@@ -65,6 +80,7 @@ function NonConformityMenuManagement() {
 
   function handleSubmit(event) {
     event.preventDefault();
+    if (isSubmitting) return;
     setIsSubmitting(true);
     postToOpenElisServerFullResponse(
       "/rest/menu/menu_nonconformity",
@@ -74,8 +90,17 @@ function NonConformityMenuManagement() {
   }
 
   const handleMenuItems = (res) => {
-    if (res) {
+    if (res?.menu?.elementId === "menu_nonconformity") {
+      setReadFailed(false);
       setMenuItem(res);
+    } else {
+      setReadFailed(true);
+      setNotificationVisible(true);
+      addNotification({
+        kind: NotificationKinds.error,
+        title: intl.formatMessage({ id: "notification.title" }),
+        message: intl.formatMessage({ id: "server.error.msg" }),
+      });
     }
   };
 
@@ -95,14 +120,24 @@ function NonConformityMenuManagement() {
       {notificationVisible === true ? <AlertDialog /> : ""}
       {loading && <Loading />}
       <div className="adminPageContent">
-        <PageBreadCrumb breadcrumbs={breadcrumbs} />
+        {!embedded && <PageBreadCrumb breadcrumbs={breadcrumbs} />}
+        {readFailed && (
+          <InlineNotification
+            kind="error"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({ id: "server.error.msg" })}
+          />
+        )}
         <Grid fullWidth={true}>
           <Column lg={16}>
-            <Section>
-              <Heading>
-                <FormattedMessage id="menu.nonconform.title" />
-              </Heading>
-            </Section>
+            {!embedded && (
+              <Section>
+                <Heading>
+                  <FormattedMessage id="menu.nonconform.title" />
+                </Heading>
+              </Section>
+            )}
             <Section>
               <Form onSubmit={handleSubmit}>
                 <br></br>
@@ -112,6 +147,12 @@ function NonConformityMenuManagement() {
                     id: "label.showChildren",
                   })}
                   size="md"
+                  labelA={intl.formatMessage({
+                    id: "config.workspace.boolean.false",
+                  })}
+                  labelB={intl.formatMessage({
+                    id: "config.workspace.boolean.true",
+                  })}
                   toggled={showChildren}
                   onToggle={() => {
                     setShowChildren(!showChildren);
@@ -123,13 +164,21 @@ function NonConformityMenuManagement() {
                   menuItem={menuItem}
                   curMenuItem={menuItem}
                   path="$"
-                  setMenuItem={setMenuItem}
+                  setMenuItem={(next) => {
+                    setDirty(true);
+                    setMenuItem(next);
+                  }}
                   labelKey="menu.nonconform.active"
                   recurse={showChildren}
                 />
                 <br></br>
                 <div>
-                  <Button type="submit">
+                  <Button
+                    type="submit"
+                    disabled={
+                      isSubmitting || readFailed || !menuItem.menu.elementId
+                    }
+                  >
                     <FormattedMessage id="label.button.submit" />
                     {isSubmitting && <Loading small={true} />}
                   </Button>

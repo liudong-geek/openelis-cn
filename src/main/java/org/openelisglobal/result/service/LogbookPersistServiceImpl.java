@@ -82,6 +82,8 @@ public class LogbookPersistServiceImpl implements LogbookResultsPersistService {
     private org.openelisglobal.audittrail.dao.HistoryDAO historyDAO;
     @Autowired
     private org.openelisglobal.systemuser.service.SystemUserService systemUserService;
+    @Autowired
+    private ResultRestrictionAccess clinicalAccess;
 
     /**
      * Ordinary entry owns preparation AND persistence. It must not join an outer
@@ -97,8 +99,11 @@ public class LogbookPersistServiceImpl implements LogbookResultsPersistService {
         String userId = ControllerUtills.getSysUserId(request);
         if (userId == null || !userId.matches("[1-9][0-9]*"))
             throw new AccessDeniedException("error.notauthorized");
+        var currentPermission = clinicalAccess.bindForActor(request, ResultRestrictionAccess.Phase.RESULTS,
+                ResultRestrictionAccess.Action.UPDATE, userId);
         var entrySession = request.getSession(false);
         Runnable verifyActor = () -> {
+            clinicalAccess.requireUnchanged(request, currentPermission);
             if (entrySession == null || request.getSession(false) != entrySession
                     || !userId.equals(ControllerUtills.getSysUserId(request)))
                 throw new AccessDeniedException("error.notauthorized");
@@ -108,6 +113,7 @@ public class LogbookPersistServiceImpl implements LogbookResultsPersistService {
         if (analysis == null)
             return ResultEntrySaveOutcome.rejected(404, Map.of());
         requireEntryPermission(userId, analysis);
+        clinicalAccess.requireAnalysisIds(currentPermission, List.of(analysis.getId()));
 
         item.setModified(true);
         ResultsUpdateDataSet data = new ResultsUpdateDataSet(userId);

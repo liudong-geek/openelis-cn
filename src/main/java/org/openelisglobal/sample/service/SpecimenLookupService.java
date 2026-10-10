@@ -17,7 +17,10 @@ import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Daily read-only lookup with the existing Reception and whole-order Test scope. */
+/**
+ * Daily read-only lookup with the existing Reception and whole-order Test
+ * scope.
+ */
 @Service
 public class SpecimenLookupService {
     private final SpecimenLookupCandidateDAO candidates;
@@ -25,6 +28,8 @@ public class SpecimenLookupService {
     private final OrderDashboardDAO dashboard;
     private final OrderDashboardAccess access;
     private final DefaultConfigurationProperties configuration;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.openelisglobal.result.service.ResultRestrictionAccess clinicalAccess;
 
     public SpecimenLookupService(SpecimenLookupCandidateDAO candidates, EntryCurrentStateReader currentStates,
             OrderDashboardDAO dashboard, OrderDashboardAccess access, DefaultConfigurationProperties configuration) {
@@ -79,9 +84,7 @@ public class SpecimenLookupService {
         }
     }
 
-    @Transactional(transactionManager = EntryRecoveryTransactionManager.BEAN_NAME,
-            propagation = Propagation.REQUIRES_NEW, isolation = Isolation.REPEATABLE_READ,
-            readOnly = true, rollbackFor = Exception.class, timeout = 20)
+    @Transactional(transactionManager = EntryRecoveryTransactionManager.BEAN_NAME, propagation = Propagation.REQUIRES_NEW, isolation = Isolation.REPEATABLE_READ, readOnly = true, rollbackFor = Exception.class, timeout = 20)
     public Result lookup(String code, HttpServletRequest request) {
         if (code == null || !code.matches("[A-Za-z0-9._-]{1,30}")) {
             throw fail(400, "SPECIMEN_LOOKUP_INVALID_CODE", "请输入有效的本地申请号或标本管码。");
@@ -89,6 +92,9 @@ public class SpecimenLookupService {
         // bind checks the current Reception/GlobalAdmin role, account, session and lab
         // unit; Scope also snapshots the user's current Reception Test/section grants.
         var scope = access.bind(request);
+        var permission = clinicalAccess.bindForActor(request,
+                org.openelisglobal.result.service.ResultRestrictionAccess.Phase.RECEPTION,
+                org.openelisglobal.result.service.ResultRestrictionAccess.Action.SELECT, scope.actor().userId());
         var found = candidates.exactMatches(code);
         if (found == null || found.overflow()) {
             throw fail(409, "SPECIMEN_LOOKUP_STATE_CONFLICT", "查询范围内的标本记录过多或状态不完整，请联系管理员核对。");
@@ -100,8 +106,7 @@ public class SpecimenLookupService {
             throw fail(409, "SPECIMEN_LOOKUP_AMBIGUOUS", "该编码对应多个申请或实管，请联系管理员核对。");
         }
         var match = found.matches().get(0);
-        if (!validIdentity(match) || (match.specimen()
-                ? !code.equals(match.labNo() + "." + match.sortOrder())
+        if (!validIdentity(match) || (match.specimen() ? !code.equals(match.labNo() + "." + match.sortOrder())
                 : !code.equals(match.labNo()))) {
             throw fail(409, "SPECIMEN_LOOKUP_STATE_CONFLICT", "申请或实管身份记录不完整，请联系管理员核对。");
         }
@@ -114,8 +119,8 @@ public class SpecimenLookupService {
         }
         // The existing dashboard filter refuses partial orders: every current
         // Analysis and logical-request Test must belong to this Reception scope.
-        var criteria = new OrderDashboardCriteria(0, 25, null, List.of(), null, false, null, null,
-                scope.testIds(), scope.sectionIds(), scope.masked());
+        var criteria = new OrderDashboardCriteria(0, 25, null, List.of(), null, false, null, null, scope.testIds(),
+                scope.sectionIds(), scope.masked());
         if (dashboard.findIntakeFacts(match.sampleId(), criteria).isEmpty()) {
             throw new AccessDeniedException("Whole-order Reception scope denied");
         }
@@ -132,8 +137,8 @@ public class SpecimenLookupService {
             }
             throw fail(409, "SPECIMEN_LOOKUP_STATE_CONFLICT", "当前申请或标本关系不完整，请联系管理员核对。");
         }
-        if (snapshot == null || !match.sampleId().equals(snapshot.sampleId())
-                || !match.labNo().equals(snapshot.labNo()) || !"clinical".equals(snapshot.workflowType())) {
+        if (snapshot == null || !match.sampleId().equals(snapshot.sampleId()) || !match.labNo().equals(snapshot.labNo())
+                || !"clinical".equals(snapshot.workflowType())) {
             throw fail(409, "SPECIMEN_LOOKUP_STATE_CONFLICT", "申请身份在查询期间发生变化，请重新核对。");
         }
 
@@ -142,14 +147,15 @@ public class SpecimenLookupService {
             List<EntryCurrentStateReader.SpecimenView> selected = snapshot.physicalSpecimens().stream()
                     .filter(item -> match.sampleItemId().equals(item.id())).toList();
             if (selected.size() != 1 || !code.equals(snapshot.labNo() + "." + selected.get(0).sortOrder())
-                    || selected.get(0).requestId() == null || snapshot.requestedSpecimens().stream()
-                            .filter(row -> selected.get(0).requestId().equals(row.id())
-                                    && match.sampleItemId().equals(row.sampleItemId())).count() != 1) {
+                    || selected.get(0).requestId() == null
+                    || snapshot.requestedSpecimens().stream().filter(row -> selected.get(0).requestId().equals(row.id())
+                            && match.sampleItemId().equals(row.sampleItemId())).count() != 1) {
                 throw fail(409, "SPECIMEN_LOOKUP_STATE_CONFLICT", "实管与申请的关联已变化，请重新核对。");
             }
             selection = new Selection(match.sampleId(), match.sampleItemId(), selected.get(0).requestId());
         }
         access.requireUnchanged(request, scope);
+        clinicalAccess.requireUnchanged(request, permission);
         return new Result(1, "specimen_lookup", true, match.specimen() ? "specimen" : "order", selection,
                 project(snapshot, scope.masked()), Instant.now().toString());
     }
@@ -163,12 +169,11 @@ public class SpecimenLookupService {
         var decisions = snapshot.specimenDecisions();
         var types = snapshot.collectionContext() == null ? List.<EntryCurrentStateReader.MasterDataView>of()
                 : snapshot.collectionContext().masterData();
-        var requested = snapshot.requestedSpecimens().stream()
-                .map(row -> new RequestedSpecimen(row.id(), row.typeOfSampleId(), types.stream()
-                        .filter(type -> "TYPE".equals(type.kind()) && row.typeOfSampleId().equals(type.id()))
-                        .findFirst().map(EntryCurrentStateReader.MasterDataView::name).orElse(null), row.status(),
-                        row.sampleItemId()))
-                .toList();
+        var requested = snapshot.requestedSpecimens().stream().map(row -> new RequestedSpecimen(row.id(),
+                row.typeOfSampleId(),
+                types.stream().filter(type -> "TYPE".equals(type.kind()) && row.typeOfSampleId().equals(type.id()))
+                        .findFirst().map(EntryCurrentStateReader.MasterDataView::name).orElse(null),
+                row.status(), row.sampleItemId())).toList();
         var physical = snapshot.physicalSpecimens().stream().map(item -> {
             var matches = decisions.stream().filter(row -> item.id().equals(row.sampleItemId())).toList();
             String state = matches.size() == 1 ? matches.get(0).state() : "REVIEW_REQUIRED";
@@ -176,14 +181,11 @@ public class SpecimenLookupService {
             String operation = "RECORDED".equals(state) ? matches.get(0).operationId() : null;
             boolean recordedRejection = !masked && "RECORDED".equals(state) && "REJECTED".equals(decision)
                     && item.rejected();
-            SpecimenIntakeDecision.Reason recordedReason = recordedRejection
-                    ? matches.get(0).reason() : null;
-            String recordedEvidenceDigest = recordedRejection
-                    ? matches.get(0).evidenceDigest() : null;
+            SpecimenIntakeDecision.Reason recordedReason = recordedRejection ? matches.get(0).reason() : null;
+            String recordedEvidenceDigest = recordedRejection ? matches.get(0).evidenceDigest() : null;
             String expectedEvidenceDigest = null;
-            if (!masked && snapshot.patient() != null && "NOT_RECORDED".equals(state)
-                    && item.collectionDate() != null && item.receivedDate() != null && !item.voided()
-                    && !item.rejected()) {
+            if (!masked && snapshot.patient() != null && "NOT_RECORDED".equals(state) && item.collectionDate() != null
+                    && item.receivedDate() != null && !item.voided() && !item.rejected()) {
                 var linked = snapshot.requestedSpecimens().stream()
                         .filter(row -> row.id().equals(item.requestId()) && item.id().equals(row.sampleItemId())
                                 && "COLLECTED".equals(row.status())
@@ -194,8 +196,8 @@ public class SpecimenLookupService {
                 }
             }
             return new PhysicalSpecimen(item.id(), item.requestId(), item.sortOrder(), item.typeOfSampleId(),
-                    item.statusId(), item.voided(), item.rejected(), item.collectionDate(), item.receivedDate(),
-                    state, decision, expectedEvidenceDigest, operation, recordedReason, recordedEvidenceDigest);
+                    item.statusId(), item.voided(), item.rejected(), item.collectionDate(), item.receivedDate(), state,
+                    decision, expectedEvidenceDigest, operation, recordedReason, recordedEvidenceDigest);
         }).toList();
         return new Current(snapshot.sampleId(), snapshot.labNo(), snapshot.orderStatusId(), masked, patient, requested,
                 physical, masked ? null : snapshot.intakeReasons());
@@ -209,10 +211,8 @@ public class SpecimenLookupService {
         try {
             var evidence = new SpecimenIntakeEvidence(1, snapshot.lastUpdated(), request.lastUpdated(),
                     item.lastUpdated(), item.typeOfSampleId(), item.collectionDate(), item.receivedDate(),
-                    item.analyses().stream()
-                            .map(analysis -> new SpecimenIntakeEvidence.Analysis(analysis.id(), analysis.testId(),
-                                    analysis.lastUpdated()))
-                            .toList());
+                    item.analyses().stream().map(analysis -> new SpecimenIntakeEvidence.Analysis(analysis.id(),
+                            analysis.testId(), analysis.lastUpdated())).toList());
             return SpecimenIntakeEvidence.digest(evidence.encode());
         } catch (IllegalArgumentException invalidEvidence) {
             // A legacy or incomplete row remains visible for review, without an
@@ -222,13 +222,12 @@ public class SpecimenLookupService {
     }
 
     private static boolean validIdentity(SpecimenLookupCandidateDAO.Candidate candidate) {
-        if (candidate == null || candidate.sampleId() == null
-                || !candidate.sampleId().matches("[1-9][0-9]*") || candidate.labNo() == null
-                || candidate.labNo().isBlank() || candidate.domain() == null) {
+        if (candidate == null || candidate.sampleId() == null || !candidate.sampleId().matches("[1-9][0-9]*")
+                || candidate.labNo() == null || candidate.labNo().isBlank() || candidate.domain() == null) {
             return false;
         }
-        return !candidate.specimen() || candidate.sampleItemId().matches("[1-9][0-9]*")
-                && candidate.sortOrder() != null && candidate.sortOrder().matches("[1-9][0-9]{0,4}");
+        return !candidate.specimen() || candidate.sampleItemId().matches("[1-9][0-9]*") && candidate.sortOrder() != null
+                && candidate.sortOrder().matches("[1-9][0-9]{0,4}");
     }
 
     private static Failure fail(int status, String code, String message) {

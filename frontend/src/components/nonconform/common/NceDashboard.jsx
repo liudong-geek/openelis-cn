@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   Button,
   InlineNotification,
@@ -37,6 +37,8 @@ import {
   readNceReceipt,
   readNceWorkspace,
 } from "./nceWorkspaceRequest";
+import { ConfigurationContext } from "../../layout/Layout";
+import { canLaunchNceCapa, nceMenuAvailability } from "./nceMenuAvailability";
 import { useNceScope } from "./useNceScope";
 import NceRegistrationModal from "./NceRegistrationModal";
 import NceEventActionModal from "./NceEventActionModal";
@@ -61,6 +63,15 @@ export const NceDashboard = ({ registrationOpen = false }) => {
     location = useLocation(),
     scope = useNceScope(),
     t = (id) => intl.formatMessage({ id });
+  const { navigationMenuItems = null } = useContext(ConfigurationContext) || {};
+  const menuAvailability = nceMenuAvailability(navigationMenuItems);
+  const menuViewRef = useRef({ available: menuAvailability.view, epoch: 0 });
+  if (menuViewRef.current.available !== menuAvailability.view) {
+    menuViewRef.current = {
+      available: menuAvailability.view,
+      epoch: menuViewRef.current.epoch + 1,
+    };
+  }
   const initial = useRef(restore(location.search));
   const [criteria, setCriteria] = useState(initial.current),
     [draftQuery, setDraftQuery] = useState(initial.current.query),
@@ -68,7 +79,7 @@ export const NceDashboard = ({ registrationOpen = false }) => {
     [state, setState] = useState({ phase: "loading", owner: null, epoch: -1 }),
     [metadata, setMetadata] = useState(null),
     [expanded, setExpanded] = useState({}),
-    [registration, setRegistration] = useState(registrationOpen),
+    [registration, setRegistration] = useState(false),
     [action, setAction] = useState(null),
     [feedback, setFeedback] = useState(null),
     [pending, setPending] = useState(null),
@@ -97,6 +108,36 @@ export const NceDashboard = ({ registrationOpen = false }) => {
     state.phase !== "error"
       ? metadata.value
       : null;
+  const canRegister =
+    !!scope.owner &&
+    menuAvailability.registration &&
+    metadataValue?.canCreate === true;
+  const canView = !!active && menuAvailability.view;
+  // An UNKNOWN write keeps its original receipt-only modal for this actor.
+  // Menu withdrawal still closes it; a pending operation grants no write access.
+  const ownPendingRegistration =
+    !!scope.owner &&
+    state.owner === scope.owner &&
+    state.epoch === scope.epoch &&
+    menuAvailability.registration &&
+    pending?.operation === "CREATE";
+  const ownPendingAction =
+    !!scope.owner &&
+    menuAvailability.view &&
+    action &&
+    pending?.operation === action.type &&
+    pending?.eventId === action.row.id;
+  useEffect(() => {
+    if (!canRegister && !ownPendingRegistration) setRegistration(false);
+    else if (canRegister && registrationOpen) setRegistration(true);
+  }, [canRegister, ownPendingRegistration, registrationOpen]);
+  useEffect(() => {
+    if (!menuAvailability.view) {
+      cleanupUrls();
+      setExpanded({});
+      setAction(null);
+    }
+  }, [menuAvailability.view]);
   const cleanupUrls = () => {
     for (const [url, timer] of urls.current) {
       clearTimeout(timer);
@@ -219,10 +260,12 @@ export const NceDashboard = ({ registrationOpen = false }) => {
   };
   const scopeUnavailable = (errorKind) => {
     queryEpoch.current += 1;
+    // React 17 may render each async state update separately. Preserve the
+    // original actor's receipt before withdrawing writable capabilities.
+    setPending(pendingNceOperation(scope.owner));
     setMetadata(null);
     cleanupUrls();
     setExpanded({});
-    setPending(pendingNceOperation(scope.owner));
     setState({
       phase: "error",
       owner: scope.owner,
@@ -297,10 +340,11 @@ export const NceDashboard = ({ registrationOpen = false }) => {
     }
   };
   const download = async (row, attachment, preview = false) => {
-    if (!active || downloadLock.current) return;
+    if (!canView || downloadLock.current) return;
     const atOwner = scope.owner,
       atEpoch = scope.epoch,
-      atCriteria = criteria;
+      atCriteria = criteria,
+      atMenuEpoch = menuViewRef.current.epoch;
     downloadLock.current = true;
     setAttachmentBusy(attachment.id);
     try {
@@ -309,7 +353,9 @@ export const NceDashboard = ({ registrationOpen = false }) => {
       );
       if (
         !scope.isCurrent(atOwner, atEpoch) ||
-        atCriteria !== criteriaRef.current
+        atCriteria !== criteriaRef.current ||
+        !menuViewRef.current.available ||
+        atMenuEpoch !== menuViewRef.current.epoch
       )
         return;
       if (
@@ -350,7 +396,9 @@ export const NceDashboard = ({ registrationOpen = false }) => {
     } catch (error) {
       if (
         scope.isCurrent(atOwner, atEpoch) &&
-        atCriteria === criteriaRef.current
+        atCriteria === criteriaRef.current &&
+        menuViewRef.current.available &&
+        atMenuEpoch === menuViewRef.current.epoch
       ) {
         setFeedback({
           kind: "error",
@@ -388,13 +436,17 @@ export const NceDashboard = ({ registrationOpen = false }) => {
           <h1>{t("nce.dashboard.title")}</h1>
           <p>{t("nce.dashboard.subtitle")}</p>
         </div>
-        <Button
-          renderIcon={Add}
-          disabled={!metadataValue?.canCreate || !!pending}
-          onClick={() => setRegistration(true)}
-        >
-          {t("nce.button.reportNce")}
-        </Button>
+        {menuAvailability.registration && (
+          <Button
+            renderIcon={Add}
+            disabled={!canRegister || !!pending}
+            onClick={() => {
+              if (canRegister && !pending) setRegistration(true);
+            }}
+          >
+            {t("nce.button.reportNce")}
+          </Button>
+        )}
       </div>
       {metadataValue && !metadataValue.canCreate && (
         <p className="nce-helper-text">{t("nce.workspace.createDenied")}</p>
@@ -533,12 +585,14 @@ export const NceDashboard = ({ registrationOpen = false }) => {
                 <Button
                   kind="ghost"
                   className="nce-list-item-header"
-                  aria-expanded={!!expanded[row.id]}
+                  disabled={!canView}
+                  aria-expanded={canView && !!expanded[row.id]}
                   aria-controls={`nce-details-${row.id}`}
                   renderIcon={expanded[row.id] ? ChevronUp : ChevronDown}
-                  onClick={() =>
-                    setExpanded((p) => ({ ...p, [row.id]: !p[row.id] }))
-                  }
+                  onClick={() => {
+                    if (canView)
+                      setExpanded((p) => ({ ...p, [row.id]: !p[row.id] }));
+                  }}
                 >
                   <span className="nce-item-info">
                     <span className="nce-item-top">
@@ -582,7 +636,7 @@ export const NceDashboard = ({ registrationOpen = false }) => {
                     </span>
                   </span>
                 </Button>
-                {expanded[row.id] && (
+                {canView && expanded[row.id] && (
                   <div
                     id={`nce-details-${row.id}`}
                     className="nce-list-item-details"
@@ -683,12 +737,20 @@ export const NceDashboard = ({ registrationOpen = false }) => {
                         </TabPanel>
                         <TabPanel>
                           <p>{t("nce.capa.notLoaded")}</p>
-                          <Button
-                            kind="tertiary"
-                            onClick={() => history.push("/NCECorrectiveAction")}
-                          >
-                            {t("nce.workspace.openCapa")}
-                          </Button>
+                          {canLaunchNceCapa(menuAvailability, row) && (
+                            <Button
+                              kind="tertiary"
+                              onClick={() => {
+                                if (
+                                  canView &&
+                                  canLaunchNceCapa(menuAvailability, row)
+                                )
+                                  history.push("/NCECorrectiveAction");
+                              }}
+                            >
+                              {t("nce.workspace.openCapa")}
+                            </Button>
+                          )}
                         </TabPanel>
                         <TabPanel>
                           {row.history.length ? (
@@ -733,7 +795,10 @@ export const NceDashboard = ({ registrationOpen = false }) => {
                                 )
                               : undefined
                           }
-                          onClick={() => setAction({ row, type: op })}
+                          onClick={() => {
+                            if (canView && row[cap] === true && !pending)
+                              setAction({ row, type: op });
+                          }}
                         >
                           {t(id)}
                         </Button>
@@ -781,7 +846,7 @@ export const NceDashboard = ({ registrationOpen = false }) => {
           }
         />
       )}
-      {registration && scope.owner && (
+      {registration && (canRegister || ownPendingRegistration) && (
         <NceRegistrationModal
           key={`${scope.owner}:${scope.epoch}`}
           onClose={closeRegistration}
@@ -790,6 +855,7 @@ export const NceDashboard = ({ registrationOpen = false }) => {
         />
       )}
       {action &&
+        (canView || ownPendingAction) &&
         scope.owner &&
         state.owner === scope.owner &&
         state.epoch === scope.epoch && (

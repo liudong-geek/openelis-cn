@@ -18,8 +18,7 @@ describe("Notify User", function () {
   describe("Enter Only Message", () => {
     it("Type Message and Submit", () => {
       notifyUserPage.typeMessage();
-      notifyUserPage.submitMessage();
-      notifyUserPage.warningMessage();
+      notifyUserPage.assertMissingFieldsPreventSubmit("recipient");
     });
   });
 
@@ -27,8 +26,7 @@ describe("Notify User", function () {
     it("Select User And Submit", () => {
       notifyUserPage.clearMessage();
       notifyUserPage.selectUser("External");
-      notifyUserPage.submitMessage();
-      notifyUserPage.warningMessage();
+      notifyUserPage.assertMissingFieldsPreventSubmit("message");
     });
   });
 

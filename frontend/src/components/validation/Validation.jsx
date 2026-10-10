@@ -651,6 +651,12 @@ const Validation = (props) => {
                     { min: min, max: max },
                   )
                 }
+                pageSelectLabelText={(total) =>
+                  intl.formatMessage(
+                    { id: "pagination.page-select" },
+                    { total },
+                  )
+                }
                 pageNumberText={intl.formatMessage({
                   id: "pagination.page-number",
                 })}

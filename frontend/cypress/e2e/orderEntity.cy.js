@@ -15,7 +15,7 @@ before("login", () => {
 describe("Order Entity", function () {
   it("Navigate to Home Page then to Order entity Page ", function () {
     homePage = loginPage.goToHomePage();
-    orderEntityPage = homePage.goToOrderPage();
+    orderEntityPage = homePage.goToCompatibilityOrderEntry();
   });
 
   it("Search patient in the search box", function () {
@@ -89,5 +89,10 @@ describe("Order Entity", function () {
   it("should click submit order button", function () {
     orderEntityPage.clickSubmitOrderButton();
     cy.wait(8000);
+    cy.fixture("Order").then((order) => {
+      cy.fixture("Patient").then((patient) => {
+        orderEntityPage.assertSavedOrder(order, patient);
+      });
+    });
   });
 });

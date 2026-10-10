@@ -1,3 +1,5 @@
+import LoginPage from "../pages/LoginPage";
+
 /**
  * E2E Tests for Site Branding - User Story 1: Access Site Branding Configuration
  *
@@ -33,8 +35,9 @@
  * Login runs ONCE per test file, cached for all tests.
  */
 before("Login and setup session", () => {
-  // Login runs ONCE, cached for all tests
-  cy.login(Cypress.env("USERNAME"), Cypress.env("PASSWORD"));
+  const loginPage = new LoginPage();
+  loginPage.visit();
+  loginPage.goToHomePage();
 });
 
 describe("Site Branding - User Story 1: Access Site Branding Configuration", function () {

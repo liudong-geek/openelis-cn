@@ -1,5 +1,24 @@
+import enMessages from "../../src/languages/en.json";
+import zhMessages from "../../src/languages/zh.json";
+import zhCNMessages from "../../src/languages/zh_CN.json";
+const label = (key) =>
+  new RegExp(
+    [enMessages[key], zhMessages[key], zhCNMessages[key]]
+      .map(Cypress._.escapeRegExp)
+      .join("|"),
+  );
+const searchTypes = {
+  "Last Name": "lastName",
+  "First Name": "firstName",
+  "Patient Identification Code": "STNumber",
+  "Lab Number": "labNumber",
+  "NCE Number": "nceNumber",
+};
+
 class NonConform {
-  constructor() {
+  constructor(mode = "report") {
+    this.mode = mode;
+    this.registration = mode === "report";
     this.selectors = {
       //centralized selectors
       title: "h2",
@@ -34,34 +53,121 @@ class NonConform {
   }
 
   getReportNonConformTitle() {
-    return cy.get(this.selectors.title);
+    return cy
+      .contains(
+        ".nce-registration-modal .cds--modal-header__heading",
+        label("nce.form.title"),
+      )
+      .should("be.visible");
   }
 
   getViewNonConformTitle() {
-    return cy.get(this.selectors.title);
+    return cy
+      .contains(
+        "h2",
+        label(
+          this.mode === "capa"
+            ? "nonconform.corrective.title"
+            : "nonconform.view.report",
+        ),
+      )
+      .should("be.visible");
   }
 
   selectSearchType(type) {
-    cy.get(this.selectors.searchType, { timeout: 15000 })
-      .should("be.visible")
-      .select(type);
+    expect(searchTypes[type], "preserved patient/NCE search category").to.be.a(
+      "string",
+    );
+    this.searchType = type;
+    if (this.registration) {
+      cy.get("body").then(($body) => {
+        if (!$body.find(".nce-registration-modal.is-visible").length) {
+          cy.contains(
+            ".nce-dashboard-header button",
+            label("nce.button.reportNce"),
+          )
+            .should("be.visible")
+            .and("be.enabled")
+            .click();
+        }
+      });
+      cy.get(".nce-registration-modal #search-type")
+        .scrollIntoView()
+        .should("be.visible")
+        .select(searchTypes[type]);
+    } else cy.get("#type").should("be.visible").select(searchTypes[type]);
   }
 
   enterSearchField(value) {
-    cy.get(this.selectors.searchField).type(value);
+    this.searchValue = value;
+    cy.get(this.registration ? "#search-value" : this.selectors.searchField)
+      .clear()
+      .type(value);
   }
 
   clickSearchButton() {
-    cy.get(this.selectors.searchButton, { timeout: 15000 })
-      .should("be.visible")
-      .click();
+    if (this.registration) {
+      cy.intercept("GET", "**/rest/nce/registration/orders?*").as("nceOrders");
+      cy.contains(".nce-order-search button", label("label.button.search"))
+        .scrollIntoView()
+        .should("be.visible")
+        .and("be.enabled")
+        .click();
+      cy.wait("@nceOrders").then(({ request, response }) => {
+        expect(response.statusCode).to.eq(200);
+        expect(response.body.orders).to.be.an("array");
+        expect(new URL(request.url).searchParams.get("value")).to.eq(
+          this.searchValue,
+        );
+        this.orders = response.body.orders;
+      });
+    } else {
+      const endpoint =
+        this.mode === "capa"
+          ? "nonconformingcorrectiveaction"
+          : "viewNonConformEvents";
+      cy.intercept("GET", `**/rest/${endpoint}?*`).as("nceLegacySearch");
+      cy.get(this.selectors.searchButton)
+        .should("be.visible")
+        .and("be.enabled")
+        .click();
+      cy.wait("@nceLegacySearch").then(({ request, response }) => {
+        expect(response.statusCode).to.eq(200);
+        expect(response.body.nceEventsSearchResults).to.be.an("array").and.not
+          .be.empty;
+        expect(
+          new URL(request.url).searchParams.get(searchTypes[this.searchType]),
+        ).to.eq(this.searchValue);
+        if (response.body.nceEventsSearchResults.length > 1) {
+          cy.fixture("NonConform").then((fixture) => {
+            const selected = response.body.nceEventsSearchResults.find(
+              (row) => String(row.nceNumber) !== String(fixture.NceNumber),
+            );
+            expect(selected, "separate real event for lab-number workflow").to
+              .exist;
+            this.activeNceNumber = String(selected.nceNumber);
+            cy.contains("tbody tr", this.activeNceNumber).within(() => {
+              cy.get("input[name='radio-group']")
+                .invoke("attr", "id")
+                .then((id) => {
+                  cy.get(`label[for='${id}']`).should("be.visible").click();
+                });
+            });
+          });
+        }
+      });
+    }
   }
 
   validateSearchResult(expectedValue) {
-    cy.get(this.selectors.searchResult)
-      .first()
-      .invoke("text")
-      .should("eq", expectedValue);
+    this.labNumber = expectedValue;
+    cy.contains(".nce-order-result h4", expectedValue).should("be.visible");
+    cy.then(() =>
+      expect(
+        this.orders.some((row) => row.labNumber === expectedValue),
+        "same server order identity",
+      ).to.eq(true),
+    );
   }
 
   validateLabNoSearchResult(labNo) {
@@ -73,33 +179,100 @@ class NonConform {
   }
 
   clickCheckbox() {
-    cy.get(this.selectors.sampleCheckbox)
-      .should("be.visible")
-      .check({ force: true });
+    cy.fixture("Patient").then((patient) => {
+      const labNumber = this.labNumber || patient.labNo;
+      cy.contains(".nce-order-result h4", labNumber)
+        .parent()
+        .within(() => {
+          cy.get("input[id^='nce-specimen-']").each(($input) => {
+            expect($input.prop("disabled"), "real specimen selectable").to.eq(
+              false,
+            );
+            cy.get(`label[for='${$input.attr("id")}']`)
+              .scrollIntoView()
+              .should("be.visible")
+              .click();
+            cy.wrap($input).should("be.checked");
+          });
+        });
+    });
   }
 
   clickGoToNceFormButton() {
-    cy.get(this.selectors.goToFormButton).should("be.visible").click();
+    cy.contains(
+      ".nce-registration-modal button",
+      label("nce.button.linkSelected"),
+    )
+      .scrollIntoView()
+      .should("be.visible")
+      .and("be.enabled")
+      .click();
+    cy.get(".nce-linked-samples li").should("have.length.greaterThan", 0);
   }
 
   enterStartDate(date) {
-    cy.get(this.selectors.startDate).type(date);
+    this.fillFixtureDate("#date-of-event", date);
+    cy.fixture("NonConform").then((fixture) => {
+      cy.get("#nce-category option").then(($options) => {
+        const names = [
+          fixture.nceCategory,
+          ...Object.entries(enMessages)
+            .filter(
+              ([key, value]) =>
+                key.startsWith("nce.category.") &&
+                value === fixture.nceCategory,
+            )
+            .flatMap(([key]) => [zhMessages[key], zhCNMessages[key]]),
+        ].filter(Boolean);
+        const option = [...$options].find((item) =>
+          names.includes(item.textContent),
+        );
+        expect(option, "fixture category in real configured metadata").to.exist;
+        cy.get("#nce-category").select(option.value);
+      });
+      // Explicit synthetic scenario classification; never a hospital default.
+      cy.get("label[for='nce-severity-MINOR']")
+        .scrollIntoView()
+        .should("be.visible")
+        .click();
+      cy.get("#nce-severity-MINOR").should("be.checked");
+    });
   }
 
   selectReportingUnit(unit) {
-    cy.get(this.selectors.reportingUnits).select(unit);
+    cy.get("#reporting-unit").should("be.enabled").select(unit);
   }
 
   enterDescription(description) {
-    cy.get(this.selectors.description).type(description);
+    cy.get(this.registration ? "#nce-description" : this.selectors.description)
+      .scrollIntoView()
+      .should("be.visible")
+      .clear()
+      .type(description);
   }
 
   enterSuspectedCause(suspectedCause) {
-    cy.get(this.selectors.suspectedCause).type(suspectedCause);
+    cy.get(
+      this.registration
+        ? "#nce-suspectedCauses"
+        : this.selectors.suspectedCause,
+    )
+      .scrollIntoView()
+      .should("be.visible")
+      .clear()
+      .type(suspectedCause);
   }
 
   enterCorrectiveAction(correctiveAction) {
-    cy.get(this.selectors.correctiveActionText).type(correctiveAction);
+    cy.get(
+      this.registration
+        ? "#nce-proposedAction"
+        : this.selectors.correctiveActionText,
+    )
+      .scrollIntoView()
+      .should("be.visible")
+      .clear()
+      .type(correctiveAction);
   }
 
   enterNceCategory(nceCategory) {
@@ -129,37 +302,120 @@ class NonConform {
   }
 
   enterDiscussionDate(date) {
-    cy.get(this.selectors.discussionDate).type(date);
+    this.fillFixtureDate(this.selectors.discussionDate, date);
   }
 
   enterProposedCorrectiveAction(action) {
     cy.get(this.selectors.proposedCorrectiveAction)
-      .should("not.be.disabled")
-      .type(action, { force: true });
+      .scrollIntoView()
+      .should("be.visible")
+      .and("be.enabled")
+      .clear()
+      .type(action);
   }
 
   enterDateCompleted(date) {
-    cy.get(this.selectors.dateCompleted).type(date);
+    this.fillFixtureDate(this.selectors.dateCompleted, date);
   }
 
   selectActionType() {
-    cy.get(this.selectors.actionTypeCheckbox).check({ force: true });
+    cy.get("label[for='correctiveAction']")
+      .first()
+      .scrollIntoView()
+      .should("be.visible")
+      .click();
+    cy.get("#correctiveAction").first().should("be.checked");
   }
 
   checkResolution() {
-    cy.get(this.selectors.resolutionYes).click();
+    cy.contains("label.cds--radio-button__label", label("yes.option"))
+      .scrollIntoView()
+      .should("be.visible")
+      .click();
   }
 
   enterDateCompleted0(date) {
-    cy.get(this.selectors.dateCompleted0).type(date);
+    this.fillFixtureDate(this.selectors.dateCompleted0, date);
   }
 
   submitForm() {
-    cy.get(this.selectors.submitButton).click();
+    if (!this.registration) {
+      cy.intercept("POST", "**/rest/viewNonConformEvents").as(
+        "nceLegacyReviewSave",
+      );
+      cy.get(this.selectors.submitButton)
+        .scrollIntoView()
+        .should("be.visible")
+        .and("be.enabled")
+        .click();
+      cy.wait("@nceLegacyReviewSave").then(({ request, response }) => {
+        expect(response.statusCode).to.eq(200);
+        expect(response.body.success, "actual review persistence").to.eq(true);
+        const command =
+          typeof request.body === "string"
+            ? JSON.parse(request.body)
+            : request.body;
+        expect(command.id, "same event identity").to.exist;
+      });
+      return;
+    }
+    cy.intercept("POST", "**/rest/nce/registration?queryVersion=2").as(
+      "nceRegistrationSave",
+    );
+    cy.contains(".nce-form-actions button", label("nce.button.submit"))
+      .scrollIntoView()
+      .should("be.visible")
+      .and("be.enabled")
+      .click();
+    cy.wait("@nceRegistrationSave").then(({ request, response }) => {
+      expect(response.statusCode).to.be.oneOf([200, 201]);
+      const command =
+        typeof request.body === "string"
+          ? JSON.parse(request.body)
+          : request.body;
+      expect(command.severity).to.eq("MINOR");
+      expect(command.linkedSpecimens).to.have.length.greaterThan(0);
+      expect(response.body.outcome).to.eq("APPLIED");
+      expect(response.body.operation).to.eq("CREATE");
+      expect(response.body.requestId).to.eq(command.requestId);
+      expect(response.body.nceNumber).to.be.a("string").and.not.be.empty;
+      this.savedNumber = response.body.nceNumber;
+      if (this.rememberNextNumber) {
+        cy.readFile("cypress/fixtures/NonConform.json").then((fixture) =>
+          cy.writeFile("cypress/fixtures/NonConform.json", {
+            ...fixture,
+            NceNumber: this.savedNumber,
+          }),
+        );
+        this.rememberNextNumber = false;
+      }
+    });
+    cy.get(".nce-registration-modal.is-visible").should("not.exist");
+    cy.then(() =>
+      cy.contains(".nce-list-item", this.savedNumber).should("be.visible"),
+    );
   }
 
   clickSubmitButton() {
-    cy.get(this.selectors.submitButton).should("be.visible").click();
+    cy.intercept("POST", "**/rest/NCECorrectiveAction").as("nceCapaSave");
+    cy.get(this.selectors.submitButton)
+      .scrollIntoView()
+      .should("be.visible")
+      .and("be.enabled")
+      .click();
+    cy.wait("@nceCapaSave").then(({ request, response }) => {
+      expect(response.statusCode).to.eq(200);
+      expect(
+        response.body.success,
+        "actual corrective action persistence",
+      ).to.eq(true);
+      const command =
+        typeof request.body === "string"
+          ? JSON.parse(request.body)
+          : request.body;
+      expect(command.id, "same event identity").to.exist;
+      expect(command.actionLog).to.be.an("array").and.not.be.empty;
+    });
   }
 
   checkRadioButton() {
@@ -175,15 +431,24 @@ class NonConform {
       });
   }
 
-  getAndSaveNceNumber() {
-    cy.get(this.selectors.nceNumberResult)
-      .invoke("text")
-      .then((text) => {
-        cy.readFile("cypress/fixtures/NonConform.json").then((existingData) => {
-          const newData = { ...existingData, NceNumber: text.trim() };
-          cy.writeFile("cypress/fixtures/NonConform.json", newData);
-        });
+  fillFixtureDate(selector, fixtureDate) {
+    const [day, month, year] = fixtureDate.split("/");
+    cy.get(selector)
+      .scrollIntoView()
+      .should("be.visible")
+      .then(($input) => {
+        const placeholder = $input.attr("placeholder") || "";
+        const value = /^(?:Y|y|\u5e74)/.test(placeholder)
+          ? `${year}/${month}/${day}`
+          : fixtureDate;
+        cy.wrap($input).clear().type(value).blur().should("have.value", value);
       });
+  }
+
+  getAndSaveNceNumber() {
+    // The number is allocated at commit; remember only the actual receipt.
+    this.rememberNextNumber = true;
+    cy.get("#nce-number").should("have.attr", "readonly");
   }
 }
 

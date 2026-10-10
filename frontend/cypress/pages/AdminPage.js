@@ -13,6 +13,7 @@ import NotifyUserPage from "./NotifyUserPage";
 import ResultReportingConfigurationPage from "./ResultReportingConfiguration";
 import BatchTestReassignmentandCancelationPage from "./BatchTestReassignmentandCancelation";
 import TestManagementPage from "./TestManagementPage";
+import { label } from "./AdminUiContract";
 
 class AdminPage {
   constructor() {
@@ -33,39 +34,79 @@ class AdminPage {
   }
 
   visit() {
-    cy.visit("/MasterListsPage");
+    cy.visit("/MasterListsPage/DictionaryMenu");
   }
 
   ensureAdminShell() {
     cy.location("pathname").then((pathname) => {
       if (!/^\/(MasterListsPage|admin)(\/|$)/.test(pathname)) {
-        cy.visit("/MasterListsPage");
+        this.openNavigationTask(
+          "menu_configuration_workspace",
+          "DictionaryMenu",
+        );
       }
     });
   }
 
-  openOrganizationArea(route, title) {
-    // The China workspace groups people and organizations behind one real card.
-    cy.location("pathname").then((pathname) => {
-      if (pathname !== "/MasterListsPage") {
-        cy.visit("/MasterListsPage");
+  openNavigationTask(workspaceId, route) {
+    // Follow the current server-authorized China sidebar; never enter the retired root directory.
+    cy.get(".cds--side-nav").then(($nav) => {
+      if (!$nav.hasClass("cds--side-nav--expanded")) {
+        cy.get("[data-cy='menuButton']").should("be.visible").click();
       }
     });
-    cy.get(
-      '[data-testid="admin-dashboard"] a[href="/MasterListsPage/organizationPeopleWorkspace"]',
-    )
+    cy.get(".cds--side-nav").should("have.class", "cds--side-nav--expanded");
+    const toggle = `#${workspaceId} > li > button.cds--side-nav__submenu`;
+    cy.get(toggle)
+      .should("have.length", 1)
+      .scrollIntoView()
       .should("be.visible")
-      .click();
-    cy.location("pathname").should(
-      "eq",
-      "/MasterListsPage/organizationPeopleWorkspace",
-    );
-    cy.get(
-      `.organization-people-workspace h2 a[href="/MasterListsPage/${route}"]`,
-    )
+      .then(($button) => {
+        if ($button.attr("aria-expanded") !== "true") {
+          cy.wrap($button).click();
+        }
+      });
+    // Carbon remounts on expansion; assert the newly rendered control.
+    cy.get(toggle).should("have.attr", "aria-expanded", "true");
+    cy.get(`#${workspaceId} a[href="/MasterListsPage/${route}"]`)
+      .should("have.length", 1)
+      .scrollIntoView()
       .should("be.visible")
+      .and("not.have.attr", "aria-disabled", "true")
       .click();
     cy.location("pathname").should("eq", `/MasterListsPage/${route}`);
+    cy.get("body").then(($body) => {
+      const $button = $body.find("[data-cy='menuButton']");
+      if ($button.length && $body.find(".cds--side-nav--expanded").length) {
+        cy.wrap($button).click();
+      }
+    });
+  }
+
+  openMenuConfiguration(categoryId) {
+    this.openNavigationTask("menu_management_workspace", "menuConfiguration");
+    cy.get("#menu-configuration-category")
+      .should("be.visible")
+      .and("be.enabled")
+      .select(categoryId);
+    cy.get("#menu-configuration-category").should("have.value", categoryId);
+  }
+
+  openWorkflowCategory(categoryId) {
+    this.openNavigationTask(
+      "menu_configuration_workspace",
+      "workflowReportWorkspace",
+    );
+    cy.get("#workflow-parameter-category")
+      .should("be.visible")
+      .and("be.enabled")
+      .select(categoryId);
+    cy.get("#workflow-parameter-category").should("have.value", categoryId);
+    return new GeneralConfigurationsPage();
+  }
+
+  openOrganizationArea(route, title) {
+    this.openNavigationTask("menu_configuration_workspace", route);
     cy.contains("h1", title).should("be.visible");
   }
 
@@ -80,289 +121,149 @@ class AdminPage {
   }
 
   goToLabNumberManagementPage() {
-    cy.get(this.selectors.labNumberManagement)
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.url().should("include", "/labNumber");
-    cy.contains("Lab Number Management").should("be.visible");
+    this.openNavigationTask("menu_configuration_workspace", "labNumber");
+    cy.get(".lab-number-workspace h1")
+      .should("be.visible")
+      .invoke("text")
+      .should("match", label("configure.labNumber.title"));
     return new LabNumberManagementPage();
   }
 
   goToGlobalMenuConfigPage() {
-    this.ensureAdminShell();
-    cy.contains(this.selectors.span, "Menu Configuration")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get(this.selectors.globalMenuManagement)
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.url().should("include", "/globalMenuManagement");
-    cy.contains("Global Menu Management").should("be.visible");
-
-    return new MenuConfigPage();
+    this.openMenuConfiguration("global");
+    return new MenuConfigPage("global");
   }
 
   goToNonConformConfigPage() {
-    this.ensureAdminShell();
-    cy.contains("span", "Menu Configuration")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get("[data-cy='nonConformMenuMgmnt']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-
-    return new MenuConfigPage();
+    this.openMenuConfiguration("nonconformity");
+    return new MenuConfigPage("nonconformity");
   }
 
   goToPatientConfigPage() {
-    this.ensureAdminShell();
-    cy.contains("span", "Menu Configuration")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get("[data-cy='patientMenuMgmnt']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-
-    return new MenuConfigPage();
+    this.openMenuConfiguration("patient");
+    return new MenuConfigPage("patient");
   }
 
   goToStudyConfigPage() {
-    this.ensureAdminShell();
-    cy.contains("span", "Menu Configuration")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get("[data-cy='studyMenuMgmnt']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-
-    return new MenuConfigPage();
+    this.openMenuConfiguration("study");
+    return new MenuConfigPage("study");
   }
 
   goToBillingConfigPage() {
-    this.ensureAdminShell();
-    cy.contains("span", "Menu Configuration")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get("[data-cy='billingMenuMgmnt']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-
-    return new MenuConfigPage();
+    this.openMenuConfiguration("billing");
+    return new MenuConfigPage("billing");
   }
 
   goToBarcodeConfigPage() {
-    cy.get(this.selectors.barcodeConfig)
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
+    cy.intercept("GET", "**/api/labelPresets").as("labelPresetsAtEntry");
+    this.openNavigationTask("menu_configuration_workspace", "labelPresets");
+    cy.wait("@labelPresetsAtEntry").then(({ response }) => {
+      expect(response.statusCode).to.eq(200);
+      expect(response.body).to.be.an("array");
+    });
     return new BarcodeConfigPage();
   }
 
   goToProgramEntry() {
-    cy.get(this.selectors.programEntry)
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
+    this.openNavigationTask("menu_configuration_workspace", "program");
     return new ProgramEntryPage();
   }
 
   goToDictionaryMenuPage() {
-    cy.get("[data-cy='dictMenu']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
+    this.openNavigationTask("menu_configuration_workspace", "DictionaryMenu");
     return new DictionaryMenuPage();
   }
 
   goToUserManagementPage() {
-    cy.get(this.selectors.userManagement)
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
+    this.openNavigationTask("menu_management_workspace", "userManagement");
     return new UserManagementPage();
   }
 
   goToReflexTestsManagement() {
-    cy.contains("span", "Reflex Tests Configuration")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get("[data-cy='reflex']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    return new ReflexTestsConfigPage();
+    this.openNavigationTask("menu_configuration_workspace", "rulesWorkspace");
+    return new ReflexTestsConfigPage("reflex").openNew();
   }
 
   goToCalculatedValueTestsManagement() {
-    cy.contains("span", "Reflex Tests Configuration")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get("[data-cy='calculatedValue']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    return new ReflexTestsConfigPage();
+    this.openNavigationTask("menu_configuration_workspace", "rulesWorkspace");
+    return new ReflexTestsConfigPage("calculation").openNew();
   }
 
   goToNonConformityConfig() {
-    cy.contains("span", "General Configurations")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get("[data-cy='nonConformConfig']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-
-    return new GeneralConfigurationsPage();
+    return this.openWorkflowCategory("NonConformityConfigurationMenu");
   }
 
   goToMenuStatementConfig() {
-    cy.contains("span", "General Configurations")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get("[data-cy='menuStatementConfig']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-
-    return new GeneralConfigurationsPage();
+    return this.openWorkflowCategory("MenuStatementConfigMenu");
   }
 
   goToWorkPlanConfig() {
-    cy.contains("span", "General Configurations")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get("[data-cy='workPlanConfig']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-
-    return new GeneralConfigurationsPage();
+    return this.openWorkflowCategory("WorkplanConfigurationMenu");
   }
 
   goToSiteInformationConfig() {
-    cy.contains("span", "General Configurations")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get("[data-cy='siteInfoMenu']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-
-    return new GeneralConfigurationsPage();
+    return this.openWorkflowCategory("SiteInformationMenu");
   }
 
   goToResultEntityConfig() {
-    cy.contains("span", "General Configurations")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get("[data-cy='resultConfigMenu']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-
-    return new GeneralConfigurationsPage();
+    return this.openWorkflowCategory("ResultConfigurationMenu");
   }
 
   goToPatientEntityConfig() {
-    cy.contains("span", "General Configurations")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get("[data-cy='patientConfigMenu']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-
-    return new GeneralConfigurationsPage();
+    return this.openWorkflowCategory("PatientConfigurationMenu");
   }
 
   goToPrintedReportConfig() {
-    cy.contains("span", "General Configurations")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get("[data-cy='printedReportsConfigMenu']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-
-    return new GeneralConfigurationsPage();
+    return this.openWorkflowCategory("PrintedReportsConfigurationMenu");
   }
 
   goToOrderEntityConfig() {
-    cy.contains("span", "General Configurations")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get("[data-cy='sampleEntryConfigMenu']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-
-    return new GeneralConfigurationsPage();
+    return this.openWorkflowCategory("SampleEntryConfigMenu");
   }
 
   goToValidationConfig() {
-    cy.contains("span", "General Configurations")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-    cy.get("[data-cy='validationConfigMenu']")
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
-
-    return new GeneralConfigurationsPage();
+    return this.openWorkflowCategory("ValidationConfigurationMenu");
   }
 
   goToNotifyUserPage() {
-    cy.get(this.selectors.notifyUser)
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
+    this.openNavigationTask("menu_management_workspace", "NotifyUser");
     return new NotifyUserPage();
   }
 
   goToResultReportingConfigurationPage() {
-    cy.get(this.selectors.resultReportingConfig)
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
+    this.openNavigationTask(
+      "menu_configuration_workspace",
+      "resultReportingConfiguration",
+    );
     return new ResultReportingConfigurationPage();
   }
 
   goToBatchTestReassignmentandCanelationPage() {
-    cy.get(this.selectors.batchTest)
+    this.openNavigationTask("menu_configuration_workspace", "rulesWorkspace");
+    cy.get(
+      '.rules-workspace__tool a[href="/MasterListsPage/batchTestReassignment"]',
+    )
+      .should("have.length", 1)
       .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
+      .should("be.visible")
+      .and("not.have.attr", "aria-disabled", "true")
+      .click();
+    cy.location("pathname").should(
+      "eq",
+      "/MasterListsPage/batchTestReassignment",
+    );
     return new BatchTestReassignmentandCancelationPage();
   }
 
   goToTestManagementPage() {
-    cy.get(this.selectors.testManagement)
-      .scrollIntoView()
-      .should("exist")
-      .click({ force: true });
+    cy.intercept("GET", "**/rest/test-catalog/tests?*").as(
+      "testCatalogAtEntry",
+    );
+    this.openNavigationTask("menu_configuration_workspace", "TestCatalogList");
+    cy.wait("@testCatalogAtEntry").then(({ response }) => {
+      expect(response.statusCode).to.eq(200);
+      expect(response.body.rows).to.be.an("array");
+    });
     return new TestManagementPage();
   }
 }

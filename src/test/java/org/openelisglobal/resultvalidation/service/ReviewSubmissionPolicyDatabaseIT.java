@@ -90,6 +90,8 @@ public class ReviewSubmissionPolicyDatabaseIT {
             var target = spy(new ReviewSubmissionService(fixture.guard, analyses, fixture.statuses, notes,
                     mock(SampleService.class), mock(SampleHumanService.class), signatures, users, fixture.specimens,
                     fhir, notifications, mock(QCReleaseGateService.class), scopes));
+            org.springframework.test.util.ReflectionTestUtils.setField(target, "clinicalAccess",
+                    mock(org.openelisglobal.result.service.ResultRestrictionAccess.class));
             doReturn(List.of(updater)).when(target).registeredUpdaters();
             AtomicInteger observedWrites = new AtomicInteger();
             java.util.function.Consumer<String> write = kind -> {

@@ -46,6 +46,8 @@ describe("Selects various Programs", () => {
       if (program.test) {
         programEntry.selectTest(program.test);
       }
+      // Same section/read-only cases assert disabled + zero POST; only the
+      // originally requested section change saves and independently reads back.
       programEntry.submitProgram();
     });
   });

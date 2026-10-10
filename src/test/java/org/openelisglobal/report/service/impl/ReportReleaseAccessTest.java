@@ -32,6 +32,8 @@ public class ReportReleaseAccessTest {
     private ReportDocumentService documents;
     @Mock
     private SystemUserService systemUserService;
+    @Mock
+    private org.openelisglobal.result.service.ResultRestrictionAccess clinicalAccess;
     @InjectMocks
     private PatientReportReleaseServiceImpl service;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -49,6 +51,16 @@ public class ReportReleaseAccessTest {
         when(documents.get("201", "7")).thenReturn(document);
         when(documents.lockCurrent("201", "7")).thenReturn(document);
         when(documents.authorizePersistedScope(eq("201"), any(), eq("7"), anyBoolean())).thenReturn(document);
+    }
+
+    @Test
+    public void currentTypedReportGrantRevocationPrecedesDraftOrReleaseWrites() {
+        doThrow(new AccessDeniedException("current Report:patient revoked")).when(clinicalAccess).bindCurrentRequest(
+                eq(org.openelisglobal.result.service.ResultRestrictionAccess.Phase.REPORTS),
+                eq(org.openelisglobal.result.service.ResultRestrictionAccess.Action.UPDATE), eq("7"));
+        assertThrows(AccessDeniedException.class, () -> service.createDocumentDraft("201", null, "7"));
+        assertThrows(AccessDeniedException.class, () -> service.recordPrint("201", 10L, "7"));
+        verifyZeroInteractions(documents, patientReportReleaseDAO);
     }
 
     @Test public void newDraftPersistsFullMembershipAndHashBeforeInsert() throws Exception {

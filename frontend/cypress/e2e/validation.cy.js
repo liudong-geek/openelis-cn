@@ -66,7 +66,7 @@ describe("Validation By Range Of Order", function () {
     });
   });
 
-  it("Should Save the results", function () {
+  it("rejects review submission without an explicit clinical decision", function () {
     validation.saveResults("Test Note");
   });
 });

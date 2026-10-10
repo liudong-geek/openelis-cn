@@ -82,6 +82,9 @@ import RulesWorkspace from "./rulesWorkspace/RulesWorkspace";
 import SystemOperationsWorkspace from "./systemOperationsWorkspace/SystemOperationsWorkspace";
 import DeliveryReadinessWorkspace from "./deliveryReadiness/DeliveryReadinessWorkspace";
 
+import GlobalAdminConfiguration from "./GlobalAdminConfiguration";
+import MenuConfigurationWorkspace from "./menu/MenuConfigurationWorkspace";
+
 function Admin() {
   const { path } = useRouteMatch();
 
@@ -115,24 +118,57 @@ function Admin() {
         />
         <Route path={`${path}/MethodManagement`} component={ManageMethod} />
         <Route path={`${path}/AnalyzerTestName`} component={AnalyzerTestName} />
-        <Route path={`${path}/labNumber`} component={LabNumberManagement} />
+        <Route
+          path={`${path}/labNumber`}
+          render={() => (
+            <GlobalAdminConfiguration>
+              <LabNumberManagement />
+            </GlobalAdminConfiguration>
+          )}
+        />
         <Route path={`${path}/labelPresets`} component={LabelPresetList} />
         <Route
           path={`${path}/workflowReportWorkspace`}
-          component={WorkflowReportWorkspace}
+          render={() => (
+            <GlobalAdminConfiguration>
+              <WorkflowReportWorkspace />
+            </GlobalAdminConfiguration>
+          )}
+        />
+        <Route
+          path={`${path}/menuConfiguration`}
+          render={() => (
+            <GlobalAdminConfiguration>
+              <MenuConfigurationWorkspace />
+            </GlobalAdminConfiguration>
+          )}
         />
         <Route
           path={`${path}/interfaceWorkspace`}
           component={InterfaceWorkspace}
         />
-        <Route path={`${path}/program`} component={ProgramManagement} />
+        <Route
+          path={`${path}/program`}
+          render={() => (
+            <GlobalAdminConfiguration>
+              <ProgramManagement />
+            </GlobalAdminConfiguration>
+          )}
+        />
         <Route path={`${path}/providerMenu`} component={ProviderMenu} />
         <Route
           path={`${path}/organizationPeopleWorkspace`}
           component={OrganizationPeopleWorkspace}
         />
         <Route path={`${path}/dataExportStatus`} component={DataExportStatus} />
-        <Route path={`${path}/NotifyUser`} component={PushNotificationPage} />
+        <Route
+          path={`${path}/NotifyUser`}
+          render={() => (
+            <GlobalAdminConfiguration>
+              <PushNotificationPage />
+            </GlobalAdminConfiguration>
+          )}
+        />
         <Redirect
           from={`${path}/barcodeConfiguration`}
           to={`${path}/labelPresets`}
@@ -348,7 +384,11 @@ function Admin() {
         />
         <Route
           path={`${path}/DictionaryMenu`}
-          component={DictionaryManagement}
+          render={() => (
+            <GlobalAdminConfiguration>
+              <DictionaryManagement />
+            </GlobalAdminConfiguration>
+          )}
         />
         <Route path={`${path}/PluginFile`} component={PluginList} />
         <Route

@@ -1,182 +1,322 @@
+import config from "../../src/config.json";
+import { body, label } from "./AdminUiContract";
+
+const modal = ".rules-editor-modal.is-visible";
+const endpoints = {
+  reflex: { list: "reflexrules", detail: "reflexrule", save: "reflexrule" },
+  calculation: {
+    list: "test-calculations",
+    detail: "test-calculation",
+    save: "test-calculation",
+  },
+};
+
 class ReflexTestsConfigPage {
-  constructor() {
-    this.selectors = {
-      calcPage: "[data-cy='calculatedValue']",
-      reflexMgnt: "[data-cy='reflex']",
-      ruleName: '[id="0_rulename"]',
-      toggleSwitch: ".cds--toggle__switch",
-      validateToggle: ".cds--toggle__text",
-      ruleAccordionHeader: ".cds--accordion__heading",
-      overAllOption: '[id="0_overall"]',
-      selectSample: "[data-cy='addSample']",
-      searchTest: '[id="0_0_conditionTestId"]',
-      relation: '[id="0_0_relation"]',
-      numericValue: '[id="0_0_value"]',
-      addIntNote: '[id="0_0_inote"]',
-      addExtNote: '[id="0_0_xnote"]',
-      reflexTest: '[id="0_0_reflexTestId"]',
-      submit: '[id="submit_0"]',
-      secondSample: "[data-cy='selectSample']",
-      addRule: "[data-cy='rule']",
-      autosuggestion: ".suggestion-active",
-      calcName: '[id="0_name"]',
-      removeOperation: '[id="0_removeoperation"]',
-      searchNumTest: '[id="0_0_testresult"]',
-      insertOperation: '[id="0_2_addoperation"]',
-      mathFunctionButton: '[id="0_mathfunction"]',
-      mathFunction: '[id="0_1_mathfunction"]',
-      secMathFunction: '[id="0_3_mathfunction"]',
-      insertSecOperation: '[id="0_1_addoperation"]',
-      integerButton: '[id="0_integer"]',
-      integer: '[id="0_4_integer"]',
-      insertThiOperation: '[id="0_2_addoperation"]',
-      patientAttributeButton: '[id="0_patientattribute"]',
-      patientAttribute: '[id="0_2_patientattribute"]',
-      insertFouOperation: '[id="0_3_addoperation"]',
-      thirdSample: '[id="0_sample"]',
-      fourthSample: "[data-cy='add-sample']",
-      finalResult: '[id="0_finalresult"]',
-      addNote: '[id="0_note"]',
-    };
+  constructor(type) {
+    if (!endpoints[type])
+      throw new Error("An explicit current rule type is required");
+    this.type = type;
   }
 
-  reloadAndWait() {
-    cy.reload();
-    cy.wait(200);
+  openNew() {
+    cy.get("#rules-type")
+      .should("be.visible")
+      .select(this.type)
+      .should("have.value", this.type);
+    cy.contains(".rules-workspace button", label(`rules.create.${this.type}`))
+      .should("be.visible")
+      .and("not.be.disabled")
+      .click();
+    cy.get(`${modal} #rule-editor-name`)
+      .should("be.visible")
+      .and("not.be.disabled");
+    return this;
   }
 
   verifyPageLoads(value) {
-    cy.contains("h2", value).should("be.visible");
+    const fixtureTypes = {
+      "Calculated Value Tests Management": "calculation",
+      "Reflex Tests Management": "reflex",
+    };
+    expect(fixtureTypes[value]).to.eq(this.type);
+    cy.get(modal).should("have.length", 1).and("be.visible");
+    cy.get(`${modal} .cds--modal-header__label`)
+      .invoke("text")
+      .should("match", label(`rules.type.${this.type}`));
   }
 
   expandRuleBody() {
-    cy.get(this.selectors.ruleAccordionHeader).first().click();
-  }
-  //Reflex Tests Management
-
-  enterRuleName(value) {
-    cy.get(this.selectors.ruleName).type(value);
-  }
-
-  validateRuleName(value) {
-    cy.get(this.selectors.ruleName).should("have.value", value);
+    // The current editor is expanded by design. Assert its actual form sections.
+    const selector =
+      this.type === "reflex" ? "#condition-0-sample" : "#operation-0-type";
+    cy.get(`${modal} ${selector}`).should("be.visible").and("not.be.disabled");
+    cy.get(`${modal} .rules-workspace__item`).should("have.length.at.least", 1);
   }
 
   validateToggleStatus(value) {
-    cy.contains(this.selectors.validateToggle, value);
+    expect(value).to.eq("On");
+    cy.contains(`${modal} .cds--tag`, label("rules.state.active")).should(
+      "be.visible",
+    );
+  }
+
+  enterName(value) {
+    this.name = value;
+    cy.get(`${modal} #rule-editor-name`)
+      .clear()
+      .type(value)
+      .should("have.value", value);
+  }
+  enterRuleName(value) {
+    this.enterName(value);
+  }
+  enterCalcName(value) {
+    this.enterName(value);
+  }
+  validateRuleName(value) {
+    cy.get(`${modal} #rule-editor-name`).should("have.value", value);
+  }
+  validateCalcName(value) {
+    this.validateRuleName(value);
+  }
+
+  select(selector, value) {
+    cy.get(`${modal} ${selector}`)
+      .should("be.visible")
+      .and("not.be.disabled")
+      .select(value);
+    cy.get(`${modal} ${selector} option:selected`).should("have.text", value);
+  }
+  selectSample(value) {
+    this.select("#condition-0-sample", value);
+  }
+  searchTest(value) {
+    this.select("#condition-0-test", value);
+  }
+  selectSecondSample(value) {
+    this.select("#action-0-sample", value);
+  }
+  searchReflexTest(value) {
+    this.select("#action-0-test", value);
+  }
+  selectThirdSample(value) {
+    this.select("#calculation-output-sample", value);
+  }
+  enterFinalResult(value) {
+    this.select("#calculation-output-test", value);
+  }
+  selectFourthSample(value) {
+    this.select("#operation-0-sample", value);
+  }
+  searchNumTest(value) {
+    this.select("#operation-0-test", value);
   }
 
   selectOverAllOptions(value) {
-    cy.get(this.selectors.overAllOption).select(value);
+    expect(value).to.eq("All");
+    cy.get(`${modal} #rule-editor-overall`)
+      .select("ALL")
+      .should("have.value", "ALL");
   }
-
-  selectSample(value) {
-    cy.get(this.selectors.selectSample).select(value);
-  }
-
-  searchTest(value) {
-    cy.get(this.selectors.searchTest).type(value);
-    cy.contains(this.selectors.autosuggestion, value).click();
-  }
-
   selectRelation(value) {
-    cy.get(this.selectors.relation).select(value);
+    expect(value).to.eq("Is greater than");
+    cy.get(`${modal} #condition-0-relation`)
+      .select("GREATER_THAN")
+      .should("have.value", "GREATER_THAN");
   }
-
   enterNumericValue(value) {
-    cy.get(this.selectors.numericValue).type(value);
+    cy.get(`${modal} #condition-0-value`)
+      .clear()
+      .type(value)
+      .should("have.value", value);
   }
-
-  selectSecondSample(value) {
-    cy.get(this.selectors.secondSample).select(value);
-  }
-
-  searchReflexTest(value) {
-    cy.get(this.selectors.reflexTest).type(value);
-  }
-
   addInternatNote(value) {
-    cy.get(this.selectors.addIntNote).type(value);
+    cy.get(`${modal} #action-0-internal`)
+      .clear()
+      .type(value)
+      .should("have.value", value);
+  }
+  addExternatNote(value) {
+    cy.get(`${modal} #action-0-external`)
+      .clear()
+      .type(value)
+      .should("have.value", value);
+  }
+  addFinalExternatNote(value) {
+    cy.get(`${modal} #calculation-note`)
+      .clear()
+      .type(value)
+      .should("have.value", value);
   }
 
-  addExternatNote(value) {
-    cy.get(this.selectors.addExtNote).type(value);
+  operation(index) {
+    return cy
+      .get(`${modal} #operation-${index}-type`)
+      .closest("section.rules-workspace__item");
+  }
+  insertAfter(index, type) {
+    this.operation(index).within(() => {
+      cy.contains("button", label("rules.operation.insert"))
+        .should("be.visible")
+        .and("not.be.disabled")
+        .click();
+    });
+    cy.get(`${modal} #operation-${index + 1}-type`)
+      .select(type)
+      .should("have.value", type);
+  }
+  verifyRemoveOperationButton() {
+    this.operation(0).within(() => {
+      cy.contains("button", label("rules.item.remove"))
+        .should("be.visible")
+        .and("be.disabled");
+    });
+  }
+  clickMathFunctionButton() {
+    this.insertAfter(0, "MATH_FUNCTION");
+  }
+  mathFunction(value) {
+    expect(value).to.eq("Plus");
+    cy.get(`${modal} #operation-1-value`).select("+").should("have.value", "+");
+  }
+  clickPatientAttributeButton() {
+    this.insertAfter(1, "PATIENT_ATTRIBUTE");
+  }
+  selectPatientAttribute(value) {
+    expect(value).to.eq("Patient Age(Years)");
+    cy.get(`${modal} #operation-2-value`)
+      .select("AGE")
+      .should("have.value", "AGE");
+  }
+  selectMathFunction(value) {
+    expect(value).to.eq("Mathematical Function");
+    this.insertAfter(2, "MATH_FUNCTION");
+  }
+  secMathFunction(value) {
+    expect(value).to.eq("Does Not Equal");
+    cy.get(`${modal} #operation-3-value`)
+      .select("!=")
+      .should("have.value", "!=");
+  }
+  clickIntegerButton() {
+    this.insertAfter(3, "INTEGER");
+  }
+  enterInteger(value) {
+    cy.get(`${modal} #operation-4-value`)
+      .clear()
+      .type(value)
+      .should("have.value", value);
+  }
+
+  assertDefinition(record) {
+    expect(record.active).to.eq(true);
+    expect(record[this.type === "reflex" ? "ruleName" : "name"]).to.eq(
+      this.name,
+    );
+    if (this.type === "calculation") {
+      expect(
+        record.operations.map(({ type, value, sampleId, order }) => ({
+          type,
+          value: String(value),
+          sampleId: sampleId == null ? null : String(sampleId),
+          order,
+        })),
+      ).to.deep.eq(
+        this.saved.operations.map(({ type, value, sampleId, order }) => ({
+          type,
+          value: String(value),
+          sampleId: sampleId == null ? null : String(sampleId),
+          order,
+        })),
+      );
+      expect(record.operations.map(({ type }) => type)).to.deep.eq([
+        "TEST_RESULT",
+        "MATH_FUNCTION",
+        "PATIENT_ATTRIBUTE",
+        "MATH_FUNCTION",
+        "INTEGER",
+      ]);
+      expect(
+        record.operations.slice(1).map(({ value }) => String(value)),
+      ).to.deep.eq(["+", "AGE", "!=", "0"]);
+      for (const key of ["sampleId", "testId", "note", "result"])
+        expect(String(record[key] ?? ""), key).to.eq(
+          String(this.saved[key] ?? ""),
+        );
+    } else {
+      expect(record.overall).to.eq("ALL");
+      expect(record.conditions).to.have.length(1);
+      expect(record.actions).to.have.length(1);
+      for (const key of ["sampleId", "testId", "testName", "relation", "value"])
+        expect(String(record.conditions[0][key]), key).to.eq(
+          String(this.saved.conditions[0][key]),
+        );
+      expect(record.conditions[0].relation).to.eq("GREATER_THAN");
+      expect(String(record.conditions[0].value)).to.eq("0");
+      for (const key of [
+        "sampleId",
+        "reflexTestId",
+        "reflexTestName",
+        "internalNote",
+        "externalNote",
+        "addNotification",
+      ])
+        expect(String(record.actions[0][key]), key).to.eq(
+          String(this.saved.actions[0][key]),
+        );
+    }
   }
 
   submitButton() {
-    cy.get(this.selectors.submit).click();
+    const endpoint = endpoints[this.type];
+    cy.intercept("POST", `**/rest/${endpoint.save}`).as("ruleWrite");
+    cy.intercept("GET", `**/rest/${endpoint.list}`).as("rulesAfterWrite");
+    cy.get(`${modal} .cds--modal-footer`).within(() => {
+      cy.contains("button", label("label.button.save"))
+        .should("be.visible")
+        .and("not.be.disabled")
+        .click();
+    });
+    cy.wait("@ruleWrite").then(({ request, response }) => {
+      expect(response.statusCode).to.eq(200);
+      this.saved = body(request.body);
+      this.id = body(response.body).id;
+      expect(String(this.id)).to.match(/^[1-9]\d*$/);
+      cy.request(
+        `${config.serverBaseUrl}/rest/${endpoint.detail}/${this.id}`,
+      ).then((read) => {
+        expect(read.status).to.eq(200);
+        this.assertDefinition(read.body);
+      });
+    });
+    cy.get(modal).should("not.exist");
+    cy.wait("@rulesAfterWrite").then(({ response }) => {
+      expect(response.statusCode).to.eq(200);
+      expect(body(response.body)).to.be.an("array");
+    });
   }
 
-  addRule() {
-    cy.get(this.selectors.addRule).click();
-  }
-
-  //Calculated Value Tests Management
-
-  enterCalcName(value) {
-    cy.get(this.selectors.calcName).type(value);
-  }
-
-  validateCalcName(value) {
-    cy.get(this.selectors.calcName).should("have.value", value);
-  }
-
-  selectMathFunction(value) {
-    cy.get(this.selectors.insertOperation).select(value);
-  }
-
-  verifyRemoveOperationButton() {
-    cy.get(this.selectors.removeOperation).should("be.visible");
-  }
-
-  searchNumTest(value) {
-    cy.get(this.selectors.searchNumTest).type(value);
-    cy.contains(this.selectors.autosuggestion, value).click();
-  }
-
-  mathFunction(value) {
-    cy.get(this.selectors.mathFunction).select(value);
-  }
-
-  secMathFunction(value) {
-    cy.get(this.selectors.secMathFunction).select(value);
-  }
-
-  clickMathFunctionButton() {
-    cy.get(this.selectors.mathFunctionButton).click();
-  }
-
-  clickIntegerButton() {
-    cy.get(this.selectors.integerButton).click();
-  }
-
-  enterInteger(value) {
-    cy.get(this.selectors.integer).type(value);
-  }
-
-  clickPatientAttributeButton() {
-    cy.get(this.selectors.patientAttributeButton).click();
-  }
-
-  selectPatientAttribute(value) {
-    cy.get(this.selectors.patientAttribute).select(value);
-  }
-
-  selectThirdSample(value) {
-    cy.get(this.selectors.thirdSample).select(value);
-  }
-
-  selectFourthSample(value) {
-    cy.get(this.selectors.fourthSample).select(value);
-  }
-
-  enterFinalResult(value) {
-    cy.get(this.selectors.finalResult).type(value);
-    cy.contains(this.selectors.autosuggestion, value).click();
-  }
-
-  addFinalExternatNote(value) {
-    cy.get(this.selectors.addNote).type(value);
+  reloadAndWait() {
+    const endpoint = endpoints[this.type];
+    cy.request(
+      `${config.serverBaseUrl}/rest/${endpoint.detail}/${this.id}`,
+    ).then((read) => {
+      expect(read.status).to.eq(200);
+      this.assertDefinition(read.body);
+    });
+    cy.get("#rules-search").clear().type(this.name);
+    cy.contains(".rules-workspace tbody tr", this.name)
+      .should("have.length", 1)
+      .within(() => {
+        cy.contains("button", label("button.edit"))
+          .should("be.visible")
+          .and("not.be.disabled")
+          .click();
+      });
+    cy.get(`${modal} #rule-editor-name`)
+      .should("be.visible")
+      .and("not.be.disabled");
   }
 }
+
 export default ReflexTestsConfigPage;

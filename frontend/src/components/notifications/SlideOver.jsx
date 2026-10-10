@@ -8,6 +8,7 @@ const SlideOver = ({
   setOpen,
   children,
   slideFrom = "right",
+  headerOffset = "53px",
   dialogClass = "",
   title,
   onlyChild = false,
@@ -47,7 +48,10 @@ const SlideOver = ({
   }, [open]);
 
   return ReactDOM.createPortal(
-    <div className={classNames("slide-over-root", { show: open })}>
+    <div
+      className={classNames("slide-over-root", { show: open })}
+      style={{ "--oe-slideover-header-offset": headerOffset }}
+    >
       <div
         className={classNames("slide-over-backdrop", {
           "backdrop-blur": backdropBlur,
@@ -106,6 +110,7 @@ SlideOver.propTypes = {
   setOpen: PropTypes.func.isRequired,
   children: PropTypes.node.isRequired,
   slideFrom: PropTypes.oneOf(["left", "right", "top", "bottom"]),
+  headerOffset: PropTypes.string,
   dialogClass: PropTypes.string,
   title: PropTypes.node,
   onlyChild: PropTypes.bool,

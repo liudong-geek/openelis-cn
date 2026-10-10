@@ -1,76 +1,56 @@
 import LoginPage from "../../pages/LoginPage";
-import OrderEntityPage from "../../pages/OrderEntityPage";
-import ModifyOrderPage from "../../pages/ModifyOrderPage";
-import BarcodeConfigPage from "../../pages/BarcodeConfigPage";
 
-let loginPage = null;
-let homePage = null;
-let adminPage = null;
-let barcodePage = new BarcodeConfigPage();
-let orderEntityPage = new OrderEntityPage();
-let modifyOrderPage = new ModifyOrderPage();
+let homePage, adminPage, barcodePage;
+const presetName = `E2E label preset ${Date.now()}`;
 
 before(() => {
-  loginPage = new LoginPage();
+  const loginPage = new LoginPage();
   loginPage.visit();
-
   homePage = loginPage.goToHomePage();
   adminPage = homePage.goToAdminPage();
 });
 
+// E-01 draft: the first seven old global-layout cases are explicitly retired
+// and mapped to current label presets. The real print chain remains separate.
 describe("Barcode configuration", function () {
-  it("User Navigates to Barcode Config", function () {
+  it("User Navigates to Label Presets", function () {
     barcodePage = adminPage.goToBarcodeConfigPage();
+    barcodePage.openNewPreset(presetName);
   });
-
-  it("User adjusts the Default Bar Code Labels", function () {
-    barcodePage.captureDefaultOrder();
-    barcodePage.captureDefaultSpecimen();
+  it("User adjusts the label preset default order and sample quantities", function () {
+    barcodePage.defaults();
   });
-
-  it("User sets Maximum Bar Code Labels", function () {
-    barcodePage.captureMaxOrder();
-    barcodePage.captureMaxSpecimen();
+  it("User selects the label preset template and maximum quantities", function () {
+    barcodePage.templateAndMaximums();
   });
-
-  it("User unchecks Optional Elements and Preprinted Bar Code Accession number", function () {
-    barcodePage.uncheckCheckBoxes();
+  it("User disables order scope and verifies disabled quantity fields", function () {
+    barcodePage.disableOrderScope();
   });
-
-  it("User adjusts Dimensions Bar Code Label", function () {
-    barcodePage.dimensionsBarCodeLabel();
+  it("User adjusts the label preset dimensions and preview", function () {
+    barcodePage.dimensions();
   });
-
-  it("Check the boxes", function () {
-    barcodePage.checkCheckBoxes();
+  it("User enables order and sample label scopes", function () {
+    barcodePage.restoreScopes();
   });
-
-  it("Save Changes", function () {
-    barcodePage.saveChanges();
+  it("Save and read back the named label preset and additional-field defaults", function () {
+    barcodePage.saveAndReadPreset();
   });
-
   it("Navigate to Barcode Page", function () {
-    homePage.closeNavigationMenu(); // Close sidenav before navigation
-    barcodePage = homePage.goToBarcode();
-    barcodePage.validatePage();
+    barcodePage.openPrintFromMenu();
   });
-
   it("Add Site Name and Sample", function () {
-    cy.fixture("Order").then((order) => {
-      orderEntityPage.enterSiteName(order.siteName);
-    });
+    cy.fixture("Order").then((order) =>
+      barcodePage.enterSiteName(order.siteName),
+    );
     barcodePage.selectSampleTypeOption("Serum");
   });
-
   it("Check Panels and Pre-Print Labels", function () {
-    orderEntityPage.checkPanelCheckBoxField();
+    barcodePage.selectOriginalPanels();
     barcodePage.clickPrePrintButton();
   });
-
   it("Add Accession Number and Submit", function () {
-    cy.fixture("Patient").then((patient) => {
-      modifyOrderPage.enterAccessionNo(patient.labNo);
-    });
-    barcodePage.clickSubmitButton();
+    cy.fixture("Patient").then((patient) =>
+      barcodePage.searchExistingAccession(patient.labNo),
+    );
   });
 });

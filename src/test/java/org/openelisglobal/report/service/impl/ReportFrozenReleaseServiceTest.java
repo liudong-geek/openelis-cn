@@ -43,6 +43,8 @@ public class ReportFrozenReleaseServiceTest {
     private HisResultOutboxService hisResultOutboxService;
     @Spy
     private ReportFrozenContentService frozenContent = new ReportFrozenContentService();
+    @Mock
+    private org.openelisglobal.result.service.ResultRestrictionAccess clinicalAccess;
     @InjectMocks
     private PatientReportReleaseServiceImpl service;
     private PatientReportRelease release;
@@ -393,10 +395,10 @@ public class ReportFrozenReleaseServiceTest {
             }
         };
         doAnswer(call -> {
-                    assertTrue(org.springframework.transaction.support.TransactionSynchronizationManager
-                            .isActualTransactionActive());
-                    throw new IllegalStateException("SIM outbox unavailable");
-                }).when(hisResultOutboxService).enqueue(any(), any(), any(), any(), any(), anyInt(), any(), any());
+            assertTrue(org.springframework.transaction.support.TransactionSynchronizationManager
+                    .isActualTransactionActive());
+            throw new IllegalStateException("SIM outbox unavailable");
+        }).when(hisResultOutboxService).enqueue(any(), any(), any(), any(), any(), anyInt(), any(), any());
         var proxy = new org.springframework.aop.framework.ProxyFactory(service);
         proxy.addAdvice(new org.springframework.transaction.interceptor.TransactionInterceptor(tx,
                 new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource()));
@@ -408,11 +410,11 @@ public class ReportFrozenReleaseServiceTest {
         assertFalse(committed.get());
         verify(patientReportReleaseDAO).update(release);
         verify(hisResultOutboxService).enqueue(any(), any(), any(), any(), any(), anyInt(), any(), any());
-        var enqueueMethod = org.openelisglobal.integration.outbox.HisResultOutboxServiceImpl.class.getMethod(
-                "enqueue", String.class, String.class, HisResultEventType.class, String.class, String.class,
-                int.class, String.class, java.time.OffsetDateTime.class);
-        assertEquals(org.springframework.transaction.annotation.Propagation.REQUIRED,
-                enqueueMethod.getAnnotation(org.springframework.transaction.annotation.Transactional.class).propagation());
+        var enqueueMethod = org.openelisglobal.integration.outbox.HisResultOutboxServiceImpl.class.getMethod("enqueue",
+                String.class, String.class, HisResultEventType.class, String.class, String.class, int.class,
+                String.class, java.time.OffsetDateTime.class);
+        assertEquals(org.springframework.transaction.annotation.Propagation.REQUIRED, enqueueMethod
+                .getAnnotation(org.springframework.transaction.annotation.Transactional.class).propagation());
     }
 
     private PatientReportReleaseSummary issue(String hash) {

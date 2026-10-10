@@ -35,8 +35,15 @@ type BrandingCallback = (branding: BrandingConfiguration | undefined) => void;
  * Get current branding configuration
  * @param {Function} callback - Callback function to handle response
  */
-export const getBranding = (callback: BrandingCallback): void => {
-  getFromOpenElisServer<BrandingConfiguration>("/rest/site-branding", callback);
+export const getBranding = (
+  callback: BrandingCallback,
+  signal: AbortSignal | null = null,
+): void => {
+  getFromOpenElisServer<BrandingConfiguration>(
+    "/rest/site-branding",
+    callback,
+    signal,
+  );
 };
 
 /**
@@ -191,8 +198,13 @@ export const applyFavicon = (faviconUrl: string | null | undefined): void => {
  * Applies colors and favicon.
  * @param {Function} callback - Optional callback after branding is applied
  */
-export const loadAndApplyBranding = (callback?: BrandingCallback): void => {
+export const loadAndApplyBranding = (
+  callback?: BrandingCallback,
+  signal: AbortSignal | null = null,
+  isCurrent: () => boolean = () => true,
+): void => {
   getBranding((response) => {
+    if (signal?.aborted || !isCurrent()) return;
     if (response) {
       applyBrandingColors(response);
       if (response.faviconUrl) {
@@ -202,5 +214,5 @@ export const loadAndApplyBranding = (callback?: BrandingCallback): void => {
     if (callback) {
       callback(response);
     }
-  });
+  }, signal);
 };

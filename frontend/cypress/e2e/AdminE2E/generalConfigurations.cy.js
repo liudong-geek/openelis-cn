@@ -17,10 +17,10 @@ describe("General Configurations", function () {
         generalConfigurationsPage = adminPage[`goTo${configName}Config`]();
       });
 
-      it(`should toggle ${configName} configuration between True and False`, () => {
+      it(`should persist a real boolean ${configName} parameter False then True`, () => {
         // Test False
         generalConfigurationsPage.validatePageTitle(title);
-        generalConfigurationsPage.selectItem();
+        generalConfigurationsPage.selectItem("boolean");
         generalConfigurationsPage.clickModifyButton();
         generalConfigurationsPage.validatePageTitle("Edit Record");
         generalConfigurationsPage.checkValue("False");
@@ -29,7 +29,7 @@ describe("General Configurations", function () {
 
         // Test True
         generalConfigurationsPage.validatePageTitle(title);
-        generalConfigurationsPage.selectItem();
+        generalConfigurationsPage.selectItem("boolean");
         generalConfigurationsPage.clickModifyButton();
         generalConfigurationsPage.validatePageTitle("Edit Record");
         generalConfigurationsPage.checkValue("True");
@@ -46,10 +46,10 @@ describe("General Configurations", function () {
         generalConfigurationsPage = adminPage[`goTo${configName}Config`]();
       });
 
-      it(`Edit ${configName} configuration value`, () => {
+      it(`Persist a real text ${configName} parameter False then True`, () => {
         // Test False
         generalConfigurationsPage.validatePageTitle(title);
-        generalConfigurationsPage.selectItem();
+        generalConfigurationsPage.selectItem("text");
         generalConfigurationsPage.clickModifyButton();
         generalConfigurationsPage.validatePageTitle("Edit Record");
         generalConfigurationsPage.typeValue("False");
@@ -58,7 +58,7 @@ describe("General Configurations", function () {
 
         // Test True
         generalConfigurationsPage.validatePageTitle(title);
-        generalConfigurationsPage.selectItem();
+        generalConfigurationsPage.selectItem("text");
         generalConfigurationsPage.clickModifyButton();
         generalConfigurationsPage.validatePageTitle("Edit Record");
         generalConfigurationsPage.typeValue("True");
@@ -82,9 +82,9 @@ describe("General Configurations", function () {
       generalConfigurationsPage = adminPage.goToValidationConfig();
     });
 
-    it("Edit value and validate", () => {
+    it("Persist a real validation text parameter and Unicode value", () => {
       generalConfigurationsPage.validatePageTitle("Validation Configuration");
-      generalConfigurationsPage.selectItem();
+      generalConfigurationsPage.selectItem("text");
       generalConfigurationsPage.clickModifyButton();
       generalConfigurationsPage.validatePageTitle("Edit Record");
       generalConfigurationsPage.typeValue("False");
@@ -93,7 +93,7 @@ describe("General Configurations", function () {
 
       //Edit value
       generalConfigurationsPage.validatePageTitle("Validation Configuration");
-      generalConfigurationsPage.selectItem();
+      generalConfigurationsPage.selectItem("text");
       generalConfigurationsPage.clickModifyButton();
       generalConfigurationsPage.validatePageTitle("Edit Record");
       generalConfigurationsPage.typeValue("a-zàâçéèêëîïôûùüÿñæœ -");

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<dataset>
+    <system_user id="1" login_name="admin" last_name="Admin"
+        first_name="Test" is_active="Y" is_employee="Y" />
+    <site_information_domain id="908"
+        name="resultReporting"
+        description="Isolated report-channel HTTP fixture" />
+    <report_queue_type id="9101" name="Results"
+        description="Actual Results queue-type name" />
+    <report_queue_type id="9102" name="malariaCase"
+        description="Actual malariaCase queue-type name" />
+    <quartz_cron_scheduler id="9003"
+        cron_statement="never" active="false" run_if_past="true"
+        name="Send Malaria Surveillance Report"
+        job_name="sendMalariaSurviellanceReport"
+        display_key="schedule.name.sendMalariaServiellanceReport"
+        description_key="schedule.description.sendMalariaServiellanceReport" />
+    <site_information id="9025" name="resultReporting"
+        description="Isolated reporting enabled" value="false"
+        encrypted="false" domain_id="908" value_type="boolean" tag="enable"
+        schedule_id="9003" description_key="siteInfo.resultReporting"
+        lastupdated="2024-01-01 12:00:00" />
+    <site_information id="9026" name="resultReportingURL"
+        description="Isolated reporting URL"
+        value="https://original.example.org/results" encrypted="false"
+        domain_id="908" value_type="text" tag="url" schedule_id="9003"
+        description_key="siteInfo.resultReportingURL"
+        lastupdated="2024-01-01 12:00:00" />
+    <site_information id="9027" name="malariaSurReport"
+        description="Second inactive report channel" value="false"
+        encrypted="false" domain_id="908" value_type="boolean" tag="enable"
+        description_key="siteInfo.malariaSurReport"
+        lastupdated="2024-01-01 12:00:00" />
+    <site_information id="9028" name="malariaSurReportURL"
+        description="Second inactive report URL"
+        value="https://second.example.org/results" encrypted="false"
+        domain_id="908" value_type="text" tag="url"
+        description_key="siteInfo.malariaSurReportURL"
+        lastupdated="2024-01-01 12:00:00" />
+</dataset>
