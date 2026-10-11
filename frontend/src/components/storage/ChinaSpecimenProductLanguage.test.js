@@ -16,7 +16,7 @@ const expectedTerms = {
   "sampleManagement.addTests.title": "追加检验项目",
   "sampleManagement.aliquot.title": "标本分装",
   "sample.management.title": "标本管理",
-  "sample.management.search.label": "实验室编号",
+  "sample.management.search.label": "按实验室编号筛选",
   "sample.management.search.placeholder": "输入实验室编号…",
   "sample.management.addTests.modal.title": "追加检验项目",
   "sample.management.aliquot.modal.title": "标本分装",

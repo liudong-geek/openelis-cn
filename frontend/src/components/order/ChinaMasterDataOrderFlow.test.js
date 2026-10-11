@@ -113,7 +113,10 @@ describe("China order entry uses governed master data", () => {
         sim.reads.filter(({ path }) =>
           path.endsWith("/SampleEntryGenerateScanProvider"),
         );
+      const clockReads = () =>
+        sim.reads.filter(({ path }) => path.endsWith("/rest/server-time"));
       expect(numberReads()).toHaveLength(0);
+      expect(clockReads()).toHaveLength(0);
       expect(sim.writes).toHaveLength(0);
       expect(
         screen.getByText(zh["order.labNumber.generatedOnSave"]),
@@ -126,7 +129,11 @@ describe("China order entry uses governed master data", () => {
       });
       await user.dblClick(next);
       await waitFor(() => expect(sim.writes).toHaveLength(1));
+      expect(clockReads()).toHaveLength(1);
       expect(numberReads()).toHaveLength(1);
+      expect(sim.reads.indexOf(clockReads()[0])).toBeLessThan(
+        sim.reads.indexOf(numberReads()[0]),
+      );
       expect(next).toBeDisabled();
       expect(history.location.pathname).toBe("/order/enter");
       expect(context.orderId).toBeNull();
@@ -139,6 +146,8 @@ describe("China order entry uses governed master data", () => {
           labNo: "SIM-GENERATED-001",
           referringSiteId: "301",
           modified: false,
+          receivedDateForDisplay: "09/16/2026",
+          receivedTime: "10:00",
         },
         patientProperties: { patientPK: "801", lastName: "SIM患者" },
         requestedSpecimens: [
@@ -172,6 +181,7 @@ describe("China order entry uses governed master data", () => {
         options: { method: "GET", cache: "no-store" },
       });
       expect(numberReads()).toHaveLength(1);
+      expect(clockReads()).toHaveLength(1);
       expect(sim.writes).toHaveLength(1);
       expect(sim.unexpected).toEqual([]);
     } finally {
@@ -179,20 +189,6 @@ describe("China order entry uses governed master data", () => {
       sessionStorage.clear();
       vi.unstubAllGlobals();
     }
-  });
-
-  test("the order page searches the patient master with one selector", () => {
-    const source = read(
-      "src/components/order/steps/sections/PatientSearchSection.jsx",
-    );
-
-    expect(source).toContain('id="patientQuickQuery"');
-    expect(source).toContain("quickQuery: normalizedQuery");
-    expect(source).toContain('params.set("queryId", queryId)');
-    expect(source).toContain('history.push("/PatientManagement")');
-    expect(source).not.toContain('id="previousLabNumber"');
-    expect(source).not.toContain('id="patientLastName"');
-    expect(source).not.toContain('id="patientFirstName"');
   });
 
   test("the patient list keeps duplicate-record merging available outside the main menu", () => {

@@ -303,6 +303,8 @@ test("20 second unknown preserves draft and File; Carbon X/Escape cannot hide it
   });
   vi.useRealTimers();
   await screen.findByRole("button", { name: "核对保存结果" });
+  expect(screen.getAllByTitle("警告提示")).toHaveLength(2);
+  expect(screen.queryByTitle("warning icon")).not.toBeInTheDocument();
   fireEvent.keyDown(screen.getByRole("dialog", { name: "登记不符合项" }), {
     key: "Escape",
     code: "Escape",
@@ -393,6 +395,8 @@ test("page two registration opens one full modal, dirty cancellation is protecte
       ),
     ).toHaveLength(2),
   );
+  expect(screen.getByTitle("成功提示")).toBeInTheDocument();
+  expect(screen.queryByTitle("success icon")).not.toBeInTheDocument();
   const reads = fetcher.mock.calls.filter(([url]) =>
     urlPath(url).endsWith("/nce/workspace"),
   );
@@ -932,6 +936,8 @@ test.each(["CREATE", "ADD_NOTE"])(
       ).toBeEnabled();
     });
     const dialog = screen.getByRole("dialog", { name: dialogName });
+    expect(within(dialog).getByTitle("警告提示")).toBeInTheDocument();
+    expect(within(dialog).queryByTitle("warning icon")).not.toBeInTheDocument();
     expect(screen.queryAllByText("NCE-2026-00001")).toHaveLength(0);
     expect(
       screen.queryByRole("textbox", { name: "登记人" }),

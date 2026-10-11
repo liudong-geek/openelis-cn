@@ -447,6 +447,11 @@ export const ReportNonConformingEvent = ({
       <div className="admin-form-workspace__body">
         {feedback && (
           <InlineNotification
+            statusIconDescription={t(
+              pending
+                ? "carbon.notification.warning"
+                : "carbon.notification.error",
+            )}
             kind={pending ? "warning" : "error"}
             hideCloseButton
             lowContrast
@@ -546,11 +551,9 @@ export const ReportNonConformingEvent = ({
                   }}
                   prevMonthAriaLabel={intl.formatMessage({
                     id: "datepicker.previousMonth",
-                    defaultMessage: "Previous month",
                   })}
                   nextMonthAriaLabel={intl.formatMessage({
                     id: "datepicker.nextMonth",
-                    defaultMessage: "Next month",
                   })}
                   value={dateText}
                   maxDate={formatDateForLocale(new Date(), dateLocale)}

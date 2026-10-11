@@ -6060,7 +6060,7 @@
   "sample.management.results.title": "标本明细",
   "sample.management.results.totalCount": "标本总数",
   "sample.management.search.error.general": "标本查询失败，请重试。",
-  "sample.management.search.label": "实验室编号",
+  "sample.management.search.label": "按实验室编号筛选",
   "sample.management.search.loading": "正在查询…",
   "sample.management.search.placeholder": "输入实验室编号…",
   "sample.management.search.title": "标本查询",

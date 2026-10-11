@@ -527,6 +527,10 @@ export const NceDashboard = ({ registrationOpen = false }) => {
         state.epoch === scope.epoch && (
           <InlineNotification
             lowContrast
+            statusIconDescription={t(
+              // i18n-keys: carbon.notification.*
+              `carbon.notification.${feedback.kind}`,
+            )}
             kind={feedback.kind}
             hideCloseButton
             title={intl.formatMessage(

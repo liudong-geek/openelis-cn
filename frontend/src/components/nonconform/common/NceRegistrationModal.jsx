@@ -105,6 +105,7 @@ export const NceRegistrationModal = ({
         <ModalBody>
           {blocked && (
             <InlineNotification
+              statusIconDescription={t("carbon.notification.warning")}
               kind="warning"
               hideCloseButton
               title={t("nce.workspace.closeBlocked")}

@@ -242,6 +242,11 @@ export const NceEventActionModal = ({
       <ModalBody>
         {feedback && (
           <InlineNotification
+            statusIconDescription={t(
+              pending
+                ? "carbon.notification.warning"
+                : "carbon.notification.error",
+            )}
             kind={pending ? "warning" : "error"}
             hideCloseButton
             title={t(feedback)}

@@ -54,6 +54,12 @@ export const createEntrySubmissionSim = ({
       if (path.endsWith("/rest/SamplePatientEntry")) return json({});
       if (path.endsWith("/rest/labUnit/config"))
         return json({ workflowType: "Clinical" });
+      if (path.endsWith("/rest/server-time"))
+        return json({
+          date: "2026-09-16",
+          time: "10:00",
+          timezone: "Asia/Shanghai",
+        });
       if (path.endsWith("/rest/SampleEntryGenerateScanProvider"))
         return json({ body: "SIM-GENERATED-001" });
       const submissionId = path.match(
