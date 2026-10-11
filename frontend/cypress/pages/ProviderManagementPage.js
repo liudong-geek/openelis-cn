@@ -21,6 +21,35 @@ const labelPattern = (key, count) => {
 const PROVIDER_PATH = "/api/OpenELIS-Global/rest";
 const PAGE = ".provider-management-page";
 const VISIBLE_MODAL = ".cds--modal.is-visible";
+let providerRequestSequence = 0;
+
+// Cypress pools requests from routes that share an alias. Each action must
+// observe its own request, including repeated searches after a list refresh.
+const nextProviderRequestAlias = (action) =>
+  `${action}${++providerRequestSequence}`;
+
+// Carbon's danger buttons include one hidden description in their text. Match
+// the localized caption on a detached copy, keeping the real button untouched.
+const matchesDeactivateButton = (button) => {
+  const clone = button.cloneNode(true);
+  const descriptions = clone.querySelectorAll(".cds--visually-hidden");
+  if (descriptions.length !== 1) {
+    return false;
+  }
+  const description = descriptions[0];
+  if (
+    description.tagName !== "SPAN" ||
+    description.textContent !== "danger" ||
+    !description.id ||
+    clone.getAttribute("aria-describedby") !== description.id
+  ) {
+    return false;
+  }
+  description.remove();
+  return labelPattern("externalconnections.action.deactivate").test(
+    clone.textContent.trim(),
+  );
+};
 
 class ProviderManagementPage {
   observeList(alias, appliedSearch = "") {
@@ -109,14 +138,16 @@ class ProviderManagementPage {
   }
 
   saveProvider(provider, active, editing) {
-    cy.intercept("POST", `**/rest/Provider/FhirUuid*`).as("saveProvider");
+    const saveAlias = nextProviderRequestAlias("saveProvider");
+    const listAlias = nextProviderRequestAlias("providerListAfterSave");
+    cy.intercept("POST", `**/rest/Provider/FhirUuid*`).as(saveAlias);
     let appliedSearch;
     cy.get("#provider-search-bar")
       .should("be.visible")
       .invoke("val")
       .then((value) => {
         appliedSearch = String(value || "");
-        this.observeList("providerListAfterSave", appliedSearch);
+        this.observeList(listAlias, appliedSearch);
       });
     this.modal(
       editing ? "provider.modal.update.heading" : "provider.modal.add.heading",
@@ -128,7 +159,7 @@ class ProviderManagementPage {
       .should("be.visible")
       .and("not.be.disabled")
       .click();
-    cy.wait("@saveProvider").then(({ request, response }) => {
+    cy.wait(`@${saveAlias}`).then(({ request, response }) => {
       const submitted =
         typeof request.body === "string"
           ? JSON.parse(request.body)
@@ -157,7 +188,7 @@ class ProviderManagementPage {
         provider.fhirUuid = saved.fhirUuid;
       }
     });
-    this.waitForList("providerListAfterSave");
+    this.waitForList(listAlias);
     cy.get("#provider-search-bar").should(($input) => {
       expect(
         String($input.val() || ""),
@@ -178,15 +209,17 @@ class ProviderManagementPage {
   }
 
   searchProvider(provider, active) {
+    const searchAlias = nextProviderRequestAlias("searchProvider");
     // Clear a previous applied search and await its real read, so searching the
     // same provider again still proves persistence through a fresh response.
     cy.get("#provider-search-bar")
       .should("be.visible")
       .then(($input) => {
         if ($input.val()) {
-          this.observeList("clearedProviderSearch");
+          const clearAlias = nextProviderRequestAlias("clearedProviderSearch");
+          this.observeList(clearAlias);
           cy.wrap($input).clear();
-          this.waitForList("clearedProviderSearch");
+          this.waitForList(clearAlias);
         }
       });
     cy.intercept({
@@ -197,11 +230,11 @@ class ProviderManagementPage {
         startingRecNo: "1",
         searchString: provider.firstName,
       },
-    }).as("searchProvider");
+    }).as(searchAlias);
     cy.get("#provider-search-bar")
       .type(provider.firstName)
       .should("have.value", provider.firstName);
-    cy.wait("@searchProvider").then(({ response }) => {
+    cy.wait(`@${searchAlias}`).then(({ response }) => {
       expect(response.statusCode).to.eq(200);
       expect(response.body.providers).to.be.an("array");
       const matches = response.body.providers.filter(
@@ -285,10 +318,11 @@ class ProviderManagementPage {
   }
 
   deactivateProvider(provider) {
-    cy.contains(
-      `${PAGE} .admin-list-workspace__selection-actions button`,
-      labelPattern("externalconnections.action.deactivate"),
-    )
+    const deactivateAlias = nextProviderRequestAlias("deactivateProvider");
+    const listAlias = nextProviderRequestAlias("providerListAfterDeactivate");
+    cy.get(`${PAGE} .admin-list-workspace__selection-actions button`)
+      .filter((_index, button) => matchesDeactivateButton(button))
+      .should("have.length", 1)
       .should("be.visible")
       .and("not.be.disabled")
       .click();
@@ -297,21 +331,23 @@ class ProviderManagementPage {
         labelPattern("provider.management.deactivate.confirm.message", 1),
       )
       .should("be.visible");
-    cy.intercept("POST", "**/rest/DeleteProvider*").as("deactivateProvider");
+    cy.intercept("POST", "**/rest/DeleteProvider*").as(deactivateAlias);
     let appliedSearch;
     cy.get("#provider-search-bar")
       .should("be.visible")
       .invoke("val")
       .then((value) => {
         appliedSearch = String(value || "");
-        this.observeList("providerListAfterDeactivate", appliedSearch);
+        this.observeList(listAlias, appliedSearch);
       });
     this.modal("provider.management.deactivate.confirm.title")
-      .contains("button", labelPattern("externalconnections.action.deactivate"))
+      .find("button")
+      .filter((_index, button) => matchesDeactivateButton(button))
+      .should("have.length", 1)
       .should("be.visible")
       .and("not.be.disabled")
       .click();
-    cy.wait("@deactivateProvider").then(({ request, response }) => {
+    cy.wait(`@${deactivateAlias}`).then(({ request, response }) => {
       expect(new URL(request.url).searchParams.get("ID")).to.eq(provider.id);
       const submitted =
         typeof request.body === "string"
@@ -320,7 +356,7 @@ class ProviderManagementPage {
       expect(submitted.selectedIDs.map(String)).to.deep.eq([provider.id]);
       expect(response.statusCode).to.eq(200);
     });
-    this.waitForList("providerListAfterDeactivate");
+    this.waitForList(listAlias);
     cy.get("#provider-search-bar").should(($input) => {
       expect(
         String($input.val() || ""),
