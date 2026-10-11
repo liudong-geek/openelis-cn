@@ -76,14 +76,16 @@ function PatientManagement() {
     "dateOfBirth",
     "gender",
   ].some((key) => new URLSearchParams(location.search).has(key));
+  const restoredListState =
+    location.state?.listState ||
+    (location.state?.listOrigin?.pathname === "/PatientManagement"
+      ? location.state.listOrigin.state?.listState
+      : undefined);
   const listState = useRef<PatientManagementViewState>({
-    ...(location.state?.listState ||
-      location.state?.listOrigin?.state?.listState),
+    ...restoredListState,
     managementMode: hasSearchDeepLink
       ? "advanced"
-      : location.state?.listState?.managementMode ||
-        location.state?.listOrigin?.state?.listState?.managementMode ||
-        "list",
+      : restoredListState?.managementMode || "list",
   });
   const [managementMode, setManagementMode] = useState<"list" | "advanced">(
     listState.current.managementMode || "list",

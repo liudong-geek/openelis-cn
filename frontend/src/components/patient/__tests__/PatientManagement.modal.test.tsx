@@ -118,7 +118,7 @@ const patientMenus = (historyFlag = true) => [
   },
 ];
 const mount = (
-  path = "/PatientManagement",
+  path: string | { pathname: string; state: unknown } = "/PatientManagement",
   actor = "SIM-A",
   initialMenus = patientMenus(),
 ) => {
@@ -180,6 +180,46 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("patient list maintenance modal", () => {
+  test("keeps the order return context without applying its paging to patients", () => {
+    const listOrigin = {
+      pathname: "/order",
+      state: {
+        listState: {
+          page: 3,
+          pageSize: 100,
+          statusFilter: "collection_pending",
+        },
+      },
+    };
+    const { history } = mount({
+      pathname: "/PatientManagement",
+      state: { listOrigin },
+    });
+
+    expect(mocks.list.mock.calls.at(-1)[0].initialState).toEqual({
+      managementMode: "list",
+    });
+    expect(history.location.state).toEqual({ listOrigin });
+  });
+
+  test("restores patient paging and query only from the patient list origin", () => {
+    const listState = {
+      query: "陈晓宁",
+      page: 3,
+      pageSize: 10,
+      searchMode: true,
+      managementMode: "list",
+    };
+    mount({
+      pathname: "/PatientManagement",
+      state: {
+        listOrigin: { pathname: "/PatientManagement", state: { listState } },
+      },
+    });
+
+    expect(mocks.list.mock.calls.at(-1)[0].initialState).toEqual(listState);
+  });
+
   test("keeps list, route and complete row identity while showing Chinese patient title", () => {
     const { history } = mount();
     fireEvent.click(screen.getByRole("button", { name: "SIM view" }));

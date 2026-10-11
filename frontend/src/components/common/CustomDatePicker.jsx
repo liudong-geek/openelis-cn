@@ -32,6 +32,9 @@ const CustomDatePicker = (props) => {
       : "en-US";
   const dateLocale = configuredDateLocale || inferredDateLocale;
   const intl = useIntl();
+  // Carbon resets the calendar when a boundary object changes. Keep today's
+  // boundary stable while the form rerenders so it cannot erase typed drafts.
+  const dateBoundary = useMemo(() => new Date(), []);
   const parseConfiguredDate = useCallback(
     (value) => {
       if (value instanceof Date) {
@@ -141,11 +144,17 @@ const CustomDatePicker = (props) => {
         // emits an "Invalid date provided" warning on every page mount. A
         // real Date keeps the boundary locale-neutral while the visible input
         // still follows the configured Chinese format.
-        maxDate={props.disallowFutureDate ? new Date() : undefined}
-        minDate={props.disallowPastDate ? new Date() : undefined}
+        maxDate={props.disallowFutureDate ? dateBoundary : undefined}
+        minDate={props.disallowPastDate ? dateBoundary : undefined}
       >
         <DatePickerInput
           id={props.id}
+          // Native form validation must use the same date order as the calendar.
+          pattern={
+            usesYearFirstDate(dateLocale)
+              ? "\\d{4}\\/\\d{1,2}\\/\\d{1,2}"
+              : "\\d{1,2}\\/\\d{1,2}\\/\\d{4}"
+          }
           placeholder={intl.formatMessage(
             getDatePickerPlaceholderMessage(dateLocale),
           )}

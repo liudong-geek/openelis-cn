@@ -160,7 +160,7 @@ class PatientEntryPage {
             ),
           );
           expect(nextButton, "quick-search next-page button").to.exist;
-          return cy.wrap(nextButton);
+          return cy.wrap(Cypress.$(nextButton));
         })
         .should("be.visible")
         .and("not.be.disabled")
@@ -242,9 +242,9 @@ class PatientEntryPage {
 
   openAdvancedSearch() {
     cy.get("body").then(($body) => {
-      if (!$body.find("#patientManagementQuickQuery").length) {
+      if ($body.find("#patientMasterListQuery").length) {
         cy.contains(
-          ".patient-management-mode-switcher button",
+          ".patient-master-list__search button",
           messagePattern("advanced.search"),
         )
           .should("be.visible")
@@ -468,7 +468,9 @@ class PatientEntryPage {
           .invoke("text")
           .should("match", messagePattern("patient.maintenance.view.title"));
         this.assertEnteredPatientInfo(patient);
-        cy.get(".patient-create-modal .cds--modal-close")
+        cy.get(
+          ".patient-create-modal.is-visible > .cds--modal-container > .cds--modal-container-body > .cds--modal-header .cds--modal-close",
+        )
           .should("be.visible")
           .click();
         cy.get(".patient-create-modal").should("not.exist");

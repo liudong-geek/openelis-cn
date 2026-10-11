@@ -3,10 +3,15 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
+import { Form, Formik } from "formik";
 import CustomDatePicker from "./CustomDatePicker";
 import { ConfigurationContext } from "../layout/Layout";
 import enMessages from "../../languages/en.json";
 import zhMessages from "../../languages/zh.json";
+
+// The calendar config removes the usual vendor alias; the normal unit config
+// still resolves this import to its isolated calendar implementation.
+vi.unmock("flatpickr");
 
 const renderWithConfig = (
   props,
@@ -31,6 +36,103 @@ const findInput = () => {
 };
 
 describe("CustomDatePicker — controlled input contract", () => {
+  test("submits a typed Chinese birth date through native form validation", async () => {
+    const submittedBirthDate = vi.fn();
+    const SearchByBirthDate = () => (
+      <Formik
+        initialValues={{ dateOfBirth: "" }}
+        onSubmit={(values) => submittedBirthDate(values.dateOfBirth)}
+      >
+        {({ values, handleChange, setFieldValue }) => (
+          <Form onChange={handleChange}>
+            <CustomDatePicker
+              id="search-birth-date"
+              labelText="出生日期"
+              value={values.dateOfBirth}
+              onChange={(value) => setFieldValue("dateOfBirth", value)}
+              updateStateValue
+              disallowFutureDate
+            />
+            <button type="submit">查询</button>
+          </Form>
+        )}
+      </Formik>
+    );
+    const user = userEvent.setup();
+    render(
+      <IntlProvider locale="zh-CN" messages={zhMessages} onError={() => {}}>
+        <ConfigurationContext.Provider
+          value={{ configurationProperties: { DEFAULT_DATE_LOCALE: "zh-CN" } }}
+        >
+          <SearchByBirthDate />
+        </ConfigurationContext.Provider>
+      </IntlProvider>,
+    );
+
+    const input = screen.getByLabelText("出生日期");
+    await user.type(input, "2001/05/12");
+    expect(input).toHaveValue("2001/05/12");
+    await user.click(screen.getByRole("button", { name: "查询" }));
+
+    expect(submittedBirthDate).toHaveBeenCalledWith("2001/05/12");
+    expect(input.validity.patternMismatch).toBe(false);
+    expect(input.form.checkValidity()).toBe(true);
+  });
+
+  test("preserves a typed Chinese birth date when a controlled form moves focus", async () => {
+    const ControlledBirthDate = () => (
+      <Formik
+        initialValues={{ birthDate: "", gender: "" }}
+        validateOnChange={false}
+        onSubmit={() => {}}
+      >
+        {({ values, handleChange, setFieldValue }) => (
+          <Form onChange={handleChange}>
+            <CustomDatePicker
+              id="controlled-birth-date"
+              labelText="出生日期"
+              value={values.birthDate}
+              onChange={(value) => setFieldValue("birthDate", value)}
+              updateStateValue
+              disallowFutureDate
+            />
+            <label>
+              <input
+                type="radio"
+                name="gender"
+                value="M"
+                checked={values.gender === "M"}
+                onChange={handleChange}
+              />
+              男性
+            </label>
+            <output data-testid="birth-date-value">{values.birthDate}</output>
+          </Form>
+        )}
+      </Formik>
+    );
+    const user = userEvent.setup();
+    render(
+      <IntlProvider locale="zh-CN" messages={zhMessages} onError={() => {}}>
+        <ConfigurationContext.Provider
+          value={{ configurationProperties: { DEFAULT_DATE_LOCALE: "zh-CN" } }}
+        >
+          <ControlledBirthDate />
+        </ConfigurationContext.Provider>
+      </IntlProvider>,
+    );
+
+    const input = screen.getByLabelText("出生日期");
+    await user.clear(input);
+    await user.type(input, "2001/05/12");
+    await user.click(screen.getByRole("radio", { name: "男性" }));
+
+    expect(input).toHaveValue("2001/05/12");
+    expect(screen.getByTestId("birth-date-value")).toHaveTextContent(
+      "2001/05/12",
+    );
+  });
+
   test("typing a full date calls onChange with the typed value", async () => {
     const onChange = vi.fn();
     const user = userEvent.setup();
@@ -108,6 +210,7 @@ describe("CustomDatePicker — controlled input contract", () => {
     await user.type(input, value);
 
     expect(onChange).toHaveBeenCalledWith(value);
+    expect(input.validity.patternMismatch).toBe(false);
   });
 
   test.each([
