@@ -10697,5 +10697,9 @@
   "config.report.labDirector.description": "The lab directors name for the reports",
   "config.report.labDirectorName.description": "Image for lab director name",
   "config.report.labDirectorTitle.description": "Image for lab director title",
-  "config.report.labDirectorSignature.description": "Image for lab director signature"
+  "config.report.labDirectorSignature.description": "Image for lab director signature",
+  "config.report.pageNumbers.name": "reportPageNumbers",
+  "config.report.pageNumbers.description": "use page numbers on reports",
+  "config.report.siteName.name": "SiteName",
+  "config.report.siteName.description": "The name of the site for reports and header"
 }

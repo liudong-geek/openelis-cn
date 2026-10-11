@@ -317,3 +317,80 @@ test("restoring a page during a pending POST fresh-reads without automatically r
     "GET",
   ]);
 });
+
+test.each([
+  ["reads an unconfigured address", ""],
+  ["clears a configured address", "https://billing.example.test/original"],
+])(
+  "billing %s and saves the empty value through native validation",
+  async (_name, initialAddress) => {
+    const original = menu("menu_billing", true);
+    original.menu.actionURL = initialAddress;
+    const view = render(page(BillingMenuManagement));
+    await settle(requests[0], original);
+    const address = screen.getByLabelText("计费URL");
+    if (initialAddress) fireEvent.change(address, { target: { value: "" } });
+    const form = address.closest("form");
+    console.log(
+      "[LIS-BILLING-NATIVE-VALIDITY]" +
+        JSON.stringify({
+          scenario: _name,
+          valueMissing: address.validity.valueMissing,
+          typeMismatch: address.validity.typeMismatch,
+          patternMismatch: address.validity.patternMismatch,
+          valid: form.checkValidity(),
+        }),
+    );
+    // HTMLElement.click activates the real submit button and native form
+    // validation; dispatching a submit event would bypass this regression.
+    act(() => screen.getByRole("button", { name: "提交" }).click());
+    console.log(
+      "[LIS-BILLING-NATIVE-SUBMIT]" +
+        JSON.stringify({
+          scenario: _name,
+          postCount: requests.filter(
+            (request) => request.options.method === "POST",
+          ).length,
+        }),
+    );
+    expect(address.validity.valueMissing).toBe(false);
+    expect(form.checkValidity()).toBe(true);
+    expect(requests).toHaveLength(2);
+    const post = requests[1];
+    const expected = { ...original, menu: { ...original.menu, actionURL: "" } };
+    expect(post.options.method).toBe("POST");
+    expect(JSON.parse(post.options.body)).toEqual(expected);
+    await settle(post, expected);
+    expect(lastState()).toEqual({ dirty: false, busy: false });
+    expect(screen.getByLabelText("计费URL")).toHaveValue("");
+    act(() => view.unmount());
+    render(page(BillingMenuManagement));
+    expect(requests).toHaveLength(3);
+    expect(requests[2].options.method).toBe("GET");
+    await settle(requests[2], expected);
+    expect(screen.getByLabelText("计费URL")).toHaveValue("");
+    expect(screen.getByRole("checkbox")).toBeChecked();
+  },
+);
+
+test.each([
+  ["relative address", "/billing", "typeMismatch"],
+  ["malformed HTTP address", "http://", "typeMismatch"],
+  ["malformed HTTPS address", "https://", "typeMismatch"],
+  ["FTP address", "ftp://billing.example.test", "patternMismatch"],
+  ["script address", "javascript:alert(1)", "patternMismatch"],
+])(
+  "billing rejects a nonempty %s through native validation",
+  async (_name, value, reason) => {
+    render(page(BillingMenuManagement));
+    await settle(requests[0], menu("menu_billing", true));
+    const address = screen.getByLabelText("计费URL");
+    fireEvent.change(address, { target: { value } });
+    expect(address.validity[reason]).toBe(true);
+    expect(address.closest("form").checkValidity()).toBe(false);
+    act(() => screen.getByRole("button", { name: "提交" }).click());
+    expect(requests).toHaveLength(1);
+    expect(lastState()).toEqual({ dirty: true, busy: false });
+    expect(notifications).not.toHaveBeenCalled();
+  },
+);

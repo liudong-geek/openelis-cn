@@ -286,8 +286,9 @@ function Admin() {
         />
         <Route
           path={`${path}/NonConformityConfigurationMenu`}
-          component={() => (
+          render={() => (
             <ConfigMenuDisplay
+              key="NonConformityConfigurationMenu"
               menuType="NonConformityConfigurationMenu"
               label="Non Conformity Configuration Menu"
               id="sidenav.label.admin.formEntry.nonconformityconfig"
@@ -296,8 +297,9 @@ function Admin() {
         />
         <Route
           path={`${path}/MenuStatementConfigMenu`}
-          component={() => (
+          render={() => (
             <ConfigMenuDisplay
+              key="MenuStatementConfigMenu"
               menuType="MenuStatementConfigMenu"
               label="Menu Statement Configuration Menu"
               id="sidenav.label.admin.formEntry.menustatementconfig"
@@ -306,8 +308,9 @@ function Admin() {
         />
         <Route
           path={`${path}/ValidationConfigurationMenu`}
-          component={() => (
+          render={() => (
             <ConfigMenuDisplay
+              key="ValidationConfigurationMenu"
               menuType="ValidationConfigurationMenu"
               label="Validation Configuration Menu"
               id="sidenav.label.admin.formEntry.validationconfig"
@@ -316,8 +319,9 @@ function Admin() {
         />
         <Route
           path={`${path}/SampleEntryConfigurationMenu`}
-          component={() => (
+          render={() => (
             <ConfigMenuDisplay
+              key="SampleEntryConfigMenu"
               menuType="SampleEntryConfigMenu"
               label="Sample Entry Configuration Menu"
               id="sidenav.label.admin.formEntry.sampleEntryconfig"
@@ -326,8 +330,9 @@ function Admin() {
         />
         <Route
           path={`${path}/WorkPlanConfigurationMenu`}
-          component={() => (
+          render={() => (
             <ConfigMenuDisplay
+              key="WorkplanConfigurationMenu"
               menuType="WorkplanConfigurationMenu"
               label="WorkPlan Configuration Menu"
               id="sidenav.label.admin.formEntry.Workplanconfig"
@@ -336,8 +341,9 @@ function Admin() {
         />
         <Route
           path={`${path}/SiteInformationMenu`}
-          component={() => (
+          render={() => (
             <ConfigMenuDisplay
+              key="SiteInformationMenu"
               menuType="SiteInformationMenu"
               label="Site Information Menu"
               id="sidenav.label.admin.formEntry.siteInfoconfig"
@@ -346,8 +352,9 @@ function Admin() {
         />
         <Route
           path={`${path}/ResultConfigurationMenu`}
-          component={() => (
+          render={() => (
             <ConfigMenuDisplay
+              key="ResultConfigurationMenu"
               menuType="ResultConfigurationMenu"
               label="Result Configuration Menu"
               id="sidenav.label.admin.formEntry.resultConfig"
@@ -356,8 +363,9 @@ function Admin() {
         />
         <Route
           path={`${path}/PatientConfigurationMenu`}
-          component={() => (
+          render={() => (
             <ConfigMenuDisplay
+              key="PatientConfigurationMenu"
               menuType="PatientConfigurationMenu"
               label="Patient Configuration Menu"
               id="sidenav.label.admin.formEntry.patientconfig"
@@ -366,8 +374,9 @@ function Admin() {
         />
         <Route
           path={`${path}/PrintedReportsConfigurationMenu`}
-          component={() => (
+          render={() => (
             <ConfigMenuDisplay
+              key="PrintedReportsConfigurationMenu"
               menuType="PrintedReportsConfigurationMenu"
               label="PrintedReports Configuration Menu"
               id="sidenav.label.admin.formEntry.PrintedReportsconfig"

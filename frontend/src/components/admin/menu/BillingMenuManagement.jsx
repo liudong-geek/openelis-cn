@@ -77,7 +77,6 @@ function BillingMenuManagement({ embedded = false, onEditorStateChange } = {}) {
                       });
                     }}
                     type="url"
-                    required
                     pattern="https?://.*"
                   />
                 </div>
