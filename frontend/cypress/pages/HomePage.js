@@ -724,14 +724,8 @@ class HomePage {
 
   goToCompatibilityOrderEntry() {
     this.expectOverview();
-    cy.intercept("GET", "**/rest/SamplePatientEntry").as(
-      "compatibilityEntryForm",
-    );
     cy.visit("/SamplePatientEntry");
     cy.location("pathname").should("eq", "/SamplePatientEntry");
-    cy.wait("@compatibilityEntryForm")
-      .its("response.statusCode")
-      .should("eq", 200);
     cy.get("#local_search").should("be.visible");
     return new OrderEntityPage();
   }

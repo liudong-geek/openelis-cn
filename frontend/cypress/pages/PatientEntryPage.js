@@ -50,6 +50,8 @@ class PatientEntryPage {
   enterAccessionNo = "input#accessionNumber";
   startLabNo = "#startLabNo";
   endLabNoSelector = "#endLabNo";
+  selectedPatientForm = false;
+  selectedPatientId = null;
 
   visit() {
     // Kept for legacy callers. The patient-management acceptance spec enters
@@ -531,10 +533,20 @@ class PatientEntryPage {
   }
 
   getLastName() {
+    if (this.selectedPatientForm) {
+      return cy
+        .get("[data-cy='patientSelectionReady'] form:visible")
+        .find(this.lastNameSelector);
+    }
     return cy.get(this.lastNameSelector);
   }
 
   getFirstName() {
+    if (this.selectedPatientForm) {
+      return cy
+        .get("[data-cy='patientSelectionReady'] form:visible")
+        .find(this.firstNameSelector);
+    }
     return cy.get(this.firstNameSelector);
   }
 
@@ -883,7 +895,9 @@ class PatientEntryPage {
   }
 
   selectPatientFromSearchResults() {
-    this.getPatientSearchResultsTable()
+    // Queue-time scope prevents later name assertions from reading search inputs.
+    this.selectedPatientForm = true;
+    return this.getPatientSearchResultsTable()
       .find("tr")
       .first()
       .find("[data-cy='radioButton']")
@@ -891,7 +905,50 @@ class PatientEntryPage {
         const id = $radio.attr("id");
         expect(id, "patient selection radio id").to.be.a("string").and.not.be
           .empty;
+        this.selectedPatientId = id;
+        const detailsAlias = `selectedPatientDetails${++patientSearchSequence}`;
+        cy.intercept("GET", "**/rest/patient-details?*", (request) => {
+          if (new URL(request.url).searchParams.get("patientID") === id) {
+            request.alias = detailsAlias;
+          }
+        });
         cy.get(`label[for='${id}']`).should("exist").click();
+        return cy.wait(`@${detailsAlias}`).then(({ request, response }) => {
+          expect(new URL(request.url).searchParams.get("patientID")).to.eq(id);
+          expect(response?.statusCode, "selected patient detail status").to.eq(
+            200,
+          );
+          expect(
+            response?.headers?.["content-type"],
+            "selected patient detail JSON",
+          ).to.contain("application/json");
+          const details = response?.body;
+          expect(details, "selected patient detail").to.be.an("object");
+          expect(details).not.to.have.property("error");
+          expect(String(details.patientPK), "selected patient identity").to.eq(
+            id,
+          );
+          cy.get("[data-cy='patientSelectionReady'] form:visible")
+            .should("have.length", 1)
+            .within(() => {
+              cy.get(this.firstNameSelector).should(
+                "have.value",
+                details.firstName,
+              );
+              cy.get(this.lastNameSelector).should(
+                "have.value",
+                details.lastName,
+              );
+              cy.get(this.dateOfBirth).should(
+                "have.value",
+                details.birthDateForDisplay,
+              );
+              cy.get("input[name='gender']:checked").should(
+                "have.value",
+                details.gender,
+              );
+            });
+        });
       });
   }
 }

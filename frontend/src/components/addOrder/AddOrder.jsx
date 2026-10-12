@@ -509,7 +509,7 @@ const AddOrder = (props) => {
         providerFirstName: data.person.firstName,
         providerLastName: data.person.lastName,
         providerWorkPhone: data.person.workPhone,
-        providerEmail: data.person.email,
+        providerEmail: data.person.email ?? "",
         providerFax: data.person.fax,
         providerId: data.id,
         providerPersonId: data.person.id,

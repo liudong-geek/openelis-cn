@@ -3,9 +3,7 @@ package org.openelisglobal.referral.service;
 import jakarta.annotation.PostConstruct;
 import java.sql.Timestamp;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -127,30 +125,30 @@ public class ReferralSetServiceImpl implements ReferralSetService {
         }
 
         for (ReferralSet referralSet : referralSetList) {
-            if (referralSet.getReferral().isCanceled()) {
-                // try {
-                // fhirReferralService.cancelReferralToOrganization(
-                // referralSet.getReferral().getOrganization().getId(),
-                //
-                // referralSet.getReferral().getAnalysis().getSampleItem().getSample().getId(),
-                //
-                // Arrays.asList(referralSet.getReferral().getAnalysis().getId()));
-                // } catch (FhirLocalPersistingException e) {
-                // // TODO don't catch since this is a considerable error in OE world
-                // going ahead?
-                // LogEvent.logError(e);
-                // }
-            } else {
-                try {
-                    fhirReferralService.referAnalysisesToOrganization(referralSet.getReferral());
-                } catch (TestNotFullyConfiguredException e) {
-                    LogEvent.logError(this.getClass().getSimpleName(), "updateRefreralSets",
-                            "unable to automatically refer a test that does not have a loinc code set");
-                } catch (FhirLocalPersistingException e) {
-                    LogEvent.logError(this.getClass().getSimpleName(), "updateRefreralSets",
-                            "had a problem saving the referral locally in fhir");
-                }
-            }
+            syncReferral(referralSet.getReferral());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void syncSavedEntryReferrals(String sampleId) {
+        for (Referral referral : referralService.getReferralsBySampleId(sampleId)) {
+            syncReferral(referral);
+        }
+    }
+
+    private void syncReferral(Referral referral) {
+        if (referral.isCanceled()) {
+            return;
+        }
+        try {
+            fhirReferralService.referAnalysisesToOrganization(referral);
+        } catch (TestNotFullyConfiguredException e) {
+            LogEvent.logError(this.getClass().getSimpleName(), "syncReferral",
+                    "unable to automatically refer a test that does not have a loinc code set");
+        } catch (FhirLocalPersistingException e) {
+            LogEvent.logError(this.getClass().getSimpleName(), "syncReferral",
+                    "had a problem saving the referral locally in fhir");
         }
     }
 
@@ -203,8 +201,6 @@ public class ReferralSetServiceImpl implements ReferralSetService {
     @Transactional
     public void createSaveReferralSetsSamplePatientEntry(List<ReferralItem> referralItems,
             SamplePatientUpdateData updateData) {
-        List<Referral> referrals = new ArrayList<>();
-        List<ReferralSet> referralSets = new ArrayList<>();
         for (ReferralItem referralItem : referralItems) {
             Result result = new Result();
 
@@ -233,20 +229,12 @@ public class ReferralSetServiceImpl implements ReferralSetService {
 
             referralService.insert(referral);
             resultService.insert(result);
-            referrals.add(referral);
             ReferralResult referralResult = new ReferralResult();
             referralResult.setReferralId(referral.getId());
             referralResult.setSysUserId(updateData.getCurrentUserId());
             referralResult.setTestId(referralItem.getReferredTestId());
             referralResult.setResult(result);
             referralResultService.insert(referralResult);
-
-            ReferralSet referralSet = new ReferralSet();
-            referralSet.setReferral(referral);
-            referralSet.setExistingReferralResults(Arrays.asList(referralResult));
-            referralSets.add(referralSet);
         }
-        updateReferralSets(referralSets, new ArrayList<>(), new HashSet<>(), new ArrayList<>(),
-                updateData.getCurrentUserId());
     }
 }

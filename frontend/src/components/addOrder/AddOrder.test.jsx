@@ -95,6 +95,7 @@ vi.mock("./OrderResultReporting", () => ({ default: () => <div /> }));
 
 import AddOrder from "./AddOrder";
 import { NotificationContext } from "../layout/Layout";
+import { createOrderEntryValidationSchema } from "../formModel/validationSchema/OrderEntryValidationSchema";
 
 // Mirrors the POST /api/orderEntry/labelRequest response shape (snake_case wire
 // keys). sample_id_local "0"/"1" are the positional keys AddOrder sends.
@@ -492,6 +493,67 @@ describe("AddOrder late asynchronous field responses", () => {
     fireEvent.click(screen.getByRole("button", { name: "select-requesterId" }));
   const generateNumber = () =>
     fireEvent.click(document.querySelector('[data-cy="generate-labNumber"]'));
+
+  const completeOrder = () => ({
+    ...form(),
+    sampleXML: '<samples><sample sampleID="2" tests="1" /></samples>',
+    patientProperties: {
+      nationalId: "TEST-OPTIONAL-DOCTOR-EMAIL",
+      birthDateForDisplay: "1980/01/02",
+      gender: "F",
+      email: "",
+      patientContact: { person: { email: "" } },
+    },
+  });
+
+  test.each([null, undefined])(
+    "keeps an otherwise valid order submittable when the selected doctor's email is %s",
+    async (email) => {
+      const original = completeOrder();
+      const { setOrderFormValues } = renderAddOrder({
+        orderFormValues: original,
+        isModifyOrder: true,
+        samples: [],
+      });
+      chooseProvider();
+      const response = practitioner();
+      response.person.email = email;
+      findCallback("/rest/practitioner?")(response);
+      const updated = setOrderFormValues.mock.calls.at(-1)[0](original);
+
+      await expect(
+        createOrderEntryValidationSchema({
+          DEFAULT_DATE_LOCALE: "zh-CN",
+        }).validate(updated, { abortEarly: false }),
+      ).resolves.toMatchObject({
+        sampleOrderItems: { providerFirstName: "明", providerLastName: "李" },
+      });
+    },
+  );
+
+  test("keeps a malformed nonempty selected-doctor email from passing order validation", async () => {
+    const original = completeOrder();
+    const { setOrderFormValues } = renderAddOrder({
+      orderFormValues: original,
+      isModifyOrder: true,
+      samples: [],
+    });
+    chooseProvider();
+    const response = practitioner();
+    response.person.email = "not-an-email";
+    findCallback("/rest/practitioner?")(response);
+    const updated = setOrderFormValues.mock.calls.at(-1)[0](original);
+
+    await expect(
+      createOrderEntryValidationSchema({
+        DEFAULT_DATE_LOCALE: "zh-CN",
+      }).validate(updated, { abortEarly: false }),
+    ).rejects.toMatchObject({
+      inner: [
+        expect.objectContaining({ path: "sampleOrderItems.providerEmail" }),
+      ],
+    });
+  });
 
   test("merges a doctor lookup into the latest draft without reverting tube flags or unrelated fields", () => {
     const original = form();

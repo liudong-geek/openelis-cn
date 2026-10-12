@@ -651,16 +651,16 @@ const Index = () => {
   }, [page]);
 
   useEffect(() => {
-    console.log(changed);
     createOrderEntryValidationSchema(configurationProperties)
       .validate(orderFormValues, { abortEarly: false })
-      .then((validData) => {
+      .then(() => {
         setErrors([]);
-        console.debug("Valid Data:", validData);
       })
       .catch((errors) => {
         setErrors(errors);
-        console.error("Validation Errors:", errors.errors);
+        if (errors.name !== "ValidationError") {
+          console.error(errors);
+        }
       });
   }, [changed, configurationProperties, orderFormValues]);
 
@@ -728,36 +728,19 @@ const Index = () => {
 
             sampleXmlString += `<sample sampleID='${sampleItem.sampleTypeId}' date='${sampleItem.sampleXML.collectionDate}' time='${sampleItem.sampleXML.collectionTime}' collector='${sampleItem.sampleXML.collector}' quantity='${sampleItem.sampleXML.quantity}' uom='${sampleItem.sampleXML.uom}' tests='${tests}' testSectionMap='' testSampleTypeMap='' panels='${panels}' rejected='${sampleItem.sampleXML.rejected}' rejectReasonId='${sampleItem.sampleXML.rejectionReason}' initialConditionIds='' storageLocationId='${storageLocationId}' storageLocationType='${storageLocationType}' storagePositionCoordinate='${storagePositionCoordinate}' gpsLatitude='${gpsLatitude}' gpsLongitude='${gpsLongitude}' gpsAccuracy='${gpsAccuracy}' gpsCaptureMethod='${gpsCaptureMethod}' collectionMethod='${collectionMethod}' sampleTemperature='${sampleTemperature}' specimenOrigin='${specimenOrigin}' numOrderLabels='${sampleItem.sampleXML?.numOrderLabels || 1}' numSpecimenLabels='${sampleItem.sampleXML?.numSpecimenLabels || 1}'/>`;
           }
-          if (sampleItem.referralItems.length > 0) {
-            const referredInstitutes = Object.keys(sampleItem.referralItems)
-              .map(function (i) {
-                return sampleItem.referralItems[i].institute;
-              })
-              .join(",");
-
-            const sentDates = Object.keys(sampleItem.referralItems)
-              .map(function (i) {
-                return sampleItem.referralItems[i].sentDate;
-              })
-              .join(",");
-
-            const referralReasonIds = Object.keys(sampleItem.referralItems)
-              .map(function (i) {
-                return sampleItem.referralItems[i].reasonForReferral;
-              })
-              .join(",");
-
-            const referrers = Object.keys(sampleItem.referralItems)
-              .map(function (i) {
-                return sampleItem.referralItems[i].referrer;
-              })
-              .join(",");
-            referralItems.push({
-              referrer: referrers,
-              referredInstituteId: referredInstitutes,
-              referredTestId: tests,
-              referredSendDate: sentDates,
-              referralReasonId: referralReasonIds,
+          if (sampleItem.requestReferralEnabled) {
+            const selectedTestIds = new Set(
+              sampleItem.tests.map((test) => String(test.id)),
+            );
+            (sampleItem.referralItems || []).forEach((referralRequest) => {
+              if (!selectedTestIds.has(String(referralRequest.testId))) return;
+              referralItems.push({
+                referrer: referralRequest.referrer || "",
+                referredInstituteId: referralRequest.institute,
+                referredTestId: String(referralRequest.testId),
+                referredSendDate: referralRequest.sentDate || "",
+                referralReasonId: referralRequest.reasonForReferral,
+              });
             });
           }
         });
@@ -766,7 +749,7 @@ const Index = () => {
     }
     setOrderFormValues({
       ...orderFormValues,
-      useReferral: true,
+      useReferral: referralItems.length > 0,
       sampleXML: sampleXmlString,
       referralItems: referralItems,
     });

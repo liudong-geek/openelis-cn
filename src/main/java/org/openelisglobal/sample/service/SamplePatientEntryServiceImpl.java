@@ -75,6 +75,7 @@ import org.openelisglobal.program.service.ProgramSampleService;
 import org.openelisglobal.program.valueholder.immunohistochemistry.ImmunohistochemistrySample;
 import org.openelisglobal.program.valueholder.pathology.PathologySample;
 import org.openelisglobal.provider.service.ProviderService;
+import org.openelisglobal.referral.service.ReferralSetService;
 import org.openelisglobal.requester.service.SampleRequesterService;
 import org.openelisglobal.requester.valueholder.SampleRequester;
 import org.openelisglobal.sample.action.util.SamplePatientUpdateData;
@@ -176,6 +177,9 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
     private SpecimenIntakeDecisionDAO specimenIntakeDecisionDAO;
     @Autowired
     private SpecimenReceiptDAO specimenReceiptDAO;
+
+    @Autowired
+    private ReferralSetService referralSetService;
 
     @Autowired
     private IStatusService statusService;
@@ -373,6 +377,12 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
             }
 
             persistObservations(updateData);
+        }
+
+        // A successful entry includes its local referrals. Remote FHIR delivery
+        // happens after commit and must not decide whether these records exist.
+        if (form.getUseReferral() && form.getReferralItems() != null && !form.getReferralItems().isEmpty()) {
+            referralSetService.createSaveReferralSetsSamplePatientEntry(form.getReferralItems(), updateData);
         }
 
         SampleEntrySessionContext.publishAfterCommit(request, updateData.getAccessionNumber(), updateData.getPatientId());

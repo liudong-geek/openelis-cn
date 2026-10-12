@@ -14,4 +14,6 @@ public interface ReferralSetService {
             List<ReferralResult> removableReferralResults, String sysUserId);
 
     void createSaveReferralSetsSamplePatientEntry(List<ReferralItem> referralItems, SamplePatientUpdateData updateData);
+
+    void syncSavedEntryReferrals(String sampleId);
 }

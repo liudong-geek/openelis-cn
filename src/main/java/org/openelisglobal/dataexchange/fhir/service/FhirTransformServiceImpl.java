@@ -578,7 +578,7 @@ public class FhirTransformServiceImpl implements FhirTransformService {
         Bundle responseBundle = fhirPersistanceService.createUpdateFhirResourcesInFhirStore(fhirOperations);
 
         if (useReferral) {
-            referralSetService.createSaveReferralSetsSamplePatientEntry(referralItems, updateData);
+            referralSetService.syncSavedEntryReferrals(updateData.getSample().getId());
         }
     }
 

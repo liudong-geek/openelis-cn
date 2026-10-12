@@ -69,23 +69,54 @@ class OrderEntityPage {
   }
 
   getPatientPage() {
-    return new PatientEntryPage();
+    this.patientPage = new PatientEntryPage();
+    return this.patientPage;
   }
 
   clickNextButton() {
     cy.get("body").then(($body) => {
+      const enteringSamples =
+        $body.find("#additionalQuestionsSelect").length > 0;
+      const enteringOrderDetails = $body.find("select#sampleId_0").length > 0;
       const tests = $body.find("input[id^='test_0_']:checked");
       if (tests.length) {
         this.expected.testIds = [...tests].map((input) =>
           input.id.slice("test_0_".length),
         );
       }
+      // Cypress resets intercepts between tests; observe each reference-data
+      // request in the same step transition that mounts its consumer.
+      if (enteringSamples) {
+        cy.intercept("GET", "**/rest/user-sample-types").as(
+          "compatibilitySampleTypes",
+        );
+      }
+      if (enteringOrderDetails) {
+        cy.intercept("GET", "**/rest/SamplePatientEntry").as(
+          "compatibilityEntryForm",
+        );
+      }
+      cy.contains("button", labelPattern("next.action.button"))
+        .should("be.visible")
+        .scrollIntoView()
+        .should("not.be.disabled")
+        .click();
+      if (enteringSamples) {
+        cy.wait("@compatibilitySampleTypes")
+          .its("response.statusCode")
+          .should("eq", 200);
+      }
+      if (enteringOrderDetails) {
+        cy.wait("@compatibilityEntryForm").then(({ response }) => {
+          expect(response?.statusCode).to.eq(200);
+          expect(response.body.sampleOrderItems.referringSiteList).to.be.an(
+            "array",
+          );
+          this.availableSites =
+            response.body.sampleOrderItems.referringSiteList;
+        });
+      }
     });
-    cy.contains("button", labelPattern("next.action.button"))
-      .should("be.visible")
-      .scrollIntoView()
-      .should("not.be.disabled")
-      .click();
   }
 
   selectCytology() {
@@ -107,17 +138,41 @@ class OrderEntityPage {
       sampleType === "Serum"
         ? labelPattern("sample.type.serum")
         : new RegExp(`^${Cypress._.escapeRegExp(sampleType)}$`);
-    cy.get("select#sampleId_0 option").then(($options) => {
-      const selected = [...$options].filter((option) =>
-        pattern.test(option.text.trim()),
-      );
-      expect(selected, "unchanged fixture specimen type").to.have.length(1);
-      this.expected.sampleTypeId = selected[0].value;
-      expect(this.expected.sampleTypeId).to.match(/^[1-9]\d*$/);
-      cy.getElement("select#sampleId_0")
-        .select(this.expected.sampleTypeId)
-        .should("have.value", this.expected.sampleTypeId);
-    });
+    cy.get("select#sampleId_0 option")
+      .should(($options) => {
+        const selected = [...$options].filter((option) =>
+          pattern.test(option.text.trim()),
+        );
+        expect(selected, "unchanged fixture specimen type").to.have.length(1);
+      })
+      .then(($options) => {
+        const selected = [...$options].filter((option) =>
+          pattern.test(option.text.trim()),
+        );
+        this.expected.sampleTypeId = selected[0].value;
+        expect(this.expected.sampleTypeId).to.match(/^[1-9]\d*$/);
+        cy.intercept(
+          "GET",
+          `**/rest/sample-type-tests?sampleType=${this.expected.sampleTypeId}`,
+        ).as("compatibilitySampleTests");
+        cy.getElement("select#sampleId_0")
+          .select(this.expected.sampleTypeId)
+          .should("have.value", this.expected.sampleTypeId);
+        cy.wait("@compatibilitySampleTests").then(({ response }) => {
+          expect(response.statusCode).to.eq(200);
+          const data =
+            typeof response.body === "string"
+              ? JSON.parse(response.body)
+              : response.body;
+          expect(data, "real specimen test configuration").to.be.an("object");
+          expect(String(data.sampleTypeId)).to.eq(this.expected.sampleTypeId);
+          expect(
+            data.panels,
+            "available panels from the real response",
+          ).to.be.an("array");
+          this.availablePanels = data.panels;
+        });
+      });
   }
 
   enterFixtureDate(selector, value, field) {
@@ -169,16 +224,42 @@ class OrderEntityPage {
 
   checkPanelCheckBoxField() {
     this.expected.panelIds = [];
-    ["Bilan Biochimique", "Serologie VIH"].forEach((name) => {
-      cy.contains("label", name)
-        .should("be.visible")
-        .then(($label) => {
-          const id = $label.attr("for");
-          expect(id).to.match(/^panel_0_[1-9]\d*$/);
-          cy.wrap($label).click();
-          cy.get(`#${id}`).should("be.checked");
-          this.expected.panelIds.push(id.slice("panel_0_".length));
-        });
+    // Localization keeps the original fixture entities (panel 1 and panel 4).
+    const fixturePanels = [
+      { id: "1", names: ["Bilan Biochimique", "生化检验组合"] },
+      { id: "4", names: ["Serologie VIH", "HIV血清学"] },
+    ];
+    cy.then(() => {
+      expect(
+        this.availablePanels,
+        "unchanged fixture panels from the real sample-type response",
+      ).to.be.an("array");
+      fixturePanels.forEach((fixture) => {
+        const matching = this.availablePanels.filter((panel) =>
+          fixture.names.includes(panel.name),
+        );
+        expect(
+          matching,
+          `unique localized fixture panel ${fixture.id}`,
+        ).to.have.length(1);
+        const panel = matching[0];
+        expect(String(panel.id), "original fixture panel identity").to.eq(
+          fixture.id,
+        );
+        const name = new RegExp(`^${Cypress._.escapeRegExp(panel.name)}$`);
+        cy.contains("label", name)
+          .should("be.visible")
+          .then(($label) => {
+            const id = $label.attr("for");
+            expect(id).to.match(/^panel_0_[1-9]\d*$/);
+            expect(id, "label targets the original fixture panel").to.eq(
+              `panel_0_${fixture.id}`,
+            );
+            cy.wrap($label).click();
+            cy.get(`#${id}`).should("be.checked");
+            this.expected.panelIds.push(id.slice("panel_0_".length));
+          });
+      });
     });
   }
 
@@ -225,13 +306,60 @@ class OrderEntityPage {
   }
 
   enterSiteName(siteName) {
+    cy.then(() => {
+      expect(this.availableSites).to.be.an("array");
+      const matches = this.availableSites.filter(
+        (site) =>
+          site.value === siteName ||
+          (typeof site.value === "string" &&
+            site.value.endsWith(` - ${siteName}`)),
+      );
+      expect(matches, "unique configured referring site").to.have.length(1);
+      this.expected.siteId = String(matches[0].id);
+      this.expected.siteLabel = matches[0].value;
+      expect(this.expected.siteId).to.match(/^[1-9]\d*$/);
+    });
     cy.get("input#siteName").clear().type(siteName);
-    cy.contains(".suggestion-active", siteName).should("be.visible").click();
+    cy.then(() => {
+      cy.contains(".suggestion-active", this.expected.siteLabel)
+        .should("have.text", this.expected.siteLabel)
+        .should("be.visible")
+        .click();
+      cy.get("input#siteName").should("have.value", this.expected.siteLabel);
+    });
   }
 
   enterRequesterLastAndFirstName(fullName, firstName, lastName) {
+    cy.intercept({
+      method: "GET",
+      pathname: `${API_BASE}/rest/practitioner`,
+      query: { providerId: /^[1-9]\d*$/ },
+    }).as("compatibilityPractitioner");
     cy.get("#requesterId").clear().type(fullName);
     cy.contains(".suggestion-active", fullName).click();
+    cy.wait("@compatibilityPractitioner").then(({ request, response }) => {
+      expect(response?.statusCode, "real selected doctor lookup").to.eq(200);
+      expect(response.headers["content-type"]).to.match(/application\/json/i);
+      const doctor = response.body;
+      expect(doctor).to.be.an("object").and.not.be.an("array");
+      expect(doctor.person).to.be.an("object");
+      const selectedPersonId = new URL(request.url).searchParams.get(
+        "providerId",
+      );
+      expect(String(doctor.person.id), "same selected doctor person").to.eq(
+        selectedPersonId,
+      );
+      expect(String(doctor.id), "configured doctor identity").to.match(
+        /^[1-9]\d*$/,
+      );
+      expect(doctor.person.firstName).to.eq(firstName);
+      expect(doctor.person.lastName).to.eq(lastName);
+      this.expected.providerId = String(doctor.id);
+      this.expected.providerPersonId = selectedPersonId;
+    });
+    // Observe the completed autofill before exercising the original edits.
+    cy.get("input#requesterFirstName").should("have.value", firstName);
+    cy.get("input#requesterLastName").should("have.value", lastName);
     cy.get("input#requesterFirstName")
       .clear()
       .type(firstName)
@@ -297,11 +425,15 @@ class OrderEntityPage {
       expect(this.expected.receivedDate.iso).to.eq(
         fixtureISO(order.samples[0].receivedDate),
       );
-      expect(sent.referringSiteName).to.eq(order.siteName);
+      // A configured site is sent by ID; its canonical name is verified below.
+      expect(sent.referringSiteName).to.eq("");
       expect(sent.providerFirstName).to.eq(order.requester.firstName);
       expect(sent.providerLastName).to.eq(order.requester.lastName);
-      expect(String(sent.referringSiteId)).to.match(/^[1-9]\d*$/);
-      expect(String(sent.providerId)).to.match(/^[1-9]\d*$/);
+      expect(String(sent.referringSiteId)).to.eq(this.expected.siteId);
+      expect(String(sent.providerId)).to.eq(this.expected.providerId);
+      expect(String(sent.providerPersonId)).to.eq(
+        this.expected.providerPersonId,
+      );
       expect(response.body.sampleOrderItems.labNo).to.eq(sent.labNo);
 
       const xml = new DOMParser().parseFromString(
@@ -420,35 +552,61 @@ class OrderEntityPage {
         );
         jsonRead("/rest/accession-results", {
           accessionNumber: sent.labNo,
-        }).then(({ status, body: read }) => {
-          expect(status).to.eq(200);
-          expect(read.accessionNumber).to.eq(sent.labNo);
-          expect(read.searchFinished).to.eq(true);
-          const rows = read.testResult.filter((row) => row.testId === "1");
-          expect(rows).not.to.be.empty;
-          rows.forEach((row) => {
-            expect(row.referredOut).to.eq(true);
-            expect(String(row.referralId)).to.match(/^[1-9]\d*$/);
-            expect(row.referralReasonId).to.eq(this.expected.reasonId);
-          });
-        });
-        jsonRead("/rest/ReferredOutTests", {
-          searchType: "LAB_NUMBER",
-          labNumber: sent.labNo,
-        }).then(({ status, body: read }) => {
-          expect(status).to.eq(200);
-          expect(read.searchFinished).to.eq(true);
-          const rows = read.referralDisplayItems.filter((row) =>
-            referredAnalysisIds.includes(row.analysisId),
-          );
-          expect(rows.map((row) => row.analysisId)).to.have.members(
-            referredAnalysisIds,
-          );
-          rows.forEach((row) => {
-            expect(row.accessionNumber).to.eq(sent.labNo);
-            expect(row.referenceLabDisplay).to.eq("CEDRES");
-            expect(row.patientFirstName).to.eq(patient.firstName);
-            expect(row.patientLastName).to.eq(patient.lastName);
+        }).then(({ status, body: accession }) => {
+          // Capture both existing read responses before validating the captured
+          // result, so a failure cannot hide the independent referral lookup.
+          return jsonRead("/rest/ReferredOutTests", {
+            searchType: "LAB_NUMBER",
+            labNumber: sent.labNo,
+          }).then(({ status: referralStatus, body: referral }) => {
+            return cy
+              .writeFile("cypress/results/compatibility-order-readback.json", {
+                selectedPatientId: this.patientPage.selectedPatientId,
+                requestPatientId: String(body.patientProperties.patientPK),
+                saveStatus: response.statusCode,
+                labNumber: sent.labNo,
+                requestReferralItems: body.referralItems,
+                saved,
+                accessionStatus: status,
+                accession,
+                referralStatus,
+                referral,
+              })
+              .then(() => {
+                expect(String(body.patientProperties.patientPK)).to.eq(
+                  this.patientPage.selectedPatientId,
+                );
+                expect(saved.patient.patientId).to.eq(
+                  this.patientPage.selectedPatientId,
+                );
+                expect(status).to.eq(200);
+                expect(accession.accessionNumber).to.eq(sent.labNo);
+                expect(accession.searchFinished).to.eq(true);
+                const resultRows = accession.testResult.filter(
+                  (row) => row.testId === "1",
+                );
+                expect(resultRows).not.to.be.empty;
+                resultRows.forEach((row) => {
+                  expect(row.referredOut).to.eq(true);
+                  expect(String(row.referralId)).to.match(/^[1-9]\d*$/);
+                  expect(row.referralReasonId).to.eq(this.expected.reasonId);
+                });
+
+                expect(referralStatus).to.eq(200);
+                expect(referral.searchFinished).to.eq(true);
+                const referralRows = referral.referralDisplayItems.filter(
+                  (row) => referredAnalysisIds.includes(row.analysisId),
+                );
+                expect(
+                  referralRows.map((row) => row.analysisId),
+                ).to.have.members(referredAnalysisIds);
+                referralRows.forEach((row) => {
+                  expect(row.accessionNumber).to.eq(sent.labNo);
+                  expect(row.referenceLabDisplay).to.eq("CEDRES");
+                  expect(row.patientFirstName).to.eq(patient.firstName);
+                  expect(row.patientLastName).to.eq(patient.lastName);
+                });
+              });
           });
         });
         cy.contains(

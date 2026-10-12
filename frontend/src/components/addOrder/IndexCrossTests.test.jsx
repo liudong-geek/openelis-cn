@@ -54,6 +54,7 @@ vi.mock("../eqa/EQAOrderForm", () => ({ default: () => <div /> }));
 vi.mock("../common/PageBreadCrumb", () => ({ default: () => <div /> }));
 
 import Index from "./Index";
+import * as orderValidation from "../formModel/validationSchema/OrderEntryValidationSchema";
 
 // The provider's JSON-ified XML for an order whose only orderable is a
 // multi-specimen test with no specimen coding: no pre-bound sampleTypes,
@@ -94,6 +95,62 @@ const renderWithOrder = () => {
 };
 
 describe("e-order awaiting-specimen chooser (OGC-1145 FR-8)", () => {
+  it("keeps incomplete order validation in the form without logging patient values or expected field errors", async () => {
+    window.history.pushState({}, "", "/SamplePatientEntry");
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    const debugLog = vi.spyOn(console, "debug").mockImplementation(() => {});
+    try {
+      render(
+        <MemoryRouter>
+          <IntlProvider locale="en" messages={messages}>
+            <Index />
+          </IntlProvider>
+        </MemoryRouter>,
+      );
+      for (let step = 0; step < 3; step++) {
+        fireEvent.click(
+          screen.getByRole("button", { name: messages["next.action.button"] }),
+        );
+      }
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: messages["label.button.submit"] }),
+        ).toBeDisabled(),
+      );
+      expect(utilsMock.postToOpenElisServerJsonResponse).not.toHaveBeenCalled();
+      expect(errorLog).not.toHaveBeenCalled();
+      expect(debugLog).not.toHaveBeenCalled();
+    } finally {
+      errorLog.mockRestore();
+      debugLog.mockRestore();
+    }
+  });
+
+  it("still reports unexpected validation failures", async () => {
+    window.history.pushState({}, "", "/SamplePatientEntry");
+    const unexpected = new Error("Unexpected validation failure");
+    const validation = vi
+      .spyOn(orderValidation, "createOrderEntryValidationSchema")
+      .mockReturnValue({
+        validate: () => Promise.reject(unexpected),
+      });
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      render(
+        <MemoryRouter>
+          <IntlProvider locale="en" messages={messages}>
+            <Index />
+          </IntlProvider>
+        </MemoryRouter>,
+      );
+      await waitFor(() => expect(errorLog).toHaveBeenCalledWith(unexpected));
+      expect(utilsMock.postToOpenElisServerJsonResponse).not.toHaveBeenCalled();
+    } finally {
+      validation.mockRestore();
+      errorLog.mockRestore();
+    }
+  });
+
   it("surfaces the chooser with the candidate sample types instead of first-matching", async () => {
     renderWithOrder();
 
