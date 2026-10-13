@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useContext } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Button,
   Modal,
@@ -20,20 +21,24 @@ import {
 } from "../../common/CustomNotification";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 
-let breadcrumbs = [
+const methodBreadcrumbs = (base) => [
   { label: "home.label", link: "/" },
-  { label: "breadcrums.admin.managment", link: "/MasterListsPage" },
+  { label: "breadcrums.admin.managment", link: base },
   {
     label: "master.lists.page.test.management",
-    link: "/MasterListsPage/testManagementConfigMenu",
+    link: `${base}/testManagementConfigMenu`,
   },
   {
     label: "sidenav.label.admin.testmgt.ManageMethod",
-    link: "/MasterListsPage/MethodManagment",
+    link: `${base}/MethodManagement`,
   },
 ];
 
 function ManageMethod() {
+  const location = useLocation();
+  const base = location.pathname.startsWith("/admin/")
+    ? "/admin"
+    : "/MasterListsPage";
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
   const intl = useIntl();
@@ -109,7 +114,7 @@ function ManageMethod() {
     <>
       {notificationVisible === true ? <AlertDialog /> : ""}
       <div className="adminPageContent">
-        <PageBreadCrumb breadcrumbs={breadcrumbs} />
+        <PageBreadCrumb breadcrumbs={methodBreadcrumbs(base)} />
         <Grid fullWidth={true}>
           <Column lg={16} md={8} sm={4}>
             <Section>

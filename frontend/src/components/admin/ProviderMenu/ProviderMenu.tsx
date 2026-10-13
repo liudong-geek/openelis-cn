@@ -3,6 +3,7 @@ import type { ChangeEvent, ReactNode } from "react";
 import {
   Loading,
   InlineLoading,
+  InlineNotification,
   DataTable,
   Table,
   TableHead,
@@ -50,6 +51,17 @@ interface ProviderRecord {
   fhirUuid: string;
   person: ProviderPerson;
   active: boolean | string;
+}
+
+interface ProviderDraft {
+  person: ProviderPerson;
+  active: boolean;
+  fhirUuid?: string;
+}
+
+interface PendingProviderSave {
+  draft: ProviderDraft;
+  identity?: Pick<ProviderRecord, "id" | "fhirUuid">;
 }
 
 interface ProviderMenuResponse {
@@ -121,6 +133,40 @@ const isEnabledValue = (value: ReactNode) =>
   value === true ||
   ["true", "y", "yes", "1"].includes(String(value).toLowerCase());
 
+const isProviderUuid = (value: unknown): value is string =>
+  typeof value === "string" &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+const matchesSavedProvider = (
+  value: unknown,
+  pending: PendingProviderSave,
+): value is ProviderRecord => {
+  const record = value as ProviderRecord | undefined;
+  if (
+    !record ||
+    !/^[1-9]\d*$/.test(String(record.id)) ||
+    !isProviderUuid(record.fhirUuid) ||
+    !record.person ||
+    !["true", "false", "y", "n", "yes", "no", "1", "0"].includes(
+      String(record.active).toLowerCase(),
+    )
+  )
+    return false;
+  if (
+    pending.identity &&
+    (String(record.id) !== String(pending.identity.id) ||
+      record.fhirUuid !== pending.identity.fhirUuid)
+  )
+    return false;
+  return (
+    isEnabledValue(record.active) === pending.draft.active &&
+    (["lastName", "firstName", "workPhone", "fax", "email"] as const).every(
+      (field) =>
+        (record.person[field] || "") === (pending.draft.person[field] || ""),
+    )
+  );
+};
+
 function ProviderMenu() {
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext) as unknown as NotificationContextValue;
@@ -152,8 +198,31 @@ function ProviderMenu() {
     ProviderTableRow[]
   >([]);
   const [totalRecordCount, setTotalRecordCount] = useState("");
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<"add" | "update">("add");
+  const editorVersion = useRef(0);
+  const phoneValidationVersion = useRef(0);
+  const pendingSaveRef = useRef<PendingProviderSave | null>(null);
+  const [pendingSave, setPendingSaveState] =
+    useState<PendingProviderSave | null>(null);
+  const [matchingProviders, setMatchingProviders] = useState<ProviderRecord[]>(
+    [],
+  );
+  const [editorMessage, setEditorMessage] = useState("");
+  const [nextCandidateStart, setNextCandidateStart] = useState<number | null>(
+    null,
+  );
+  const setPendingSave = (pending: PendingProviderSave | null) => {
+    pendingSaveRef.current = pending;
+    setPendingSaveState(pending);
+  };
+  useEffect(
+    () => () => {
+      editorVersion.current += 1;
+      phoneValidationVersion.current += 1;
+    },
+    [],
+  );
   const [currentProvider, setCurrentProvider] =
     useState<ProviderTableRow | null>(null);
   const [lastName, setLastName] = useState("");
@@ -237,26 +306,125 @@ function ProviderMenu() {
     }
   }, [providerMenuList]);
 
-  async function displayStatus(res?: Response) {
+  function finishSave(verified = false) {
     setSaving(false);
+    setPendingSave(null);
+    setMatchingProviders([]);
+    setEditorMessage("");
+    setEditorOpen(false);
     setNotificationVisible(true);
-    if (res?.status === 201 || res?.status === 200) {
-      addNotification({
-        kind: NotificationKinds.success,
-        title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "save.config.success.msg" }),
+    addNotification({
+      kind: NotificationKinds.success,
+      title: intl.formatMessage({ id: "notification.title" }),
+      message: intl.formatMessage({
+        id: verified ? "provider.save.confirmed" : "save.config.success.msg",
+      }),
+    });
+    reloadConfiguration();
+    setSelectedRowIds([]);
+    setReloadKey((value) => value + 1);
+  }
+
+  async function displayStatus(
+    res: Response | undefined,
+    submitted: PendingProviderSave,
+    version: number,
+  ) {
+    if (editorVersion.current !== version) return;
+    // A rejection is retryable. Timeouts, server failures and malformed replies
+    // can arrive after a write committed, so those require read-back instead.
+    if (
+      res &&
+      !res.redirected &&
+      res.status >= 400 &&
+      res.status < 500 &&
+      res.status !== 408
+    ) {
+      setSaving(false);
+      setEditorMessage("server.error.msg");
+      return;
+    }
+    if (res && !res.redirected && [200, 201].includes(res.status)) {
+      try {
+        const record: unknown = await res.json();
+        if (editorVersion.current !== version) return;
+        if (matchesSavedProvider(record, submitted)) {
+          finishSave();
+          return;
+        }
+      } catch {
+        // Preserve the submitted draft if the response cannot prove the write.
+      }
+    }
+    if (editorVersion.current !== version) return;
+    setPendingSave(submitted);
+    setEditorMessage("");
+    setSaving(false);
+  }
+
+  function checkSavedProvider(candidate?: ProviderRecord, startingRecNo = 1) {
+    const pending = pendingSaveRef.current;
+    if (!pending || savingRef.current) return;
+    const version = editorVersion.current;
+    const identity =
+      pending.identity ||
+      (candidate && {
+        id: candidate.id,
+        fhirUuid: candidate.fhirUuid,
       });
-      setIsAddModalOpen(false);
-      setIsUpdateModalOpen(false);
-      reloadConfiguration();
-      setSelectedRowIds([]);
-      setReloadKey((value) => value + 1);
+    setSaving(true);
+    setEditorMessage("");
+    if (identity) {
+      getFromOpenElisServer<unknown>(
+        `/rest/Provider/raw/${encodeURIComponent(identity.id)}`,
+        (record) => {
+          if (editorVersion.current !== version) return;
+          if (matchesSavedProvider(record, { ...pending, identity })) {
+            finishSave(true);
+          } else {
+            setSaving(false);
+            setMatchingProviders([]);
+            setEditorMessage("provider.save.checkFailed");
+          }
+        },
+      );
     } else {
-      addNotification({
-        kind: NotificationKinds.error,
-        title: intl.formatMessage({ id: "notification.title" }),
-        message: intl.formatMessage({ id: "server.error.msg" }),
-      });
+      setNextCandidateStart(null);
+      // The menu endpoint searches first-name + surname. The returned record
+      // must still be chosen by the user and read back by its own identity.
+      const name = `${pending.draft.person.firstName} ${pending.draft.person.lastName}`;
+      getFromOpenElisServer<ProviderMenuResponse>(
+        `/rest/SearchProviderMenu?search=Y&startingRecNo=${startingRecNo}&searchString=${encodeURIComponent(name)}`,
+        (response) => {
+          if (editorVersion.current !== version) return;
+          const providers = Array.isArray(response?.providers)
+            ? response.providers
+            : [];
+          const from = Number(response?.fromRecordCount);
+          const to = Number(response?.toRecordCount);
+          // This legacy service includes lookahead rows and reports the whole
+          // directory count, even for a search. Use its window, not that count.
+          const windowSize =
+            Number.isSafeInteger(from) &&
+            Number.isSafeInteger(to) &&
+            from === startingRecNo &&
+            to >= from
+              ? to - from + 1
+              : providers.length;
+          const hasNext = windowSize > 0 && providers.length > windowSize;
+          setNextCandidateStart(hasNext ? to + 1 : null);
+          const matches = providers
+            .slice(0, windowSize)
+            .filter((record) => matchesSavedProvider(record, pending));
+          setMatchingProviders(matches);
+          setEditorMessage(
+            matches.length
+              ? "provider.save.matches"
+              : "provider.save.checkFailed",
+          );
+          setSaving(false);
+        },
+      );
     }
   }
 
@@ -308,89 +476,81 @@ function ProviderMenu() {
     setSelectedRowIds([]);
   };
 
-  const openAddModal = () => {
-    setSaving(false);
-    setLastName("");
-    setFirstName("");
-    setTelephone("");
-    setFax("");
-    setEmail("");
+  const openProviderModal = (provider?: ProviderTableRow) => {
+    // Returning to an unresolved save reopens its frozen draft, not a new POST.
+    if (pendingSaveRef.current || savingRef.current) {
+      setEditorOpen(true);
+      return;
+    }
+    editorVersion.current += 1;
+    phoneValidationVersion.current += 1;
+    setCurrentProvider(provider || null);
+    setEditorMode(provider ? "update" : "add");
+    setLastName(provider?.lastName || "");
+    setFirstName(provider?.firstName || "");
+    setTelephone(provider?.telephone || "");
+    setFax(provider?.fax || "");
+    setEmail(provider?.email || "");
     setPhoneValidation({ body: "", status: true });
     setEmailValidation({ body: "", status: true });
+    setEditorMessage(
+      provider && !isProviderUuid(provider.fhirUuid)
+        ? "provider.save.identityUnavailable"
+        : "",
+    );
+    setMatchingProviders([]);
+    setNextCandidateStart(null);
+    const active = !provider || isEnabledValue(provider.active);
     setIsActive({
-      id: "yes",
-      value: intl.formatMessage({ id: "label.yes" }),
+      id: active ? "yes" : "no",
+      value: intl.formatMessage({ id: active ? "label.yes" : "label.no" }),
     });
-    setIsAddModalOpen(true);
+    setEditorOpen(true);
   };
 
-  const closeAddModal = () => {
+  const closeProviderModal = () => {
     if (savingRef.current) return;
-    setIsAddModalOpen(false);
+    setEditorOpen(false);
+    phoneValidationVersion.current += 1;
   };
 
+  const openAddModal = () => openProviderModal();
   const openUpdateModal = (providerId: string) => {
-    const provider = providerMenuListShow.find((p) => p.id === providerId)!;
-    setCurrentProvider(provider);
-    setLastName(provider.lastName);
-    setFirstName(provider.firstName);
-    setTelephone(provider.telephone || "");
-    setFax(provider.fax || "");
-    setEmail(provider.email || "");
-    setPhoneValidation({ body: "", status: true });
-    setEmailValidation({ body: "", status: true });
-    setSaving(false);
-    setIsActive(
-      isEnabledValue(provider.active)
-        ? { id: "yes", value: intl.formatMessage({ id: "label.yes" }) }
-        : { id: "no", value: intl.formatMessage({ id: "label.no" }) },
-    );
-    setIsUpdateModalOpen(true);
+    const provider = providerMenuListShow.find((p) => p.id === providerId);
+    if (provider) openProviderModal(provider);
   };
 
-  const closeUpdateModal = () => {
-    if (savingRef.current) return;
-    setIsUpdateModalOpen(false);
-  };
-
-  const handleAddProvider = () => {
-    if (saving || !formValid) return;
+  const handleSaveProvider = () => {
+    if (savingRef.current || pendingSaveRef.current || !formValid) return;
+    if (
+      editorMode === "update" &&
+      (!currentProvider || !isProviderUuid(currentProvider.fhirUuid))
+    ) {
+      setEditorMessage("provider.save.identityUnavailable");
+      return;
+    }
     setSaving(true);
-    const newProvider = {
-      person: {
-        lastName,
-        firstName,
-        workPhone: telephone,
-        fax,
-        email,
+    setEditorMessage("");
+    const submitted: PendingProviderSave = {
+      draft: {
+        ...(currentProvider ? { fhirUuid: currentProvider.fhirUuid } : {}),
+        person: { lastName, firstName, workPhone: telephone, fax, email },
+        active: isActive.id === "yes",
       },
-      active: isActive.id === "yes",
+      ...(currentProvider
+        ? {
+            identity: {
+              id: currentProvider.id,
+              fhirUuid: currentProvider.fhirUuid,
+            },
+          }
+        : {}),
     };
+    const version = editorVersion.current;
     postToOpenElisServerFullResponse(
-      "/rest/Provider/FhirUuid?fhirUuid=",
-      JSON.stringify(newProvider),
-      displayStatus,
-    );
-  };
-
-  const handleUpdateProvider = () => {
-    if (saving || !formValid || !currentProvider) return;
-    setSaving(true);
-    const updatedProvider = {
-      fhirUuid: currentProvider!.fhirUuid,
-      person: {
-        lastName,
-        firstName,
-        workPhone: telephone,
-        fax,
-        email,
-      },
-      active: isActive.id === "yes",
-    };
-    postToOpenElisServerFullResponse(
-      "/rest/Provider/FhirUuid?fhirUuid=" + currentProvider!.fhirUuid,
-      JSON.stringify(updatedProvider),
-      displayStatus,
+      `/rest/Provider/FhirUuid?fhirUuid=${encodeURIComponent(currentProvider?.fhirUuid || "")}`,
+      JSON.stringify(submitted.draft),
+      (response) => displayStatus(response, submitted, version),
     );
   };
 
@@ -409,11 +569,15 @@ function ProviderMenu() {
   };
 
   const handleTelephoneChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setTelephone(event.target.value);
+    const value = event.target.value;
+    phoneValidationVersion.current += 1;
+    setTelephone(value);
+    setPhoneValidation({ body: "", status: !value });
   };
 
   const handlePhoneValidation = (e: ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
+    const version = ++phoneValidationVersion.current;
     if (!value) {
       setPhoneValidation({ body: "", status: true });
       return;
@@ -422,6 +586,7 @@ function ProviderMenu() {
       "/rest/PhoneNumberValidationProvider?fieldId=patientPhone&value=" +
         encodeURIComponent(value),
       (resp?: ValidationResult) => {
+        if (phoneValidationVersion.current !== version) return;
         setPhoneValidation(
           resp || {
             body: intl.formatMessage({ id: "server.error.msg" }),
@@ -524,7 +689,11 @@ function ProviderMenu() {
     String(lastName || "").trim().length > 0 &&
     String(firstName || "").trim().length > 0 &&
     phoneValidation.status &&
-    emailValidation.status;
+    (email === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+  const editorPrefix = `provider-${editorMode}`;
+  const fieldsLocked = saving || !!pendingSave;
+  const identityUnavailable =
+    editorMode === "update" && !isProviderUuid(currentProvider?.fhirUuid);
 
   return (
     <>
@@ -562,6 +731,21 @@ function ProviderMenu() {
           }
         />
 
+        {pendingSave && !editorOpen && (
+          <section
+            aria-label={intl.formatMessage({ id: "provider.save.resume" })}
+          >
+            <InlineNotification
+              kind="warning"
+              lowContrast
+              hideCloseButton
+              title={intl.formatMessage({ id: "provider.save.unconfirmed" })}
+            />
+            <Button kind="ghost" size="sm" onClick={() => setEditorOpen(true)}>
+              <FormattedMessage id="provider.save.resume" />
+            </Button>
+          </section>
+        )}
         <section className="admin-list-workspace__overview">
           <article>
             <span>
@@ -811,41 +995,76 @@ function ProviderMenu() {
       </div>
       <Modal
         className="oe-admin-modal oe-admin-modal--large"
-        open={isAddModalOpen}
+        open={editorOpen}
         modalHeading={intl.formatMessage({
-          id: "provider.modal.add.heading",
+          id:
+            editorMode === "add"
+              ? "provider.modal.add.heading"
+              : "provider.modal.update.heading",
         })}
         closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
-        selectorPrimaryFocus="#provider-add-last-name"
-        primaryButtonText={intl.formatMessage({ id: "label.button.add" })}
-        secondaryButtonText={intl.formatMessage({
-          id: "label.button.cancel",
+        selectorPrimaryFocus={`#${editorPrefix}-last-name`}
+        primaryButtonText={intl.formatMessage({
+          id: pendingSave
+            ? "provider.save.check"
+            : editorMode === "add"
+              ? "label.button.add"
+              : "label.button.update",
         })}
-        primaryButtonDisabled={!formValid || saving}
-        onRequestSubmit={handleAddProvider}
-        onRequestClose={closeAddModal}
+        secondaryButtonText={intl.formatMessage({
+          id: pendingSave
+            ? "provider.save.returnToList"
+            : "label.button.cancel",
+        })}
+        primaryButtonDisabled={
+          saving || (!pendingSave && (!formValid || identityUnavailable))
+        }
+        onRequestSubmit={() =>
+          pendingSave ? checkSavedProvider() : handleSaveProvider()
+        }
+        onRequestClose={closeProviderModal}
         preventCloseOnClickOutside
       >
+        {(pendingSave || editorMessage) && (
+          <InlineNotification
+            kind={pendingSave ? "warning" : "error"}
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({
+              id: pendingSave ? "provider.save.unconfirmed" : editorMessage,
+            })}
+            subtitle={
+              pendingSave && editorMessage
+                ? intl.formatMessage({ id: editorMessage })
+                : undefined
+            }
+          />
+        )}
+        {saving && (
+          <InlineLoading
+            description={intl.formatMessage({ id: "loading.description" })}
+          />
+        )}
         <div className="provider-editor-form">
           <TextInput
-            id="provider-add-last-name"
-            disabled={saving}
+            id={`${editorPrefix}-last-name`}
+            disabled={fieldsLocked}
             labelText={intl.formatMessage({ id: "provider.providerLastName" })}
             value={lastName}
             onChange={(e) => handleLastNameChange(e)}
             required
           />
           <TextInput
-            id="provider-add-first-name"
-            disabled={saving}
+            id={`${editorPrefix}-first-name`}
+            disabled={fieldsLocked}
             labelText={intl.formatMessage({ id: "provider.providerFirstName" })}
             value={firstName}
             onChange={(e) => handleFirstNameChange(e)}
             required
           />
           <TextInput
-            id="provider-add-telephone"
-            disabled={saving}
+            id={`${editorPrefix}-telephone`}
+            disabled={fieldsLocked}
             labelText={intl.formatMessage(
               { id: "patient.label.primaryphone" },
               { PHONE_FORMAT: "" },
@@ -854,22 +1073,25 @@ function ProviderMenu() {
             value={telephone}
             onChange={(e) => handleTelephoneChange(e)}
             onBlur={(e) => handlePhoneValidation(e)}
-            invalid={!phoneValidation.status}
+            invalid={!phoneValidation.status && !!phoneValidation.body}
             invalidText={phoneValidation.status ? "" : phoneValidation.body}
           />
           <TextInput
-            id="provider-add-email"
-            disabled={saving}
+            id={`${editorPrefix}-email`}
+            disabled={fieldsLocked}
             labelText={intl.formatMessage({ id: "provider.email" })}
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              handleEmailValidation(e);
+            }}
             onBlur={(e) => handleEmailValidation(e)}
             invalid={!emailValidation.status}
             invalidText={emailValidation.status ? "" : emailValidation.body}
           />
           <Select
-            id="provider-add-active"
-            disabled={saving}
+            id={`${editorPrefix}-active`}
+            disabled={fieldsLocked}
             labelText={intl.formatMessage({ id: "label.active" })}
             value={isActive.id}
             onChange={(event) =>
@@ -891,104 +1113,67 @@ function ProviderMenu() {
             />
           </Select>
           <TextInput
-            id="provider-add-fax"
-            disabled={saving}
+            id={`${editorPrefix}-fax`}
+            disabled={fieldsLocked}
             labelText={intl.formatMessage({ id: "provider.fax" })}
             value={fax}
             onChange={(e) => setFax(e.target.value)}
           />
         </div>
-      </Modal>
-
-      <Modal
-        className="oe-admin-modal oe-admin-modal--large"
-        open={isUpdateModalOpen}
-        modalHeading={intl.formatMessage({
-          id: "provider.modal.update.heading",
-        })}
-        closeButtonLabel={intl.formatMessage({ id: "label.button.close" })}
-        selectorPrimaryFocus="#provider-update-last-name"
-        primaryButtonText={intl.formatMessage({ id: "label.button.update" })}
-        secondaryButtonText={intl.formatMessage({
-          id: "label.button.cancel",
-        })}
-        primaryButtonDisabled={!formValid || saving}
-        onRequestSubmit={handleUpdateProvider}
-        onRequestClose={closeUpdateModal}
-        preventCloseOnClickOutside
-      >
-        <div className="provider-editor-form">
-          <TextInput
-            id="provider-update-last-name"
-            disabled={saving}
-            labelText={intl.formatMessage({ id: "provider.providerLastName" })}
-            value={lastName}
-            onChange={(e) => handleLastNameChange(e)}
-            required
-          />
-          <TextInput
-            id="provider-update-first-name"
-            disabled={saving}
-            labelText={intl.formatMessage({ id: "provider.providerFirstName" })}
-            value={firstName}
-            onChange={(e) => handleFirstNameChange(e)}
-            required
-          />
-          <TextInput
-            id="provider-update-telephone"
-            disabled={saving}
-            labelText={intl.formatMessage(
-              { id: "patient.label.primaryphone" },
-              { PHONE_FORMAT: "" },
-            )}
-            helperText={getPhoneFormatHint(intl, configurationProperties)}
-            value={telephone}
-            onChange={(e) => handleTelephoneChange(e)}
-            onBlur={(e) => handlePhoneValidation(e)}
-            invalid={!phoneValidation.status}
-            invalidText={phoneValidation.status ? "" : phoneValidation.body}
-          />
-          <TextInput
-            id="provider-update-email"
-            disabled={saving}
-            labelText={intl.formatMessage({ id: "provider.email" })}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onBlur={(e) => handleEmailValidation(e)}
-            invalid={!emailValidation.status}
-            invalidText={emailValidation.status ? "" : emailValidation.body}
-          />
-          <Select
-            id="provider-update-active"
-            disabled={saving}
-            labelText={intl.formatMessage({ id: "label.active" })}
-            value={isActive.id}
-            onChange={(event) =>
-              setIsActive({
-                id: event.target.value as "yes" | "no",
-                value: intl.formatMessage({
-                  id: event.target.value === "yes" ? "label.yes" : "label.no",
-                }),
-              })
-            }
+        {matchingProviders.length > 0 && (
+          <Table
+            size="sm"
+            aria-label={intl.formatMessage({ id: "provider.save.matches" })}
           >
-            <SelectItem
-              value="yes"
-              text={intl.formatMessage({ id: "label.yes" })}
-            />
-            <SelectItem
-              value="no"
-              text={intl.formatMessage({ id: "label.no" })}
-            />
-          </Select>
-          <TextInput
-            id="provider-update-fax"
+            <TableHead>
+              <TableRow>
+                <TableHeader>
+                  <FormattedMessage id="provider.save.providerId" />
+                </TableHeader>
+                <TableHeader>
+                  <FormattedMessage id="provider.management.column.name" />
+                </TableHeader>
+                <TableHeader>
+                  <FormattedMessage id="provider.email" />
+                </TableHeader>
+                <TableHeader>
+                  <FormattedMessage id="label.button.select" />
+                </TableHeader>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {matchingProviders.map((provider) => (
+                <TableRow key={provider.id}>
+                  <TableCell>{provider.id}</TableCell>
+                  <TableCell>
+                    {provider.person.lastName} {provider.person.firstName}
+                  </TableCell>
+                  <TableCell>{provider.person.email || "—"}</TableCell>
+                  <TableCell>
+                    <Button
+                      kind="ghost"
+                      size="sm"
+                      disabled={saving}
+                      onClick={() => checkSavedProvider(provider)}
+                    >
+                      <FormattedMessage id="provider.save.confirmRecord" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+        {nextCandidateStart !== null && (
+          <Button
+            kind="ghost"
+            size="sm"
             disabled={saving}
-            labelText={intl.formatMessage({ id: "provider.fax" })}
-            value={fax}
-            onChange={(e) => setFax(e.target.value)}
-          />
-        </div>
+            onClick={() => checkSavedProvider(undefined, nextCandidateStart)}
+          >
+            <FormattedMessage id="provider.save.nextCandidates" />
+          </Button>
+        )}
       </Modal>
     </>
   );

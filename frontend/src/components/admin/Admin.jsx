@@ -52,8 +52,7 @@ import SampleTypeManagement from "./sampleTypeManagement/SampleTypeManagement.js
 import TestSectionTestAssign from "./testManagementConfigMenu/TestSectionTestAssign";
 import SampleTypeOrder from "./testManagementConfigMenu/SampleTypeOrder";
 import SampleTypeTestAssign from "./testManagementConfigMenu/SampleTypeTestAssign";
-import UomManagement from "./testManagementConfigMenu/UomManagement";
-import UomCreate from "./testManagementConfigMenu/UomCreate";
+import { LegacyUomRedirect } from "./testManagementConfigMenu/UomCreate";
 import PanelManagement from "./testManagementConfigMenu/PanelManagement";
 import PanelCreate from "./testManagementConfigMenu/PanelCreate";
 import PanelOrder from "./testManagementConfigMenu/PanelOrder";
@@ -119,6 +118,14 @@ function Admin() {
           component={TestCatalogEditor}
         />
         <Route path={`${path}/MethodManagement`} component={ManageMethod} />
+        <Route
+          path={`${path}/MethodManagment`}
+          render={({ location }) => (
+            <Redirect
+              to={{ ...location, pathname: `${path}/MethodManagement` }}
+            />
+          )}
+        />
         <Route path={`${path}/AnalyzerTestName`} component={AnalyzerTestName} />
         <Route
           path={`${path}/labNumber`}
@@ -282,8 +289,8 @@ function Admin() {
           path={`${path}/SampleTypeTestAssign`}
           component={SampleTypeTestAssign}
         />
-        <Route path={`${path}/UomManagement`} component={UomManagement} />
-        <Route path={`${path}/UomCreate`} component={UomCreate} />
+        <Route path={`${path}/UomManagement`} component={LegacyUomRedirect} />
+        <Route path={`${path}/UomCreate`} component={LegacyUomRedirect} />
         <Route path={`${path}/PanelManagement`} component={PanelManagement} />
         <Route path={`${path}/PanelCreate`} component={PanelCreate} />
         <Route path={`${path}/PanelOrder`} component={PanelOrder} />

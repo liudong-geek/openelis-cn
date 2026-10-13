@@ -1,10 +1,17 @@
-import React, { useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import React, { useEffect, useMemo, useState } from "react";
+import { Link, useHistory, useLocation } from "react-router-dom";
 import { FormattedMessage, useIntl } from "react-intl";
-import { Button, Dropdown, Search, Tag } from "@carbon/react";
+import {
+  Button,
+  Dropdown,
+  InlineNotification,
+  Search,
+  Tag,
+} from "@carbon/react";
 import { ArrowRight } from "@carbon/icons-react";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import ProductPageHeader from "../../common/ProductPageHeader";
+import UomCreate from "./UomCreate";
 
 export const MASTER_DATA_GROUPS = [
   { id: "all", label: "workspace.masterData.group.all" },
@@ -47,7 +54,7 @@ export const MASTER_DATA_AREAS = [
   {
     title: "configuration.uom.manage",
     description: "configuration.uom.manage.explain",
-    path: "UomManagement",
+    path: "UomCreate",
     group: "reference",
     tools: [["UomRenameEntry", "configuration.uom.rename"]],
   },
@@ -76,7 +83,19 @@ export const MASTER_DATA_AREAS = [
 
 export default function TestManagementConfigMenu() {
   const intl = useIntl();
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const { pathname } = location;
+  const history = useHistory();
+  const [unitOpen, setUnitOpen] = useState(false);
+  const [unitSaved, setUnitSaved] = useState(false);
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get("openUom") !== "true") return;
+    setUnitSaved(false);
+    setUnitOpen(true);
+    params.delete("openUom");
+    history.replace({ ...location, search: params.toString() });
+  }, [history, location]);
   const base = pathname.startsWith("/admin") ? "/admin" : "/MasterListsPage";
   const [searchText, setSearchText] = useState("");
   const [selectedGroup, setSelectedGroup] = useState(MASTER_DATA_GROUPS[0]);
@@ -104,6 +123,22 @@ export default function TestManagementConfigMenu() {
 
   return (
     <div className="adminPageContent master-data-workspace">
+      <UomCreate
+        open={unitOpen}
+        onClose={() => setUnitOpen(false)}
+        onSaved={() => {
+          setUnitOpen(false);
+          setUnitSaved(true);
+        }}
+      />
+      {unitSaved && (
+        <InlineNotification
+          kind="success"
+          lowContrast
+          title={intl.formatMessage({ id: "uom.notification.save" })}
+          onCloseButtonClick={() => setUnitSaved(false)}
+        />
+      )}
       <PageBreadCrumb
         breadcrumbs={[
           { label: "home.label", link: "/" },
@@ -206,6 +241,23 @@ export default function TestManagementConfigMenu() {
                 <Button
                   as={Link}
                   to={`${base}/${area.path}`}
+                  onClick={
+                    area.path === "UomCreate"
+                      ? (event) => {
+                          if (
+                            event.button !== 0 ||
+                            event.metaKey ||
+                            event.ctrlKey ||
+                            event.shiftKey ||
+                            event.altKey
+                          )
+                            return;
+                          event.preventDefault();
+                          setUnitSaved(false);
+                          setUnitOpen(true);
+                        }
+                      : undefined
+                  }
                   kind="ghost"
                   size="sm"
                   renderIcon={ArrowRight}

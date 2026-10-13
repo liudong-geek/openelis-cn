@@ -10715,5 +10715,16 @@
   "label.testCatalog.sampleResults.changeType.confirm": "Clear dictionary settings and change type",
   "label.testCatalog.sampleResults.changeType.description": "Changing to this result type removes dictionary options, the primary default selection and the normal reference selection. Changes take effect when this section is saved.",
   "label.testCatalog.sampleResults.dictionaryDefault.unavailable": "Dictionary value {value} (not in current options)",
-  "label.testCatalog.group.reportingEditsOnly": "Reportable limits apply to all selected tests only when edited or cleared in the range dialog. Untouched limits remain specific to each test."
+  "label.testCatalog.group.reportingEditsOnly": "Reportable limits apply to all selected tests only when edited or cleared in the range dialog. Untouched limits remain specific to each test.",
+  "provider.save.unconfirmed": "The save result is unconfirmed. The draft is retained and cannot be sent again. Check the stored provider record first.",
+  "provider.save.check": "Check saved records",
+  "provider.save.checkFailed": "No matching saved record was confirmed. Keep this draft and check again later; an empty result does not prove that saving failed.",
+  "provider.save.matches": "The following records match the draft. Check the provider ID before selecting a record. Matching names alone do not confirm that a new record was created.",
+  "provider.save.confirmRecord": "Confirm this record",
+  "provider.save.confirmed": "The stored provider record has been verified.",
+  "provider.save.resume": "Continue checking the pending provider save",
+  "provider.save.providerId": "Provider ID",
+  "provider.save.returnToList": "Return to list",
+  "provider.save.identityUnavailable": "This provider has no valid record identity. Editing is unavailable; ask an administrator to repair the record before saving.",
+  "provider.save.nextCandidates": "Check next page"
 }

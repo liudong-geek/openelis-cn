@@ -10804,5 +10804,16 @@
   "label.testCatalog.sampleResults.changeType.confirm": "清除字典配置并更改",
   "label.testCatalog.sampleResults.changeType.description": "更改为此类型将移除字典选项、主结果默认选项和正常参考选项。保存本节配置后生效。",
   "label.testCatalog.sampleResults.dictionaryDefault.unavailable": "字典值 {value}（不在当前选项中）",
-  "label.testCatalog.group.reportingEditsOnly": "报告上下限仅在弹窗中修改或清空后应用到全部所选项目。未修改的边界保留各项目原值。"
+  "label.testCatalog.group.reportingEditsOnly": "报告上下限仅在弹窗中修改或清空后应用到全部所选项目。未修改的边界保留各项目原值。",
+  "provider.save.unconfirmed": "保存结果尚未确认。草稿已保留，暂不能重复提交。请先查询并核对医生记录。",
+  "provider.save.check": "查询确认",
+  "provider.save.checkFailed": "未确认到与草稿一致的医生记录。请保留草稿并稍后重新查询；查询为空不代表保存失败。",
+  "provider.save.matches": "以下记录与草稿一致。请核对医生编号后选择记录；姓名相同不代表本次新增成功。",
+  "provider.save.confirmRecord": "核对并使用此记录",
+  "provider.save.confirmed": "已核对医生记录。",
+  "provider.save.resume": "继续核对待确认的医生记录",
+  "provider.save.providerId": "医生编号",
+  "provider.save.returnToList": "返回列表",
+  "provider.save.identityUnavailable": "该医生记录缺少有效身份编号，暂不能保存修改。请联系管理员修复记录后重试。",
+  "provider.save.nextCandidates": "查询下一页"
 }
