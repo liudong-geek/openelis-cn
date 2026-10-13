@@ -14,6 +14,8 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.spi.PersistenceUnitInfo;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -90,6 +92,7 @@ import org.springframework.test.util.AopTestUtils;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.util.FileSystemUtils;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
@@ -256,9 +259,14 @@ public class RestrictedResultCrossRoleClinicalChainTest extends BaseWebContextSe
         factory.setPersistenceUnitName("OpenELIS-Global-persistence-unit");
         factory.setDataSource(dataSource);
 
+        Path indexDirectory = Files.createTempDirectory("lis-cross-role-index-");
         EntityManagerFactory independentFactory = null;
         EntityManager entityManager = null;
         try {
+            // Keep the production descriptor and real filesystem-backed search;
+            // only this independent test factory uses a writable temporary root.
+            factory.setJpaPropertyMap(
+                    Map.of("hibernate.search.backend.directory.root", indexDirectory.toAbsolutePath().toString()));
             factory.afterPropertiesSet();
             PersistenceUnitInfo unit = factory.getPersistenceUnitInfo();
             assertEquals("OpenELIS-Global-persistence-unit", unit.getPersistenceUnitName());
@@ -277,6 +285,9 @@ public class RestrictedResultCrossRoleClinicalChainTest extends BaseWebContextSe
 
             independentFactory = factory.getObject();
             assertNotNull("The independent production EntityManagerFactory must start", independentFactory);
+            assertEquals("Only the test factory's effective index root must use its temporary directory",
+                    indexDirectory.toAbsolutePath().toString(),
+                    independentFactory.getProperties().get("hibernate.search.backend.directory.root"));
             Set<String> runtimeEntities = independentFactory.getMetamodel().getEntities().stream()
                     .map(type -> type.getJavaType().getName()).collect(java.util.stream.Collectors.toSet());
             assertTrue("The production metamodel must contain the complete report and delivery chain",
@@ -298,7 +309,11 @@ public class RestrictedResultCrossRoleClinicalChainTest extends BaseWebContextSe
                 if (entityManager != null && entityManager.isOpen())
                     entityManager.close();
             } finally {
-                factory.destroy();
+                try {
+                    factory.destroy();
+                } finally {
+                    FileSystemUtils.deleteRecursively(indexDirectory);
+                }
             }
         }
     }
