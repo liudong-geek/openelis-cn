@@ -1,6 +1,5 @@
-# Build-only workflow for the E2E pipeline. Non-fork tests run later in the
-# workflow_run wrapper so the PR-facing checkpoint can stay clean, while fork
-# PRs delegate real execution to the pull_request_target workflow.
+# Build-only workflow. Only independently verified documentation PRs skip
+# the shared build; the workflow_run wrapper always reports the E2E checkpoint.
 name: 03 - E2E
 
 on:
@@ -17,12 +16,75 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: E2E Scope and Context
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      scope: ${{ steps.scope.outputs.scope || 'full' }}
+    steps:
+      # This artifact must exist even if checkout, dependency installation or
+      # compilation fails. It is evidence, never authority to skip tests.
+      - name: Prepare early build context
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs');
+            const directory = '/tmp/e2e-build-context-core';
+            fs.mkdirSync(directory, {recursive: true});
+            const pr = context.payload.pull_request;
+            const data = {
+              event_name: context.eventName,
+              is_fork: String(Boolean(pr && pr.head.repo.full_name.toLowerCase() !== context.payload.repository.full_name.toLowerCase())),
+              pr_number: pr ? String(pr.number) : '',
+              pr_sha: pr ? context.sha : '',
+              base_sha: pr ? pr.base.sha : '',
+              head_sha: pr ? pr.head.sha : context.sha,
+            };
+            for (const [name, value] of Object.entries(data)) {
+              fs.writeFileSync(`${directory}/${name}`, value);
+            }
+
+      - name: Upload early build context
+        uses: actions/upload-artifact@v6
+        with:
+          name: e2e-build-context-core
+          path: /tmp/e2e-build-context-core/
+          retention-days: 1
+
+      - name: Checkout trusted scope policy
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+          sparse-checkout: .github/ci/e2e-context.cjs
+          sparse-checkout-cone-mode: false
+
+      - name: Determine build scope
+        id: scope
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs');
+            const policy = './.github/ci/e2e-context.cjs';
+            // The introducing PR's base may not contain this policy yet.
+            // Bootstrap conservatively with a full build until it is merged.
+            const scope = fs.existsSync(policy)
+              ? await require(policy).buildScope({github, context})
+              : 'full';
+            core.setOutput('scope', scope);
+            await core.summary.addRaw(`E2E scope: ${scope}`).write();
+
   # ─── Shared Build ───────────────────────────────────────────────────────────
   # Single image producer for the E2E pipeline. The downstream workflow_run
   # wrapper consumes these artifacts for non-fork execution and reports the
   # stable `03 Checkpoint - E2E` contract.
   shared-build:
     name: Shared Build
+    needs: changes
+    if: needs.changes.outputs.scope != 'docs-only'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -88,44 +150,11 @@ jobs:
             -exec cp {} volume/plugins/ \;
           ls -lah volume/plugins
 
-      - name: Prepare build context metadata (early)
-        run: |
-          mkdir -p /tmp/e2e-build-context-core
-          echo "${{ github.event_name }}" > /tmp/e2e-build-context-core/event_name
-
-          IS_FORK="false"
-          PR_NUMBER=""
-          PR_SHA=""
-          HEAD_SHA=""
-
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            PR_NUMBER="${{ github.event.pull_request.number }}"
-            PR_SHA="${{ github.sha }}"
-            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-            if [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
-              IS_FORK="true"
-            fi
-          fi
-
-          echo "$IS_FORK" > /tmp/e2e-build-context-core/is_fork
-          echo "$PR_NUMBER" > /tmp/e2e-build-context-core/pr_number
-          echo "$PR_SHA" > /tmp/e2e-build-context-core/pr_sha
-          echo "$HEAD_SHA" > /tmp/e2e-build-context-core/head_sha
-
-          echo "Early context: event=${{ github.event_name }} fork=$IS_FORK pr=#$PR_NUMBER"
-
-      - name: Upload early build context
-        uses: actions/upload-artifact@v6
-        with:
-          name: e2e-build-context-core
-          path: /tmp/e2e-build-context-core/
-          retention-days: 1
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
       - name: Build all compose images (cached, writable)
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork != true
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: nick-fields/retry@v4
         with:
           timeout_minutes: 30
@@ -140,7 +169,7 @@ jobs:
               --set "*.cache-to=type=gha,scope=e2e-shared,mode=max"
 
       - name: Build all compose images (cached, read-only)
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
         uses: nick-fields/retry@v4
         with:
           timeout_minutes: 30
@@ -159,7 +188,7 @@ jobs:
           docker compose -f build.docker-compose.yml -f .github/ci/ci.analyzer-harness.yml config --images | sort -u > /tmp/e2e-images-full.txt
 
       - name: Export fork image handoff artifact
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
         run: |
           mkdir -p /tmp/e2e-image-handoff
           EXISTING_IMAGES=()
@@ -184,7 +213,7 @@ jobs:
           ls -lh /tmp/e2e-image-handoff/e2e-images.tar.gz
 
       - name: Login to GHCR
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork != true
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -193,7 +222,7 @@ jobs:
 
       - name: Tag and push compose images to GHCR
         id: push-images
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork != true
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: |
           TAG="sha-${GITHUB_SHA}"
           OWNER_LOWER="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
@@ -255,7 +284,7 @@ jobs:
         if: always()
         run: |
           MODE="none"
-          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.repo.fork }}" = "true" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.head.repo.full_name != github.repository }}" = "true" ]; then
             if [ -s /tmp/e2e-image-handoff/e2e-images.tar.gz ]; then
               MODE="fork-handoff"
             fi

@@ -94,12 +94,12 @@ jobs:
       - name: Fix permissions
         if: github.event_name == 'push'
         run: |
-              sudo chown -R "$(whoami)":"$(whoami)" target/html
-              sudo chmod -R 755 target/html  # Read-write for owner, read for others
+          sudo chown -R "$(whoami)":"$(whoami)" target/html
+          sudo chmod -R 755 target/html  # Read-write for owner, read for others
 
       - name: Check coverage report exists
         if: github.event_name == 'push'
-        run: ls -lah target/html || echo "Coverage report not found!"     
+        run: ls -lah target/html || echo "Coverage report not found!"
 
       - name: Publish coverage report to GitHub Pages
         if: github.event_name == 'push'
@@ -115,6 +115,7 @@ jobs:
     steps:
       - name: Check backend result
         env:
+          BACKEND_REQUIRED: ${{ needs.changes.outputs.backend }}
           CHANGES_RESULT: ${{ needs.changes.result }}
           BACKEND_RESULT: ${{ needs.backend-verify.result }}
         run: |
@@ -122,8 +123,16 @@ jobs:
             echo "Change detection failed: $CHANGES_RESULT"
             exit 1
           fi
-          if [[ "$BACKEND_RESULT" != "success" && "$BACKEND_RESULT" != "skipped" ]]; then
-            echo "Backend verification failed: $BACKEND_RESULT"
+          if [[ "$BACKEND_REQUIRED" == "true" ]]; then
+            EXPECTED=success
+          elif [[ "$BACKEND_REQUIRED" == "false" ]]; then
+            EXPECTED=skipped
+          else
+            echo "Invalid change-selection result: $BACKEND_REQUIRED"
+            exit 1
+          fi
+          if [[ "$BACKEND_RESULT" != "$EXPECTED" ]]; then
+            echo "Backend verification expected $EXPECTED: $BACKEND_RESULT"
             exit 1
           fi
           echo "Backend checkpoint passed (changes=$CHANGES_RESULT, verify=$BACKEND_RESULT)."

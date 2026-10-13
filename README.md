@@ -160,31 +160,9 @@ docker compose --env-file .env -p openelis-cn-e2e \
 
 ## 开发与验证
 
-后端构建：
+开发环境使用Java 21及`frontend/package.json`支持的Node版本。日常修改使用指定功能测试和局部格式检查；完整构建、浏览器回归和部署验收在集成/发布时运行。命令及范围见[开发与验收](docs/development/LIS开发与验收.md)。
 
-```sh
-java -version  # 必须为 Java 21
-mvn clean install -DskipTests -Dmaven.test.skip=true
-```
-
-前端构建：
-
-```sh
-cd frontend
-npm ci
-npm run build
-```
-
-常用前端检查：
-
-```sh
-cd frontend
-npm run check:i18n:delivery
-npm run typecheck:delivery
-npm run test:unit
-```
-
-每批业务改动应绑定需求编号、验收场景、测试记录、Git 提交和实际运行版本。模拟验证与真实医院验收必须分别记录。
+每批改动绑定需求编号、验收场景、测试记录、Git提交和运行版本。模拟验证与真实医院验收分别记录。
 
 ## 文档入口
 

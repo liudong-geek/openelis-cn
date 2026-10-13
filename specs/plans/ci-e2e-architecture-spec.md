@@ -1,6 +1,7 @@
 # E2E CI Architecture — Source of Truth
 
-**Date:** 2026-04-04  
+**Date:** 2026-10-14 (documentation scope and source verification update)
+
 **Owner:** OpenELIS CI maintainers  
 **Status:** Active reference
 
@@ -9,10 +10,13 @@ PR-facing E2E validation across trusted and fork-originated contributions.
 
 ## 1. North Star
 
-- Build once per path.
-- Keep fork and non-fork paths operationally equivalent after image publication.
+- Build once for changes that can affect the application or its validation.
+- Only root `docs/**` and `README.md` PR changes may skip E2E builds and suites.
+- Changes outside that whitelist, including `frontend/public/docs/**`, code,
+  configuration, dependencies, migrations, security and tests, require full E2E.
+- Pushes to `develop`, published releases and manual runs always require full E2E.
 - Use GHCR as the canonical downstream image contract.
-- Do not perform a second privileged fork rebuild.
+- Never execute cross-repository PR code in the privileged `workflow_run` stage.
 - Keep `03 Checkpoint - E2E` as the single required PR-facing E2E status.
 
 ## 2. Workflow Topology
@@ -20,14 +24,22 @@ PR-facing E2E validation across trusted and fork-originated contributions.
 - Build workflow:
   [`../../.github/workflows/e2e-playwright.yml`](../../.github/workflows/e2e-playwright.yml)
   - Builds artifacts, plugins, and Docker images.
+  - Uploads early identity metadata before checkout or any build dependency.
+  - Uses the PR base's scope policy and the complete PR files API to classify
+    documentation-only changes. A missing policy during bootstrap runs in full.
   - Publishes GHCR images directly for non-fork runs.
   - Exports a prebuilt image handoff payload for fork runs.
 - Wrapper workflow:
   [`../../.github/workflows/e2e-tests.yml`](../../.github/workflows/e2e-tests.yml)
   - Triggered by `workflow_run` from `03 - E2E`.
-  - Reads build context and transfer-state artifacts.
-  - Publishes handed-off fork images to GHCR without rebuilding.
-  - Calls the authoritative executor and owns checkpoint status updates.
+  - Verifies the triggering repository, workflow, commit and PR with GitHub APIs.
+  - Independently reclassifies PR paths using trusted default-branch policy.
+  - Reads and checks build context and transfer-state artifacts against that
+    identity; artifacts cannot authorize a documentation-only success.
+  - Calls the authoritative executor for same-repository code and owns the fixed
+    checkpoint status, including documentation-only and blocked outcomes.
+  - Cross-repository PRs receive a failed checkpoint. Their images and scripts
+    are not published or executed in this privileged workflow.
 - Authoritative executor:
   [`../../.github/workflows/e2e-authoritative-reusable.yml`](../../.github/workflows/e2e-authoritative-reusable.yml)
   - Runs the full E2E gate: Playwright core, Playwright harness, and deprecated
@@ -45,7 +57,9 @@ See the operator runbook for troubleshooting and expectations:
 
 - `e2e-build-context-core`
   - Early metadata from `03 - E2E`.
-  - Includes `event_name`, `is_fork`, `pr_number`, `pr_sha`, `head_sha`.
+  - Includes `event_name`, `is_fork`, `pr_number`, `pr_sha`, `base_sha`, `head_sha`.
+  - `pr_sha` is the merge commit actually built; `head_sha` is the PR commit
+    receiving the checkpoint. Both must match the independently verified PR.
 - `e2e-build-transfer-state`
   - Late-stage metadata describing image transfer mode.
   - Includes `image_transfer` and related event context.
@@ -61,20 +75,36 @@ See the operator runbook for troubleshooting and expectations:
 - `ghcr`
   - Build run already published images to GHCR.
 - `fork-handoff`
-  - Build run exported prebuilt images for privileged follow-up publication.
+  - Build run exported prebuilt images. Privileged publication is blocked; this
+    mode does not satisfy the E2E checkpoint.
 - `none`
   - Invalid or failed transfer state; downstream execution must not pretend
     success.
 
 ### 3.3 Path behavior
 
-- Non-fork PRs
+- Same-repository PRs with application changes
   - `03 - E2E` builds and publishes to GHCR.
   - `E2E / Tests` consumes GHCR image maps and runs the executor.
-- Fork PRs
+- Same-repository documentation-only PRs
+  - The build runs its lightweight context/scope job without building images.
+  - The wrapper verifies scope and context, then reports a successful
+    `03 Checkpoint - E2E` with an explicit documentation-only explanation.
+  - This status does not claim that any test suite ran or passed.
+- Cross-repository PRs
   - `03 - E2E` builds once and exports handoff payloads.
-  - `E2E / Tests` publishes those exact images to GHCR and then runs the
-    executor.
+    Documentation-only changes can still skip that build.
+  - `E2E / Tests` reports a failed checkpoint without executing PR code or
+    publishing its image payloads. A separate unprivileged fork execution
+    design is deferred; a blocked run is never treated as passing validation.
+- Source classification compares `head.repo.full_name` with the current
+  repository, not `head.repo.fork`. A repository that is itself a fork can
+  still have normal same-repository PRs.
+
+PR file enumeration is paginated and must match `changed_files`. Empty,
+incomplete, duplicate, unavailable, changing or over-3,000-file listings cannot
+skip builds. Renames must have both old and new paths inside the whitelist.
+The wrapper never relies on a build artifact's self-reported scope.
 
 ## 4. Trust Boundary Model
 
@@ -82,12 +112,15 @@ See the operator runbook for troubleshooting and expectations:
   - Prefer read-only behavior.
   - Avoid non-essential writes and shared-cache blast radius.
 - `workflow_run` follow-up stage is privileged execution.
-  - Performs GHCR publication and status updates.
-  - Must consume explicit artifacts rather than infer state from display
-    metadata.
+  - Runs only same-repository code, and posts checkpoint statuses in separate
+    jobs with status-write permission.
+  - Policy code is checked out at the wrapper's trusted `github.sha`, never at
+    an artifact-supplied or cross-repository PR ref.
+  - Repository/workflow/PR identity and complete file scope come from GitHub
+    APIs. Artifact fields are untrusted evidence checked against that identity.
 
-This design accepts controlled risk because fork PRs are a core contribution
-path. Risk is reduced, not eliminated.
+This replaces the earlier accepted privileged fork execution risk. No
+cross-repository test platform or wider publishing permission is introduced.
 
 ## 5. Status and Identity Rules
 
@@ -96,30 +129,42 @@ path. Risk is reduced, not eliminated.
 - In `workflow_run`, two identities exist:
   - run identity: what GitHub shows in Actions UI for the triggered run
   - validation identity: the code ref and commit actually validated downstream
-- For PR gating, the authoritative commit is the one identified by `status_sha`,
-  not the run label shown in the Actions list.
+- For PR gating, `status_sha` must equal the API-verified run and PR head SHA;
+  `checkout_ref` must equal the merge SHA recorded by the build and current PR.
+- Missing or mismatched context, failed/cancelled builds, missing image transfer,
+  failed/skipped required suites and unverified sources remain non-success.
+- The wrapper runs for every build conclusion, so cancelled builds can receive
+  a terminal error instead of being left without a checkpoint result.
 
 Operational rule: when debugging parity or "wrong SHA" reports, trust the
-commit/PR status surface plus artifact-derived `checkout_ref` and `status_sha`,
+commit/PR status surface plus verified `checkout_ref` and `status_sha`,
 not the Actions list label by itself.
+
+`workflow_run` uses the default-branch workflow. These changes must reach that
+branch before cloud runs use the new wrapper. Local contract tests are not
+evidence of a successful hosted E2E run. Run the dependency-free policy tests
+with `node --test .github/ci/e2e-context.test.cjs`.
 
 ## 6. What This Architecture Fixes
 
 - Removes the old duplicate privileged fork rebuild as a steady-state design.
-- Converges fork and non-fork paths on the same downstream executor contract.
-- Makes fork publication an image handoff problem, not a second build problem.
+- Avoids image builds for verified documentation-only PRs while keeping the
+  same required checkpoint name.
+- Binds the full same-repository executor to the commit actually built.
+- Prevents untrusted cross-repository payloads from reaching privileged jobs.
 
-## 7. What Still Breaks Parity
+## 7. Remaining Limitations
 
-Parity failures can still happen even with the correct CI topology:
+Full E2E runs can still fail because of:
 
 - Non-deterministic E2E tests.
 - Runtime timing sensitivity across containers, DB readiness, plugins, and
   browser startup.
 - Comparing the wrong audit surface when diagnosing runs.
 
-The main remaining parity risk is test/runtime instability, not `workflow_run`
-itself.
+Cross-repository contributions currently require a separate safe execution
+design before they can satisfy this checkpoint. They are explicitly blocked,
+not equivalent to same-repository validated runs.
 
 ## 8. Determinism Changes Landed With This Remediation
 
@@ -137,11 +182,13 @@ deterministic tests and helper behavior, not retry masking.
 
 ## 9. Decision Log
 
-### Accepted
+### Earlier decisions (2026-04-04)
 
-- Mutually exclusive fork and non-fork image publication paths.
-- GHCR as the canonical downstream image contract.
-- Fork image handoff plus privileged publish instead of second rebuild.
+- Mutually exclusive fork and non-fork image publication paths (superseded for
+  privileged cross-repository publication in the 2026-10-14 update).
+- GHCR as the canonical downstream image contract (retained for same-repo runs).
+- Fork image handoff plus privileged publish instead of second rebuild
+  (privileged publication is now blocked).
 - Separate early build context from late transfer-state artifacts.
 
 ### Rejected

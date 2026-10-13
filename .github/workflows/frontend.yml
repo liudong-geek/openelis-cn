@@ -92,7 +92,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: CYPRESS_INSTALL_BINARY=0 npm ci --legacy-peer-deps
         working-directory: frontend
 
       - name: Check Format
@@ -122,11 +122,23 @@ jobs:
         run: npm run pw:guard
         working-directory: frontend
 
+      - name: Check Chinese delivery localization
+        run: npm run check:i18n:delivery
+        working-directory: frontend
+
+      - name: Check TypeScript regression baseline
+        run: npm run typecheck:delivery
+        working-directory: frontend
+
       - name: Run Frontend Unit Tests (Vitest)
         run: npm test
         working-directory: frontend
         env:
           CI: true
+
+      - name: Check real patient and nonconformity calendars
+        run: npm run test:unit:patient-calendar && npm run test:unit:nce-calendar
+        working-directory: frontend
 
   frontend-gate:
     name: 02 Checkpoint - Frontend
@@ -136,6 +148,7 @@ jobs:
     steps:
       - name: Check sub-job results
         env:
+          FRONTEND_REQUIRED: ${{ needs.changes.outputs.frontend }}
           CHANGES_RESULT: ${{ needs.changes.result }}
           STATIC_RESULT: ${{ needs.static-checks.result }}
           IMAGE_RESULT: ${{ needs.build-prod-frontend-image.result }}
@@ -144,11 +157,16 @@ jobs:
             echo "Change detection failed: $CHANGES_RESULT"
             exit 1
           fi
-          acceptable() { [[ "$1" == "success" || "$1" == "skipped" ]]; }
-          if ! acceptable "$STATIC_RESULT" || ! acceptable "$IMAGE_RESULT"; then
-            echo "One or more sub-jobs failed:"
-            echo "  static-checks: $STATIC_RESULT"
-            echo "  build-prod-frontend-image: $IMAGE_RESULT"
+          if [[ "$FRONTEND_REQUIRED" == "true" ]]; then
+            EXPECTED=success
+          elif [[ "$FRONTEND_REQUIRED" == "false" ]]; then
+            EXPECTED=skipped
+          else
+            echo "Invalid change-selection result: $FRONTEND_REQUIRED"
+            exit 1
+          fi
+          if [[ "$STATIC_RESULT" != "$EXPECTED" || "$IMAGE_RESULT" != "$EXPECTED" ]]; then
+            echo "Frontend jobs expected $EXPECTED: static=$STATIC_RESULT image=$IMAGE_RESULT"
             exit 1
           fi
           echo "All frontend sub-jobs passed (changes=$CHANGES_RESULT, static=$STATIC_RESULT, image=$IMAGE_RESULT)."

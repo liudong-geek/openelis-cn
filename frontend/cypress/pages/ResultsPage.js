@@ -27,6 +27,15 @@ const sameRow = (actual, expected, version = true) => {
   );
   if (version) {
     expect(actual.analysisLastupdated).to.eq(expected.analysisLastupdated);
+    expect(actual.readOnly, "current result-entry permission").to.eq(
+      expected.kind === "negative",
+    );
+    expect(
+      actual.resultEntryBlockedReason ?? "",
+      "current intake reason",
+    ).to.eq(
+      expected.kind === "negative" ? "error.results.specimenIntakeMissing" : "",
+    );
   }
 };
 const options = (key, fallback) =>
@@ -185,7 +194,7 @@ class ResultsPage {
               if (kind === "positive") {
                 expect(row.receivedDate).to.be.a("string").and.not.be.empty;
                 expect(row.decisionResponse.currentAcceptanceVerified).to.eq(
-                  true,
+                  false,
                 );
                 expect(row.decisionResponse.recordedDecision).to.eq("ACCEPTED");
               } else {
@@ -1093,5 +1102,5 @@ class ResultsPage {
   }
 }
 
-export { POSITIVE, NEGATIVE, identity, options };
+export { POSITIVE, NEGATIVE, identity, options, sameRow };
 export default ResultsPage;
