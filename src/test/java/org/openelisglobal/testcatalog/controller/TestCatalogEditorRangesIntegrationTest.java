@@ -35,6 +35,7 @@ import org.springframework.mock.web.MockHttpSession;
 public class TestCatalogEditorRangesIntegrationTest extends BaseWebContextSensitiveTest {
 
     private static final long TEST_ID = 95301L;
+    private static final long SECOND_TEST_ID = 95302L;
 
     @Autowired
     private TestService testService;
@@ -106,8 +107,9 @@ public class TestCatalogEditorRangesIntegrationTest extends BaseWebContextSensit
     }
 
     private void cleanup() {
-        jdbc.update("DELETE FROM clinlims.result_limits WHERE test_id = ?", TEST_ID);
-        jdbc.update("DELETE FROM clinlims.test WHERE id = ?", TEST_ID);
+        jdbc.update("DELETE FROM clinlims.result_limits WHERE test_id IN (?, ?)", TEST_ID, SECOND_TEST_ID);
+        jdbc.update("DELETE FROM clinlims.test_result_component WHERE test_id IN (?, ?)", TEST_ID, SECOND_TEST_ID);
+        jdbc.update("DELETE FROM clinlims.test WHERE id IN (?, ?)", TEST_ID, SECOND_TEST_ID);
     }
 
     private static MockHttpServletRequest authedRequest() {
@@ -254,6 +256,9 @@ public class TestCatalogEditorRangesIntegrationTest extends BaseWebContextSensit
         dict.setResultTypeId(String.valueOf(dictTypeId));
         dict.setSysUserId("1");
         resultLimitService.insert(dict);
+        RangesResponse dictionaryOnly = controller.getRanges(testId()).getBody();
+        assertTrue("dictionary references are not numeric editor rows", dictionaryOnly.ranges.isEmpty());
+        assertEquals(Status.EMPTY, dictionaryOnly.coverage.male.status);
 
         // Save a numeric range, then set a reporting bound the editor never edits.
         controller.saveRanges(testId(), body(range(null, "M", 0d, 30d)), authedRequest());
@@ -273,6 +278,125 @@ public class TestCatalogEditorRangesIntegrationTest extends BaseWebContextSensit
         Double lowReporting = jdbc.queryForObject("SELECT low_reporting_range FROM clinlims.result_limits WHERE id = ?",
                 Double.class, Long.valueOf(numeric.id));
         assertEquals(1.5d, lowReporting, 1e-9);
+        for (int i = 0; i < 2; i++) {
+            RangesResponse loaded = controller.getRanges(testId()).getBody();
+            assertEquals(1, loaded.ranges.size());
+            assertEquals(numeric.id, loaded.ranges.get(0).id);
+            assertEquals(200, controller.saveRanges(testId(), loaded, authedRequest()).getStatusCode().value());
+        }
+        assertEquals("GET/PUT must not turn dictionary references into numeric rows", Long.valueOf(2), jdbc
+                .queryForObject("SELECT count(*) FROM clinlims.result_limits WHERE test_id = ?", Long.class, TEST_ID));
+    }
+
+    @org.junit.Test
+    public void reportingBounds_supportPartialWritesOmissionAndExplicitNull() throws Exception {
+        RangeDto initial = range(null, "M", 0d, 30d);
+        initial.lowReporting = 1d;
+        initial.highReporting = 10d;
+        assertEquals(200, controller.saveRanges(testId(), body(initial), authedRequest()).getStatusCode().value());
+        String id = controller.getRanges(testId()).getBody().ranges.get(0).id;
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        RangeDto partial = mapper.readValue(
+                "{\"id\":\"" + id + "\",\"gender\":\"M\",\"minAge\":0,\"maxAge\":30,\"lowReporting\":5}",
+                RangeDto.class);
+        assertEquals(200, controller.saveRanges(testId(), body(partial), authedRequest()).getStatusCode().value());
+        RangeDto loaded = controller.getRanges(testId()).getBody().ranges.get(0);
+        assertEquals(Double.valueOf(5), loaded.lowReporting);
+        assertEquals(Double.valueOf(10), loaded.highReporting);
+        assertEquals(200, controller.saveRanges(testId(), body(range(id, "M", 0d, 30d)), authedRequest())
+                .getStatusCode().value());
+        assertEquals(Double.valueOf(5), controller.getRanges(testId()).getBody().ranges.get(0).lowReporting);
+        partial.lowReporting = 11d;
+        assertEquals(422, controller.saveRanges(testId(), body(partial), authedRequest()).getStatusCode().value());
+        assertEquals(Double.valueOf(5), controller.getRanges(testId()).getBody().ranges.get(0).lowReporting);
+        RangeDto clear = mapper.readValue("{\"id\":\"" + id
+                + "\",\"gender\":\"M\",\"minAge\":0,\"maxAge\":30,\"lowReporting\":null,\"highReporting\":null}",
+                RangeDto.class);
+        assertEquals(200, controller.saveRanges(testId(), body(clear), authedRequest()).getStatusCode().value());
+        loaded = controller.getRanges(testId()).getBody().ranges.get(0);
+        assertNull(loaded.lowReporting);
+        assertNull(loaded.highReporting);
+        clear.lowReporting = Double.NaN;
+        assertEquals(422, controller.saveRanges(testId(), body(clear), authedRequest()).getStatusCode().value());
+        clear.lowReporting = Double.NEGATIVE_INFINITY;
+        assertEquals(422, controller.saveRanges(testId(), body(clear), authedRequest()).getStatusCode().value());
+    }
+
+    @org.junit.Test
+    public void groupReportingBounds_roundTripAndKeepOmittedSides() {
+        TestCatalogEditorRestController.GroupRangesUpdate group = new TestCatalogEditorRestController.GroupRangesUpdate();
+        group.testIds.add(testId());
+        RangeDto r = range(null, "M", 0d, 30d);
+        r.lowReporting = 1d;
+        r.highReporting = 10d;
+        group.ranges.add(r);
+        assertEquals(200, controller.saveGroupRanges(group, authedRequest()).getStatusCode().value());
+        group.ranges.set(0, range(null, "M", 0d, 30d));
+        assertEquals(200, controller.saveGroupRanges(group, authedRequest()).getStatusCode().value());
+        RangeDto read = controller.getRanges(testId()).getBody().ranges.get(0);
+        assertEquals(Double.valueOf(1), read.lowReporting);
+        assertEquals(Double.valueOf(10), read.highReporting);
+        group.ranges.get(0).setHighReporting(0d);
+        assertEquals(422, controller.saveGroupRanges(group, authedRequest()).getStatusCode().value());
+        assertEquals(Double.valueOf(10), controller.getRanges(testId()).getBody().ranges.get(0).highReporting);
+        group.ranges.get(0).setHighReporting(null);
+        assertEquals(200, controller.saveGroupRanges(group, authedRequest()).getStatusCode().value());
+        assertNull(controller.getRanges(testId()).getBody().ranges.get(0).highReporting);
+    }
+
+    @org.junit.Test
+    public void groupRanges_mapsPrimaryComponentsAndKeepsEachTestsOmittedReportingBounds() {
+        String secondId = String.valueOf(SECOND_TEST_ID);
+        jdbc.update(
+                "INSERT INTO clinlims.test (id, name, description, is_active, guid, lastupdated)"
+                        + " VALUES (?, ?, ?, 'N', ?, NOW())",
+                SECOND_TEST_ID, "RangesGroupIT", "RangesGroupIT", UUID.randomUUID().toString());
+        java.util.List<String> ids = java.util.List.of(testId(), secondId);
+        java.util.List<String> componentIds = new java.util.ArrayList<>();
+        java.util.List<String> rangeIds = new java.util.ArrayList<>();
+        for (int i = 0; i < ids.size(); i++) {
+            org.openelisglobal.testresultcomponent.valueholder.TestResultComponent primary = new org.openelisglobal.testresultcomponent.valueholder.TestResultComponent();
+            primary.setTestId(ids.get(i));
+            primary.setCode("PRIMARY");
+            primary.setLabel("Result");
+            primary.setResultType("N");
+            primary.setIsPrimary(true);
+            primary.setSysUserId("1");
+            componentIds.add(componentService.insert(primary));
+            RangeDto initial = range(null, "M", 0d, 30d);
+            initial.componentId = primary.getId();
+            initial.lowReporting = 1d + i;
+            initial.highReporting = 10d + i;
+            assertEquals(200,
+                    controller.saveRanges(ids.get(i), body(initial), authedRequest()).getStatusCode().value());
+            rangeIds.add(controller.getRanges(ids.get(i)).getBody().ranges.get(0).id);
+        }
+        TestCatalogEditorRestController.GroupRangesUpdate group = new TestCatalogEditorRestController.GroupRangesUpdate();
+        group.testIds.addAll(ids);
+        RangeDto change = range(null, "M", 0d, 30d);
+        change.componentId = componentIds.get(0);
+        change.lowNormal = 3d;
+        group.ranges.add(change);
+        assertEquals(200, controller.saveGroupRanges(group, authedRequest()).getStatusCode().value());
+        for (int i = 0; i < ids.size(); i++) {
+            RangeDto read = controller.getRanges(ids.get(i)).getBody().ranges.get(0);
+            assertEquals(rangeIds.get(i), read.id);
+            assertEquals(componentIds.get(i), read.componentId);
+            assertEquals(Double.valueOf(1d + i), read.lowReporting);
+            assertEquals(Double.valueOf(10d + i), read.highReporting);
+            assertEquals(Double.valueOf(3d), read.lowNormal);
+        }
+        // A source-only component must fail the whole group write instead of
+        // assigning another test's component ID or silently replacing its rows.
+        org.openelisglobal.testresultcomponent.valueholder.TestResultComponent second = componentService
+                .get(componentIds.get(1));
+        second.setIsPrimary(false);
+        second.setSysUserId("1");
+        componentService.update(second);
+        change.lowNormal = 4d;
+        assertEquals(422, controller.saveGroupRanges(group, authedRequest()).getStatusCode().value());
+        assertEquals(Double.valueOf(3d), controller.getRanges(testId()).getBody().ranges.get(0).lowNormal);
+        assertEquals(Double.valueOf(3d), controller.getRanges(secondId).getBody().ranges.get(0).lowNormal);
     }
 
     @org.junit.Test

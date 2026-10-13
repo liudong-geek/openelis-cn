@@ -203,6 +203,7 @@ public class TestCatalogEditorSampleResultsIntegrationTest extends BaseWebContex
         } catch (Exception ignored) {
             // tables absent before changeset 041
         }
+        jdbc.update("UPDATE clinlims.test SET default_test_result_id = NULL WHERE id = ?", id);
         jdbc.update("DELETE FROM clinlims.result_limits WHERE test_id = ?", id);
         jdbc.update("DELETE FROM clinlims.test_result WHERE test_id = ?", id);
         try {
@@ -413,6 +414,113 @@ public class TestCatalogEditorSampleResultsIntegrationTest extends BaseWebContex
                 .queryForObject("SELECT count(*) FROM clinlims.test_result WHERE test_id = ? AND value = 'Female'"
                         + " AND is_active = false", Long.class, TEST_ID);
         assertEquals(Long.valueOf(1L), inactive);
+    }
+
+    @org.junit.Test
+    public void primaryDictionarySettings_persistLegacyMeaningAndPreserveOmittedFields() {
+        ResultComponentDto primary = comp(null, "PRIMARY", "Result", 0);
+        primary.resultType = "D";
+        primary.isPrimary = true;
+        OptionDto option = opt(null, String.valueOf(DICT_ID), 1);
+        option.normal = false;
+        option.isQuantifiable = true;
+        primary.options.add(option);
+        SampleResults put = body(primary);
+        put.defaultDictionaryValue = String.valueOf(DICT_ID);
+        put.normalDictionaryValue = String.valueOf(DICT_ID);
+        String testId = String.valueOf(TEST_ID);
+        assertEquals(200, controller.saveSampleResults(testId, put, authedRequest()).getStatusCode().value());
+        SampleResults read = controller.getSampleResults(testId).getBody();
+        String optionId = read.components.get(0).options.get(0).id;
+        assertEquals(String.valueOf(DICT_ID), read.defaultDictionaryValue);
+        assertEquals(String.valueOf(DICT_ID), read.normalDictionaryValue);
+        assertEquals(Boolean.TRUE, read.components.get(0).options.get(0).isQuantifiable);
+        assertEquals(Boolean.FALSE, read.components.get(0).options.get(0).normal);
+        assertEquals(Long.valueOf(optionId), jdbc
+                .queryForObject("SELECT default_test_result_id FROM clinlims.test WHERE id = ?", Long.class, TEST_ID));
+        assertEquals(String.valueOf(DICT_ID),
+                resultLimitService.getAllResultLimitsForTest(testId).get(0).getDictionaryNormalId());
+
+        // Older clients omit all three newly exposed values; reordering must not clear
+        // them.
+        read.defaultDictionaryValue = null;
+        read.normalDictionaryValue = null;
+        read.components.get(0).options.get(0).isQuantifiable = null;
+        read.components.get(0).options.get(0).sortOrder = 7;
+        assertEquals(200, controller.saveSampleResults(testId, read, authedRequest()).getStatusCode().value());
+        read = controller.getSampleResults(testId).getBody();
+        assertEquals(optionId, read.components.get(0).options.get(0).id);
+        assertEquals(Integer.valueOf(7), read.components.get(0).options.get(0).sortOrder);
+        assertEquals(Boolean.TRUE, read.components.get(0).options.get(0).isQuantifiable);
+        assertEquals(String.valueOf(DICT_ID), read.defaultDictionaryValue);
+        assertEquals(String.valueOf(DICT_ID), read.normalDictionaryValue);
+
+        read.defaultDictionaryValue = "";
+        read.normalDictionaryValue = "";
+        read.components.get(0).options.get(0).isQuantifiable = false;
+        assertEquals(200, controller.saveSampleResults(testId, read, authedRequest()).getStatusCode().value());
+        read = controller.getSampleResults(testId).getBody();
+        assertEquals("", read.defaultDictionaryValue);
+        assertEquals("", read.normalDictionaryValue);
+        assertEquals(Boolean.FALSE, read.components.get(0).options.get(0).isQuantifiable);
+        org.junit.Assert.assertNull(jdbc.queryForObject("SELECT default_test_result_id FROM clinlims.test WHERE id = ?",
+                Long.class, TEST_ID));
+    }
+
+    @org.junit.Test
+    public void invalidPrimaryDictionarySetting_rollsBackComponentAndOptions() {
+        ResultComponentDto primary = comp(null, "PRIMARY", "Original", 0);
+        primary.resultType = "D";
+        primary.options.add(opt(null, String.valueOf(DICT_ID), 1));
+        String testId = String.valueOf(TEST_ID);
+        controller.saveSampleResults(testId, body(primary), authedRequest());
+        SampleResults edit = controller.getSampleResults(testId).getBody();
+        edit.components.get(0).label = "Must roll back";
+        edit.components.get(0).options.get(0).isQuantifiable = true;
+        edit.defaultDictionaryValue = "99999999";
+        assertEquals(422, controller.saveSampleResults(testId, edit, authedRequest()).getStatusCode().value());
+        SampleResults read = controller.getSampleResults(testId).getBody();
+        assertEquals("Original", read.components.get(0).label);
+        assertEquals(Boolean.FALSE, read.components.get(0).options.get(0).isQuantifiable);
+    }
+
+    @org.junit.Test
+    public void legacyPrimaryProjection_isReadOnlyAndSavingPreservesOptionIdentityAndSettings() {
+        String id = String.valueOf(TEST_ID);
+        org.openelisglobal.test.valueholder.Test test = testService.getTestById(id);
+        org.openelisglobal.testresult.valueholder.TestResult option = new org.openelisglobal.testresult.valueholder.TestResult();
+        option.setTest(test);
+        option.setTestResultType("D");
+        option.setValue(String.valueOf(DICT_ID));
+        option.setSortOrder("1");
+        option.setIsQuantifiable(true);
+        option.setSysUserId("1");
+        String optionId = testResultService.insert(option);
+        test.setDefaultTestResult(option);
+        test.setSysUserId("1");
+        testService.update(test);
+        org.openelisglobal.resultlimits.valueholder.ResultLimit normal = new org.openelisglobal.resultlimits.valueholder.ResultLimit();
+        normal.setTestId(id);
+        normal.setResultTypeId(
+                org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl.ResultType.DICTIONARY.getId());
+        normal.setDictionaryNormalId(String.valueOf(DICT_ID));
+        normal.setSysUserId("1");
+        resultLimitService.insert(normal);
+        SampleResults projection = controller.getSampleResults(id).getBody();
+        assertEquals(1, projection.components.size());
+        org.junit.Assert.assertNull(projection.components.get(0).id);
+        assertEquals(optionId, projection.components.get(0).options.get(0).id);
+        assertEquals(Boolean.TRUE, projection.components.get(0).options.get(0).isQuantifiable);
+        assertEquals(String.valueOf(DICT_ID), projection.defaultDictionaryValue);
+        assertEquals(String.valueOf(DICT_ID), projection.normalDictionaryValue);
+        assertTrue(componentService.getActiveComponentsByTestId(id).isEmpty());
+        assertEquals(200, controller.saveSampleResults(id, projection, authedRequest()).getStatusCode().value());
+        SampleResults saved = controller.getSampleResults(id).getBody();
+        org.junit.Assert.assertNotNull(saved.components.get(0).id);
+        assertEquals(optionId, saved.components.get(0).options.get(0).id);
+        assertEquals(Boolean.TRUE, saved.components.get(0).options.get(0).isQuantifiable);
+        assertEquals(optionId, testService.getTestById(id).getDefaultTestResult().getId());
+        assertEquals(String.valueOf(DICT_ID), saved.normalDictionaryValue);
     }
 
     @org.junit.Test

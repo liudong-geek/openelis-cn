@@ -1,5 +1,7 @@
 package org.openelisglobal.testcatalog.controller.rest;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -49,6 +51,7 @@ import org.openelisglobal.typeofsample.service.TypeOfSampleService;
 import org.openelisglobal.typeofsample.service.TypeOfSampleTestService;
 import org.openelisglobal.typeofsample.valueholder.TypeOfSample;
 import org.openelisglobal.typeofsample.valueholder.TypeOfSampleTest;
+import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl.ResultType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -198,13 +201,19 @@ public class TestCatalogEditorRestController {
         public int totalInfo;
     }
 
+    public TestListPage listTests(String domain, String status, Boolean amr, String sampleType, String search,
+            boolean issuesOnly, int page, int pageSize) {
+        return listTests(domain, status, amr, sampleType, search, issuesOnly, page, pageSize, null);
+    }
+
     @GetMapping(value = "/tests", produces = MediaType.APPLICATION_JSON_VALUE)
     public TestListPage listTests(@RequestParam(required = false) String domain,
             @RequestParam(required = false, defaultValue = "all") String status,
             @RequestParam(required = false) Boolean amr, @RequestParam(required = false) String sampleType,
             @RequestParam(required = false) String search,
             @RequestParam(required = false, defaultValue = "false") boolean issuesOnly,
-            @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "25") int pageSize) {
+            @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "25") int pageSize,
+            @RequestParam(required = false) String testSection) {
         // FR-61/62 findings are computed once for the whole catalog (cached) and
         // consulted both for the "issues only" filter and per-row decoration.
         Map<String, List<CatalogHealthService.Finding>> findingsByTest = catalogHealthService != null
@@ -221,7 +230,9 @@ public class TestCatalogEditorRestController {
             }
         }
         List<TestListRow> filtered = new ArrayList<>();
-        for (Test test : testService.getAll()) {
+        List<Test> candidates = isBlank(testSection) ? testService.getAll()
+                : testService.getTestsByTestSectionId(testSection);
+        for (Test test : candidates) {
             if (domain != null && !domain.isBlank() && !domain.equals(test.getDomain())) {
                 continue;
             }
@@ -358,6 +369,8 @@ public class TestCatalogEditorRestController {
         public String domain;
         public Boolean amr;
         public Boolean orderable;
+        public Boolean notifyResults;
+        public Boolean inLabOnly;
         public String description;
         // Copy the source test's result components into the new test. The
         // OGC-1145 m:n model retired the specimen-variant link that used to
@@ -403,6 +416,8 @@ public class TestCatalogEditorRestController {
         params.domain = body.domain;
         params.amr = body.amr;
         params.orderable = body.orderable;
+        params.notifyResults = body.notifyResults;
+        params.inLabOnly = body.inLabOnly;
         params.description = body.description;
         String sysUserId = ControllerUtills.getSysUserId(request);
         String newId = testCatalogCreationService.createInactiveTest(params, sysUserId);
@@ -637,6 +652,7 @@ public class TestCatalogEditorRestController {
         public String resultType;
         public Integer sortOrder;
         public Boolean normal;
+        public Boolean isQuantifiable;
     }
 
     /** A labeled result field of a test (e.g. systolic, diastolic). */
@@ -662,6 +678,8 @@ public class TestCatalogEditorRestController {
 
     public static class SampleResults {
         public String testId;
+        public String defaultDictionaryValue;
+        public String normalDictionaryValue;
         public List<ResultComponentDto> components = new ArrayList<>();
     }
 
@@ -739,6 +757,7 @@ public class TestCatalogEditorRestController {
                 tr.setValue(o.value);
                 tr.setSortOrder(o.sortOrder != null ? String.valueOf(o.sortOrder) : null);
                 tr.setIsNormal(Boolean.TRUE.equals(o.normal));
+                tr.setIsQuantifiable(o.isQuantifiable);
                 // Option rows must carry the component's type ('D'/'M'/'C') —
                 // result entry derives the widget from them, so a stale
                 // per-option type would render the wrong control.
@@ -747,7 +766,12 @@ public class TestCatalogEditorRestController {
             }
             optionsByCode.put(c.code, opts);
         }
-        componentService.saveSampleResults(testId, desired, interpsByCode, optionsByCode, sysUserId);
+        try {
+            componentService.saveSampleResults(testId, desired, interpsByCode, optionsByCode, sysUserId,
+                    body.defaultDictionaryValue, body.normalDictionaryValue);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.unprocessableEntity().build();
+        }
         invalidateHealth();
         return ResponseEntity.ok(toSampleResults(testId));
     }
@@ -776,7 +800,10 @@ public class TestCatalogEditorRestController {
     private SampleResults toSampleResults(String testId) {
         SampleResults sr = new SampleResults();
         sr.testId = testId;
-        for (TestResultComponent c : componentService.getActiveComponentsByTestId(testId)) {
+        Map<String, String> dictionarySettings = componentService.getPrimaryDictionarySettings(testId);
+        sr.defaultDictionaryValue = dictionarySettings.get("defaultDictionaryValue");
+        sr.normalDictionaryValue = dictionarySettings.get("normalDictionaryValue");
+        for (TestResultComponent c : componentService.getEditorComponents(testId)) {
             ResultComponentDto dto = new ResultComponentDto();
             dto.id = c.getId();
             dto.code = c.getCode();
@@ -789,7 +816,8 @@ public class TestCatalogEditorRestController {
             dto.allowMultipleReadings = c.getAllowMultipleReadings();
             dto.isPrimary = c.getIsPrimary();
             dto.showOnReport = c.getShowOnReport();
-            for (TestResultInterpretation i : interpretationService.getActiveByComponentId(c.getId())) {
+            for (TestResultInterpretation i : (c.getId() == null ? List.<TestResultInterpretation>of()
+                    : interpretationService.getActiveByComponentId(c.getId()))) {
                 InterpretationDto idto = new InterpretationDto();
                 idto.id = i.getId();
                 idto.valueMatch = i.getValueMatch();
@@ -799,7 +827,7 @@ public class TestCatalogEditorRestController {
                 idto.displayOrder = i.getDisplayOrder();
                 dto.interpretations.add(idto);
             }
-            for (TestResult o : testResultService.getActiveOptionsByComponentId(c.getId())) {
+            for (TestResult o : componentService.getEditorOptions(testId, c.getId())) {
                 OptionDto odto = new OptionDto();
                 odto.id = o.getId();
                 odto.value = o.getValue();
@@ -807,6 +835,7 @@ public class TestCatalogEditorRestController {
                 odto.resultType = o.getTestResultType();
                 odto.sortOrder = parseIntOrNull(o.getSortOrder());
                 odto.normal = o.getIsNormal();
+                odto.isQuantifiable = o.getIsQuantifiable();
                 dto.options.add(odto);
             }
             sr.components.add(dto);
@@ -888,6 +917,22 @@ public class TestCatalogEditorRestController {
         public Double highValid;
         public Double lowReporting;
         public Double highReporting;
+        @JsonIgnore
+        private boolean lowReportingProvided;
+        @JsonIgnore
+        private boolean highReportingProvided;
+
+        @JsonSetter("lowReporting")
+        public void setLowReporting(Double value) {
+            lowReporting = value;
+            lowReportingProvided = true;
+        }
+
+        @JsonSetter("highReporting")
+        public void setHighReporting(Double value) {
+            highReporting = value;
+            highReportingProvided = true;
+        }
     }
 
     public static class RangesResponse {
@@ -924,6 +969,8 @@ public class TestCatalogEditorRestController {
             associatedTypeIds.add(type.getId());
         }
         for (RangeDto r : body.ranges) {
+            if (!validReportingRange(r))
+                return ResponseEntity.unprocessableEntity().build();
             if (r.gender != null && !r.gender.isBlank() && !RANGE_GENDERS.contains(r.gender)) {
                 return ResponseEntity.unprocessableEntity().build();
             }
@@ -936,14 +983,24 @@ public class TestCatalogEditorRestController {
                 return ResponseEntity.unprocessableEntity().build();
             }
         }
-        resultLimitService.saveRangesForTest(testId, toResultLimits(body.ranges),
-                ControllerUtills.getSysUserId(request));
+        try {
+            resultLimitService.saveRangeUpdatesForTest(testId, toResultLimits(body.ranges),
+                    ControllerUtills.getSysUserId(request));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.unprocessableEntity().build();
+        }
         return ResponseEntity.ok(toRanges(testId));
     }
 
     /** Maps range DTOs to ResultLimits (shared by single-test + group saves). */
-    private List<ResultLimit> toResultLimits(List<RangeDto> ranges) {
-        List<ResultLimit> desired = new ArrayList<>();
+    private static boolean validReportingRange(RangeDto r) {
+        return (r.lowReporting == null || Double.isFinite(r.lowReporting))
+                && (r.highReporting == null || Double.isFinite(r.highReporting))
+                && (r.lowReporting == null || r.highReporting == null || r.lowReporting <= r.highReporting);
+    }
+
+    private List<ResultLimitService.RangeUpdate> toResultLimits(List<RangeDto> ranges) {
+        List<ResultLimitService.RangeUpdate> desired = new ArrayList<>();
         for (RangeDto r : ranges) {
             ResultLimit limit = new ResultLimit();
             if (!isBlank(r.id)) {
@@ -960,9 +1017,10 @@ public class TestCatalogEditorRestController {
             limit.setHighCritical(unbox(r.highCritical, Double.POSITIVE_INFINITY));
             limit.setLowValid(unbox(r.lowValid, Double.NEGATIVE_INFINITY));
             limit.setHighValid(unbox(r.highValid, Double.POSITIVE_INFINITY));
-            // Reporting range is per-Method (not edited in this dialog); the service
-            // preserves whatever the existing row already had (see saveRangesForTest).
-            desired.add(limit);
+            limit.setLowReportingRange(unbox(r.lowReporting, Double.NEGATIVE_INFINITY));
+            limit.setHighReportingRange(unbox(r.highReporting, Double.POSITIVE_INFINITY));
+            desired.add(new ResultLimitService.RangeUpdate(limit, r.lowReportingProvided || r.lowReporting != null,
+                    r.highReportingProvided || r.highReporting != null));
         }
         return desired;
     }
@@ -1055,6 +1113,8 @@ public class TestCatalogEditorRestController {
             return ResponseEntity.unprocessableEntity().build();
         }
         for (RangeDto r : body.ranges) {
+            if (!validReportingRange(r))
+                return ResponseEntity.unprocessableEntity().build();
             if (r.gender != null && !r.gender.isBlank() && !RANGE_GENDERS.contains(r.gender)) {
                 return ResponseEntity.unprocessableEntity().build();
             }
@@ -1065,6 +1125,7 @@ public class TestCatalogEditorRestController {
             }
         }
         String sysUserId = ControllerUtills.getSysUserId(request);
+        Map<String, List<ResultLimitService.RangeUpdate>> desiredByTest = new HashMap<>();
         for (String testId : body.testIds) {
             Test test = testService.getTestById(testId);
             if (test == null) {
@@ -1086,9 +1147,18 @@ public class TestCatalogEditorRestController {
                 copy.highCritical = r.highCritical;
                 copy.lowValid = r.lowValid;
                 copy.highValid = r.highValid;
+                copy.lowReporting = r.lowReporting;
+                copy.highReporting = r.highReporting;
+                copy.lowReportingProvided = r.lowReportingProvided;
+                copy.highReportingProvided = r.highReportingProvided;
                 perTest.add(copy);
             }
-            resultLimitService.saveRangesForTest(testId, toResultLimits(perTest), sysUserId);
+            desiredByTest.put(testId, toResultLimits(perTest));
+        }
+        try {
+            resultLimitService.saveRangeUpdatesForTests(desiredByTest, sysUserId);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.unprocessableEntity().build();
         }
         return ResponseEntity.ok().build();
     }
@@ -1096,7 +1166,8 @@ public class TestCatalogEditorRestController {
     private RangesResponse toRanges(String testId) {
         RangesResponse resp = new RangesResponse();
         resp.testId = testId;
-        List<ResultLimit> limits = resultLimitService.getAllResultLimitsForTest(testId);
+        List<ResultLimit> limits = resultLimitService.getAllResultLimitsForTest(testId).stream()
+                .filter(limit -> ResultType.isNumericById(limit.getResultTypeId())).toList();
         for (ResultLimit l : limits) {
             RangeDto d = new RangeDto();
             d.id = l.getId();

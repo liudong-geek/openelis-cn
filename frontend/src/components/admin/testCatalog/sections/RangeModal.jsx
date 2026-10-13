@@ -78,6 +78,8 @@ const RangeModal = ({
         highNormal: "",
         lowCritical: "",
         highCritical: "",
+        lowReporting: "",
+        highReporting: "",
         lowValid: "",
         highValid: "",
       };
@@ -93,19 +95,30 @@ const RangeModal = ({
       highNormal: numOrEmpty(range.highNormal),
       lowCritical: numOrEmpty(range.lowCritical),
       highCritical: numOrEmpty(range.highCritical),
+      lowReporting: numOrEmpty(range.lowReporting),
+      highReporting: numOrEmpty(range.highReporting),
       lowValid: numOrEmpty(range.lowValid),
       highValid: numOrEmpty(range.highValid),
     };
   });
+  const [reportingFieldsChanged, setReportingFieldsChanged] = useState([]);
   const [ageError, setAgeError] = useState(false);
   const [boundsError, setBoundsError] = useState(false);
+  const [reportingError, setReportingError] = useState(false);
 
-  const set = (patch) =>
+  const set = (patch) => {
+    const changed = ["lowReporting", "highReporting"].filter((key) =>
+      Object.prototype.hasOwnProperty.call(patch, key),
+    );
+    if (changed.length)
+      setReportingFieldsChanged((prev) => [...new Set([...prev, ...changed])]);
     setDraft((prev) => {
       setAgeError(false);
       setBoundsError(false);
+      setReportingError(false);
       return { ...prev, ...patch };
     });
+  };
 
   const handleSubmit = () => {
     const minDays =
@@ -138,20 +151,38 @@ const RangeModal = ({
         return;
       }
     }
-    onSave({
-      id: draft.id,
-      componentId: draft.componentId || null,
-      sampleTypeId: draft.sampleTypeId || null,
-      gender: draft.gender || null,
-      minAge: minDays,
-      maxAge: maxDays,
-      lowNormal: parseOrNull(draft.lowNormal),
-      highNormal: parseOrNull(draft.highNormal),
-      lowCritical: parseOrNull(draft.lowCritical),
-      highCritical: parseOrNull(draft.highCritical),
-      lowValid: parseOrNull(draft.lowValid),
-      highValid: parseOrNull(draft.highValid),
-    });
+    // Reporting bounds are independent of reference/critical bounds.
+    const lowReporting = parseOrNull(draft.lowReporting);
+    const highReporting = parseOrNull(draft.highReporting);
+    if (
+      (lowReporting !== null && !Number.isFinite(lowReporting)) ||
+      (highReporting !== null && !Number.isFinite(highReporting)) ||
+      (lowReporting !== null &&
+        highReporting !== null &&
+        lowReporting > highReporting)
+    ) {
+      setReportingError(true);
+      return;
+    }
+    onSave(
+      {
+        id: draft.id,
+        componentId: draft.componentId || null,
+        sampleTypeId: draft.sampleTypeId || null,
+        gender: draft.gender || null,
+        minAge: minDays,
+        maxAge: maxDays,
+        lowNormal: parseOrNull(draft.lowNormal),
+        highNormal: parseOrNull(draft.highNormal),
+        lowCritical: parseOrNull(draft.lowCritical),
+        highCritical: parseOrNull(draft.highCritical),
+        lowReporting,
+        highReporting,
+        lowValid: parseOrNull(draft.lowValid),
+        highValid: parseOrNull(draft.highValid),
+      },
+      reportingFieldsChanged,
+    );
   };
 
   const numField = (key, labelId) => (
@@ -295,6 +326,26 @@ const RangeModal = ({
           {numField("lowValid", "label.testCatalog.ranges.modal.lowValid")}
           {numField("highValid", "label.testCatalog.ranges.modal.highValid")}
         </div>
+        <div style={{ display: "flex", gap: "1rem" }}>
+          {numField(
+            "lowReporting",
+            "label.testCatalog.ranges.modal.lowReporting",
+          )}
+          {numField(
+            "highReporting",
+            "label.testCatalog.ranges.modal.highReporting",
+          )}
+        </div>
+        {reportingError && (
+          <InlineNotification
+            kind="error"
+            lowContrast
+            hideCloseButton
+            title={intl.formatMessage({
+              id: "label.testCatalog.ranges.modal.reportingError",
+            })}
+          />
+        )}
         {boundsError && (
           <InlineNotification
             kind="error"

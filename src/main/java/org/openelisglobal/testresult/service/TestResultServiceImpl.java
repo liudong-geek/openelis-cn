@@ -96,6 +96,8 @@ public class TestResultServiceImpl extends AuditableBaseObjectServiceImpl<TestRe
                 match.setValue(d.getValue());
                 match.setSortOrder(d.getSortOrder());
                 match.setIsNormal(d.getIsNormal());
+                if (d.getIsQuantifiable() != null)
+                    match.setIsQuantifiable(d.getIsQuantifiable());
                 match.setTestResultType(d.getTestResultType());
                 match.setSysUserId(sysUserId);
                 update(match);
@@ -103,6 +105,8 @@ public class TestResultServiceImpl extends AuditableBaseObjectServiceImpl<TestRe
             } else {
                 // New option: id is sequence-assigned on insert; FK to the (persistent) test.
                 d.setTest(test);
+                if (d.getIsQuantifiable() == null)
+                    d.setIsQuantifiable(false);
                 d.setComponentId(componentId);
                 d.setIsActive(true);
                 d.setSysUserId(sysUserId);

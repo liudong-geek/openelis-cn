@@ -116,6 +116,8 @@ const RangesSection = ({ testId }) => {
         highNormal: r.highNormal,
         lowCritical: r.lowCritical,
         highCritical: r.highCritical,
+        lowReporting: r.lowReporting,
+        highReporting: r.highReporting,
         lowValid: r.lowValid,
         highValid: r.highValid,
       })),

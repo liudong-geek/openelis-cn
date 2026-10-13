@@ -1,6 +1,7 @@
 import React, { useContext, useEffect, useState } from "react";
 import {
   Stack,
+  Modal,
   Accordion,
   AccordionItem,
   TextInput,
@@ -143,6 +144,17 @@ const SampleResultsSection = ({ testId }) => {
   const [error, setError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [components, setComponents] = useState([]);
+  // Legacy primary dictionary defaults are distinct from component text defaults
+  // and option interpretation flags. Null means this server did not return them.
+  const [dictionaryDefaults, setDictionaryDefaults] = useState({
+    defaultDictionaryValue: null,
+    normalDictionaryValue: null,
+  });
+  const [dictionaryChanges, setDictionaryChanges] = useState({});
+  const updateDictionaryDefaults = (patch) => {
+    setDictionaryDefaults((prev) => ({ ...prev, ...patch }));
+    setDictionaryChanges((prev) => ({ ...prev, ...patch }));
+  };
   const [otherTests, setOtherTests] = useState([]);
   const [copyFromId, setCopyFromId] = useState("");
   const [uoms, setUoms] = useState([]);
@@ -158,6 +170,7 @@ const SampleResultsSection = ({ testId }) => {
   // Inline "add new unit" form (FR-29): null = closed; otherwise
   // { ci, name, code, ucumCode, description } for the component at index ci.
   const [unitForm, setUnitForm] = useState(null);
+  const [pendingTypeChange, setPendingTypeChange] = useState(null);
 
   const load = () => {
     setLoading(true);
@@ -171,6 +184,11 @@ const SampleResultsSection = ({ testId }) => {
           return;
         }
         setComponents(res.components);
+        setDictionaryChanges({});
+        setDictionaryDefaults({
+          defaultDictionaryValue: res.defaultDictionaryValue ?? null,
+          normalDictionaryValue: res.normalDictionaryValue ?? null,
+        });
       },
     );
   };
@@ -213,10 +231,21 @@ const SampleResultsSection = ({ testId }) => {
   };
 
   // ── Immutable updaters ─────────────────────────────────────────────────────
-  const patchComponent = (ci, patch) =>
+  const patchComponent = (ci, patch) => {
+    if (
+      components[ci]?.isPrimary &&
+      patch.resultType &&
+      !["D", "M", "C"].includes(patch.resultType)
+    ) {
+      updateDictionaryDefaults({
+        defaultDictionaryValue: "",
+        normalDictionaryValue: "",
+      });
+    }
     setComponents((prev) =>
       prev.map((c, i) => (i === ci ? { ...c, ...patch } : c)),
     );
+  };
 
   // FR-29: create a unit inline, then append it to the picker and select it on
   // the component whose form is open. Name is required.
@@ -306,7 +335,18 @@ const SampleResultsSection = ({ testId }) => {
             id: "label.testCatalog.sampleResults.resultType",
           })}
           valueSelected={current}
-          onChange={(value) => patchComponent(ci, typeAwareDefaults(c, value))}
+          onChange={(value) => {
+            if (
+              c.isPrimary &&
+              !["D", "M", "C"].includes(value) &&
+              (dictionaryDefaults.defaultDictionaryValue ||
+                dictionaryDefaults.normalDictionaryValue)
+            ) {
+              setPendingTypeChange({ ci, patch: typeAwareDefaults(c, value) });
+              return;
+            }
+            patchComponent(ci, typeAwareDefaults(c, value));
+          }}
         >
           {PRIMARY_RESULT_TYPES.map(tile)}
           {showAdvanced && ADVANCED_RESULT_TYPES.map(tile)}
@@ -353,7 +393,11 @@ const SampleResultsSection = ({ testId }) => {
   // components' Primary toggles are disabled — the current primary must be
   // unmarked first. Marking fixes the code to PRIMARY (and disables it);
   // unmarking frees the code back to the component's label.
-  const togglePrimary = (ci, checked) =>
+  const togglePrimary = (ci, checked) => {
+    updateDictionaryDefaults({
+      defaultDictionaryValue: "",
+      normalDictionaryValue: "",
+    });
     setComponents((prev) =>
       prev.map((c, i) => {
         if (i !== ci) {
@@ -369,8 +413,15 @@ const SampleResultsSection = ({ testId }) => {
         };
       }),
     );
+  };
 
-  const removeComponent = (ci) =>
+  const removeComponent = (ci) => {
+    if (components[ci]?.isPrimary) {
+      updateDictionaryDefaults({
+        defaultDictionaryValue: "",
+        normalDictionaryValue: "",
+      });
+    }
     setComponents((prev) => {
       const removed = prev[ci];
       const next = prev.filter((_, i) => i !== ci);
@@ -380,6 +431,7 @@ const SampleResultsSection = ({ testId }) => {
       }
       return next;
     });
+  };
 
   const moveComponent = (ci, dir) =>
     setComponents((prev) => {
@@ -438,6 +490,7 @@ const SampleResultsSection = ({ testId }) => {
                   resultType: c.resultType,
                   sortOrder: c.options.length + 1,
                   normal: false,
+                  isQuantifiable: false,
                 },
               ],
             }
@@ -464,6 +517,7 @@ const SampleResultsSection = ({ testId }) => {
                   resultType: c.resultType,
                   sortOrder: c.options.length + 1,
                   normal: false,
+                  isQuantifiable: false,
                 },
               ],
             }
@@ -491,12 +545,23 @@ const SampleResultsSection = ({ testId }) => {
       ),
     );
 
-  const removeChild = (ci, key, ji) =>
+  const removeChild = (ci, key, ji) => {
+    if (key === "options" && components[ci]?.isPrimary) {
+      const value = components[ci].options[ji]?.value;
+      updateDictionaryDefaults(
+        Object.fromEntries(
+          Object.entries(dictionaryDefaults)
+            .filter(([, current]) => current === value)
+            .map(([key]) => [key, ""]),
+        ),
+      );
+    }
     setComponents((prev) =>
       prev.map((c, i) =>
         i === ci ? { ...c, [key]: c[key].filter((_, j) => j !== ji) } : c,
       ),
     );
+  };
 
   // ── Save ───────────────────────────────────────────────────────────────────
   const toInt = (v) =>
@@ -544,6 +609,7 @@ const SampleResultsSection = ({ testId }) => {
     setSaving(true);
     const payload = {
       testId,
+      ...dictionaryChanges,
       components: normalized.map((c) => ({
         ...c,
         displayOrder: toInt(c.displayOrder),
@@ -641,6 +707,32 @@ const SampleResultsSection = ({ testId }) => {
 
   return (
     <Stack gap={6}>
+      {pendingTypeChange && (
+        <Modal
+          open
+          className="oe-admin-modal"
+          modalHeading={intl.formatMessage({
+            id: "label.testCatalog.sampleResults.changeType.title",
+          })}
+          primaryButtonText={intl.formatMessage({
+            id: "label.testCatalog.sampleResults.changeType.confirm",
+          })}
+          secondaryButtonText={intl.formatMessage({
+            id: "label.button.cancel",
+          })}
+          onRequestClose={() => setPendingTypeChange(null)}
+          onRequestSubmit={() => {
+            patchComponent(pendingTypeChange.ci, pendingTypeChange.patch);
+            setPendingTypeChange(null);
+          }}
+        >
+          <p>
+            {intl.formatMessage({
+              id: "label.testCatalog.sampleResults.changeType.description",
+            })}
+          </p>
+        </Modal>
+      )}
       <p>
         <FormattedMessage id="label.testCatalog.sampleResults.purpose" />
       </p>
@@ -864,16 +956,18 @@ const SampleResultsSection = ({ testId }) => {
                     />
                   </>
                 )}
-                <TextInput
-                  id={`comp-default-${ci}`}
-                  labelText={intl.formatMessage({
-                    id: "label.testCatalog.sampleResults.defaultResult",
-                  })}
-                  value={c.defaultResult || ""}
-                  onChange={(e) =>
-                    patchComponent(ci, { defaultResult: e.target.value })
-                  }
-                />
+                {!(c.isPrimary && ["D", "M", "C"].includes(c.resultType)) && (
+                  <TextInput
+                    id={`comp-default-${ci}`}
+                    labelText={intl.formatMessage({
+                      id: "label.testCatalog.sampleResults.defaultResult",
+                    })}
+                    value={c.defaultResult || ""}
+                    onChange={(e) =>
+                      patchComponent(ci, { defaultResult: e.target.value })
+                    }
+                  />
+                )}
                 <TextInput
                   id={`comp-order-${ci}`}
                   type="number"
@@ -907,6 +1001,64 @@ const SampleResultsSection = ({ testId }) => {
                 {/* Select-list options apply only to select-list types (FR-30). */}
                 {["D", "M", "C"].includes(c.resultType) && (
                   <>
+                    {c.isPrimary && (
+                      <>
+                        <p>
+                          <FormattedMessage id="label.testCatalog.sampleResults.dictionaryDefaults.help" />
+                        </p>
+                        {[
+                          "defaultDictionaryValue",
+                          "normalDictionaryValue",
+                        ].map((field) => (
+                          <Select
+                            key={field}
+                            id={`primary-${field}`}
+                            labelText={intl.formatMessage({
+                              id: `label.testCatalog.sampleResults.${field}`,
+                            })}
+                            value={dictionaryDefaults[field] ?? ""}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              updateDictionaryDefaults({ [field]: value });
+                            }}
+                          >
+                            <SelectItem
+                              value=""
+                              text={intl.formatMessage({
+                                id: "label.testCatalog.sampleResults.dictionaryDefault.none",
+                              })}
+                            />
+                            {dictionaryDefaults[field] &&
+                              !(c.options || []).some(
+                                (option) =>
+                                  option.valueName &&
+                                  option.value === dictionaryDefaults[field],
+                              ) && (
+                                <SelectItem
+                                  value={dictionaryDefaults[field]}
+                                  text={intl.formatMessage(
+                                    {
+                                      id: "label.testCatalog.sampleResults.dictionaryDefault.unavailable",
+                                    },
+                                    { value: dictionaryDefaults[field] },
+                                  )}
+                                />
+                              )}
+                            {(c.options || [])
+                              .filter(
+                                (option) => option.valueName && option.value,
+                              )
+                              .map((option) => (
+                                <SelectItem
+                                  key={option.value}
+                                  value={option.value}
+                                  text={option.valueName}
+                                />
+                              ))}
+                          </Select>
+                        ))}
+                      </>
+                    )}
                     {/* Select-list options (OGC-964) */}
                     <h6>
                       <FormattedMessage id="label.testCatalog.sampleResults.options" />
@@ -940,6 +1092,9 @@ const SampleResultsSection = ({ testId }) => {
                           </TableHeader>
                           <TableHeader>
                             <FormattedMessage id="label.testCatalog.sampleResults.option.normal" />
+                          </TableHeader>
+                          <TableHeader>
+                            <FormattedMessage id="label.testCatalog.sampleResults.option.quantifiable" />
                           </TableHeader>
                           <TableHeader>
                             <FormattedMessage id="label.testCatalog.sampleResults.actions" />
@@ -983,11 +1138,29 @@ const SampleResultsSection = ({ testId }) => {
                             <TableCell>
                               <Checkbox
                                 id={`opt-normal-${ci}-${oi}`}
-                                labelText=""
+                                labelText={intl.formatMessage({
+                                  id: "label.testCatalog.sampleResults.option.normal",
+                                })}
+                                hideLabel
                                 checked={!!o.normal}
                                 onChange={(_e, { checked }) =>
                                   patchChild(ci, "options", oi, {
                                     normal: checked,
+                                  })
+                                }
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Checkbox
+                                id={`opt-quantifiable-${ci}-${oi}`}
+                                labelText={intl.formatMessage({
+                                  id: "label.testCatalog.sampleResults.option.quantifiable",
+                                })}
+                                hideLabel
+                                checked={!!o.isQuantifiable}
+                                onChange={(_e, { checked }) =>
+                                  patchChild(ci, "options", oi, {
+                                    isQuantifiable: checked,
                                   })
                                 }
                               />

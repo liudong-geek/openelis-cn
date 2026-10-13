@@ -21,6 +21,8 @@ public class TestCatalogBasicInfo {
     public Boolean antimicrobialResistance;
     public Boolean active;
     public Boolean orderable;
+    public Boolean notifyResults;
+    public Boolean inLabOnly;
 
     public TestCatalogBasicInfo() {
     }
@@ -38,5 +40,7 @@ public class TestCatalogBasicInfo {
         antimicrobialResistance = source.antimicrobialResistance;
         active = source.active;
         orderable = source.orderable;
+        notifyResults = source.notifyResults;
+        inLabOnly = source.inLabOnly;
     }
 }

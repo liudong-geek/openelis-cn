@@ -119,6 +119,8 @@ public class TestCatalogCreationServiceIntegrationTest extends BaseWebContextSen
         params.sampleTypeId = String.valueOf(SAMPLE_TYPE_ID);
         params.domain = "CLINICAL";
         params.orderable = true;
+        params.notifyResults = true;
+        params.inLabOnly = true;
 
         createdTestId = creationService.createInactiveTest(params, "1");
         assertNotNull(createdTestId);
@@ -126,6 +128,8 @@ public class TestCatalogCreationServiceIntegrationTest extends BaseWebContextSen
         org.openelisglobal.test.valueholder.Test created = testService.getTestById(createdTestId);
         assertNotNull(created);
         assertFalse("new test must start Inactive", created.isActive());
+        assertTrue(created.isNotifyResults());
+        assertTrue(created.isInLabOnly());
         assertEquals(CODE, created.getLocalCode());
         assertFalse("sample-type link must be created",
                 typeOfSampleTestService.getTypeOfSampleTestsForTest(createdTestId).isEmpty());
@@ -166,6 +170,8 @@ public class TestCatalogCreationServiceIntegrationTest extends BaseWebContextSen
         createdTestId = creationService.createInactiveTest(params, "1");
 
         // Assigning the test to the inactive section must have activated it (OGC-1116).
+        assertFalse(testService.getTestById(createdTestId).isNotifyResults());
+        assertFalse(testService.getTestById(createdTestId).isInLabOnly());
         TestSection reloaded = testSectionService.get(createdSectionId);
         assertEquals("Y", reloaded.getIsActive());
     }

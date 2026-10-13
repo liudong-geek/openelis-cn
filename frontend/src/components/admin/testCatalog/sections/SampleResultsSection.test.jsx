@@ -566,3 +566,263 @@ describe("SampleResultsSection", () => {
     );
   });
 });
+
+it("keeps primary default, normal reference, normal flag and quantifiable flag independent", async () => {
+  const config = {
+    testId: "7",
+    defaultDictionaryValue: "501",
+    normalDictionaryValue: "500",
+    components: [
+      {
+        id: "C1",
+        code: "PRIMARY",
+        label: "Screen",
+        resultType: "D",
+        isPrimary: true,
+        defaultResult: "component text is not a dictionary selection",
+        interpretations: [],
+        options: [
+          {
+            id: "O1",
+            value: "500",
+            valueName: "Negative",
+            normal: true,
+            isQuantifiable: false,
+          },
+          {
+            id: "O2",
+            value: "501",
+            valueName: "Positive",
+            normal: false,
+            isQuantifiable: true,
+          },
+        ],
+      },
+    ],
+  };
+  getFromOpenElisServer.mockImplementation((url, cb) =>
+    cb(url.endsWith("/sample-results") ? clone(config) : []),
+  );
+  renderSection();
+  const defaultSelect = await screen.findByLabelText(
+    messages["label.testCatalog.sampleResults.defaultDictionaryValue"],
+  );
+  const normalSelect = screen.getByLabelText(
+    messages["label.testCatalog.sampleResults.normalDictionaryValue"],
+  );
+  expect(defaultSelect).toHaveValue("501");
+  expect(normalSelect).toHaveValue("500");
+  expect(
+    screen.queryByDisplayValue(config.components[0].defaultResult),
+  ).not.toBeInTheDocument();
+  fireEvent.change(defaultSelect, { target: { value: "500" } });
+  fireEvent.change(normalSelect, { target: { value: "" } });
+  fireEvent.click(document.getElementById("opt-quantifiable-0-0"));
+  fireEvent.click(saveButton());
+  expect(savedPayload()).toMatchObject({
+    defaultDictionaryValue: "500",
+    normalDictionaryValue: "",
+  });
+  expect(savedPayload().components[0].defaultResult).toBe(
+    config.components[0].defaultResult,
+  );
+  expect(savedPayload().components[0].options[0]).toMatchObject({
+    normal: true,
+    isQuantifiable: true,
+  });
+  expect(savedPayload().components[0].options[1]).toMatchObject({
+    normal: false,
+    isQuantifiable: true,
+  });
+});
+it("requires confirmation before clearing dictionary defaults for a numeric primary result", async () => {
+  const config = {
+    testId: "7",
+    defaultDictionaryValue: "500",
+    normalDictionaryValue: "500",
+    components: [
+      {
+        id: "C1",
+        code: "PRIMARY",
+        label: "Screen",
+        resultType: "D",
+        isPrimary: true,
+        defaultResult: "",
+        interpretations: [],
+        options: [
+          {
+            value: "500",
+            valueName: "Negative",
+            normal: true,
+            isQuantifiable: false,
+          },
+        ],
+      },
+    ],
+  };
+  getFromOpenElisServer.mockImplementation((url, cb) =>
+    cb(url.endsWith("/sample-results") ? clone(config) : []),
+  );
+  renderSection();
+  await screen.findByLabelText(
+    messages["label.testCatalog.sampleResults.defaultDictionaryValue"],
+  );
+  fireEvent.click(document.getElementById("comp-type-0-N"));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(
+    screen.getByLabelText(
+      messages["label.testCatalog.sampleResults.defaultDictionaryValue"],
+    ),
+  ).toHaveValue("500");
+  fireEvent.click(document.getElementById("comp-type-0-N"));
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: messages["label.testCatalog.sampleResults.changeType.confirm"],
+    }),
+  );
+  expect(
+    screen.queryByLabelText(
+      messages["label.testCatalog.sampleResults.defaultDictionaryValue"],
+    ),
+  ).not.toBeInTheDocument();
+  fireEvent.click(saveButton());
+  expect(savedPayload()).toMatchObject({
+    defaultDictionaryValue: "",
+    normalDictionaryValue: "",
+  });
+  expect(savedPayload().components[0]).toMatchObject({
+    resultType: "N",
+    options: [],
+  });
+});
+it("shows an unmatched legacy dictionary selection until the administrator explicitly clears it", async () => {
+  const config = {
+    testId: "7",
+    defaultDictionaryValue: "999",
+    normalDictionaryValue: "",
+    components: [
+      {
+        code: "PRIMARY",
+        label: "Legacy",
+        resultType: "D",
+        isPrimary: true,
+        interpretations: [],
+        options: [{ value: "500", valueName: "Negative" }],
+      },
+    ],
+  };
+  getFromOpenElisServer.mockImplementation((url, cb) =>
+    cb(url.endsWith("/sample-results") ? clone(config) : []),
+  );
+  renderSection();
+  const selector = await screen.findByLabelText(
+    messages["label.testCatalog.sampleResults.defaultDictionaryValue"],
+  );
+  expect(selector).toHaveValue("999");
+  expect(
+    screen.getByRole("option", {
+      name: "Dictionary value 999 (not in current options)",
+    }),
+  ).toBeInTheDocument();
+  fireEvent.click(saveButton());
+  expect(savedPayload()).not.toHaveProperty("defaultDictionaryValue");
+  expect(savedPayload()).not.toHaveProperty("normalDictionaryValue");
+  putToOpenElisServer.mockClear();
+  fireEvent.change(selector, { target: { value: "" } });
+  fireEvent.click(saveButton());
+  expect(savedPayload()).toMatchObject({
+    defaultDictionaryValue: "",
+  });
+  expect(savedPayload()).not.toHaveProperty("normalDictionaryValue");
+  expect(savedPayload().components[0].options[0]).not.toHaveProperty(
+    "isQuantifiable",
+  );
+});
+
+describe("legacy multi-word dictionary results — retained after wizard retirement", () => {
+  const options = [
+    "DENGUE VIRUS NOT DETECTED",
+    "DENGUE VIRUS TYPE1 DETECTED",
+    "DENGUE VIRUS TYPE2 DETECTED",
+    "DENGUE VIRUS TYPE3 DETECTED",
+    "Invalid",
+  ].map((valueName, index) => ({
+    id: `TR${index + 1}`,
+    value: String(1001 + index),
+    valueName,
+    resultType: "D",
+    sortOrder: index + 1,
+    normal: index === 0,
+    isQuantifiable: index === 2,
+  }));
+  const config = {
+    testId: "7",
+    defaultDictionaryValue: "1003",
+    normalDictionaryValue: "1001",
+    components: [
+      {
+        id: null,
+        code: "PRIMARY",
+        label: "DENGUE PCR (Serum)",
+        resultType: "D",
+        isPrimary: true,
+        options,
+        interpretations: [],
+      },
+    ],
+  };
+  const mockDictionary = (results = []) =>
+    getFromOpenElisServer.mockImplementation((url, cb) => {
+      if (url.includes("/dictionary?")) cb(results);
+      else cb(url.endsWith("/sample-results") ? clone(config) : []);
+    });
+  const expectLegacyPreserved = () => {
+    expect(savedPayload().components[0].options).toEqual(options);
+    // Unchanged legacy defaults remain server-owned, including values that a
+    // filtered dictionary search does not return. No accidental clear/rewrite.
+    expect(savedPayload()).not.toHaveProperty("defaultDictionaryValue");
+    expect(savedPayload()).not.toHaveProperty("normalDictionaryValue");
+    expect(
+      screen.getByLabelText(
+        messages["label.testCatalog.sampleResults.defaultDictionaryValue"],
+      ),
+    ).toHaveValue("1003");
+    expect(
+      screen.getByLabelText(
+        messages["label.testCatalog.sampleResults.normalDictionaryValue"],
+      ),
+    ).toHaveValue("1001");
+  };
+  it("round-trips all five original option IDs, full names, order and reference/default dictionary IDs without editing", async () => {
+    mockDictionary();
+    renderSection();
+    await screen.findByLabelText(
+      messages["label.testCatalog.sampleResults.defaultDictionaryValue"],
+    );
+    fireEvent.click(saveButton());
+    expectLegacyPreserved();
+  });
+  it.each([
+    ["partial", [{ id: "1003", name: "DENGUE VIRUS TYPE2 DETECTED" }]],
+    ["empty", []],
+  ])(
+    "keeps every configured option when dictionary search returns %s results",
+    async (_description, results) => {
+      mockDictionary(results);
+      renderSection();
+      await screen.findByLabelText(
+        messages["label.testCatalog.sampleResults.defaultDictionaryValue"],
+      );
+      fireEvent.change(document.getElementById("opt-add-0"), {
+        target: { value: "DENGUE" },
+      });
+      expect(getFromOpenElisServer).toHaveBeenCalledWith(
+        "/rest/test-catalog/dictionary?search=DENGUE",
+        expect.any(Function),
+      );
+      fireEvent.click(saveButton());
+      expectLegacyPreserved();
+    },
+  );
+});

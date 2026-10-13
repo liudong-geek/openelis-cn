@@ -13,6 +13,13 @@ public interface TestResultComponentService extends BaseObjectService<TestResult
 
     List<TestResultComponent> getActiveComponentsByTestId(String testId);
 
+    /**
+     * Read-only legacy PRIMARY projection until an explicit save migrates its rows.
+     */
+    List<TestResultComponent> getEditorComponents(String testId);
+
+    List<TestResult> getEditorOptions(String testId, String componentId);
+
     TestResultComponent getByTestIdAndCode(String testId, String code);
 
     /**
@@ -32,6 +39,13 @@ public interface TestResultComponentService extends BaseObjectService<TestResult
     List<TestResultComponent> saveSampleResults(String testId, List<TestResultComponent> components,
             Map<String, List<TestResultInterpretation>> interpretationsByComponentCode,
             Map<String, List<TestResult>> optionsByComponentCode, String sysUserId);
+
+    List<TestResultComponent> saveSampleResults(String testId, List<TestResultComponent> components,
+            Map<String, List<TestResultInterpretation>> interpretationsByComponentCode,
+            Map<String, List<TestResult>> optionsByComponentCode, String sysUserId, String defaultDictionaryValue,
+            String normalDictionaryValue);
+
+    Map<String, String> getPrimaryDictionarySettings(String testId);
 
     /**
      * Copies the active result components of {@code sourceTestId} (with their

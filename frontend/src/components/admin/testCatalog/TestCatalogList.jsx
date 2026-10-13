@@ -28,6 +28,7 @@ import {
   Toggle,
   Loading,
   InlineNotification,
+  ActionableNotification,
 } from "@carbon/react";
 import { Add, Edit, Filter } from "@carbon/icons-react";
 import { FormattedMessage, useIntl } from "react-intl";
@@ -82,6 +83,7 @@ const TestCatalogList = () => {
     : "/MasterListsPage";
   const [editingId, setEditingId] = useState(null);
   const [savedNotice, setSavedNotice] = useState(false);
+  const [createdId, setCreatedId] = useState(null);
   const domainOptions = [
     ALL_DOMAINS_OPTION,
     ...useDomains().map((d) => ({ id: d.id, label: d.labelKey })),
@@ -106,6 +108,10 @@ const TestCatalogList = () => {
     initParams.get("sampleType") || "",
   );
   const [sampleTypes, setSampleTypes] = useState([]);
+  const [testSection, setTestSection] = useState(
+    initParams.get("testSection") || "",
+  );
+  const [labUnits, setLabUnits] = useState([]);
   const [search, setSearch] = useState(initParams.get("search") || "");
   const [debouncedSearch, setDebouncedSearch] = useState(
     initParams.get("search") || "",
@@ -124,6 +130,9 @@ const TestCatalogList = () => {
   useEffect(() => {
     getFromOpenElisServer("/rest/test-catalog/sample-types", (res) => {
       setSampleTypes(Array.isArray(res) ? res : []);
+    });
+    getFromOpenElisServer("/rest/test-catalog/lab-units", (res) => {
+      setLabUnits(Array.isArray(res) ? res : []);
     });
   }, []);
 
@@ -145,11 +154,12 @@ const TestCatalogList = () => {
     if (status && status !== "all") params.set("status", status);
     if (amr) params.set("amr", amr);
     if (sampleType) params.set("sampleType", sampleType);
+    if (testSection) params.set("testSection", testSection);
     if (debouncedSearch) params.set("search", debouncedSearch);
     if (issuesOnly) params.set("issuesOnly", "true");
     params.set("page", String(page));
     params.set("pageSize", String(pageSize));
-    history.replace({ search: params.toString() });
+    history.replace({ search: params.toString(), state: location.state });
 
     const controller = new AbortController();
     setLoading(true);
@@ -175,6 +185,7 @@ const TestCatalogList = () => {
     status,
     amr,
     sampleType,
+    testSection,
     debouncedSearch,
     issuesOnly,
     page,
@@ -263,6 +274,7 @@ const TestCatalogList = () => {
     (status && status !== "all" ? 1 : 0) +
     (amr ? 1 : 0) +
     (sampleType ? 1 : 0) +
+    (testSection ? 1 : 0) +
     (issuesOnly ? 1 : 0);
 
   const hasActiveQuery =
@@ -274,6 +286,7 @@ const TestCatalogList = () => {
     setStatus("all");
     setAmr("");
     setSampleType("");
+    setTestSection("");
     setSearch("");
     setDebouncedSearch("");
     setIssuesOnly(false);
@@ -340,6 +353,19 @@ const TestCatalogList = () => {
         onChange={({ selectedItem }) => {
           setPage(1);
           setSampleType(selectedItem ? selectedItem.id : "");
+        }}
+      />
+      <ComboBox
+        id="filter-test-section"
+        titleText={intl.formatMessage({
+          id: "label.testCatalog.basicInfo.labUnit",
+        })}
+        items={labUnits}
+        itemToString={(item) => (item ? item.value || item.name || "" : "")}
+        selectedItem={labUnits.find((item) => item.id === testSection) || null}
+        onChange={({ selectedItem }) => {
+          setPage(1);
+          setTestSection(selectedItem?.id || "");
         }}
       />
       <Toggle
@@ -421,9 +447,10 @@ const TestCatalogList = () => {
           testId="new"
           embedded
           onCancel={() => setCreateOpen(false)}
-          onCreated={() => {
+          onCreated={(created) => {
             setCreateOpen(false);
-            setPage(1);
+            setCreatedId(created.testId);
+            setSavedNotice(true);
             setReloadKey((value) => value + 1);
           }}
         />
@@ -437,20 +464,37 @@ const TestCatalogList = () => {
           onConfigure={() => openConfiguration(editingId)}
           onSaved={() => {
             setEditingId(null);
+            setCreatedId(null);
             setSavedNotice(true);
             setReloadKey((value) => value + 1);
           }}
         />
       )}
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
-      {savedNotice && (
+      {savedNotice && createdId && (
+        <ActionableNotification
+          inline
+          kind="success"
+          lowContrast
+          hasFocus={false}
+          title={intl.formatMessage({
+            id: "label.testCatalog.basicInfo.saved",
+          })}
+          actionButtonLabel={intl.formatMessage({
+            id: "common.action.relatedConfiguration",
+          })}
+          onActionButtonClick={() => openConfiguration(createdId)}
+          onCloseButtonClick={() => setSavedNotice(false)}
+        />
+      )}
+      {savedNotice && !createdId && (
         <InlineNotification
           kind="success"
           lowContrast
           title={intl.formatMessage({
             id: "label.testCatalog.basicInfo.saved",
           })}
-          onClose={() => setSavedNotice(false)}
+          onCloseButtonClick={() => setSavedNotice(false)}
         />
       )}
 

@@ -100,6 +100,10 @@ public class TestCatalogBasicInfoServiceImpl implements TestCatalogBasicInfoServ
             test.setAntimicrobialResistance(body.antimicrobialResistance);
         if (body.orderable != null)
             test.setOrderable(body.orderable);
+        if (body.notifyResults != null)
+            test.setNotifyResults(body.notifyResults);
+        if (body.inLabOnly != null)
+            test.setInLabOnly(body.inLabOnly);
         if (section != null) {
             if ("N".equals(section.getIsActive())) {
                 section.setIsActive("Y");
@@ -173,6 +177,8 @@ public class TestCatalogBasicInfoServiceImpl implements TestCatalogBasicInfoServ
         info.antimicrobialResistance = Boolean.TRUE.equals(test.getAntimicrobialResistance());
         info.active = test.isActive();
         info.orderable = Boolean.TRUE.equals(test.getOrderable());
+        info.notifyResults = Boolean.TRUE.equals(test.isNotifyResults());
+        info.inLabOnly = test.isInLabOnly();
         return info;
     }
 
@@ -197,6 +203,8 @@ public class TestCatalogBasicInfoServiceImpl implements TestCatalogBasicInfoServ
         m.put("antimicrobialResistance", String.valueOf(f.antimicrobialResistance));
         m.put("active", String.valueOf(f.active));
         m.put("orderable", String.valueOf(f.orderable));
+        m.put("notifyResults", String.valueOf(f.notifyResults));
+        m.put("inLabOnly", String.valueOf(f.inLabOnly));
         return m;
     }
 

@@ -10906,5 +10906,19 @@
   "config.report.pageNumbers.name": "报告页码显示",
   "config.report.pageNumbers.description": "启用后在报告中显示页码。",
   "config.report.siteName.name": "报告机构名称",
-  "config.report.siteName.description": "报告及页眉中显示的机构名称。"
+  "config.report.siteName.description": "报告及页眉中显示的机构名称。",
+  "label.testCatalog.ranges.modal.lowReporting": "报告下限",
+  "label.testCatalog.ranges.modal.highReporting": "报告上限",
+  "label.testCatalog.ranges.modal.reportingError": "报告上下限须为有效数值，且下限不得大于上限。",
+  "label.testCatalog.sampleResults.defaultDictionaryValue": "主结果默认选项",
+  "label.testCatalog.sampleResults.normalDictionaryValue": "正常参考选项",
+  "label.testCatalog.sampleResults.dictionaryDefaults.help": "默认选项用于主结果录入，正常参考选项用于字典结果的参考范围，两项分别维护。",
+  "label.testCatalog.sampleResults.dictionaryDefault.none": "不设置",
+  "label.testCatalog.sampleResults.option.quantifiable": "可定量",
+  "label.testCatalog.localization.configurationLanguages": "可维护已有翻译和已停用语言的名称。保存名称不会启用系统界面语言。",
+  "label.testCatalog.sampleResults.changeType.title": "更改主结果类型",
+  "label.testCatalog.sampleResults.changeType.confirm": "清除字典配置并更改",
+  "label.testCatalog.sampleResults.changeType.description": "更改为此类型将移除字典选项、主结果默认选项和正常参考选项。保存本节配置后生效。",
+  "label.testCatalog.sampleResults.dictionaryDefault.unavailable": "字典值 {value}（不在当前选项中）",
+  "label.testCatalog.group.reportingEditsOnly": "报告上下限仅在弹窗中修改或清空后应用到全部所选项目。未修改的边界保留各项目原值。"
 }

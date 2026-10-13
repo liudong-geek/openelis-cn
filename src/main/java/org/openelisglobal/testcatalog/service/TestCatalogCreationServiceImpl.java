@@ -90,6 +90,8 @@ public class TestCatalogCreationServiceImpl implements TestCatalogCreationServic
         // New tests start Inactive so they aren't orderable until configured (FR-3).
         test.setIsActive("N");
         test.setOrderable(Boolean.TRUE.equals(params.orderable));
+        test.setNotifyResults(Boolean.TRUE.equals(params.notifyResults));
+        test.setInLabOnly(Boolean.TRUE.equals(params.inLabOnly));
         test.setAntimicrobialResistance(Boolean.TRUE.equals(params.amr));
         test.setIsReportable("N");
         test.setGuid(UUID.randomUUID().toString());

@@ -43,6 +43,12 @@ public class TestCatalogEditorBasicInfoIntegrationTest extends BaseWebContextSen
     private TestService testService;
 
     @Autowired
+    private org.openelisglobal.test.service.TestSectionService testSectionService;
+
+    @Autowired
+    private org.openelisglobal.localization.service.LocalizationService localizationService;
+
+    @Autowired
     private TestResultComponentService componentService;
 
     @Autowired
@@ -128,6 +134,29 @@ public class TestCatalogEditorBasicInfoIntegrationTest extends BaseWebContextSen
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setSession(session);
         return request;
+    }
+
+    @org.junit.Test
+    public void basicInfo_optionalLegacyFlagsRoundTripAndOmissionPreservesThem() {
+        String id = String.valueOf(TEST_ID);
+        BasicInfo update = new BasicInfo();
+        update.notifyResults = true;
+        update.inLabOnly = true;
+        assertEquals(200, controller.saveBasicInfo(id, update, authedRequest()).getStatusCode().value());
+        BasicInfo omitted = new BasicInfo();
+        omitted.description = "Keep notification flags";
+        assertEquals(200, controller.saveBasicInfo(id, omitted, authedRequest()).getStatusCode().value());
+        BasicInfo read = controller.getBasicInfo(id).getBody();
+        assertEquals(Boolean.TRUE, read.notifyResults);
+        assertEquals(Boolean.TRUE, read.inLabOnly);
+        assertTrue(testService.getTestById(id).isNotifyResults());
+        assertTrue(testService.getTestById(id).isInLabOnly());
+        update.notifyResults = false;
+        update.inLabOnly = false;
+        controller.saveBasicInfo(id, update, authedRequest());
+        read = controller.getBasicInfo(id).getBody();
+        assertEquals(Boolean.FALSE, read.notifyResults);
+        assertEquals(Boolean.FALSE, read.inLabOnly);
     }
 
     @org.junit.Test
@@ -326,6 +355,41 @@ public class TestCatalogEditorBasicInfoIntegrationTest extends BaseWebContextSen
         assertEquals("Apple SortIT", rows.get(0).name);
         assertEquals("banana SortIT", rows.get(1).name);
         assertEquals("cherry SortIT", rows.get(2).name);
+    }
+
+    @org.junit.Test
+    public void listTests_filtersByTestSectionWithoutChangingLegacyCallers() {
+        org.openelisglobal.localization.valueholder.Localization name = org.openelisglobal.localization.service.LocalizationServiceImpl
+                .createNewLocalization("CatalogFilterIT", "CatalogFilterIT",
+                        org.openelisglobal.localization.service.LocalizationServiceImpl.LocalizationType.TEST_NAME);
+        name.setSysUserId("1");
+        String localizationId = localizationService.insert(name);
+        org.openelisglobal.test.valueholder.TestSection section = new org.openelisglobal.test.valueholder.TestSection();
+        section.setLocalization(name);
+        section.setTestSectionName("CatalogFilterIT");
+        section.setDescription("Catalog section filter");
+        section.setIsActive("Y");
+        section.setIsExternal("N");
+        section.setSysUserId("1");
+        String sectionId = testSectionService.insert(section);
+        Test test = testService.getTestById(String.valueOf(TEST_ID));
+        try {
+            test.setTestSection(section);
+            test.setSysUserId("1");
+            testService.update(test);
+            assertEquals(String.valueOf(TEST_ID),
+                    controller.listTests(null, "all", null, null, null, false, 1, 25, sectionId).rows.get(0).testId);
+            assertEquals(1, controller.listTests(null, "all", null, null, null, false, 1, 25, sectionId).total);
+            assertEquals(0, controller.listTests(null, "all", null, null, null, false, 1, 25, "99999999").total);
+            assertTrue(controller.listTests(null, "all", null, null, null, false, 1, 25).total >= 1);
+        } finally {
+            Test current = testService.getTestById(String.valueOf(TEST_ID));
+            current.setTestSection(null);
+            current.setSysUserId("1");
+            testService.update(current);
+            testSectionService.delete(sectionId, "1");
+            localizationService.delete(localizationId, "1");
+        }
     }
 
     private void seedTest(long id, String name, String domain, boolean active, boolean amr) {

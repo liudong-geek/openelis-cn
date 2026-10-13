@@ -19,6 +19,8 @@ public interface TestCatalogCreationService {
         public String domain;
         public Boolean amr;
         public Boolean orderable;
+        public Boolean notifyResults;
+        public Boolean inLabOnly;
         public String description;
     }
 

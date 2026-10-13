@@ -1,6 +1,7 @@
 package org.openelisglobal.resultlimit.service;
 
 import java.util.List;
+import java.util.Map;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.exception.LIMSRuntimeException;
 import org.openelisglobal.common.service.BaseObjectService;
@@ -30,6 +31,17 @@ public interface ResultLimitService extends BaseObjectService<ResultLimit, Strin
      * partial failure rolls the whole set back.
      */
     void saveRangesForTest(String testId, List<ResultLimit> desired, String sysUserId);
+
+    /**
+     * Explicit per-bound write intent; omitted reporting bounds preserve stored
+     * values.
+     */
+    record RangeUpdate(ResultLimit limit, boolean lowReportingProvided, boolean highReportingProvided) {
+    }
+
+    void saveRangeUpdatesForTest(String testId, List<RangeUpdate> desired, String sysUserId);
+
+    void saveRangeUpdatesForTests(Map<String, List<RangeUpdate>> desiredByTest, String sysUserId);
 
     ResultLimit getResultLimitById(String resultLimitId) throws LIMSRuntimeException;
 

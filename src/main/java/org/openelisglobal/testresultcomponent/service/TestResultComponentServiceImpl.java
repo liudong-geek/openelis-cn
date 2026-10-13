@@ -6,9 +6,11 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.openelisglobal.common.service.AuditableBaseObjectServiceImpl;
+import org.openelisglobal.dictionary.service.DictionaryService;
 import org.openelisglobal.resultlimit.service.ResultLimitService;
 import org.openelisglobal.resultlimits.valueholder.ResultLimit;
 import org.openelisglobal.test.service.TestService;
@@ -19,6 +21,7 @@ import org.openelisglobal.testresultcomponent.dao.TestResultComponentDAO;
 import org.openelisglobal.testresultcomponent.valueholder.TestResultComponent;
 import org.openelisglobal.testresultinterpretation.service.TestResultInterpretationService;
 import org.openelisglobal.testresultinterpretation.valueholder.TestResultInterpretation;
+import org.openelisglobal.typeoftestresult.service.TypeOfTestResultService;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultServiceImpl;
 import org.openelisglobal.unitofmeasure.service.UnitOfMeasureService;
 import org.openelisglobal.unitofmeasure.valueholder.UnitOfMeasure;
@@ -50,6 +53,12 @@ public class TestResultComponentServiceImpl extends AuditableBaseObjectServiceIm
     @Autowired
     private ResultLimitService resultLimitService;
 
+    @Autowired
+    private DictionaryService dictionaryService;
+
+    @Autowired
+    private TypeOfTestResultService typeOfTestResultService;
+
     TestResultComponentServiceImpl() {
         super(TestResultComponent.class);
     }
@@ -69,6 +78,39 @@ public class TestResultComponentServiceImpl extends AuditableBaseObjectServiceIm
     @Transactional(readOnly = true)
     public List<TestResultComponent> getActiveComponentsByTestId(String testId) {
         return baseObjectDAO.getActiveComponentsByTestId(testId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TestResultComponent> getEditorComponents(String testId) {
+        List<TestResultComponent> components = getActiveComponentsByTestId(testId);
+        if (!components.isEmpty())
+            return components;
+        Test test = testService.getTestById(testId);
+        List<TestResult> results = new ArrayList<>(testResultService.getActiveTestResultsByTest(testId));
+        if (test == null || results.isEmpty())
+            return components;
+        results.sort((a, b) -> Long.compare(parseId(b.getId()), parseId(a.getId())));
+        TestResultComponent primary = new TestResultComponent();
+        primary.setId(null);
+        primary.setTestId(testId);
+        primary.setCode(PRIMARY_CODE);
+        primary.setLabel(primaryLabel(test));
+        primary.setIsPrimary(true);
+        primary.setResultType(latestResultType(results));
+        primary.setSignificantDigits(latestSignificantDigits(results));
+        primary.setUomId(test.getUnitOfMeasure() == null ? null : test.getUnitOfMeasure().getId());
+        return List.of(primary);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TestResult> getEditorOptions(String testId, String componentId) {
+        if (componentId != null)
+            return testResultService.getActiveOptionsByComponentId(componentId);
+        return testResultService.getActiveTestResultsByTest(testId).stream().filter(row -> row.getComponentId() == null)
+                .filter(row -> TypeOfTestResultServiceImpl.ResultType.isDictionaryVariant(row.getTestResultType()))
+                .toList();
     }
 
     @Override
@@ -154,6 +196,23 @@ public class TestResultComponentServiceImpl extends AuditableBaseObjectServiceIm
     public List<TestResultComponent> saveSampleResults(String testId, List<TestResultComponent> components,
             Map<String, List<TestResultInterpretation>> interpretationsByComponentCode,
             Map<String, List<TestResult>> optionsByComponentCode, String sysUserId) {
+        return saveSampleResults(testId, components, interpretationsByComponentCode, optionsByComponentCode, sysUserId,
+                null, null);
+    }
+
+    @Override
+    @Transactional
+    public List<TestResultComponent> saveSampleResults(String testId, List<TestResultComponent> components,
+            Map<String, List<TestResultInterpretation>> interpretationsByComponentCode,
+            Map<String, List<TestResult>> optionsByComponentCode, String sysUserId, String defaultDictionaryValue,
+            String normalDictionaryValue) {
+        // The read-only legacy projection has no component ID. Reuse the existing
+        // migration when that projected PRIMARY is explicitly saved, preserving option
+        // IDs.
+        if (findPrimaryComponent(testId) == null && components.stream().anyMatch(c -> PRIMARY_CODE.equals(c.getCode()))
+                && !testResultService.getActiveTestResultsByTest(testId).isEmpty()) {
+            syncPrimaryComponentFromLegacy(testId, sysUserId);
+        }
         // One transaction: components first (so newly inserted rows get ids), then
         // each component's interpretations + select-list options, keyed by the
         // component's unique code.
@@ -180,7 +239,75 @@ public class TestResultComponentServiceImpl extends AuditableBaseObjectServiceIm
             }
         }
         syncLegacyTestFields(testId, sysUserId);
+        savePrimaryDictionarySettings(testId, defaultDictionaryValue, normalDictionaryValue, sysUserId);
         return baseObjectDAO.getActiveComponentsByTestId(testId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, String> getPrimaryDictionarySettings(String testId) {
+        Test test = testService.getTestById(testId);
+        TestResultComponent primary = findPrimaryComponent(testId);
+        String defaultValue = test == null || test.getDefaultTestResult() == null ? ""
+                : test.getDefaultTestResult().getValue();
+        String normalValue = primaryDictionaryLimits(testId, primary).stream().map(ResultLimit::getDictionaryNormalId)
+                .filter(value -> value != null && !value.isBlank()).findFirst().orElse("");
+        return Map.of("defaultDictionaryValue", defaultValue == null ? "" : defaultValue, "normalDictionaryValue",
+                normalValue);
+    }
+
+    private List<ResultLimit> primaryDictionaryLimits(String testId, TestResultComponent primary) {
+        return resultLimitService.getAllResultLimitsForTest(testId).stream().filter(
+                limit -> TypeOfTestResultServiceImpl.ResultType.isDictionaryVarientById(limit.getResultTypeId()))
+                .filter(limit -> limit.getComponentId() == null
+                        || primary != null && primary.getId().equals(limit.getComponentId()))
+                .toList();
+    }
+
+    private TestResult dictionaryOption(List<TestResult> options, String value) {
+        if (value == null || value.isBlank())
+            return null;
+        if (!value.matches("[1-9][0-9]*") || dictionaryService.getDictionaryById(value) == null)
+            throw new IllegalArgumentException("A configured dictionary value is required");
+        return options.stream().filter(option -> Objects.equals(option.getValue(), value)).findFirst().orElseThrow(
+                () -> new IllegalArgumentException("The dictionary value must belong to the primary component"));
+    }
+
+    private void savePrimaryDictionarySettings(String testId, String defaultValue, String normalValue, String actor) {
+        if (defaultValue == null && normalValue == null)
+            return;
+        Test test = testService.getTestById(testId);
+        TestResultComponent primary = findPrimaryComponent(testId);
+        boolean dictionary = primary != null
+                && TypeOfTestResultServiceImpl.ResultType.isDictionaryVariant(primary.getResultType());
+        List<TestResult> options = dictionary ? testResultService.getActiveOptionsByComponentId(primary.getId())
+                : List.of();
+        TestResult defaultOption = dictionaryOption(options, defaultValue);
+        dictionaryOption(options, normalValue);
+        if (defaultValue != null) {
+            test.setDefaultTestResult(defaultOption);
+            test.setSysUserId(actor);
+            testService.update(test);
+        }
+        if (normalValue != null) {
+            List<ResultLimit> limits = primaryDictionaryLimits(testId, primary);
+            if (!normalValue.isBlank() && limits.isEmpty()) {
+                ResultLimit limit = new ResultLimit();
+                limit.setTestId(testId);
+                limit.setComponentId(primary.getId());
+                limit.setResultTypeId(
+                        typeOfTestResultService.getTypeOfTestResultByType(primary.getResultType()).getId());
+                limit.setDictionaryNormalId(normalValue);
+                limit.setSysUserId(actor);
+                resultLimitService.insert(limit);
+            } else {
+                for (ResultLimit limit : limits) {
+                    limit.setDictionaryNormalId(normalValue.isBlank() ? null : normalValue);
+                    limit.setSysUserId(actor);
+                    resultLimitService.update(limit);
+                }
+            }
+        }
     }
 
     /**

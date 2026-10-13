@@ -10701,5 +10701,19 @@
   "config.report.pageNumbers.name": "reportPageNumbers",
   "config.report.pageNumbers.description": "use page numbers on reports",
   "config.report.siteName.name": "SiteName",
-  "config.report.siteName.description": "The name of the site for reports and header"
+  "config.report.siteName.description": "The name of the site for reports and header",
+  "label.testCatalog.ranges.modal.lowReporting": "Reportable lower limit",
+  "label.testCatalog.ranges.modal.highReporting": "Reportable upper limit",
+  "label.testCatalog.ranges.modal.reportingError": "Reporting limits must be finite numbers and the lower limit must not exceed the upper limit.",
+  "label.testCatalog.sampleResults.defaultDictionaryValue": "Default primary result",
+  "label.testCatalog.sampleResults.normalDictionaryValue": "Normal reference option",
+  "label.testCatalog.sampleResults.dictionaryDefaults.help": "The default fills primary result entry. The normal reference is the dictionary value used by the reference range. These settings are independent of option interpretation flags.",
+  "label.testCatalog.sampleResults.dictionaryDefault.none": "Not set",
+  "label.testCatalog.sampleResults.option.quantifiable": "Quantifiable",
+  "label.testCatalog.localization.configurationLanguages": "Existing translations and inactive catalog languages remain editable here. Saving a name does not enable an application language.",
+  "label.testCatalog.sampleResults.changeType.title": "Change primary result type",
+  "label.testCatalog.sampleResults.changeType.confirm": "Clear dictionary settings and change type",
+  "label.testCatalog.sampleResults.changeType.description": "Changing to this result type removes dictionary options, the primary default selection and the normal reference selection. Changes take effect when this section is saved.",
+  "label.testCatalog.sampleResults.dictionaryDefault.unavailable": "Dictionary value {value} (not in current options)",
+  "label.testCatalog.group.reportingEditsOnly": "Reportable limits apply to all selected tests only when edited or cleared in the range dialog. Untouched limits remain specific to each test."
 }

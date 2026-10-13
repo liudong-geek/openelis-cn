@@ -334,3 +334,35 @@ it("opens related configuration with allowed list context and no modal", async (
   );
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
+
+it("carries the legacy lab unit filter in requests and clears it explicitly", async () => {
+  mockHistory.location.search = "?testSection=7&page=3&pageSize=10";
+  getFromOpenElisServer.mockImplementation((url, cb) =>
+    cb(
+      url.endsWith("/lab-units")
+        ? [{ id: "7", name: "Biochemistry" }]
+        : url.includes("/tests?")
+          ? pageOf([])
+          : [],
+    ),
+  );
+  renderList();
+  await screen.findByText(messages["label.testCatalog.list.empty"]);
+  expect(
+    getFromOpenElisServer.mock.calls.some(
+      ([url]) => url.includes("testSection=7") && url.includes("page=3"),
+    ),
+  ).toBe(true);
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: messages["button.testCatalog.clearFilters"],
+    }),
+  );
+  await waitFor(() =>
+    expect(
+      getFromOpenElisServer.mock.calls
+        .filter(([url]) => url.includes("/tests?"))
+        .at(-1)[0],
+    ).not.toContain("testSection="),
+  );
+});

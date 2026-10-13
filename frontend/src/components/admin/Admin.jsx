@@ -42,8 +42,7 @@ import SearchIndexManagement from "./searchIndexManagement/SearchIndexManagement
 import LoggingManagement from "./loggingManagement/LoggingManagement";
 import TestManagementConfigMenu from "./testManagementConfigMenu/TestManagementConfigMenu";
 import ResultSelectListAdd from "./testManagementConfigMenu/ResultSelectListAdd";
-import TestAdd from "./testManagementConfigMenu/TestAdd";
-import TestModifyEntry from "./testManagementConfigMenu/TestModifyEntry";
+import LegacyCatalogRedirect from "./testCatalog/LegacyCatalogRedirect";
 import TestOrderability from "./testManagementConfigMenu/TestOrderability";
 import MethodCreate from "./testManagementConfigMenu/MethodCreate";
 import TestSectionManagement from "./testManagementConfigMenu/TestSectionManagement";
@@ -107,6 +106,10 @@ function Admin() {
         <Route path={`${path}/calculatedValue`} component={CalculatedValue} />
         <Route path={`${path}/TestCatalog`} component={TestCatalog} />
         <Route path={`${path}/TestCatalogList`} component={TestCatalogList} />
+        <Route
+          path={`${path}/TestCatalogEditor/new/:section?`}
+          render={() => <LegacyCatalogRedirect create />}
+        />
         <Route
           path={`${path}/TestCatalogEditor/group/:ids/:section?`}
           component={CombinedTestEditor}
@@ -223,11 +226,14 @@ function Admin() {
           path={`${path}/ResultSelectListAdd`}
           component={ResultSelectListAdd}
         />
-        {/* OGC-1112 FR-38: the unified New test flow (TestCatalogEditor/new) is the
-          intended create path. The legacy 7-step Add Test and the legacy Modify Test
-          are kept available in parallel temporarily during the transition. */}
-        <Route path={`${path}/TestAdd`} component={TestAdd} />
-        <Route path={`${path}/TestModifyEntry`} component={TestModifyEntry} />
+        <Route
+          path={`${path}/TestAdd`}
+          render={() => <LegacyCatalogRedirect create />}
+        />
+        <Route
+          path={`${path}/TestModifyEntry`}
+          component={LegacyCatalogRedirect}
+        />
         <Route path={`${path}/TestOrderability`} component={TestOrderability} />
         <Route path={`${path}/MethodCreate`} component={MethodCreate} />
         <Route

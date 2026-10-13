@@ -543,3 +543,28 @@ it("ignores a late successful response body after unmount without starting verif
   expect(saved).not.toHaveBeenCalled();
   expect(getFromOpenElisServer).toHaveBeenCalledTimes(calls);
 });
+
+it("edits notification and in-lab-only independently and verifies both fields", async () => {
+  getFromOpenElisServer.mockImplementation((url, cb) => {
+    if (url.endsWith("/lab-units")) cb([{ id: "7", name: "生化" }]);
+    else if (url.endsWith("/sample-types"))
+      cb([{ id: "2", name: "血清", domain: "H" }]);
+    else if (url.endsWith("/domains")) cb([]);
+    else cb({ ...record, notifyResults: true, inLabOnly: false });
+  });
+  setup();
+  const notify = await screen.findByRole("switch", {
+    name: messages["test.notifyResults"],
+  });
+  const inLab = screen.getByRole("switch", {
+    name: messages["test.inLabOnly"],
+  });
+  expect(notify).toBeChecked();
+  expect(inLab).not.toBeChecked();
+  fireEvent.click(notify);
+  fireEvent.click(inLab);
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  const body = JSON.parse(putToOpenElisServerFullResponse.mock.calls[0][1]);
+  expect(body).toMatchObject({ notifyResults: false, inLabOnly: true });
+  await waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
+});

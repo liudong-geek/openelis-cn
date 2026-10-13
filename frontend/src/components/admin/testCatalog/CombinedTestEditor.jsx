@@ -146,11 +146,24 @@ const CombinedTestEditor = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ids]);
 
-  const handleSaveRange = (r) => {
+  const handleSaveRange = (r, reportingFieldsChanged = []) => {
+    // Reportable limits stay per test unless explicitly edited in this dialog.
+    // A seed value from the first test must not silently overwrite the group.
+    const changes = Object.fromEntries(
+      reportingFieldsChanged.map((key) => [key, r[key]]),
+    );
     setRanges((prev) =>
       editingIndex === -1
-        ? [...prev, r]
-        : prev.map((row, i) => (i === editingIndex ? { ...row, ...r } : row)),
+        ? [...prev, { ...r, reportingChanges: changes }]
+        : prev.map((row, i) =>
+            i === editingIndex
+              ? {
+                  ...row,
+                  ...r,
+                  reportingChanges: { ...row.reportingChanges, ...changes },
+                }
+              : row,
+          ),
     );
     setEditingIndex(null);
   };
@@ -185,6 +198,7 @@ const CombinedTestEditor = () => {
         highNormal: r.highNormal,
         lowCritical: r.lowCritical,
         highCritical: r.highCritical,
+        ...r.reportingChanges,
       })),
     };
     putToOpenElisServer(
@@ -396,6 +410,9 @@ const CombinedTestEditor = () => {
               </h5>
               <p>
                 <FormattedMessage id="label.testCatalog.group.rangesIntro" />
+              </p>
+              <p>
+                <FormattedMessage id="label.testCatalog.group.reportingEditsOnly" />
               </p>
               {differs && (
                 <InlineNotification

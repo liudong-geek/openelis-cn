@@ -29,6 +29,8 @@ import org.openelisglobal.samplehuman.service.SampleHumanService;
 import org.openelisglobal.siteinformation.service.SiteInformationService;
 import org.openelisglobal.siteinformation.valueholder.SiteInformation;
 import org.openelisglobal.test.valueholder.Test;
+import org.openelisglobal.testresultcomponent.dao.TestResultComponentDAO;
+import org.openelisglobal.testresultcomponent.valueholder.TestResultComponent;
 import org.openelisglobal.typeoftestresult.service.TypeOfTestResultService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.DependsOn;
@@ -47,6 +49,9 @@ public class ResultLimitServiceImpl extends AuditableBaseObjectServiceImpl<Resul
 
     @Autowired
     protected ResultLimitDAO baseObjectDAO;
+
+    @Autowired
+    private TestResultComponentDAO componentDAO;
 
     @Autowired
     private DictionaryService dictionaryService;
@@ -85,6 +90,56 @@ public class ResultLimitServiceImpl extends AuditableBaseObjectServiceImpl<Resul
     @Override
     @Transactional
     public void saveRangesForTest(String testId, List<ResultLimit> desired, String sysUserId) {
+        saveRangeUpdatesForTest(testId, desired.stream().map(limit -> new RangeUpdate(limit, false, false)).toList(),
+                sysUserId);
+    }
+
+    @Override
+    @Transactional
+    public void saveRangeUpdatesForTests(Map<String, List<RangeUpdate>> desiredByTest, String sysUserId) {
+        desiredByTest.forEach((testId, desired) -> {
+            List<ResultLimit> existing = getBaseObjectDAO().getAllResultLimitsForTest(testId);
+            for (RangeUpdate update : desired) {
+                ResultLimit incoming = update.limit();
+                incoming.setComponentId(groupComponentId(testId, incoming.getComponentId()));
+                // A group payload has no per-test row IDs. Match the unchanged
+                // range scope before applying partial reporting-bound updates.
+                List<ResultLimit> matches = existing.stream()
+                        .filter(row -> NUMERIC_RESULT_TYPE_ID.equals(row.getResultTypeId()))
+                        .filter(row -> java.util.Objects.equals(row.getComponentId(), incoming.getComponentId())
+                                && java.util.Objects.equals(row.getSampleTypeId(), incoming.getSampleTypeId())
+                                && java.util.Objects.equals(row.getGender(), incoming.getGender())
+                                && Double.compare(row.getMinAge(), incoming.getMinAge()) == 0
+                                && Double.compare(row.getMaxAge(), incoming.getMaxAge()) == 0)
+                        .toList();
+                if (matches.size() == 1)
+                    incoming.setId(matches.get(0).getId());
+            }
+            saveRangeUpdatesForTest(testId, desired, sysUserId);
+        });
+    }
+
+    private String groupComponentId(String testId, String sourceId) {
+        if (GenericValidator.isBlankOrNull(sourceId))
+            return null;
+        TestResultComponent source = componentDAO.get(sourceId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown range component"));
+        if (!"Y".equals(source.getIsActive()))
+            throw new IllegalArgumentException("Inactive range component");
+        if (testId.equals(source.getTestId()))
+            return sourceId;
+        List<TestResultComponent> matches = componentDAO.getActiveComponentsByTestId(testId).stream()
+                .filter(target -> source.getIsPrimary() ? target.getIsPrimary()
+                        : java.util.Objects.equals(source.getCode(), target.getCode()))
+                .toList();
+        if (matches.size() != 1)
+            throw new IllegalArgumentException("The range component must match each selected test");
+        return matches.get(0).getId();
+    }
+
+    @Override
+    @Transactional
+    public void saveRangeUpdatesForTest(String testId, List<RangeUpdate> desired, String sysUserId) {
         // The Ranges editor only manages NUMERIC reference ranges. Dictionary /
         // select-list limits (those carrying normal_dictionary_id, a non-numeric
         // result type) belong to a different concern and MUST be left untouched —
@@ -96,7 +151,8 @@ public class ResultLimitServiceImpl extends AuditableBaseObjectServiceImpl<Resul
             }
         }
         Set<String> kept = new HashSet<>();
-        for (ResultLimit incoming : desired) {
+        for (RangeUpdate update : desired) {
+            ResultLimit incoming = update.limit();
             ResultLimit target;
             if (incoming.getId() != null && numericById.containsKey(incoming.getId())) {
                 target = numericById.get(incoming.getId());
@@ -108,9 +164,16 @@ public class ResultLimitServiceImpl extends AuditableBaseObjectServiceImpl<Resul
                 // resolve it here rather than forcing callers to know type ids.
                 target.setResultTypeId(NUMERIC_RESULT_TYPE_ID);
             }
-            // Copy only the editor-managed fields. Reporting range (per-Method) and
-            // the dictionary normal are NOT edited here, so leave the managed row's
-            // existing values intact (a new row keeps its ±Infinity defaults).
+            double lowReporting = update.lowReportingProvided() ? incoming.getLowReportingRange()
+                    : target.getLowReportingRange();
+            double highReporting = update.highReportingProvided() ? incoming.getHighReportingRange()
+                    : target.getHighReportingRange();
+            if (Double.isNaN(lowReporting) || Double.isNaN(highReporting) || lowReporting > highReporting) {
+                throw new IllegalArgumentException("Invalid reporting range");
+            }
+            target.setLowReportingRange(lowReporting);
+            target.setHighReportingRange(highReporting);
+            // The dictionary normal belongs to the separate primary dictionary setting.
             target.setComponentId(incoming.getComponentId());
             target.setSampleTypeId(incoming.getSampleTypeId());
             target.setGender(incoming.getGender());

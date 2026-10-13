@@ -151,6 +151,12 @@ const BasicInfoSection = ({
     domain: record.domain,
     antimicrobialResistance: !!record.antimicrobialResistance,
     orderable: !!record.orderable,
+    ...(typeof record.notifyResults === "boolean"
+      ? { notifyResults: record.notifyResults }
+      : {}),
+    ...(typeof record.inLabOnly === "boolean"
+      ? { inLabOnly: record.inLabOnly }
+      : {}),
   });
   const [form, setForm] = useState(null);
   const [pendingDomain, setPendingDomain] = useState(null);
@@ -174,6 +180,8 @@ const BasicInfoSection = ({
     domain: "CLINICAL",
     antimicrobialResistance: false,
     orderable: false,
+    notifyResults: false,
+    inLabOnly: false,
     description: "",
   });
   const [codeEdited, setCodeEdited] = useState(false);
@@ -502,6 +510,8 @@ const BasicInfoSection = ({
       domain: createForm.domain,
       amr: createForm.antimicrobialResistance,
       orderable: createForm.orderable,
+      notifyResults: createForm.notifyResults,
+      inLabOnly: createForm.inLabOnly,
       description: createForm.description,
     };
     postToOpenElisServerFullResponse(
@@ -861,6 +871,17 @@ const BasicInfoSection = ({
           toggled={createForm.orderable}
           onToggle={(checked) => updateCreate({ orderable: checked })}
         />
+        {["notifyResults", "inLabOnly"].map((field) => (
+          <Toggle
+            key={field}
+            id={`basic-info-create-${field}`}
+            labelText={intl.formatMessage({ id: `test.${field}` })}
+            labelA={intl.formatMessage({ id: "label.no" })}
+            labelB={intl.formatMessage({ id: "label.yes" })}
+            toggled={!!createForm[field]}
+            onToggle={(checked) => updateCreate({ [field]: checked })}
+          />
+        ))}
         <TextArea
           id="basic-info-create-description"
           labelText={intl.formatMessage({
@@ -1163,6 +1184,18 @@ const BasicInfoSection = ({
         toggled={!!form.orderable}
         onToggle={(checked) => update({ orderable: checked })}
       />
+
+      {["notifyResults", "inLabOnly"].map((field) => (
+        <Toggle
+          key={field}
+          id={`basic-info-${field}`}
+          labelText={intl.formatMessage({ id: `test.${field}` })}
+          labelA={intl.formatMessage({ id: "label.no" })}
+          labelB={intl.formatMessage({ id: "label.yes" })}
+          toggled={!!form[field]}
+          onToggle={(checked) => update({ [field]: checked })}
+        />
+      ))}
 
       {!modalEdit && (
         <div>

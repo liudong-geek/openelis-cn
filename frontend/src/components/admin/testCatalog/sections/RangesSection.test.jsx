@@ -254,3 +254,55 @@ describe("RangesSection", () => {
     ).toBeInTheDocument();
   });
 });
+
+it("preserves, edits and explicitly clears reportable bounds without changing normal bounds", async () => {
+  getFromOpenElisServer.mockImplementation((url, cb) =>
+    cb(
+      url.endsWith("/sample-results")
+        ? { components: [] }
+        : {
+            testId: "42",
+            ranges: [
+              {
+                id: "7",
+                minAge: 0,
+                lowNormal: 4,
+                highNormal: 11,
+                lowReporting: 1,
+                highReporting: 30,
+              },
+            ],
+            coverage: emptyCoverage,
+          },
+    ),
+  );
+  renderSection();
+  fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+  const dialog = await screen.findByRole("dialog");
+  const lower = within(dialog).getByLabelText(
+    messages["label.testCatalog.ranges.modal.lowReporting"],
+  );
+  const upper = within(dialog).getByLabelText(
+    messages["label.testCatalog.ranges.modal.highReporting"],
+  );
+  expect(lower).toHaveValue(1);
+  expect(upper).toHaveValue(30);
+  fireEvent.change(lower, { target: { value: "40" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+  expect(
+    within(dialog).getByText(
+      messages["label.testCatalog.ranges.modal.reportingError"],
+    ),
+  ).toBeInTheDocument();
+  fireEvent.change(lower, { target: { value: "" } });
+  fireEvent.change(upper, { target: { value: "50.5" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  const payload = JSON.parse(putToOpenElisServer.mock.calls[0][1]);
+  expect(payload.ranges[0]).toMatchObject({
+    lowReporting: null,
+    highReporting: 50.5,
+    lowNormal: 4,
+    highNormal: 11,
+  });
+});

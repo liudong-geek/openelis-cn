@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Stack,
   Select,
@@ -38,31 +44,73 @@ const LocalizationSection = ({ testId }) => {
   const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [localesError, setLocalesError] = useState(false);
+  const [savingFields, setSavingFields] = useState({});
+  const requestVersion = useRef(0);
   const [notification, setNotification] = useState(null);
 
-  // Resolve the active supported locales once, defaulting the picker to the
-  // first non-fallback locale (so an admin lands on something to translate).
+  // Translation configuration includes inactive languages; editing names must
+  // never enable a language for the application interface.
   useEffect(() => {
-    getFromOpenElisServer("/rest/supportedlocales/active", (res) => {
-      const list = Array.isArray(res) ? res : [];
-      setLocales(list);
-      if (list.length > 0) {
-        const target = list.find((l) => !l.fallback) || list[0];
-        setLocale(target.localeCode);
+    let disposed = false;
+    getFromOpenElisServer("/rest/supportedlocales", (res) => {
+      if (disposed) return;
+      if (!Array.isArray(res)) {
+        setLocalesError(true);
+        return;
+      }
+      setLocales(res);
+      const current = intl.locale.replace("-", "_");
+      const target =
+        res.find((item) => item.localeCode === current && current !== "en") ||
+        res.find((item) => !item.fallback && item.active !== false) ||
+        res[0];
+      setLocale(target?.localeCode || FALLBACK_LOCALE);
+    });
+    return () => {
+      disposed = true;
+    };
+  }, [intl.locale]);
+
+  const configurationLocales = useMemo(() => {
+    const byCode = new Map(locales.map((item) => [item.localeCode, item]));
+    // English and French names are legacy catalog fields. Keep them editable
+    // alongside every stored translation even when a locale has been removed.
+    const codes = new Set([
+      "en",
+      "fr",
+      ...fields.flatMap((field) => Object.keys(field.translations)),
+    ]);
+    const displayNames = new Intl.DisplayNames([intl.locale], {
+      type: "language",
+    });
+    codes.forEach((code) => {
+      if (!byCode.has(code)) {
+        let displayName = code;
+        try {
+          displayName = displayNames.of(code.replace("_", "-")) || code;
+        } catch {
+          /* Keep the stored code. */
+        }
+        byCode.set(code, { localeCode: code, displayName });
       }
     });
-  }, []);
+    return [...byCode.values()];
+  }, [locales, fields, intl.locale]);
 
   // Load the test's localization refs, then hydrate each one's translations.
   const load = useCallback(() => {
     if (!testId) {
       return;
     }
+    const version = ++requestVersion.current;
     setLoading(true);
     setError(false);
+    setSavingFields({});
     getFromOpenElisServer(
       `/rest/test-catalog/tests/${testId}/localization`,
       (refs) => {
+        if (version !== requestVersion.current) return;
         if (!refs || !Array.isArray(refs.fields)) {
           setLoading(false);
           setError(true);
@@ -75,18 +123,38 @@ const LocalizationSection = ({ testId }) => {
         }
         let pending = refs.fields.length;
         const resolved = [];
-        refs.fields.forEach((ref) => {
+        let failed = false;
+        refs.fields.forEach((ref, index) => {
           getFromOpenElisServer(
             `/rest/localizations/${ref.localizationId}`,
             (loc) => {
-              resolved.push({
+              if (version !== requestVersion.current) return;
+              if (
+                !loc ||
+                !loc.translations ||
+                typeof loc.translations !== "object" ||
+                Array.isArray(loc.translations)
+              )
+                failed = true;
+              resolved[index] = {
                 field: ref.field,
                 localizationId: ref.localizationId,
                 translations: (loc && loc.translations) || {},
-              });
+              };
               pending -= 1;
               if (pending === 0) {
-                setFields(resolved);
+                setError(failed);
+                if (!failed) {
+                  setFields(resolved);
+                  setDrafts(
+                    Object.fromEntries(
+                      resolved.map((field) => [
+                        field.field,
+                        { ...field.translations },
+                      ]),
+                    ),
+                  );
+                }
                 setLoading(false);
               }
             },
@@ -98,28 +166,27 @@ const LocalizationSection = ({ testId }) => {
 
   useEffect(() => {
     load();
+    return () => {
+      requestVersion.current++;
+    };
   }, [load]);
 
-  // Reset the per-field drafts whenever the fields or the chosen locale change,
-  // so each input reflects the translation (or empty) for the current locale.
-  useEffect(() => {
-    const next = {};
-    fields.forEach((f) => {
-      next[f.field] = f.translations[locale] || "";
-    });
-    setDrafts(next);
-  }, [fields, locale]);
-
   const saveField = (entry) => {
-    const value = drafts[entry.field] || "";
+    if (!locale || savingFields[entry.field]) return;
+    const version = requestVersion.current;
+    const savedLocale = locale;
+    const value = drafts[entry.field]?.[locale] || "";
     if (value === (entry.translations[locale] || "")) {
       return;
     }
     const merged = { ...entry.translations, [locale]: value };
+    setSavingFields((prev) => ({ ...prev, [entry.field]: true }));
     putToOpenElisServerFullResponse(
       `/rest/localizations/${entry.localizationId}/translations`,
       JSON.stringify(merged),
       (response) => {
+        if (version !== requestVersion.current) return;
+        setSavingFields((prev) => ({ ...prev, [entry.field]: false }));
         if (response && response.ok) {
           setNotification({
             kind: "success",
@@ -127,7 +194,19 @@ const LocalizationSection = ({ testId }) => {
               id: "label.testCatalog.localization.saved",
             }),
           });
-          load();
+          setFields((prev) =>
+            prev.map((field) =>
+              field.field === entry.field
+                ? {
+                    ...field,
+                    translations: {
+                      ...field.translations,
+                      [savedLocale]: value,
+                    },
+                  }
+                : field,
+            ),
+          );
         } else {
           setNotification({
             kind: "error",
@@ -149,7 +228,7 @@ const LocalizationSection = ({ testId }) => {
     );
   }
 
-  if (error) {
+  if (error || localesError) {
     return (
       <InlineNotification
         kind="error"
@@ -201,6 +280,11 @@ const LocalizationSection = ({ testId }) => {
       <p>
         {intl.formatMessage({ id: "label.testCatalog.localization.intro" })}
       </p>
+      <p>
+        {intl.formatMessage({
+          id: "label.testCatalog.localization.configurationLanguages",
+        })}
+      </p>
 
       {fields.length === 0 ? (
         <InlineNotification
@@ -222,7 +306,7 @@ const LocalizationSection = ({ testId }) => {
               value={locale}
               onChange={(e) => setLocale(e.target.value)}
             >
-              {locales.map((l) => (
+              {configurationLocales.map((l) => (
                 <SelectItem
                   key={l.localeCode}
                   value={l.localeCode}
@@ -251,13 +335,15 @@ const LocalizationSection = ({ testId }) => {
                 id={`localization-input-${entry.field}`}
                 labelText=""
                 placeholder={entry.translations[FALLBACK_LOCALE] || ""}
-                value={drafts[entry.field] ?? ""}
-                onChange={(e) =>
+                value={drafts[entry.field]?.[locale] ?? ""}
+                disabled={!locale || !!savingFields[entry.field]}
+                onChange={(e) => {
+                  const value = e.target.value;
                   setDrafts((prev) => ({
                     ...prev,
-                    [entry.field]: e.target.value,
-                  }))
-                }
+                    [entry.field]: { ...prev[entry.field], [locale]: value },
+                  }));
+                }}
                 onBlur={() => saveField(entry)}
               />
             </div>
