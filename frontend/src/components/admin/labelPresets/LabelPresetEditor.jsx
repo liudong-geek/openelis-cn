@@ -151,7 +151,15 @@ export default function LabelPresetEditor({ preset, onClose }) {
     }
     setSubmitting(true);
     setApiError(null);
-    const payload = { ...form, name: normalizeName(form.name) };
+    const payload = {
+      ...form,
+      name: normalizeName(form.name),
+      // Empty quantity drafts keep the existing zero-on-save behavior.
+      defaultPerOrder: Number(form.defaultPerOrder),
+      maxPerOrder: Number(form.maxPerOrder),
+      defaultPerSample: Number(form.defaultPerSample),
+      maxPerSample: Number(form.maxPerSample),
+    };
     const handleResponse = (response) => {
       setSubmitting(false);
       if (response && (response.status === 200 || response.status === 201)) {
@@ -188,8 +196,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
     }
   };
 
-  const numberValue = (name) => (_event, data) =>
-    setField(name, Number(data.value));
+  const numberValue = (name) => (_event, data) => setField(name, data.value);
   const requestClose = () => {
     if (closeStateRef.current.submitting) return false;
     if (closeStateRef.current.isDirty) {
@@ -335,6 +342,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
                 <div className="label-preset-editor__fields label-preset-editor__fields--two">
                   <NumberInput
                     id="preset-widthMm"
+                    allowEmpty
                     disabled={submitting}
                     label={intl.formatMessage({
                       id: "admin.labelPresets.field.widthMm",
@@ -348,6 +356,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
                   />
                   <NumberInput
                     id="preset-heightMm"
+                    allowEmpty
                     disabled={submitting}
                     label={intl.formatMessage({
                       id: "admin.labelPresets.field.heightMm",
@@ -437,6 +446,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
                     <div className="label-preset-editor__quantity-grid">
                       <NumberInput
                         id="defaultPerOrder"
+                        allowEmpty
                         label={intl.formatMessage({
                           id: "admin.labelPresets.field.defaultShort",
                         })}
@@ -447,6 +457,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
                       />
                       <NumberInput
                         id="maxPerOrder"
+                        allowEmpty
                         label={intl.formatMessage({
                           id: "admin.labelPresets.field.maximumShort",
                         })}
@@ -483,6 +494,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
                     <div className="label-preset-editor__quantity-grid">
                       <NumberInput
                         id="defaultPerSample"
+                        allowEmpty
                         label={intl.formatMessage({
                           id: "admin.labelPresets.field.defaultShort",
                         })}
@@ -493,6 +505,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
                       />
                       <NumberInput
                         id="maxPerSample"
+                        allowEmpty
                         label={intl.formatMessage({
                           id: "admin.labelPresets.field.maximumShort",
                         })}

@@ -71,15 +71,15 @@ class BarcodeConfigPage {
   dimensions() {
     cy.get(`${editor} #preset-widthMm`)
       .clear()
-      .type("76.2")
-      .should("have.value", "76.2");
+      .type("76")
+      .should("have.value", "76");
     cy.get(`${editor} #preset-heightMm`)
       .clear()
-      .type("25.4")
-      .should("have.value", "25.4");
+      .type("25")
+      .should("have.value", "25");
     cy.get(`${editor} .label-preset-editor__preview-panel`).should(
       "contain.text",
-      "76.2 × 25.4 mm",
+      "76 × 25 mm",
     );
   }
 
@@ -94,8 +94,8 @@ class BarcodeConfigPage {
   saveAndReadPreset() {
     const expected = {
       name: this.presetName,
-      heightMm: 25.4,
-      widthMm: 76.2,
+      heightMm: 25,
+      widthMm: 76,
       barcodeType: "CODE_128",
       printsPerOrder: true,
       printsPerSample: true,
@@ -138,7 +138,7 @@ class BarcodeConfigPage {
     });
     cy.contains(".label-preset-card", this.presetName)
       .should("be.visible")
-      .and("contain.text", "76.2 × 25.4 mm");
+      .and("contain.text", "76 × 25 mm");
   }
 
   openPrintFromMenu() {
