@@ -52,7 +52,6 @@ import TestSectionOrder from "./testManagementConfigMenu/TestSectionOrder";
 import SampleTypeManagement from "./sampleTypeManagement/SampleTypeManagement.jsx";
 import TestSectionTestAssign from "./testManagementConfigMenu/TestSectionTestAssign";
 import SampleTypeOrder from "./testManagementConfigMenu/SampleTypeOrder";
-import SampleTypeCreate from "./testManagementConfigMenu/SampleTypeCreate";
 import SampleTypeTestAssign from "./testManagementConfigMenu/SampleTypeTestAssign";
 import UomManagement from "./testManagementConfigMenu/UomManagement";
 import UomCreate from "./testManagementConfigMenu/UomCreate";
@@ -248,7 +247,30 @@ function Admin() {
           path={`${path}/SampleTypeManagement/:sampleTypeId?/:section?`}
           component={SampleTypeManagement}
         />
-        <Route path={`${path}/SampleTypeCreate`} component={SampleTypeCreate} />
+        <Route
+          path={`${path}/SampleTypeCreate`}
+          render={({ location }) => (
+            <Redirect
+              to={{
+                pathname: `${path}/SampleTypeManagement/new/basic-info`,
+                search: location.search,
+                state: location.state,
+              }}
+            />
+          )}
+        />
+        <Route
+          path={`${path}/SampleTypeRenameEntry`}
+          render={({ location }) => (
+            <Redirect
+              to={{
+                pathname: `${path}/SampleTypeManagement`,
+                search: location.search,
+                state: location.state,
+              }}
+            />
+          )}
+        />
         <Route path={`${path}/SampleTypeOrder`} component={SampleTypeOrder} />
         <Route
           path={`${path}/SampleTypeTestAssign`}

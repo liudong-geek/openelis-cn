@@ -123,11 +123,12 @@ function SampleTypeManagement({ intl }) {
     ? section
     : DEFAULT_SAMPLE_TYPE_SECTION;
   const routeReturnTo = safeSampleTypeReturnTo(
-    new URLSearchParams(location.search).get("returnTo"),
-    listUrl,
+    new URLSearchParams(location.search).get("returnTo") ||
+      location.state?.returnTo,
+    sampleTypeListUrl(listUrl, readSampleTypeListContext(location.search)),
   );
   const initialContext = readSampleTypeListContext(
-    view === "editor" ? routeReturnTo.split("?")[1] : location.search,
+    view === "list" ? location.search : routeReturnTo.split("?")[1],
   );
   const [searchText, setSearchText] = useState(initialContext.searchText);
   const [domainFilter, setDomainFilter] = useState(initialContext.domainFilter);
@@ -382,7 +383,7 @@ function SampleTypeManagement({ intl }) {
       setModalId("new");
     }
   };
-  const goToList = () => history.push(routeReturnTo);
+  const goToList = () => history.push(routeReturnTo, location.state);
   const closeEditor = (savedDetail = null) => {
     setModalId(null);
     setConfirmLeave(false);
@@ -396,7 +397,12 @@ function SampleTypeManagement({ intl }) {
     }
     setSavedState(null);
     requestScope.current += 1;
-    if (view === "add") history.replace(listReturnTo);
+    if (view === "add") {
+      const wasAllowed = allowNavigation.current;
+      allowNavigation.current = true;
+      history.replace(routeReturnTo, location.state);
+      allowNavigation.current = wasAllowed;
+    }
   };
   const requestClose = () => {
     if (savingRef.current) return false;
@@ -451,6 +457,16 @@ function SampleTypeManagement({ intl }) {
         if (!draft[key].trim())
           errors[key] = intl.formatMessage({
             id: "sampleType.basic.validation.translation",
+          });
+        else if (
+          sampleTypes.some(
+            (sampleType) =>
+              sampleType.name.trim().toLowerCase() ===
+              draft[key].trim().toLowerCase(),
+          )
+        )
+          errors[key] = intl.formatMessage({
+            id: "configuration.sampleType.create.duplicate",
           });
       });
     }
@@ -535,6 +551,7 @@ function SampleTypeManagement({ intl }) {
       !editingType ||
       detailLoading ||
       detailError ||
+      (isCreate && (isLoading || loadError)) ||
       savingRef.current ||
       savedState
     )
@@ -870,7 +887,9 @@ function SampleTypeManagement({ intl }) {
                 detailError ||
                 !editingType ||
                 (isCreate &&
-                  (!editingType.nameZh.trim() ||
+                  (isLoading ||
+                    loadError ||
+                    !editingType.nameZh.trim() ||
                     !editingType.identifyingName.trim() ||
                     !editingType.nameEn.trim() ||
                     !editingType.nameFr.trim()))

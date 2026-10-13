@@ -164,6 +164,100 @@ describe("SampleTypeManagement basic editor", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+  test.each(["query", "state", "direct"])(
+    "returns a legacy creation draft to its %s list context on cancel",
+    async (source) => {
+      const search = "?q=Serum&domain=CLINICAL&page=2&pageSize=10";
+      const returnTo = `/admin/SampleTypeManagement${search}`;
+      const state = {
+        origin: "legacy-menu",
+        ...(source === "state" ? { returnTo } : {}),
+      };
+      apiMocks.get.mockImplementation((url, callback) =>
+        url === "/rest/sample-types"
+          ? callback({
+              success: true,
+              data: Array.from({ length: 24 }, (_, index) => ({
+                ...sampleTypes[0],
+                id: String(index + 1),
+                name: `Serum ${index + 1}`,
+              })),
+            })
+          : defaultGet(url, callback),
+      );
+      const { history } = renderPage({
+        entry: {
+          pathname: "/admin/SampleTypeManagement/new/basic-info",
+          search:
+            source === "query"
+              ? `?returnTo=${encodeURIComponent(returnTo)}`
+              : source === "direct"
+                ? search
+                : "",
+          state,
+        },
+      });
+      const dialog = await screen.findByRole("dialog");
+      expect(screen.getByPlaceholderText("搜索标本类型…")).toHaveValue("Serum");
+      expect(screen.getByLabelText("页码，共3页")).toHaveValue("2");
+      fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+      expect(history.location.pathname + history.location.search).toBe(
+        returnTo,
+      );
+      expect(history.location.state).toEqual(state);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(apiMocks.post).not.toHaveBeenCalled();
+    },
+  );
+  test("saves from a legacy new link and returns without a stale dirty-draft prompt", async () => {
+    const returnTo =
+      "/MasterListsPage/SampleTypeManagement?domain=CLINICAL&pageSize=10";
+    const state = { returnTo, origin: "legacy-menu" };
+    apiMocks.post.mockImplementation((_url, _payload, callback) =>
+      callback({ createdSampleTypeId: "12" }),
+    );
+    apiMocks.get.mockImplementation((url, callback) =>
+      url === "/rest/sample-types/12"
+        ? callback({ success: true, data: { ...detail, id: "12" } })
+        : defaultGet(url, callback),
+    );
+    const { history } = renderPage({
+      entry: {
+        pathname: "/MasterListsPage/SampleTypeManagement/new/basic-info",
+        state,
+      },
+    });
+    const dialog = await screen.findByRole("dialog");
+    for (const [label, value] of [
+      ["中文显示名称", "血浆"],
+      ["内部标识名称", "Plasma-internal"],
+      ["英文名称", "Plasma"],
+      ["法文名称", "Plasma-fr"],
+    ])
+      fireEvent.change(within(dialog).getByLabelText(label), {
+        target: { value },
+      });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "创建标本类型" }),
+    );
+    await screen.findByText("标本类型已保存。");
+    expect(history.location.pathname + history.location.search).toBe(returnTo);
+    expect(history.location.state).toEqual(state);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(apiMocks.post).toHaveBeenCalledTimes(1);
+    expect(apiMocks.post.mock.calls[0][0]).toBe("/rest/SampleTypeCreate");
+  });
+  test("rejects an external state return destination when cancelling creation", async () => {
+    const { history } = renderPage({
+      entry: {
+        pathname: "/admin/SampleTypeManagement/new/basic-info",
+        state: { returnTo: "https://other.example/" },
+      },
+    });
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(history.location.pathname).toBe("/admin/SampleTypeManagement");
+  });
   test("filters and offers list load retry", async () => {
     let count = 0;
     apiMocks.get.mockImplementation((url, callback) =>
@@ -506,6 +600,80 @@ describe("SampleTypeManagement basic editor", () => {
       "/rest/sample-types/12",
       expect.any(Function),
     );
+  });
+  test("rejects trimmed case-insensitive active and inactive duplicate names, then saves distinct names", async () => {
+    apiMocks.get.mockImplementation((url, callback) => {
+      if (url === "/rest/sample-types")
+        callback({
+          success: true,
+          data: [
+            { ...sampleTypes[0], name: "  pLaSmA  " },
+            {
+              ...sampleTypes[0],
+              id: "6",
+              name: "  PLASMA-fr  ",
+              isActive: false,
+            },
+          ],
+        });
+      else if (url === "/rest/sample-types/12")
+        callback({ success: true, data: { ...detail, id: "12" } });
+      else defaultGet(url, callback);
+    });
+    apiMocks.post.mockImplementation((_url, _payload, callback) =>
+      callback({ createdSampleTypeId: "12" }),
+    );
+    renderPage();
+    const dialog = await newDraft();
+    const create = within(dialog).getByRole("button", { name: "创建标本类型" });
+    fireEvent.change(within(dialog).getByLabelText("英文名称"), {
+      target: { value: " plasma " },
+    });
+    fireEvent.change(within(dialog).getByLabelText("法文名称"), {
+      target: { value: " plasma-FR " },
+    });
+    fireEvent.click(create);
+    expect(
+      within(dialog).getAllByText(
+        zhMessages["configuration.sampleType.create.duplicate"],
+      ),
+    ).toHaveLength(2);
+    expect(apiMocks.post).not.toHaveBeenCalled();
+    expect(
+      apiMocks.get.mock.calls.filter(([url]) => url === "/rest/sample-types"),
+    ).toHaveLength(1);
+    expect(
+      apiMocks.get.mock.calls.some(([url]) => url === "/rest/SampleTypeCreate"),
+    ).toBe(false);
+    fireEvent.change(within(dialog).getByLabelText("英文名称"), {
+      target: { value: " Plasma-new " },
+    });
+    fireEvent.change(within(dialog).getByLabelText("法文名称"), {
+      target: { value: " Plasma-fr-new " },
+    });
+    fireEvent.click(create);
+    await screen.findByText("标本类型已保存。");
+    expect(apiMocks.post).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(apiMocks.post.mock.calls[0][1])).toMatchObject({
+      sampleTypeEnglishName: "Plasma-new",
+      sampleTypeFrenchName: "Plasma-fr-new",
+    });
+  });
+  test("does not create against an unloaded or failed sample-type list", async () => {
+    let listCallback;
+    apiMocks.get.mockImplementation((url, callback) => {
+      if (url === "/rest/sample-types") listCallback = callback;
+      else defaultGet(url, callback);
+    });
+    renderPage();
+    const dialog = await newDraft();
+    const create = within(dialog).getByRole("button", { name: "创建标本类型" });
+    expect(create).toBeDisabled();
+    await settle(listCallback, undefined);
+    expect(await screen.findByText("无法加载标本类型")).toBeInTheDocument();
+    expect(create).toBeDisabled();
+    fireEvent.click(create);
+    expect(apiMocks.post).not.toHaveBeenCalled();
   });
   test("does not call an empty creation response success or allow repeated creation before verification", async () => {
     apiMocks.post.mockImplementation((_url, _payload, callback) =>
