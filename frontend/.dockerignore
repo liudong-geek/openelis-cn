@@ -10,6 +10,7 @@ node_modules
 # from the Create React App era; `dist/` is the current Vite output.
 build
 dist
+# Required by Dockerfile.local-runtime: COPY dist/. CI still builds from source.
 !dist
 .vite
 

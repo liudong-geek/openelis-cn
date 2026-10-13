@@ -10726,5 +10726,7 @@
   "provider.save.providerId": "Provider ID",
   "provider.save.returnToList": "Return to list",
   "provider.save.identityUnavailable": "This provider has no valid record identity. Editing is unavailable; ask an administrator to repair the record before saving.",
-  "provider.save.nextCandidates": "Check next page"
+  "provider.save.nextCandidates": "Check next page",
+  "optionalModule.closed.title": "This module is not enabled",
+  "optionalModule.closed.message": "This module is not enabled for the current workspace. You can return to the home page to continue."
 }

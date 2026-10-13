@@ -85,6 +85,21 @@ CI仅根docs/\*\*、README.md文档PR可免构建；源码、公开手册资源�
 - 传输及受影响8文件101项通过，batch4-bounded-json-final-tests.log，含UTF-8分片/边界、错误响应、取消及CSRF契约。
 - 类型回归门禁通过：317项历史诊断，1209项基线，无新增文件/诊断类回归。格式与差异检查通过。
 
-## 第五至六批
+## 第五批：按需加载与依赖清理
+
+七类可选模块的32处静态导入改为已有延迟加载，46个入口在原SecureRoute权限检查内判断模块启用。121条受保护路由的path、exact、role与labUnitRole逐条AST对照不变；Inventory、StudyReports、genericProgram保留原行为。关闭提示不替代后端权限。报告发送配置只在首次访问分区时挂载，同会话切换保留草稿及未知保存锁，换会话重建。
+
+应用层补修第四批：IntlProvider的locale key以及两个管理路由的内联component会使编辑器重建。改用稳定AdminRoute，只按原navigationMenuOwner重建管理区；语言更新不清草稿，账号/会话/授权变化仍重建。
+
+删除无消费者的i18next、react-i18next及仅它们依赖的html-parse-stringify、void-elements；React Intl、共享Babel依赖和现有共享安装目录保持。保留Dockerfile.local-runtime必需的dist构建上下文并写明用途。
+
+验证（工作区outputs/lis-six-batch-20261013）：
+
+- App/gate/menu/static九文件不同测试128项分轮通过：最终5个App文件29项在batch5-app-lifecycle-final.log；其他4文件99项在batch5-app-tests-final.log中通过。后者同时保留最初App失败，不冒认整个首轮通过。
+- 报告配置四文件49项通过，batch5-report-tests.log；含首访、URL往返、草稿、未知保存及会话迟到响应。
+- npm锁依赖检查、改动格式、App相关局部lint、差异检查和独审通过。
+- 同方式Vite构建前14.61秒、后14.85秒；入口静态JS/CSS依赖闭包原16,059,586字节，现14,385,479字节，减少1,674,107字节；gzip由3,795,402降至3,357,172字节，减少438,230字节。仅为包体数据，不代表浏览器加载时间或整体提速；共用组件仍可包含模块共用工具。详见batch5-bundle-comparison.json。
+
+## 第六批
 
 尚未实施。最终版本、完整测试及部署证据在完成时补充。

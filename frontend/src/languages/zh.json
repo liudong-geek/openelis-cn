@@ -10931,5 +10931,7 @@
   "provider.save.providerId": "医生编号",
   "provider.save.returnToList": "返回列表",
   "provider.save.identityUnavailable": "该医生记录缺少有效身份编号，暂不能保存修改。请联系管理员修复记录后重试。",
-  "provider.save.nextCandidates": "查询下一页"
+  "provider.save.nextCandidates": "查询下一页",
+  "optionalModule.closed.title": "此模块未启用",
+  "optionalModule.closed.message": "当前工作区尚未启用此模块。您可以返回首页继续工作。"
 }

@@ -14,3 +14,15 @@ test("legacy data refreshes re-mount only the active route", () => {
   expect(appSource).toContain("setRouteRefreshKey");
   expect(appSource).toContain("<Switch key={routeRefreshKey}>");
 });
+
+test("optional route code uses the retrying import factory instead of eager imports", () => {
+  const source = readFileSync(`${process.cwd()}/src/App.jsx`, "utf8");
+  const modules =
+    "storage|pathology|cytology|immunohistochemistry|notebook|shipment|eqa";
+  expect(source).not.toMatch(
+    new RegExp(`import .+ from ["']\\./components/(?:${modules})/`),
+  );
+  expect(source).toMatch(/const PathologyDashboard = lazyWithRetry/);
+  expect(source).toMatch(/const ShipmentDashboard = lazyWithRetry/);
+  expect(source).toMatch(/const EQAOrdersPage = lazyWithRetry/);
+});

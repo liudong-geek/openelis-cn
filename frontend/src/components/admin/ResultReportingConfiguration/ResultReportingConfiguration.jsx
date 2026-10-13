@@ -99,34 +99,46 @@ export default function ResultReportingConfiguration() {
           title={intl.formatMessage({ id: "resultreporting.adminOnly" })}
         />
       ) : (
-        <div className="result-reporting-workspace" key={session.key}>
+        <ReportWorkspace
+          key={session.key}
+          section={section}
+          session={session}
+        />
+      )}
+    </div>
+  );
+}
+
+function ReportWorkspace({ section, session }) {
+  const intl = useIntl();
+  const [visited, setVisited] = useState(() => new Set([section]));
+  useEffect(() => {
+    setVisited((previous) =>
+      previous.has(section) ? previous : new Set([...previous, section]),
+    );
+  }, [section]);
+  return (
+    <div className="result-reporting-workspace">
+      {SECTIONS.filter((value) => visited.has(value) || value === section).map(
+        (value) => (
           <section
-            hidden={section !== "channels"}
+            key={value}
+            hidden={section !== value}
             aria-label={intl.formatMessage({
-              id: "resultreporting.section.channels",
+              id: `resultreporting.section.${value}`,
             })}
           >
-            <ChannelEditor
-              request={{ stamp: session.stamp, current: session.current }}
-            />
+            {value === "channels" ? (
+              <ChannelEditor
+                request={{ stamp: session.stamp, current: session.current }}
+              />
+            ) : value === "groups" ? (
+              <ReportGroupingConfiguration />
+            ) : (
+              <HisResultOutboxPanel />
+            )}
           </section>
-          <section
-            hidden={section !== "groups"}
-            aria-label={intl.formatMessage({
-              id: "resultreporting.section.groups",
-            })}
-          >
-            <ReportGroupingConfiguration />
-          </section>
-          <section
-            hidden={section !== "operations"}
-            aria-label={intl.formatMessage({
-              id: "resultreporting.section.operations",
-            })}
-          >
-            <HisResultOutboxPanel />
-          </section>
-        </div>
+        ),
       )}
     </div>
   );

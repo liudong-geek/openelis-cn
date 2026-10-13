@@ -1,5 +1,11 @@
 import ResultIntakeHandoff from "./components/resultPage/unified/ResultIntakeHandoff";
-import React, { Suspense, useEffect, useRef, useState } from "react";
+import React, {
+  Suspense,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { confirmAlert } from "react-confirm-alert";
 import { IntlProvider } from "react-intl";
 import { Route, BrowserRouter as Router, Switch } from "react-router-dom";
@@ -9,31 +15,78 @@ import { Admin } from "./components";
 import ChangePassword from "./components/ChangePassword";
 import Home from "./components/Home";
 import Layout from "./components/layout/Layout";
-import StorageDashboard from "./components/storage/StorageDashboard";
-import SampleItemsPage from "./components/storage/pages/SampleItemsPage";
-import ManageLocationPage from "./components/storage/pages/ManageLocationPage";
-import RoomsPage from "./components/storage/pages/RoomsPage";
-import DevicesPage from "./components/storage/pages/DevicesPage";
-import ShelvesPage from "./components/storage/pages/ShelvesPage";
-import RacksPage from "./components/storage/pages/RacksPage";
-import BoxesPage from "./components/storage/pages/BoxesPage";
-import EditLocationPage from "./components/storage/pages/EditLocationPage";
-import EditBoxPage from "./components/storage/pages/EditBoxPage";
-import AddLocationPage from "./components/storage/pages/AddLocationPage";
-import AddBoxPage from "./components/storage/pages/AddBoxPage";
+import { navigationMenuOwner } from "./components/layout/navigationMenuAvailability";
+const StorageDashboard = lazyWithRetry(
+  () => import("./components/storage/StorageDashboard"),
+);
+const SampleItemsPage = lazyWithRetry(
+  () => import("./components/storage/pages/SampleItemsPage"),
+);
+const ManageLocationPage = lazyWithRetry(
+  () => import("./components/storage/pages/ManageLocationPage"),
+);
+const RoomsPage = lazyWithRetry(
+  () => import("./components/storage/pages/RoomsPage"),
+);
+const DevicesPage = lazyWithRetry(
+  () => import("./components/storage/pages/DevicesPage"),
+);
+const ShelvesPage = lazyWithRetry(
+  () => import("./components/storage/pages/ShelvesPage"),
+);
+const RacksPage = lazyWithRetry(
+  () => import("./components/storage/pages/RacksPage"),
+);
+const BoxesPage = lazyWithRetry(
+  () => import("./components/storage/pages/BoxesPage"),
+);
+const EditLocationPage = lazyWithRetry(
+  () => import("./components/storage/pages/EditLocationPage"),
+);
+const EditBoxPage = lazyWithRetry(
+  () => import("./components/storage/pages/EditBoxPage"),
+);
+const AddLocationPage = lazyWithRetry(
+  () => import("./components/storage/pages/AddLocationPage"),
+);
+const AddBoxPage = lazyWithRetry(
+  () => import("./components/storage/pages/AddBoxPage"),
+);
 import AlertsDashboard from "./components/alerts/AlertsDashboard";
-import EQAProgramManagement from "./components/eqa/EQAProgram/ProgramManagement";
-import EQADistributionDashboard from "./components/eqa/EQADistributionDashboard";
-import CreateDistribution from "./components/eqa/EQADistribution/CreateDistribution";
-import EQAOrdersPage from "./components/eqa/EQAOrdersPage";
-import MyProgramsPage from "./components/eqa/MyProgramsPage";
-import EQAParticipantsPage from "./components/eqa/EQAParticipantsPage";
-import EQAResultsPage from "./components/eqa/EQAResultsPage";
+const EQAProgramManagement = lazyWithRetry(
+  () => import("./components/eqa/EQAProgram/ProgramManagement"),
+);
+const EQADistributionDashboard = lazyWithRetry(
+  () => import("./components/eqa/EQADistributionDashboard"),
+);
+const CreateDistribution = lazyWithRetry(
+  () => import("./components/eqa/EQADistribution/CreateDistribution"),
+);
+const EQAOrdersPage = lazyWithRetry(
+  () => import("./components/eqa/EQAOrdersPage"),
+);
+const MyProgramsPage = lazyWithRetry(
+  () => import("./components/eqa/MyProgramsPage"),
+);
+const EQAParticipantsPage = lazyWithRetry(
+  () => import("./components/eqa/EQAParticipantsPage"),
+);
+const EQAResultsPage = lazyWithRetry(
+  () => import("./components/eqa/EQAResultsPage"),
+);
 import InventoryManagement from "./components/inventory/InventoryManagement";
-import ShipmentDashboard from "./components/shipment/ShipmentDashboard";
-import BoxCreation from "./components/shipment/BoxCreation";
-import BoxDetails from "./components/shipment/BoxDetails";
-import ReceptionWorkflow from "./components/shipment/ReceptionWorkflow";
+const ShipmentDashboard = lazyWithRetry(
+  () => import("./components/shipment/ShipmentDashboard"),
+);
+const BoxCreation = lazyWithRetry(
+  () => import("./components/shipment/BoxCreation"),
+);
+const BoxDetails = lazyWithRetry(
+  () => import("./components/shipment/BoxDetails"),
+);
+const ReceptionWorkflow = lazyWithRetry(
+  () => import("./components/shipment/ReceptionWorkflow"),
+);
 import Login from "./components/Login";
 import LandingPage from "./components/home/LandingPage";
 
@@ -136,14 +189,32 @@ import StudyValidation from "./components/validation/Index";
 const AnalyserResultIndex = lazyWithRetry(
   () => import("./components/analyserResults/Index"),
 );
-import PathologyDashboard from "./components/pathology/PathologyDashboard";
-import CytologyDashboard from "./components/cytology/CytologyDashBoard";
-import NoteBookDashBoard from "./components/notebook/NoteBookDashBoard";
-import NoteBookEntryForm from "./components/notebook/NoteBookEntryForm";
-import CytologyCaseView from "./components/cytology/CytologyCaseView";
-import PathologyCaseView from "./components/pathology/PathologyCaseView";
-import ImmunohistochemistryDashboard from "./components/immunohistochemistry/ImmunohistochemistryDashboard";
-import ImmunohistochemistryCaseView from "./components/immunohistochemistry/ImmunohistochemistryCaseView";
+const PathologyDashboard = lazyWithRetry(
+  () => import("./components/pathology/PathologyDashboard"),
+);
+const CytologyDashboard = lazyWithRetry(
+  () => import("./components/cytology/CytologyDashBoard"),
+);
+const NoteBookDashBoard = lazyWithRetry(
+  () => import("./components/notebook/NoteBookDashBoard"),
+);
+const NoteBookEntryForm = lazyWithRetry(
+  () => import("./components/notebook/NoteBookEntryForm"),
+);
+const CytologyCaseView = lazyWithRetry(
+  () => import("./components/cytology/CytologyCaseView"),
+);
+const PathologyCaseView = lazyWithRetry(
+  () => import("./components/pathology/PathologyCaseView"),
+);
+const ImmunohistochemistryDashboard = lazyWithRetry(
+  () =>
+    import("./components/immunohistochemistry/ImmunohistochemistryDashboard"),
+);
+const ImmunohistochemistryCaseView = lazyWithRetry(
+  () =>
+    import("./components/immunohistochemistry/ImmunohistochemistryCaseView"),
+);
 const RoutedResultsViewer = lazyWithRetry(
   () => import("./components/patient/resultsViewer/results-viewer.tsx"),
 );
@@ -201,9 +272,12 @@ const GenericSampleResults = lazyWithRetry(
   () => import("./components/genericSample/GenericSampleResults"),
 );
 
-import ShipmentSettings from "./components/shipment/ShipmentSettings";
+const ShipmentSettings = lazyWithRetry(
+  () => import("./components/shipment/ShipmentSettings"),
+);
 import RouteErrorBoundary from "./components/common/RouteErrorBoundary";
 import PageLoadingState from "./components/common/PageLoadingState";
+import OptionalModuleGate from "./components/security/OptionalModuleGate";
 import {
   OrderProvider,
   OrderDashboard,
@@ -215,6 +289,13 @@ import {
 } from "./components/order";
 import "./ux-foundation.scss";
 import { INTERNAL_ROUTE_REFRESH_EVENT } from "./components/utils/NavigationUtils";
+
+// Keep language changes within the same administration workspace, while every
+// authenticated owner/session change still discards the previous user's state.
+function AdminRoute() {
+  const { userSessionDetails } = useContext(UserSessionDetailsContext);
+  return <Admin key={navigationMenuOwner(userSessionDetails)} />;
+}
 
 export const AUDIT_TRAIL_ROUTE_ROLES = Object.freeze([
   Roles.GLOBAL_ADMIN,
@@ -535,11 +616,6 @@ export default function App() {
     return !("authenticated" in userSessionDetails);
   };
 
-  const routeErrorStorage = {
-    titleKey: "errorBoundary.route.storage.title",
-    messageKey: "errorBoundary.route.storage.message",
-  };
-
   const routeErrorPatientResultsViewer = {
     titleKey: "errorBoundary.route.patientResultsViewer.title",
     messageKey: "errorBoundary.route.patientResultsViewer.message",
@@ -566,12 +642,7 @@ export default function App() {
   };
 
   return (
-    <IntlProvider
-      locale={locale}
-      key={locale}
-      defaultLocale="en"
-      messages={messages}
-    >
+    <IntlProvider locale={locale} defaultLocale="en" messages={messages}>
       <UserSessionDetailsContext.Provider
         value={{
           userSessionDetails,
@@ -610,32 +681,44 @@ export default function App() {
                 />
                 <SecureRoute
                   path="/admin"
-                  component={() => <Admin />}
+                  component={AdminRoute}
                   role={Roles.GLOBAL_ADMIN}
                 />
                 <SecureRoute
                   path="/MasterListsPage"
-                  component={() => <Admin />}
+                  component={AdminRoute}
                   role={Roles.GLOBAL_ADMIN}
                 />
                 <SecureRoute
                   path="/PathologyDashboard"
                   exact
-                  component={() => <PathologyDashboard />}
+                  render={() => (
+                    <OptionalModuleGate module="pathology">
+                      <PathologyDashboard />
+                    </OptionalModuleGate>
+                  )}
                   role={SPECIALTY_ROUTE_ACCESS.pathology.role}
                   labUnitRole={SPECIALTY_ROUTE_ACCESS.pathology.labUnitRole}
                 />
                 <SecureRoute
                   path="/PathologyCaseView/:pathologySampleId"
                   exact
-                  component={() => <PathologyCaseView />}
+                  render={() => (
+                    <OptionalModuleGate module="pathology">
+                      <PathologyCaseView />
+                    </OptionalModuleGate>
+                  )}
                   role={SPECIALTY_ROUTE_ACCESS.pathology.role}
                   labUnitRole={SPECIALTY_ROUTE_ACCESS.pathology.labUnitRole}
                 />
                 <SecureRoute
                   path="/ImmunohistochemistryDashboard"
                   exact
-                  component={() => <ImmunohistochemistryDashboard />}
+                  render={() => (
+                    <OptionalModuleGate module="immunohistochemistry">
+                      <ImmunohistochemistryDashboard />
+                    </OptionalModuleGate>
+                  )}
                   role={SPECIALTY_ROUTE_ACCESS.immunohistochemistry.role}
                   labUnitRole={
                     SPECIALTY_ROUTE_ACCESS.immunohistochemistry.labUnitRole
@@ -644,7 +727,11 @@ export default function App() {
                 <SecureRoute
                   path="/ImmunohistochemistryCaseView/:immunohistochemistrySampleId"
                   exact
-                  component={() => <ImmunohistochemistryCaseView />}
+                  render={() => (
+                    <OptionalModuleGate module="immunohistochemistry">
+                      <ImmunohistochemistryCaseView />
+                    </OptionalModuleGate>
+                  )}
                   role={SPECIALTY_ROUTE_ACCESS.immunohistochemistry.role}
                   labUnitRole={
                     SPECIALTY_ROUTE_ACCESS.immunohistochemistry.labUnitRole
@@ -653,7 +740,11 @@ export default function App() {
                 <SecureRoute
                   path="/CytologyDashboard"
                   exact
-                  component={() => <CytologyDashboard />}
+                  render={() => (
+                    <OptionalModuleGate module="cytology">
+                      <CytologyDashboard />
+                    </OptionalModuleGate>
+                  )}
                   role={SPECIALTY_ROUTE_ACCESS.cytology.role}
                   labUnitRole={SPECIALTY_ROUTE_ACCESS.cytology.labUnitRole}
                 />
@@ -672,65 +763,81 @@ export default function App() {
                 <SecureRoute
                   path="/NoteBookDashboard"
                   exact
-                  component={() => <NoteBookDashBoard />}
+                  render={() => (
+                    <OptionalModuleGate module="notebook">
+                      <NoteBookDashBoard />
+                    </OptionalModuleGate>
+                  )}
                   role={[Roles.RECEPTION, Roles.RESULTS, Roles.VALIDATION]}
                 />
                 <SecureRoute
                   path="/NoteBookEntryForm/:notebookid"
                   exact
-                  component={() => <NoteBookEntryForm />}
+                  render={() => (
+                    <OptionalModuleGate module="notebook">
+                      <NoteBookEntryForm />
+                    </OptionalModuleGate>
+                  )}
                   role={Roles.GLOBAL_ADMIN}
                 />
                 <SecureRoute
                   path="/NoteBookEntryForm"
                   exact
-                  component={() => <NoteBookEntryForm />}
+                  render={() => (
+                    <OptionalModuleGate module="notebook">
+                      <NoteBookEntryForm />
+                    </OptionalModuleGate>
+                  )}
                   role={Roles.GLOBAL_ADMIN}
                 />
                 <SecureRoute
                   path="/NoteBookInstanceEntryForm/:notebookid"
                   exact
-                  component={() => (
-                    <Suspense fallback={<PageLoadingState />}>
+                  render={() => (
+                    <OptionalModuleGate module="notebook">
                       <NoteBookInstanceEntryForm />
-                    </Suspense>
+                    </OptionalModuleGate>
                   )}
                   role={Roles.RESULTS}
                 />
                 <SecureRoute
                   path="/NoteBookInstanceEditForm/:notebookentryid"
                   exact
-                  component={() => (
-                    <Suspense fallback={<PageLoadingState />}>
+                  render={() => (
+                    <OptionalModuleGate module="notebook">
                       <NoteBookInstanceEntryForm />
-                    </Suspense>
+                    </OptionalModuleGate>
                   )}
                   role={Roles.RESULTS}
                 />
                 <SecureRoute
                   path="/NotebookSampleOrder/:notebookId/:notebookEntryId"
                   exact
-                  component={() => (
-                    <Suspense fallback={<PageLoadingState />}>
+                  render={() => (
+                    <OptionalModuleGate module="notebook">
                       <NotebookSampleOrder />
-                    </Suspense>
+                    </OptionalModuleGate>
                   )}
                   role={Roles.RESULTS}
                 />
                 <SecureRoute
                   path="/NotebookSampleOrder/:notebookId"
                   exact
-                  component={() => (
-                    <Suspense fallback={<PageLoadingState />}>
+                  render={() => (
+                    <OptionalModuleGate module="notebook">
                       <NotebookSampleOrder />
-                    </Suspense>
+                    </OptionalModuleGate>
                   )}
                   role={Roles.RESULTS}
                 />
                 <SecureRoute
                   path="/CytologyCaseView/:cytologySampleId"
                   exact
-                  component={() => <CytologyCaseView />}
+                  render={() => (
+                    <OptionalModuleGate module="cytology">
+                      <CytologyCaseView />
+                    </OptionalModuleGate>
+                  )}
                   role={SPECIALTY_ROUTE_ACCESS.cytology.role}
                   labUnitRole={SPECIALTY_ROUTE_ACCESS.cytology.labUnitRole}
                 />
@@ -767,10 +874,10 @@ export default function App() {
                 <SecureRoute
                   path="/FreezerMonitoring"
                   exact
-                  component={() => (
-                    <Suspense fallback={<PageLoadingState />}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <FreezerMonitoringDashboard />
-                    </Suspense>
+                    </OptionalModuleGate>
                   )}
                   role={Roles.RECEPTION}
                 />
@@ -915,222 +1022,250 @@ export default function App() {
                 <SecureRoute
                   path="/EQAOrders"
                   exact
-                  component={() => <EQAOrdersPage />}
+                  render={() => (
+                    <OptionalModuleGate module="eqa">
+                      <EQAOrdersPage />
+                    </OptionalModuleGate>
+                  )}
                   role={[Roles.RECEPTION, Roles.RESULTS]}
                 />
                 <SecureRoute
                   path="/EQAMyPrograms"
                   exact
-                  component={() => <MyProgramsPage />}
+                  render={() => (
+                    <OptionalModuleGate module="eqa">
+                      <MyProgramsPage />
+                    </OptionalModuleGate>
+                  )}
                   role={[Roles.RECEPTION, Roles.RESULTS]}
                 />
                 <SecureRoute
                   path="/EQAManagement"
                   exact
-                  component={() => <EQAProgramManagement />}
+                  render={() => (
+                    <OptionalModuleGate module="eqa">
+                      <EQAProgramManagement />
+                    </OptionalModuleGate>
+                  )}
                   role={[Roles.RECEPTION, Roles.RESULTS]}
                 />
                 <SecureRoute
                   path="/EQAResults"
                   exact
-                  component={() => <EQAResultsPage />}
+                  render={() => (
+                    <OptionalModuleGate module="eqa">
+                      <EQAResultsPage />
+                    </OptionalModuleGate>
+                  )}
                   role={[Roles.RECEPTION, Roles.RESULTS]}
                 />
                 <SecureRoute
                   path="/EQAParticipants"
                   exact
-                  component={() => <EQAParticipantsPage />}
+                  render={() => (
+                    <OptionalModuleGate module="eqa">
+                      <EQAParticipantsPage />
+                    </OptionalModuleGate>
+                  )}
                   role={[Roles.RECEPTION, Roles.RESULTS]}
                 />
                 <SecureRoute
                   path="/EQADistribution/create"
                   exact
-                  component={() => <CreateDistribution />}
+                  render={() => (
+                    <OptionalModuleGate module="eqa">
+                      <CreateDistribution />
+                    </OptionalModuleGate>
+                  )}
                   role={[Roles.RECEPTION, Roles.RESULTS]}
                 />
                 <SecureRoute
                   path="/EQADistribution"
                   exact
-                  component={() => <EQADistributionDashboard />}
+                  render={() => (
+                    <OptionalModuleGate module="eqa">
+                      <EQADistributionDashboard />
+                    </OptionalModuleGate>
+                  )}
                   role={[Roles.RECEPTION, Roles.RESULTS]}
                 />
                 <SecureRoute
                   path="/Storage"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <StorageDashboard />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.RECEPTION, Roles.RESULTS, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/sample-items"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <SampleItemsPage />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.RECEPTION, Roles.RESULTS, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/sample-items/:id/manage-location"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <ManageLocationPage />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.RECEPTION, Roles.RESULTS, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/rooms"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <RoomsPage />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.RECEPTION, Roles.RESULTS, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/devices"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <DevicesPage />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.RECEPTION, Roles.RESULTS, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/shelves"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <ShelvesPage />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.RECEPTION, Roles.RESULTS, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/racks"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <RacksPage />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.RECEPTION, Roles.RESULTS, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/boxes"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <BoxesPage />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.RECEPTION, Roles.RESULTS, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/rooms/new"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <AddLocationPage type="room" />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/devices/new"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <AddLocationPage type="device" />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/shelves/new"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <AddLocationPage type="shelf" />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/racks/new"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <AddLocationPage type="rack" />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/boxes/new"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <AddBoxPage />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/rooms/:id/edit"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <EditLocationPage type="room" />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/devices/:id/edit"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <EditLocationPage type="device" />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/shelves/:id/edit"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <EditLocationPage type="shelf" />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/racks/:id/edit"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <EditLocationPage type="rack" />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/Storage/boxes/:id/edit"
                   exact
-                  component={() => (
-                    <RouteErrorBoundary {...routeErrorStorage}>
+                  render={() => (
+                    <OptionalModuleGate module="storage">
                       <EditBoxPage />
-                    </RouteErrorBoundary>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.GLOBAL_ADMIN]}
                 />
@@ -1143,46 +1278,70 @@ export default function App() {
                 <SecureRoute
                   path="/SampleShipment"
                   exact
-                  component={() => <ShipmentDashboard />}
+                  render={() => (
+                    <OptionalModuleGate module="shipment">
+                      <ShipmentDashboard />
+                    </OptionalModuleGate>
+                  )}
                   role={[Roles.RECEPTION, Roles.RESULTS, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/SampleShipment/create-box"
                   exact
-                  component={() => <BoxCreation />}
+                  render={() => (
+                    <OptionalModuleGate module="shipment">
+                      <BoxCreation />
+                    </OptionalModuleGate>
+                  )}
                   role={[Roles.RECEPTION, Roles.RESULTS, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/SampleShipment/box/:boxId"
                   exact
-                  component={BoxDetails}
+                  render={(routeProps) => (
+                    <OptionalModuleGate module="shipment">
+                      <BoxDetails {...routeProps} />
+                    </OptionalModuleGate>
+                  )}
                   role={[Roles.RECEPTION, Roles.RESULTS, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/SampleShipment/receive"
                   exact
-                  component={() => <ReceptionWorkflow />}
+                  render={() => (
+                    <OptionalModuleGate module="shipment">
+                      <ReceptionWorkflow />
+                    </OptionalModuleGate>
+                  )}
                   role={[Roles.RECEPTION, Roles.RESULTS, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/SampleShipment/reports"
                   exact
-                  component={() => (
-                    <Suspense fallback={<PageLoadingState />}>
+                  render={() => (
+                    <OptionalModuleGate module="shipment">
                       <ShipmentReport />
-                    </Suspense>
+                    </OptionalModuleGate>
                   )}
                   role={[Roles.RECEPTION, Roles.RESULTS, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/SampleShipment/settings"
                   exact
-                  component={() => <ShipmentSettings />}
+                  render={() => (
+                    <OptionalModuleGate module="shipment">
+                      <ShipmentSettings />
+                    </OptionalModuleGate>
+                  )}
                   role={[Roles.RECEPTION, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
                   path="/SampleShipment/:tab"
-                  component={() => <ShipmentDashboard />}
+                  render={() => (
+                    <OptionalModuleGate module="shipment">
+                      <ShipmentDashboard />
+                    </OptionalModuleGate>
+                  )}
                   role={[Roles.RECEPTION, Roles.RESULTS, Roles.GLOBAL_ADMIN]}
                 />
                 <SecureRoute
