@@ -239,6 +239,11 @@ class BarcodeConfigPage {
   selectOriginalPanels() {
     // Localization preserves the original fixture entities, panel 1 and panel 4.
     cy.then(() => {
+      const availableIds = new Set(
+        this.sampleTests.tests.map((test) => String(test.id)),
+      );
+      this.expectedPanelTestIds = [];
+      this.excludedPanelTestIds = [];
       this.originalPanels = [
         { id: "1", names: ["Bilan Biochimique", "生化检验组合"] },
         { id: "4", names: ["Serologie VIH", "HIV血清学"] },
@@ -256,6 +261,20 @@ class BarcodeConfigPage {
           .and("be.visible")
           .click();
         cy.get(`#panel_${fixture.id}`).should("be.checked");
+        // Panels span specimen types; preprinting selects only the current type.
+        const panelIds = matches[0].testIds.split(",").map((id) => id.trim());
+        const eligibleIds = panelIds.filter((id) => availableIds.has(id));
+        expect(eligibleIds, `panel ${fixture.id} current specimen tests`).not.to
+          .be.empty;
+        eligibleIds.forEach((id) => {
+          cy.get(`#test_${id}`).should("be.checked");
+        });
+        const excludedIds = panelIds.filter((id) => !availableIds.has(id));
+        excludedIds.forEach((id) => {
+          cy.get(`#test_${id}`).should("not.exist");
+        });
+        this.expectedPanelTestIds.push(...eligibleIds);
+        this.excludedPanelTestIds.push(...excludedIds);
         return matches[0];
       });
     });
@@ -277,15 +296,15 @@ class BarcodeConfigPage {
       expect(params.get("numSpecimenLabelsPerSet")).to.eq("1");
       const originalPanels = this.originalPanels;
       expect(originalPanels).to.have.length(2);
-      const ids = originalPanels
-        .flatMap((panel) => panel.testIds.split(",").map((id) => id.trim()))
-        .sort();
-      for (const id of ids)
-        expect(
-          this.sampleTests.tests.some((test) => String(test.id) === id),
-          `configured panel test ${id}`,
-        ).to.eq(true);
-      expect((params.get("testIds") || "").split(",").sort()).to.deep.eq(ids);
+      const ids = [...new Set(this.expectedPanelTestIds)].sort();
+      expect(ids, "eligible original panel tests").not.to.be.empty;
+      const printedIds = (params.get("testIds") || "").split(",").sort();
+      expect(printedIds).to.deep.eq(ids);
+      this.excludedPanelTestIds.forEach((id) => {
+        expect(printedIds, `other-specimen panel test ${id}`).not.to.include(
+          id,
+        );
+      });
     });
     cy.get(".barcode-preview-modal.is-visible iframe")
       .should("be.visible")
