@@ -18,6 +18,7 @@ let mockLocation = {
   pathname: "/MasterListsPage/TestCatalogEditor/7",
   search: "",
 };
+let mockNameSaved;
 
 vi.mock("react-router-dom", async (importOriginal) => {
   const actual = await importOriginal();
@@ -47,8 +48,32 @@ vi.mock("../../layout/Layout", async () => {
 vi.mock("./sections/BasicInfoSection", async () => {
   const React = await import("react");
   return {
-    default: () =>
-      React.createElement("div", { "data-testid": "basic-info-section" }),
+    default: ({ onSaved }) =>
+      React.createElement(
+        "button",
+        { "data-testid": "basic-info-section", onClick: onSaved },
+        "Save basic info",
+      ),
+  };
+});
+
+vi.mock("./sections/LocalizationSection", async () => {
+  const React = await import("react");
+  return {
+    default: ({ onSaved }) => {
+      mockNameSaved = onSaved;
+      const [draft, setDraft] = React.useState("");
+      return (
+        <>
+          <input
+            aria-label="Unsaved report name"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+          <button onClick={onSaved}>Confirmed name save</button>
+        </>
+      );
+    },
   };
 });
 
@@ -118,22 +143,51 @@ vi.mock("./sections/PanelsSection", async () => {
 
 // ========== IMPORTS ==========
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import { BrowserRouter } from "react-router-dom";
 import TestCatalogEditor from "./TestCatalogEditor";
+import AdminSideNav from "../AdminSideNav";
+import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
+import { AdminCurrentObjectProvider } from "../../layout/AdminCurrentObjectContext";
 import { getFromOpenElisServer } from "../../utils/Utils";
 import messages from "../../../languages/en.json";
 
-const renderEditor = () =>
-  render(
-    <BrowserRouter>
-      <IntlProvider locale="en" messages={messages}>
-        <TestCatalogEditor />
+const session = {
+  authenticated: true,
+  userId: "admin",
+  sessionId: "session-1",
+  roles: ["ADMIN"],
+};
+const editorTree = ({
+  identity = session,
+  locale = "en",
+  showNav = false,
+} = {}) => (
+  <BrowserRouter>
+    <UserSessionDetailsContext.Provider
+      value={{ userSessionDetails: identity }}
+    >
+      <IntlProvider locale={locale} messages={messages}>
+        <AdminCurrentObjectProvider>
+          {showNav && <AdminSideNav />}
+          <TestCatalogEditor />
+        </AdminCurrentObjectProvider>
       </IntlProvider>
-    </BrowserRouter>,
-  );
+    </UserSessionDetailsContext.Provider>
+  </BrowserRouter>
+);
+const renderEditor = (options = {}) => {
+  const result = render(editorTree(options));
+  return {
+    ...result,
+    rerenderEditor: (next = {}) => {
+      options = { ...options, ...next };
+      result.rerender(editorTree(options));
+    },
+  };
+};
 
 const envelope = {
   testId: "7",
@@ -152,6 +206,150 @@ const envelope = {
     "display-order",
   ],
 };
+
+const navContext = () =>
+  document.querySelector('[data-cy="testCatalogSectionsContext"]');
+
+describe("current test shared with navigation", () => {
+  it("reads the envelope once and keeps the editor read alive when navigation closes", () => {
+    let done, signal;
+    getFromOpenElisServer.mockImplementation(
+      (_url, callback, controllerSignal) => {
+        done = callback;
+        signal = controllerSignal;
+      },
+    );
+    const page = renderEditor({ showNav: true });
+    expect(getFromOpenElisServer).toHaveBeenCalledTimes(1);
+    page.rerenderEditor({ showNav: false });
+    expect(signal.aborted).toBe(false);
+    act(() => done(envelope));
+    page.rerenderEditor({ showNav: true });
+    expect(navContext()).toHaveTextContent("Glucose Panel");
+    mockParams.section = "methods";
+    mockLocation.pathname = "/MasterListsPage/TestCatalogEditor/7/methods";
+    page.rerenderEditor();
+    expect(screen.getByTestId("methods-section")).toBeInTheDocument();
+    expect(getFromOpenElisServer).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not accept a prior record's late reply or reuse its name on a return visit", () => {
+    const reads = [];
+    getFromOpenElisServer.mockImplementation((_url, callback, signal) =>
+      reads.push({ callback, signal }),
+    );
+    const page = renderEditor({ showNav: true });
+    mockParams = { testId: "8", section: "basic-info" };
+    mockLocation.pathname = "/MasterListsPage/TestCatalogEditor/8/basic-info";
+    page.rerenderEditor();
+    expect(reads[0].signal.aborted).toBe(true);
+    act(() => reads[1].callback({ ...envelope, testId: "8", name: "Albumin" }));
+    act(() => reads[0].callback(envelope));
+    expect(navContext()).toHaveTextContent("Albumin");
+    expect(screen.queryByText("Glucose Panel")).not.toBeInTheDocument();
+    mockParams = { testId: "7", section: "basic-info" };
+    mockLocation.pathname = "/MasterListsPage/TestCatalogEditor/7/basic-info";
+    page.rerenderEditor();
+    expect(navContext()).not.toHaveTextContent("Albumin");
+    expect(getFromOpenElisServer).toHaveBeenCalledTimes(3);
+    act(() => reads[2].callback(undefined));
+    expect(
+      screen.getByText(messages["label.testCatalog.editor.loadError"]),
+    ).toBeInTheDocument();
+    expect(navContext()).not.toHaveTextContent("Glucose Panel");
+  });
+
+  it("clears both headings on logout and ignores a previous login's pending refresh", () => {
+    const reads = [];
+    getFromOpenElisServer.mockImplementation((_url, callback) =>
+      reads.push(callback),
+    );
+    const page = renderEditor({ showNav: true });
+    act(() => reads[0](envelope));
+    fireEvent.click(screen.getByTestId("basic-info-section"));
+    page.rerenderEditor({ identity: { authenticated: false } });
+    expect(screen.queryByText("Glucose Panel")).not.toBeInTheDocument();
+    expect(getFromOpenElisServer).toHaveBeenCalledTimes(2);
+    page.rerenderEditor({ identity: { ...session, sessionId: "session-2" } });
+    act(() => reads[1]({ ...envelope, name: "Old session reply" }));
+    expect(screen.queryByText("Old session reply")).not.toBeInTheDocument();
+    act(() => reads[2]({ ...envelope, name: "Current session name" }));
+    expect(navContext()).toHaveTextContent("Current session name");
+  });
+
+  it("loads the current locale instead of retaining a previous locale's name", () => {
+    mockParams.section = "localization";
+    mockLocation.pathname = "/MasterListsPage/TestCatalogEditor/7/localization";
+    const reads = [];
+    getFromOpenElisServer.mockImplementation((_url, callback) =>
+      reads.push(callback),
+    );
+    const page = renderEditor({ showNav: true });
+    act(() => reads[0](envelope));
+    fireEvent.change(screen.getByLabelText("Unsaved report name"), {
+      target: { value: "Keep my translated draft" },
+    });
+    page.rerenderEditor({ locale: "fr" });
+    expect(screen.getByLabelText("Unsaved report name")).toHaveValue(
+      "Keep my translated draft",
+    );
+    expect(screen.queryByText("Glucose Panel")).not.toBeInTheDocument();
+    act(() => reads[1]({ ...envelope, name: "Glycémie" }));
+    expect(navContext()).toHaveTextContent("Glycémie");
+    expect(getFromOpenElisServer).toHaveBeenCalledTimes(2);
+  });
+
+  it("refreshes a completed blur-save after section navigation but ignores it after leaving that editor", () => {
+    mockParams.section = "localization";
+    mockLocation.pathname = "/MasterListsPage/TestCatalogEditor/7/localization";
+    getFromOpenElisServer.mockImplementation((_url, callback) =>
+      callback({ ...envelope, testId: mockParams.testId }),
+    );
+    const page = renderEditor({ showNav: true });
+    const done = mockNameSaved;
+    mockParams.section = "methods";
+    mockLocation.pathname = "/MasterListsPage/TestCatalogEditor/7/methods";
+    page.rerenderEditor();
+    expect(getFromOpenElisServer).toHaveBeenCalledTimes(1);
+    getFromOpenElisServer.mockImplementation((_url, callback) =>
+      callback({ ...envelope, name: "Saved after leaving the section" }),
+    );
+    act(() => done());
+    expect(getFromOpenElisServer).toHaveBeenCalledTimes(2);
+    expect(navContext()).toHaveTextContent("Saved after leaving the section");
+    mockParams.testId = "8";
+    mockLocation.pathname = "/MasterListsPage/TestCatalogEditor/8/methods";
+    page.rerenderEditor();
+    const count = getFromOpenElisServer.mock.calls.length;
+    act(() => done());
+    expect(getFromOpenElisServer).toHaveBeenCalledTimes(count);
+  });
+
+  it("updates both names after a confirmed save without discarding another field's draft", () => {
+    mockParams.section = "localization";
+    mockLocation.pathname = "/MasterListsPage/TestCatalogEditor/7/localization";
+    const reads = [];
+    getFromOpenElisServer.mockImplementation((_url, callback) =>
+      reads.push(callback),
+    );
+    renderEditor({ showNav: true });
+    act(() => reads[0](envelope));
+    const input = screen.getByLabelText("Unsaved report name");
+    fireEvent.change(input, { target: { value: "Keep this draft" } });
+    fireEvent.click(screen.getByText("Confirmed name save"));
+    expect(input).toHaveValue("Keep this draft");
+    act(() => reads[1]({ ...envelope, name: "Updated glucose" }));
+    expect(navContext()).toHaveTextContent("Updated glucose");
+    expect(
+      screen.getByRole("heading", { name: "Updated glucose" }),
+    ).toBeInTheDocument();
+    expect(input).toHaveValue("Keep this draft");
+    fireEvent.click(screen.getByText("Confirmed name save"));
+    act(() => reads[2](undefined));
+    expect(navContext()).not.toHaveTextContent("Updated glucose");
+    expect(input).toHaveValue("Keep this draft");
+  });
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

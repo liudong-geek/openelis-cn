@@ -6,6 +6,9 @@ import { createMemoryHistory } from "history";
 import enMessages from "../../../languages/en.json";
 import zhMessages from "../../../languages/zh.json";
 import SampleTypeManagement from "./SampleTypeManagement";
+import AdminSideNav from "../AdminSideNav";
+import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
+import { AdminCurrentObjectProvider } from "../../layout/AdminCurrentObjectContext";
 
 const apiMocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -76,26 +79,50 @@ const renderPage = ({
   entry = "/MasterListsPage/SampleTypeManagement",
   locale = "zh-CN",
   messages = zhMessages,
+  withNavigation = false,
 } = {}) => {
   const history = createMemoryHistory({ initialEntries: [entry] });
-  return {
-    ...render(
-      <Router history={history}>
+  let identity = {
+    authenticated: true,
+    userId: "admin",
+    sessionId: "session-1",
+    roles: ["ADMIN"],
+  };
+  const tree = () => (
+    <Router history={history}>
+      <UserSessionDetailsContext.Provider
+        value={{ userSessionDetails: identity }}
+      >
         <IntlProvider locale={locale} messages={messages}>
-          <Route
-            path={[
-              "/MasterListsPage/SampleTypeManagement/:sampleTypeId?/:section?",
-              "/admin/SampleTypeManagement/:sampleTypeId?/:section?",
-            ]}
-            render={() => <SampleTypeManagement />}
-          />
-          <Route exact path="/elsewhere">
-            <p>Elsewhere</p>
-          </Route>
+          <AdminCurrentObjectProvider>
+            {withNavigation && <AdminSideNav />}
+            <Route
+              path={[
+                "/MasterListsPage/SampleTypeManagement/:sampleTypeId?/:section?",
+                "/admin/SampleTypeManagement/:sampleTypeId?/:section?",
+              ]}
+              render={() => <SampleTypeManagement />}
+            />
+            <Route exact path="/elsewhere">
+              <p>Elsewhere</p>
+            </Route>
+          </AdminCurrentObjectProvider>
         </IntlProvider>
-      </Router>,
-    ),
+      </UserSessionDetailsContext.Provider>
+    </Router>
+  );
+  const rendered = render(tree());
+  return {
+    ...rendered,
     history,
+    changeIdentity: (next) => {
+      identity = next;
+      rendered.rerender(tree());
+    },
+    changeLocale: (next) => {
+      locale = next;
+      rendered.rerender(tree());
+    },
   };
 };
 const edit = async () => {
@@ -140,6 +167,183 @@ beforeEach(() => {
 });
 
 describe("SampleTypeManagement basic editor", () => {
+  test("keeps a draft and list paging when only the display language changes", async () => {
+    apiMocks.get.mockImplementation((url, callback) => {
+      if (url === "/rest/sample-types")
+        callback({
+          success: true,
+          data: Array.from({ length: 24 }, (_, index) => ({
+            ...sampleTypes[0],
+            id: String(index + 1),
+            name: `血清${index + 1}`,
+          })),
+        });
+      else if (url === "/rest/sample-types/11")
+        callback({ success: true, data: { ...detail, id: "11" } });
+      else defaultGet(url, callback);
+    });
+    const page = renderPage({
+      entry: "/MasterListsPage/SampleTypeManagement?pageSize=10",
+    });
+    fireEvent.change(await screen.findByPlaceholderText("搜索标本类型…"), {
+      target: { value: "血清" },
+    });
+    fireEvent.change(screen.getByLabelText("页码，共3页"), {
+      target: { value: "2" },
+    });
+    const row = screen.getByText("血清11").closest("tr");
+    fireEvent.click(within(row).getByRole("button", { name: "编辑" }));
+    const dialog = await screen.findByRole("dialog");
+    modifyZh(dialog, "未保存的中文名称");
+    const count = apiMocks.get.mock.calls.length;
+    page.changeLocale("zh");
+    expect(within(dialog).getByLabelText("中文显示名称")).toHaveValue(
+      "未保存的中文名称",
+    );
+    expect(screen.getByPlaceholderText("搜索标本类型…")).toHaveValue("血清");
+    expect(screen.getByLabelText("页码，共3页")).toHaveValue("2");
+    expect(apiMocks.get).toHaveBeenCalledTimes(count);
+    expect(apiMocks.put).not.toHaveBeenCalled();
+  });
+
+  test("changes the current title from confirmed translations without publishing an edited draft or reading again", async () => {
+    const page = renderPage({
+      entry: "/MasterListsPage/SampleTypeManagement/5/basic-info",
+      withNavigation: true,
+    });
+    const dialog = await edit();
+    modifyZh(dialog, "未保存的名称");
+    const count = apiMocks.get.mock.calls.length;
+    page.changeLocale("fr");
+    expect(
+      document.querySelector('[data-cy="sampleTypeSectionsContext"]'),
+    ).toHaveTextContent("Sérum");
+    expect(
+      document.querySelector('[data-cy="sampleTypeSectionsContext"]'),
+    ).not.toHaveTextContent("未保存的名称");
+    expect(within(dialog).getByLabelText("中文显示名称")).toHaveValue(
+      "未保存的名称",
+    );
+    expect(apiMocks.get).toHaveBeenCalledTimes(count);
+  });
+
+  test("shares the confirmed detail with navigation and refreshes its name only after saved readback", async () => {
+    let reads = 0;
+    apiMocks.get.mockImplementation((url, callback) => {
+      if (url === "/rest/sample-types/5")
+        callback({
+          success: true,
+          data:
+            ++reads === 1
+              ? detail
+              : {
+                  ...detail,
+                  name: "新血清",
+                  translations: { ...detail.translations, zh: "新血清" },
+                },
+        });
+      else defaultGet(url, callback);
+    });
+    renderPage({
+      entry: "/MasterListsPage/SampleTypeManagement/5/basic-info",
+      withNavigation: true,
+    });
+    const context = () =>
+      document.querySelector('[data-cy="sampleTypeSectionsContext"]');
+    expect(context()).toHaveTextContent("血清");
+    expect(
+      apiMocks.get.mock.calls.filter(([url]) => url === "/rest/sample-types"),
+    ).toHaveLength(1);
+    expect(reads).toBe(1);
+    const dialog = await edit();
+    modifyZh(dialog);
+    expect(context()).not.toHaveTextContent("新血清");
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    await screen.findByText("标本类型已保存。");
+    expect(context()).toHaveTextContent("新血清");
+    expect(apiMocks.put).toHaveBeenCalledTimes(1);
+    expect(reads).toBe(2);
+    expect(
+      apiMocks.get.mock.calls.filter(([url]) => url === "/rest/sample-types"),
+    ).toHaveLength(2);
+  });
+
+  test("rejects old detail callbacks after changing the routed sample type", async () => {
+    const reads = [];
+    apiMocks.get.mockImplementation((url, callback, signal) => {
+      if (/\/rest\/sample-types\/\d+$/.test(url))
+        reads.push({ callback, signal });
+      else defaultGet(url, callback);
+    });
+    const page = renderPage({
+      entry: "/MasterListsPage/SampleTypeManagement/5/basic-info",
+      withNavigation: true,
+    });
+    act(() =>
+      page.history.push("/MasterListsPage/SampleTypeManagement/6/basic-info"),
+    );
+    expect(reads[0].signal.aborted).toBe(true);
+    await settle(reads[1].callback, {
+      success: true,
+      data: {
+        ...detail,
+        id: "6",
+        name: "血浆",
+        translations: { ...detail.translations, zh: "血浆" },
+      },
+    });
+    await settle(reads[0].callback, {
+      success: true,
+      data: { ...detail, name: "旧记录" },
+    });
+    expect(
+      document.querySelector('[data-cy="sampleTypeSectionsContext"]'),
+    ).toHaveTextContent("血浆");
+    expect(screen.queryByText("旧记录")).not.toBeInTheDocument();
+    act(() =>
+      page.history.push("/MasterListsPage/SampleTypeManagement/5/basic-info"),
+    );
+    expect(
+      document.querySelector('[data-cy="sampleTypeSectionsContext"]'),
+    ).not.toHaveTextContent("血浆");
+    await settle(reads[2].callback, undefined);
+    expect(
+      screen.getAllByText("无法加载标本类型完整详情，请重试。")[0],
+    ).toBeVisible();
+  });
+
+  test("clears a prior session's draft and ignores its late save without triggering readback", async () => {
+    let done;
+    apiMocks.put.mockImplementation((_url, _payload, callback) => {
+      done = callback;
+    });
+    const page = renderPage({
+      entry: "/MasterListsPage/SampleTypeManagement/5/basic-info",
+      withNavigation: true,
+    });
+    const dialog = await edit();
+    modifyZh(dialog);
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    page.changeIdentity({ authenticated: false });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      document.querySelector('[data-cy="sampleTypeSectionsContext"]'),
+    ).not.toHaveTextContent("血清");
+    page.changeIdentity({
+      authenticated: true,
+      userId: "admin",
+      sessionId: "session-2",
+      roles: ["ADMIN"],
+    });
+    const count = apiMocks.get.mock.calls.length;
+    await settle(done, okPut);
+    expect(apiMocks.get).toHaveBeenCalledTimes(count);
+    expect(
+      document.querySelector('[data-cy="sampleTypeSectionsContext"]'),
+    ).toHaveTextContent("血清");
+    expect(screen.queryByDisplayValue("新血清")).not.toBeInTheDocument();
+  });
+
   test("renders the Chinese list and English fallback", async () => {
     const first = renderPage();
     expect(await screen.findByText("标本类型管理")).toBeInTheDocument();
@@ -679,7 +883,7 @@ describe("SampleTypeManagement basic editor", () => {
     apiMocks.post.mockImplementation((_url, _payload, callback) =>
       callback(undefined),
     );
-    renderPage();
+    const page = renderPage();
     const dialog = await newDraft();
     fireEvent.click(
       within(dialog).getByRole("button", { name: "创建标本类型" }),
@@ -687,10 +891,16 @@ describe("SampleTypeManagement basic editor", () => {
     await within(dialog).findByText(
       "未取得已创建标本类型的编号，不能确认创建结果。请重新加载列表核对，勿重复创建。",
     );
+    page.changeLocale("zh");
+    expect(within(dialog).getByLabelText("中文显示名称")).toHaveValue("血浆");
+    expect(within(dialog).getByLabelText("中文显示名称")).toBeDisabled();
     expect(screen.queryByText("标本类型已保存。")).not.toBeInTheDocument();
     expect(
       within(dialog).queryByRole("button", { name: "创建标本类型" }),
     ).not.toBeInTheDocument();
+    expect(apiMocks.post).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(dialog).getByRole("button", { name: "重新加载" }));
+    await act(async () => {});
     expect(apiMocks.post).toHaveBeenCalledTimes(1);
   });
   test.each([false, true])(
@@ -1144,7 +1354,12 @@ describe("SampleTypeManagement basic editor", () => {
     );
     await settle(responses[1], {
       success: true,
-      data: { ...detail, id: "6", name: "新标本" },
+      data: {
+        ...detail,
+        id: "6",
+        name: "新标本",
+        translations: { ...detail.translations, zh: "新标本" },
+      },
     });
     await settle(responses[0], { success: true, data: detail });
     expect(screen.getByText("新标本")).toBeInTheDocument();

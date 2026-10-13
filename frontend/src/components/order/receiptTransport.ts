@@ -1,5 +1,6 @@
 import config from "../../config.json";
 import { getRequestLocale } from "../utils/LocaleUtils";
+import { MAX_JSON_BODY_BYTES, readBoundedJson } from "./readBoundedJson";
 
 // One dispatch only. An HTTP error is not a rollback receipt.
 export async function postSpecimenReceipt(
@@ -28,32 +29,12 @@ export async function postSpecimenReceipt(
     response.status !== 200 ||
     response.redirected ||
     !response.headers.get("content-type")?.includes("application/json") ||
-    Number(response.headers.get("content-length")) > 65536 ||
+    Number(response.headers.get("content-length")) > MAX_JSON_BODY_BYTES ||
     !response.body
   )
     throw new Error("order.receiving.unknown");
-  const reader = response.body.getReader(),
-    decoder = new TextDecoder("utf-8", { fatal: true });
-  let size = 0,
-    text = "",
-    complete = false;
-  try {
-    for (;;) {
-      const chunk = await reader.read();
-      if (chunk.done) {
-        complete = true;
-        break;
-      }
-      size += chunk.value.byteLength;
-      if (signal.aborted || size > 65536)
-        throw new Error("order.receiving.unknown");
-      text += decoder.decode(chunk.value, { stream: true });
-    }
-    text += decoder.decode();
-    if (signal.aborted) throw new Error("order.receiving.unknown");
-    return JSON.parse(text);
-  } finally {
-    if (!complete) void reader.cancel().catch(() => {});
-    reader.releaseLock();
-  }
+  return readBoundedJson(response.body.getReader(), signal, {
+    invalidBody: () => new Error("order.receiving.unknown"),
+    cancelOnComplete: false,
+  });
 }

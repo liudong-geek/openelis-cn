@@ -1,4 +1,10 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useParams, useHistory, useLocation } from "react-router-dom";
 import {
   Grid,
@@ -16,6 +22,10 @@ import { getFromOpenElisServer } from "../../utils/Utils";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
 import { AlertDialog } from "../../common/CustomNotification";
 import { NotificationContext } from "../../layout/Layout";
+import {
+  useAdminCurrentObject,
+  useAdminEditorIdentity,
+} from "../../layout/AdminCurrentObjectContext";
 import BasicInfoSection from "./sections/BasicInfoSection";
 import SampleResultsSection from "./sections/SampleResultsSection";
 import MethodsSection from "./sections/MethodsSection";
@@ -46,7 +56,7 @@ import { getCatalogReturnTo, withCatalogReturnTo } from "./catalogReturnTo";
  * (and the REST API 403s non-admins — see
  * TestCatalogEditorRestController).
  */
-const TestCatalogEditor = () => {
+const TestCatalogEditorContent = () => {
   const intl = useIntl();
   const history = useHistory();
   const location = useLocation();
@@ -61,6 +71,20 @@ const TestCatalogEditor = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [envelope, setEnvelope] = useState(null);
+  const [envelopeLocale, setEnvelopeLocale] = useState(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const [reloadRevision, setReloadRevision] = useState(0);
+  const { publishCurrentObject } = useAdminCurrentObject();
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const reloadEnvelope = useCallback(() => {
+    if (mounted.current) setReloadRevision((value) => value + 1);
+  }, []);
 
   // Create-in-place (FR-2): testId "new" opens a blank Basic Info, no fetch.
   const isCreate = testId === "new";
@@ -73,8 +97,32 @@ const TestCatalogEditor = () => {
     }
     setLoading(true);
     setError(false);
-    getFromOpenElisServer(`/rest/test-catalog/tests/${testId}`, handleEnvelope);
-  }, [testId, isCreate]);
+    publishCurrentObject(null);
+    const controller = new AbortController();
+    let active = true;
+    getFromOpenElisServer(
+      `/rest/test-catalog/tests/${testId}`,
+      (res) => {
+        if (!active) return;
+        setLoading(false);
+        if (!res || String(res.testId) !== testId) {
+          setEnvelope(null);
+          setError(true);
+          publishCurrentObject(null);
+          return;
+        }
+        setEnvelope(res);
+        setEnvelopeLocale(intl.locale);
+        setHasLoaded(true);
+        publishCurrentObject({ kind: "test", id: testId, name: res.name });
+      },
+      controller.signal,
+    );
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [testId, isCreate, reloadRevision, publishCurrentObject, intl.locale]);
 
   // Canonicalize the section into the URL so deep-links + the SideNav agree.
   useEffect(() => {
@@ -88,15 +136,6 @@ const TestCatalogEditor = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [testId, section, base, returnTo, history]);
-
-  const handleEnvelope = (res) => {
-    setLoading(false);
-    if (!res) {
-      setError(true);
-      return;
-    }
-    setEnvelope(res);
-  };
 
   const breadcrumbs = [
     { label: "home.label", link: "/" },
@@ -168,11 +207,11 @@ const TestCatalogEditor = () => {
     );
   }
 
-  if (loading) {
+  if (loading && !hasLoaded) {
     return <Loading description="Loading" withOverlay={false} />;
   }
 
-  if (error) {
+  if (error && !hasLoaded) {
     return (
       <>
         <PageBreadCrumb breadcrumbs={breadcrumbs} />
@@ -199,6 +238,17 @@ const TestCatalogEditor = () => {
           the AlertDialog for them to be visible (app-wide pattern). */}
       {notificationVisible === true && <AlertDialog />}
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
+      {error && (
+        <InlineNotification
+          kind="error"
+          lowContrast
+          hideCloseButton
+          title={intl.formatMessage({ id: "error.title" })}
+          subtitle={intl.formatMessage({
+            id: "label.testCatalog.editor.loadError",
+          })}
+        />
+      )}
       <Grid fullWidth>
         <Column lg={isCreate ? 12 : 16} md={isCreate ? 6 : 8} sm={4}>
           <Section>
@@ -206,7 +256,7 @@ const TestCatalogEditor = () => {
               {isCreate ? (
                 <FormattedMessage id="title.testCatalog.createTest" />
               ) : (
-                envelope?.name || (
+                (envelopeLocale === intl.locale && envelope?.name) || (
                   <FormattedMessage id="label.testCatalog.editor" />
                 )
               )}
@@ -290,7 +340,7 @@ const TestCatalogEditor = () => {
                   />
                 )
               ) : activeSection === "basic-info" ? (
-                <BasicInfoSection testId={testId} />
+                <BasicInfoSection testId={testId} onSaved={reloadEnvelope} />
               ) : activeSection === "sample-results" ? (
                 <SampleResultsSection testId={testId} />
               ) : activeSection === "methods" ? (
@@ -316,7 +366,7 @@ const TestCatalogEditor = () => {
               ) : activeSection === "reflex-calc" ? (
                 <ReflexCalcSection testId={testId} />
               ) : activeSection === "localization" ? (
-                <LocalizationSection testId={testId} />
+                <LocalizationSection testId={testId} onSaved={reloadEnvelope} />
               ) : (
                 <p>
                   <FormattedMessage id="label.testCatalog.section.pending" />
@@ -330,4 +380,9 @@ const TestCatalogEditor = () => {
   );
 };
 
-export default TestCatalogEditor;
+export default function TestCatalogEditor() {
+  const { testId } = useParams();
+  const identity = useAdminEditorIdentity(testId);
+  if (identity === null) return null;
+  return <TestCatalogEditorContent key={identity} />;
+}

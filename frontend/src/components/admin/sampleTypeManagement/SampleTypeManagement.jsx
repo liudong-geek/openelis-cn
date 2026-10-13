@@ -63,6 +63,10 @@ import {
 } from "@carbon/react/icons";
 import { injectIntl, FormattedMessage } from "react-intl";
 import PageBreadCrumb from "../../common/PageBreadCrumb";
+import {
+  useAdminCurrentObject,
+  useAdminEditorIdentity,
+} from "../../layout/AdminCurrentObjectContext";
 import ProductPageHeader from "../../common/ProductPageHeader";
 import useDomains from "../../common/useDomains";
 import {
@@ -110,6 +114,7 @@ function SampleTypeManagement({ intl }) {
   const history = useHistory();
   const location = useLocation();
   const { sampleTypeId, section } = useParams();
+  const { currentObject, publishCurrentObject } = useAdminCurrentObject();
   const basePath = location.pathname.startsWith("/admin")
     ? "/admin"
     : "/MasterListsPage";
@@ -289,6 +294,24 @@ function SampleTypeManagement({ intl }) {
       requestScope.current += 1;
     };
   }, [requestedId, detailRevision]);
+
+  // initialDraft is the last complete server read, never the user's draft.
+  // Match Localization.getLocalizedValue: language -> English -> description.
+  // Changing display language needs no new request and cannot reset save locks.
+  useEffect(() => {
+    if (view !== "editor") return;
+    if (initialDraft?.id !== sampleTypeId) {
+      publishCurrentObject(null);
+      return;
+    }
+    const translations = initialDraft.translations || {};
+    const language = intl.locale.split(/[-_]/)[0];
+    const name =
+      [translations[language], translations.en, initialDraft.description].find(
+        (value) => typeof value === "string" && value.trim(),
+      ) || "";
+    publishCurrentObject({ kind: "sample-type", id: sampleTypeId, name });
+  }, [initialDraft, intl.locale, sampleTypeId, publishCurrentObject, view]);
 
   useEffect(() => {
     if (sampleTypeId && (!section || !isValidSampleTypeSection(section))) {
@@ -941,7 +964,9 @@ function SampleTypeManagement({ intl }) {
         <ProductPageHeader
           title={<FormattedMessage id="heading.sampleType.management" />}
           subtitle={
-            editingType?.name || (
+            (currentObject?.kind === "sample-type" &&
+              currentObject.id === sampleTypeId &&
+              currentObject.name) || (
               <FormattedMessage id="heading.sampleType.editingGeneric" />
             )
           }
@@ -992,7 +1017,7 @@ function SampleTypeManagement({ intl }) {
             </Stack>
           </Tile>
         ) : (
-          editingType && (
+          editingType?.id === sampleTypeId && (
             <Tile className="sample-type-management-page__configuration">
               {activeSection === "basic-info" && (
                 <Stack gap={5}>
@@ -1425,4 +1450,10 @@ function SampleTypeManagement({ intl }) {
   );
 }
 
-export default injectIntl(SampleTypeManagement);
+function SampleTypeManagementIdentity(props) {
+  const identity = useAdminEditorIdentity();
+  if (identity === null) return null;
+  return <SampleTypeManagement key={identity} {...props} />;
+}
+
+export default injectIntl(SampleTypeManagementIdentity);

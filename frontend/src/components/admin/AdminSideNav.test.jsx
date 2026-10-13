@@ -13,12 +13,11 @@ vi.mock("react-router-dom", async (importOriginal) => {
   };
 });
 
-// The nav fetches the open test's name for the "Editing: <name>" context line.
-vi.mock("../utils/Utils", () => ({
-  getFromOpenElisServer: vi.fn((_endpoint, callback) =>
-    callback({ name: "Hemoglobin" }),
-  ),
+let currentObject = { kind: "test", id: "7", name: "Hemoglobin" };
+vi.mock("../layout/AdminCurrentObjectContext", () => ({
+  useAdminCurrentObject: () => ({ currentObject }),
 }));
+vi.mock("../utils/Utils", () => ({ getFromOpenElisServer: vi.fn() }));
 
 // ========== IMPORTS ==========
 import React from "react";
@@ -40,7 +39,10 @@ const renderNav = () =>
     </IntlProvider>,
   );
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  currentObject = { kind: "test", id: "7", name: "Hemoglobin" };
+});
 
 describe("AdminSideNav — Test Catalog Management entry", () => {
   it("shows only the current configuration domain off an editor route", () => {
@@ -196,10 +198,7 @@ describe("AdminSideNav — Test Catalog Management entry", () => {
   });
 
   it("falls back to a generic context label when the test name can't load", async () => {
-    const { getFromOpenElisServer } = await import("../utils/Utils");
-    getFromOpenElisServer.mockImplementationOnce((_endpoint, callback) =>
-      callback(null),
-    );
+    currentObject = null;
     mockLocation = {
       pathname: "/MasterListsPage/TestCatalogEditor/7/methods",
       search: "",
@@ -211,25 +210,22 @@ describe("AdminSideNav — Test Catalog Management entry", () => {
     ).toBe("Test configurationLoading test details");
   });
 
-  it("aborts the in-flight test-name fetch on unmount", async () => {
+  it("never starts or owns an editor request when the navigation mounts or unmounts", async () => {
     const { getFromOpenElisServer } = await import("../utils/Utils");
     mockLocation = {
       pathname: "/MasterListsPage/TestCatalogEditor/7/methods",
       search: "",
     };
     const { unmount } = renderNav();
-    // getFromOpenElisServer(endpoint, callback, signal) — the 3rd arg
-    const signal = getFromOpenElisServer.mock.calls.at(-1)[2];
-    expect(signal).toBeInstanceOf(AbortSignal);
-    expect(signal.aborted).toBe(false);
-    // act() so React 17 flushes the passive-effect cleanup synchronously
+    expect(getFromOpenElisServer).not.toHaveBeenCalled();
     act(() => {
       unmount();
     });
-    expect(signal.aborted).toBe(true);
+    expect(getFromOpenElisServer).not.toHaveBeenCalled();
   });
 
   it("shows entity links first, then only the sample-type sections, when editing a sample type", () => {
+    currentObject = { kind: "sample-type", id: "38", name: "Serum" };
     mockLocation = {
       pathname: "/MasterListsPage/SampleTypeManagement/38/basic-info",
       search: "",
@@ -248,6 +244,7 @@ describe("AdminSideNav — Test Catalog Management entry", () => {
       '[data-cy="sampleTypeSectionsContext"]',
     );
     expect(caption).not.toBeNull();
+    expect(caption).toHaveTextContent("Serum");
     expect(
       sampleTypesLink.compareDocumentPosition(testsLink) &
         Node.DOCUMENT_POSITION_FOLLOWING,

@@ -55,10 +55,10 @@ const mockHappyPath = () =>
     }
   });
 
-const renderSection = () =>
+const renderSection = (onSaved) =>
   render(
     <IntlProvider locale="en" messages={messages}>
-      <LocalizationSection testId="42" />
+      <LocalizationSection testId="42" onSaved={onSaved} />
     </IntlProvider>,
   );
 
@@ -67,6 +67,27 @@ beforeEach(() => {
 });
 
 describe("LocalizationSection", () => {
+  it.each([true, false])(
+    "notifies the parent only for a confirmed save even after leaving the section (ok=%s)",
+    (ok) => {
+      mockHappyPath();
+      let done;
+      const onSaved = vi.fn();
+      putToOpenElisServerFullResponse.mockImplementation(
+        (_url, _body, callback) => {
+          done = callback;
+        },
+      );
+      const page = renderSection(onSaved);
+      const input = document.getElementById("localization-input-name");
+      fireEvent.change(input, { target: { value: "Glycémie" } });
+      fireEvent(input, new FocusEvent("focusout", { bubbles: true }));
+      page.unmount();
+      act(() => done({ ok }));
+      expect(onSaved).toHaveBeenCalledTimes(ok ? 1 : 0);
+    },
+  );
+
   it("shows a fallback indicator for an untranslated field and the locale value for a translated one", async () => {
     mockHappyPath();
     renderSection();
@@ -107,6 +128,7 @@ describe("LocalizationSection", () => {
 
 it("maintains inactive French names separately and retains other translations and unsaved drafts", async () => {
   let saveDone;
+  const onSaved = vi.fn();
   getFromOpenElisServer.mockImplementation((url, cb) => {
     if (url === "/rest/supportedlocales")
       cb([
@@ -129,7 +151,7 @@ it("maintains inactive French names separately and retains other translations an
   putToOpenElisServerFullResponse.mockImplementation((_url, _body, cb) => {
     saveDone = cb;
   });
-  renderSection();
+  renderSection(onSaved);
   const locale = await screen.findByLabelText(
     messages["label.testCatalog.localization.locale"],
   );
@@ -144,6 +166,7 @@ it("maintains inactive French names separately and retains other translations an
   expect(name).toHaveValue("Glycémie");
   expect(name).toBeEnabled();
   fireEvent(name, new FocusEvent("focusout", { bubbles: true }));
+  expect(onSaved).not.toHaveBeenCalled();
   expect(putToOpenElisServerFullResponse).toHaveBeenCalledTimes(1);
   expect(putToOpenElisServerFullResponse.mock.calls[0][0]).toBe(
     "/rest/localizations/100/translations",
@@ -154,6 +177,7 @@ it("maintains inactive French names separately and retains other translations an
     zh_CN: "葡萄糖",
   });
   act(() => saveDone({ ok: true }));
+  expect(onSaved).toHaveBeenCalledTimes(1);
   expect(reporting).toHaveValue("Draft report");
   fireEvent(reporting, new FocusEvent("focusout", { bubbles: true }));
   expect(putToOpenElisServerFullResponse.mock.calls[1][0]).toBe(

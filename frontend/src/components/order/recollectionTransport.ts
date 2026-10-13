@@ -1,5 +1,6 @@
 import config from "../../config.json";
 import { getRequestLocale } from "../utils/LocaleUtils";
+import { MAX_JSON_BODY_BYTES, readBoundedJson } from "./readBoundedJson";
 
 export class RecollectionTransportError extends Error {
   code: string;
@@ -16,7 +17,7 @@ async function readJson(response: Response, signal: AbortSignal) {
   if (
     response.redirected ||
     !response.headers.get("content-type")?.includes("application/json") ||
-    Number(response.headers.get("content-length")) > 65536 ||
+    Number(response.headers.get("content-length")) > MAX_JSON_BODY_BYTES ||
     !response.body
   )
     throw new RecollectionTransportError(
@@ -24,21 +25,11 @@ async function readJson(response: Response, signal: AbortSignal) {
       response.status,
     );
   const reader = response.body.getReader();
-  const decoder = new TextDecoder("utf-8", { fatal: true });
-  let text = "";
-  let size = 0;
   try {
-    for (;;) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      size += chunk.value.byteLength;
-      if (signal.aborted || size > 65536)
-        throw new RecollectionTransportError();
-      text += decoder.decode(chunk.value, { stream: true });
-    }
-    text += decoder.decode();
-    if (signal.aborted) throw new RecollectionTransportError();
-    const value = JSON.parse(text);
+    const value = await readBoundedJson(reader, signal, {
+      invalidBody: () => new RecollectionTransportError(),
+      cancelOnComplete: true,
+    });
     if (!response.ok)
       throw new RecollectionTransportError(
         typeof value?.code === "string" ? value.code : "RECOLLECTION_UNKNOWN",
@@ -48,9 +39,6 @@ async function readJson(response: Response, signal: AbortSignal) {
   } catch (error) {
     if (error instanceof RecollectionTransportError) throw error;
     throw new RecollectionTransportError();
-  } finally {
-    void reader.cancel().catch(() => {});
-    reader.releaseLock();
   }
 }
 

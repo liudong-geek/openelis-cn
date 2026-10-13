@@ -18,6 +18,7 @@ import RouteErrorBoundary from "../common/RouteErrorBoundary";
 import config from "../../config.json";
 import { resolveNavigationProfile } from "./navigationProfile";
 import { navigationMenuOwner } from "./navigationMenuAvailability";
+import { AdminCurrentObjectProvider } from "./AdminCurrentObjectContext";
 
 /**
  * @typedef {Object} LayoutConfigurationValue
@@ -375,84 +376,86 @@ export default function Layout(props) {
           removeNotification,
         }}
       >
-        <div
-          className={`oe-app-shell d-flex flex-column min-vh-100 ${
-            userSessionDetails.authenticated
-              ? "oe-app-shell--authenticated"
-              : "oe-app-shell--public"
-          }`}
-          data-page-family={pageFamily}
-          data-navigation-profile={resolveNavigationProfile(
-            configurationProperties?.NAVIGATION_PROFILE,
-            config.navigationProfile,
-          )}
-        >
-          <a className="oe-skip-link" href="#main-content">
-            {intl.formatMessage({ id: "accessibility.skip.to.content" })}
-          </a>
-          <Header
-            onChangeLanguage={props.onChangeLanguage}
-            navOpen={navOpen}
-            isDesktop={isDesktop}
-            navPinned={navPinned}
-            navPersistent={navPersistent}
-            toggleNavPinned={toggleNavPinned}
-            toggleSideNav={() => setDrawerOpen((open) => !open)}
-            closeSideNav={closeSideNav}
-            storageKeyPrefix={storageKeyPrefix}
-            navContext={navContext}
-            showSideNav={showAppSideNav}
-          />
-          {userSessionDetails.authenticated &&
-            drawerOpen &&
-            !navPersistent &&
-            showAppSideNav && (
-              <button
-                type="button"
-                className="oe-nav-scrim"
-                aria-label={intl.formatMessage({
-                  id: "header.icon.menu.close",
-                })}
-                onClick={closeSideNav}
-              />
+        <AdminCurrentObjectProvider>
+          <div
+            className={`oe-app-shell d-flex flex-column min-vh-100 ${
+              userSessionDetails.authenticated
+                ? "oe-app-shell--authenticated"
+                : "oe-app-shell--public"
+            }`}
+            data-page-family={pageFamily}
+            data-navigation-profile={resolveNavigationProfile(
+              configurationProperties?.NAVIGATION_PROFILE,
+              config.navigationProfile,
             )}
-          {/* Theme wrapper creates white theme zone for content area */}
-          {/* Global SCSS theme = blue header/nav, this = light content */}
-          <Theme theme="white">
-            <Content
-              id="main-content"
-              tabIndex={-1}
-              data-testid="content-wrapper"
-              data-page-family={pageFamily}
-              className={`oe-main-content ${isLocked ? "content-nav-locked" : ""}`.trim()}
-            >
-              {configurationFailed && (
-                <>
-                  <InlineNotification
-                    kind="error"
-                    lowContrast
-                    hideCloseButton
-                    title={intl.formatMessage({
-                      id: "app.session.error.title",
-                    })}
-                    subtitle={intl.formatMessage({
-                      id: "app.session.error.message",
-                    })}
-                  />
-                  <Button
-                    kind="ghost"
-                    size="sm"
-                    onClick={() => loadConfigurationProperties()}
-                  >
-                    {intl.formatMessage({ id: "button.retry" })}
-                  </Button>
-                </>
+          >
+            <a className="oe-skip-link" href="#main-content">
+              {intl.formatMessage({ id: "accessibility.skip.to.content" })}
+            </a>
+            <Header
+              onChangeLanguage={props.onChangeLanguage}
+              navOpen={navOpen}
+              isDesktop={isDesktop}
+              navPinned={navPinned}
+              navPersistent={navPersistent}
+              toggleNavPinned={toggleNavPinned}
+              toggleSideNav={() => setDrawerOpen((open) => !open)}
+              closeSideNav={closeSideNav}
+              storageKeyPrefix={storageKeyPrefix}
+              navContext={navContext}
+              showSideNav={showAppSideNav}
+            />
+            {userSessionDetails.authenticated &&
+              drawerOpen &&
+              !navPersistent &&
+              showAppSideNav && (
+                <button
+                  type="button"
+                  className="oe-nav-scrim"
+                  aria-label={intl.formatMessage({
+                    id: "header.icon.menu.close",
+                  })}
+                  onClick={closeSideNav}
+                />
               )}
-              <RouteErrorBoundary>{children}</RouteErrorBoundary>
-            </Content>
-          </Theme>
-          <Footer />
-        </div>
+            {/* Theme wrapper creates white theme zone for content area */}
+            {/* Global SCSS theme = blue header/nav, this = light content */}
+            <Theme theme="white">
+              <Content
+                id="main-content"
+                tabIndex={-1}
+                data-testid="content-wrapper"
+                data-page-family={pageFamily}
+                className={`oe-main-content ${isLocked ? "content-nav-locked" : ""}`.trim()}
+              >
+                {configurationFailed && (
+                  <>
+                    <InlineNotification
+                      kind="error"
+                      lowContrast
+                      hideCloseButton
+                      title={intl.formatMessage({
+                        id: "app.session.error.title",
+                      })}
+                      subtitle={intl.formatMessage({
+                        id: "app.session.error.message",
+                      })}
+                    />
+                    <Button
+                      kind="ghost"
+                      size="sm"
+                      onClick={() => loadConfigurationProperties()}
+                    >
+                      {intl.formatMessage({ id: "button.retry" })}
+                    </Button>
+                  </>
+                )}
+                <RouteErrorBoundary>{children}</RouteErrorBoundary>
+              </Content>
+            </Theme>
+            <Footer />
+          </div>
+        </AdminCurrentObjectProvider>
       </NotificationContext.Provider>
     </ConfigurationContext.Provider>
   );

@@ -1,5 +1,21 @@
 import { postSpecimenReceipt } from "./receiptTransport";
 afterEach(() => vi.unstubAllGlobals());
+it.each([201, 403, 409, 422, 500])(
+  "仅接受 200，HTTP %s 不解析成功或错误正文",
+  async (status) => {
+    const response = new Response('{"code":"SIM_CODE","success":true}', {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+    const getReader = vi.spyOn(response.body!, "getReader");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    await expect(
+      postSpecimenReceipt("SIM body", new AbortController().signal, "SIM-CSRF"),
+    ).rejects.toThrow("order.receiving.unknown");
+    expect(getReader).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  },
+);
 it("仅一次专用POST，冻结CSRF并禁止缓存、重定向", async () => {
   const fetcher = vi.fn(
     async () =>
@@ -49,6 +65,51 @@ it("超出回执上限时取消尚未读完的流", async () => {
   ).rejects.toThrow();
   expect(cancel).toHaveBeenCalledTimes(1);
 });
+it("恰好 65536 字节可读取，完成后释放且不取消流", async () => {
+  const response = new Response("{}" + " ".repeat(65534), {
+    headers: { "content-type": "application/json", "content-length": "65536" },
+  });
+  const reader = response.body!.getReader();
+  const cancel = vi.spyOn(reader, "cancel");
+  const release = vi.spyOn(reader, "releaseLock");
+  vi.spyOn(response.body!, "getReader").mockReturnValue(reader);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+  await expect(
+    postSpecimenReceipt("SIM body", new AbortController().signal, "SIM-CSRF"),
+  ).resolves.toEqual({});
+  expect(cancel).not.toHaveBeenCalled();
+  expect(release).toHaveBeenCalledTimes(1);
+});
+it.each(["malformed", "abortedAtEnd"])(
+  "完整读完后 %s 拒绝仍不取消流",
+  async (kind) => {
+    const response = new Response(kind === "malformed" ? "broken" : "{}", {
+      headers: { "content-type": "application/json" },
+    });
+    const controller = new AbortController();
+    const reader = response.body!.getReader();
+    const read = reader.read.bind(reader);
+    vi.spyOn(reader, "read").mockImplementation(async () => {
+      const chunk = await read();
+      if (chunk.done && kind === "abortedAtEnd") controller.abort();
+      return chunk;
+    });
+    const cancel = vi.spyOn(reader, "cancel");
+    const release = vi.spyOn(reader, "releaseLock");
+    vi.spyOn(response.body!, "getReader").mockReturnValue(reader);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    const result = postSpecimenReceipt(
+      "SIM body",
+      controller.signal,
+      "SIM-CSRF",
+    );
+    if (kind === "malformed")
+      await expect(result).rejects.toBeInstanceOf(SyntaxError);
+    else await expect(result).rejects.toThrow("order.receiving.unknown");
+    expect(cancel).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledTimes(1);
+  },
+);
 it.each([
   "redirect",
   "html",

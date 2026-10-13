@@ -34,7 +34,7 @@ const FALLBACK_LOCALE = "en";
  * when the value is coming from English rather than a locale-specific
  * translation, and saves on blur.
  */
-const LocalizationSection = ({ testId }) => {
+const LocalizationSection = ({ testId, onSaved }) => {
   const intl = useIntl();
 
   const [locales, setLocales] = useState([]);
@@ -185,6 +185,9 @@ const LocalizationSection = ({ testId }) => {
       `/rest/localizations/${entry.localizationId}/translations`,
       JSON.stringify(merged),
       (response) => {
+        // A committed name change also refreshes the parent title if the user
+        // moved to another section while this blur-save was in flight.
+        if (response?.ok) onSaved?.();
         if (version !== requestVersion.current) return;
         setSavingFields((prev) => ({ ...prev, [entry.field]: false }));
         if (response && response.ok) {

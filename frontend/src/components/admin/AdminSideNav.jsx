@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { FormattedMessage, useIntl } from "react-intl";
 import { useHistory, useLocation } from "react-router-dom";
 import { ArrowLeft, Catalog } from "@carbon/icons-react";
@@ -8,7 +8,7 @@ import {
   SideNavMenu,
   SideNavMenuItem,
 } from "@carbon/react";
-import { getFromOpenElisServer } from "../utils/Utils";
+import { useAdminCurrentObject } from "../layout/AdminCurrentObjectContext";
 import { TEST_CATALOG_SECTION_GROUPS } from "./testCatalog/sectionConfig";
 import {
   getCatalogReturnTo,
@@ -62,60 +62,20 @@ export default function AdminSideNav() {
     !!editorSampleTypeId ||
     /\/(TestCatalogList|SampleTypeManagement)(\/|$)/.test(location.pathname);
 
-  const [editorTest, setEditorTest] = useState({ id: null, name: null });
-  useEffect(() => {
-    if (!editorTestId || editorTestId === "new" || editorTestId === "group") {
-      return undefined;
-    }
-    const controller = new AbortController();
-    getFromOpenElisServer(
-      `/rest/test-catalog/tests/${editorTestId}`,
-      (response) => {
-        setEditorTest({ id: editorTestId, name: response?.name || null });
-      },
-      controller.signal,
-    );
-    return () => controller.abort();
-  }, [editorTestId]);
+  const { currentObject } = useAdminCurrentObject();
   const editorTestName =
-    editorTest.id === editorTestId ? editorTest.name : null;
+    currentObject?.kind === "test" && currentObject.id === editorTestId
+      ? currentObject.name
+      : null;
   const editorSection = editorTestId
     ? normalizePath(location.pathname).split("/").at(-1)
     : null;
 
-  const [editorSampleType, setEditorSampleType] = useState({
-    id: null,
-    name: null,
-  });
-  useEffect(() => {
-    if (!editorSampleTypeId || editorSampleTypeId === "new") {
-      return undefined;
-    }
-    const controller = new AbortController();
-    getFromOpenElisServer(
-      "/rest/sample-types",
-      (response) => {
-        const sampleTypes =
-          response?.success && Array.isArray(response.data)
-            ? response.data
-            : Array.isArray(response)
-              ? response
-              : [];
-        const selectedSampleType = sampleTypes.find(
-          (item) => String(item.id) === String(editorSampleTypeId),
-        );
-        setEditorSampleType({
-          id: editorSampleTypeId,
-          name:
-            selectedSampleType?.name || selectedSampleType?.description || null,
-        });
-      },
-      controller.signal,
-    );
-    return () => controller.abort();
-  }, [editorSampleTypeId]);
   const editorSampleTypeName =
-    editorSampleType.id === editorSampleTypeId ? editorSampleType.name : null;
+    currentObject?.kind === "sample-type" &&
+    currentObject.id === editorSampleTypeId
+      ? currentObject.name
+      : null;
 
   const handleNavigation = (targetPath) => (event) => {
     event.preventDefault();
