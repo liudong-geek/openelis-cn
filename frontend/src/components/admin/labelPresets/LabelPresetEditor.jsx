@@ -20,7 +20,6 @@ import {
   postToOpenElisServerFullResponse,
   putToOpenElisServerFullResponse,
 } from "../../utils/Utils";
-import { normalizeName } from "./helpers";
 import "./LabelPresetWorkspace.css";
 import "../AdminModal.css";
 
@@ -153,7 +152,7 @@ export default function LabelPresetEditor({ preset, onClose }) {
     setApiError(null);
     const payload = {
       ...form,
-      name: normalizeName(form.name),
+      name: form.name.trim(),
       // Empty quantity drafts keep the existing zero-on-save behavior.
       defaultPerOrder: Number(form.defaultPerOrder),
       maxPerOrder: Number(form.maxPerOrder),

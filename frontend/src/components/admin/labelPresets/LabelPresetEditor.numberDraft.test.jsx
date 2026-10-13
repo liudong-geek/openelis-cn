@@ -5,7 +5,10 @@ import { IntlProvider } from "react-intl";
 import { vi } from "vitest";
 import LabelPresetEditor from "./LabelPresetEditor";
 import messages from "../../../languages/en.json";
-import { putToOpenElisServerFullResponse } from "../../utils/Utils";
+import {
+  postToOpenElisServerFullResponse,
+  putToOpenElisServerFullResponse,
+} from "../../utils/Utils";
 
 vi.mock("../../utils/Utils", () => ({
   postToOpenElisServerFullResponse: vi.fn(),
@@ -162,3 +165,30 @@ test("real Carbon stepper still increments an empty quantity draft to one", asyn
   );
   expect(input).toHaveValue(1);
 });
+
+test.each(["create", "edit"])(
+  "%s preserves the display name case and trims only outer whitespace",
+  async (mode) => {
+    const user = userEvent.setup();
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <LabelPresetEditor
+          preset={mode === "edit" ? preset : null}
+          onClose={vi.fn()}
+        />
+      </IntlProvider>,
+    );
+    const input = screen.getByLabelText(
+      messages["admin.labelPresets.field.name"],
+    );
+    await user.clear(input);
+    await user.type(input, "  EDTA 血常规 Label  ");
+    await user.click(screen.getByText(messages["label.button.save"]));
+    const save =
+      mode === "edit"
+        ? putToOpenElisServerFullResponse
+        : postToOpenElisServerFullResponse;
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(save.mock.calls[0][1]).name).toBe("EDTA 血常规 Label");
+  },
+);
