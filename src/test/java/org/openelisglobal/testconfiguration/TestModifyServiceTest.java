@@ -4,6 +4,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -34,6 +36,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Transactional
 public class TestModifyServiceTest extends BaseWebContextSensitiveTest {
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     @Autowired
     private TestModifyService testModifyService;
@@ -185,6 +190,9 @@ public class TestModifyServiceTest extends BaseWebContextSensitiveTest {
         assertEquals("NFS Mise à Jour", testAfter.getLocalizedTestName().getLocalizedValue(Locale.FRENCH));
         assertEquals("Updated CBC Report", testAfter.getLocalizedReportingName().getLocalizedValue(Locale.ENGLISH));
         assertEquals("Rapport NFS Mis à Jour", testAfter.getLocalizedReportingName().getLocalizedValue(Locale.FRENCH));
+        entityManager.flush();
+        assertEquals("Updated CBC",
+                entityManager.createNativeQuery("SELECT name FROM clinlims.test WHERE id = 1").getSingleResult());
     }
 
     @Test

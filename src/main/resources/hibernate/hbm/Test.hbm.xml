@@ -124,7 +124,8 @@
         <property name="notifyResults" type="java.lang.Boolean"
             column="notify_results" />
         <property name="guid" type="java.lang.String" column="guid" />
-        <property name="name" type="java.lang.String" column="name" />
+        <property name="name" type="java.lang.String" column="name"
+            access="field" />
         <many-to-one name="defaultTestResult"
             class="org.openelisglobal.testresult.valueholder.TestResult"
             fetch="select" lazy="false">

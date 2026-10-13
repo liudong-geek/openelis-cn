@@ -199,7 +199,9 @@ public class TestModifyServiceImpl implements TestModifyService {
         }
     }
 
-    private void updateTestNames(String testId, Localization nameLocalization, Localization reportingNameLocalization,
+    @Override
+    @Transactional
+    public void updateTestNames(String testId, Localization nameLocalization, Localization reportingNameLocalization,
             String userId) {
         Test test = testService.get(testId);
 
@@ -210,15 +212,42 @@ public class TestModifyServiceImpl implements TestModifyService {
                 name.setLocalizedValue(locale, nameLocalization.getLocalizedValue(locale).trim());
                 reportingName.setLocalizedValue(locale, reportingNameLocalization.getLocalizedValue(locale).trim());
             }
-            name.setSysUserId(userId);
-            reportingName.setSysUserId(userId);
-
-            localizationService.update(name);
-            localizationService.update(reportingName);
+            persistTestNames(test, name, reportingName, nameLocalization.getLocalizedValue(Locale.ENGLISH).trim(),
+                    userId);
         }
 
         // Refresh test names
         DisplayListService.getInstance().getFreshList(DisplayListService.ListType.ALL_TESTS);
         DisplayListService.getInstance().getFreshList(DisplayListService.ListType.ORDERABLE_TESTS);
     }
+
+    @Override
+    @Transactional
+    public void updateTestNames(String testId, String nameEnglish, String nameFrench, String reportNameEnglish,
+            String reportNameFrench, String userId) {
+        Test test = testService.get(testId);
+        if (test != null) {
+            Localization name = test.getLocalizedTestName();
+            Localization reportingName = test.getLocalizedReportingName();
+            // The legacy form submits only English and French. Preserve every other
+            // translation, including absent values that fall back to English.
+            name.setEnglish(nameEnglish.trim());
+            name.setFrench(nameFrench.trim());
+            reportingName.setEnglish(reportNameEnglish.trim());
+            reportingName.setFrench(reportNameFrench.trim());
+            persistTestNames(test, name, reportingName, nameEnglish.trim(), userId);
+        }
+    }
+
+    private void persistTestNames(Test test, Localization name, Localization reportingName, String canonicalName,
+            String userId) {
+        name.setSysUserId(userId);
+        reportingName.setSysUserId(userId);
+        localizationService.update(name);
+        localizationService.update(reportingName);
+        test.setName(canonicalName);
+        test.setSysUserId(userId);
+        testService.update(test);
+    }
+
 }

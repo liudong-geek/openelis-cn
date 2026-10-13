@@ -142,15 +142,21 @@ class BarcodeConfigPage {
   }
 
   openPrintFromMenu() {
+    openAuthorizedSidebarLink("menu_intake_workspace", "/order");
     cy.intercept(
       "GET",
       "**/rest/displayList/SAMPLE_PATIENT_REFERRING_CLINIC",
     ).as("barcodeSites");
     cy.intercept("GET", "**/rest/user-sample-types").as("barcodeSamples");
-    openAuthorizedSidebarLink(
-      "menu_intake_workspace",
-      "/PrintBarcode?mode=preprint",
-    );
+    cy.contains(
+      ".intake-header-actions button",
+      label("intake.workspace.barcode"),
+    )
+      .should("be.visible")
+      .and("not.be.disabled")
+      .click();
+    cy.location("pathname").should("eq", "/PrintBarcode");
+    cy.location("search").should("eq", "?mode=preprint");
     cy.wait("@barcodeSites").then(({ response }) => {
       expect(response.statusCode).to.eq(200);
       this.sites = body(response.body);
@@ -158,7 +164,8 @@ class BarcodeConfigPage {
     });
     cy.wait("@barcodeSamples").then(({ response }) => {
       expect(response.statusCode).to.eq(200);
-      expect(body(response.body)).to.be.an("array");
+      this.sampleTypes = body(response.body);
+      expect(this.sampleTypes).to.be.an("array");
     });
     this.validatePage();
   }
@@ -176,31 +183,52 @@ class BarcodeConfigPage {
 
   enterSiteName(name) {
     cy.then(() => {
-      const matches = this.sites.filter((site) => site.value === name);
+      // The current clinic list displays "short code - organization name".
+      const matches = this.sites.filter(
+        (site) => site.value === name || site.value.endsWith(` - ${name}`),
+      );
       expect(
         matches,
         "original site fixture in real current reference",
       ).to.have.length(1);
       this.siteId = String(matches[0].id);
+      this.siteDisplayName = matches[0].value;
     });
     cy.get(".barcode-preprint #siteName")
       .should("be.visible")
       .clear()
       .type(name);
     cy.contains("[role='option']", name).should("be.visible").click();
-    cy.get(".barcode-preprint #siteName").should("have.value", name);
+    cy.get(".barcode-preprint #siteName").should(($input) => {
+      expect($input).to.have.value(this.siteDisplayName);
+    });
   }
 
   selectSampleTypeOption(name) {
     cy.intercept("GET", "**/rest/sample-type-tests?*").as("barcodeTests");
-    cy.get(".barcode-preprint #selectSampleType")
-      .should("be.visible")
-      .select(name);
-    cy.get(".barcode-preprint #selectSampleType option:selected").should(
-      "have.text",
-      name,
-    );
-    cy.wait("@barcodeTests").then(({ response }) => {
+    cy.then(() => {
+      const names = name === "Serum" ? label("sample.type.serum") : null;
+      const matches = this.sampleTypes.filter((sampleType) =>
+        names ? names.test(sampleType.value) : sampleType.value === name,
+      );
+      expect(
+        matches,
+        "original specimen type in current locale",
+      ).to.have.length(1);
+      this.sampleTypeId = String(matches[0].id);
+      cy.get(".barcode-preprint #selectSampleType")
+        .should("be.visible")
+        .select(this.sampleTypeId)
+        .should("have.value", this.sampleTypeId);
+      cy.get(".barcode-preprint #selectSampleType option:selected").should(
+        "have.text",
+        matches[0].value,
+      );
+    });
+    cy.wait("@barcodeTests").then(({ request, response }) => {
+      expect(new URL(request.url).searchParams.get("sampleType")).to.eq(
+        this.sampleTypeId,
+      );
       expect(response.statusCode).to.eq(200);
       this.sampleTests = body(response.body);
       expect(this.sampleTests.panels).to.be.an("array");
@@ -209,15 +237,28 @@ class BarcodeConfigPage {
   }
 
   selectOriginalPanels() {
-    // Preserve both original clinical panel names, not an arbitrary available panel.
-    for (const name of ["Bilan Biochimique", "Serologie VIH"]) {
-      cy.contains(".barcode-preprint label", name).should("be.visible").click();
-      cy.contains(".barcode-preprint label", name)
-        .invoke("attr", "for")
-        .then((id) => {
-          cy.get(`#${id}`).should("be.checked");
-        });
-    }
+    // Localization preserves the original fixture entities, panel 1 and panel 4.
+    cy.then(() => {
+      this.originalPanels = [
+        { id: "1", names: ["Bilan Biochimique", "生化检验组合"] },
+        { id: "4", names: ["Serologie VIH", "HIV血清学"] },
+      ].map((fixture) => {
+        const matches = this.sampleTests.panels.filter((panel) =>
+          fixture.names.includes(panel.name),
+        );
+        expect(matches, `unique original panel ${fixture.id}`).to.have.length(
+          1,
+        );
+        expect(String(matches[0].id)).to.eq(fixture.id);
+        const name = new RegExp(`^${Cypress._.escapeRegExp(matches[0].name)}$`);
+        cy.contains(".barcode-preprint label", name)
+          .should("have.attr", "for", `panel_${fixture.id}`)
+          .and("be.visible")
+          .click();
+        cy.get(`#panel_${fixture.id}`).should("be.checked");
+        return matches[0];
+      });
+    });
   }
 
   clickPrePrintButton() {
@@ -234,9 +275,7 @@ class BarcodeConfigPage {
       expect(params.get("numSetsOfLabels")).to.eq("1");
       expect(params.get("numOrderLabelsPerSet")).to.eq("1");
       expect(params.get("numSpecimenLabelsPerSet")).to.eq("1");
-      const originalPanels = this.sampleTests.panels.filter((panel) =>
-        ["Bilan Biochimique", "Serologie VIH"].includes(panel.name),
-      );
+      const originalPanels = this.originalPanels;
       expect(originalPanels).to.have.length(2);
       const ids = originalPanels
         .flatMap((panel) => panel.testIds.split(",").map((id) => id.trim()))

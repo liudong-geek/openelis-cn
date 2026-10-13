@@ -154,6 +154,7 @@ public class OpenELISFieldServiceImpl implements OpenELISFieldService {
             reportingNameLocalization.setId(reportingNameLocalizationId);
 
             Test test = new Test();
+            test.setName(form.getFieldName());
             test.setDescription(form.getFieldName());
             test.setLocalCode(form.getTestCode());
             test.setLoinc(form.getLoincCode());

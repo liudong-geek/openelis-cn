@@ -66,6 +66,7 @@ public class TestCatalogCreationServiceImpl implements TestCatalogCreationServic
         String reportingLocalizationId = localizationService.insert(reportingLocalization);
 
         Test test = new Test();
+        test.setName(params.name);
         test.setLocalizedTestName(localizationService.get(nameLocalizationId));
         test.setLocalizedReportingName(localizationService.get(reportingLocalizationId));
         // description doubles as the legacy base name; default it to the name.

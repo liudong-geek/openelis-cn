@@ -261,8 +261,8 @@ public class TestConfigurationHandler implements DomainConfigurationHandler {
         return localizationColumns;
     }
 
-    Test processCsvLine(String[] values, int testNameIndex, int testSectionIndex, int sampleTypeIndex,
-            int loincIndex, int isActiveIndex, int isOrderableIndex, int sortOrderIndex, int unitOfMeasureIndex,
+    Test processCsvLine(String[] values, int testNameIndex, int testSectionIndex, int sampleTypeIndex, int loincIndex,
+            int isActiveIndex, int isOrderableIndex, int sortOrderIndex, int unitOfMeasureIndex,
             Map<String, Integer> localizationColumns, int lineNumber, String fileName, int defaultSortOrder) {
 
         String baseTestName = getValueOrEmpty(values, testNameIndex);
@@ -359,8 +359,10 @@ public class TestConfigurationHandler implements DomainConfigurationHandler {
 
     Test findExistingTest(String testName, String[] values, Map<String, Integer> localizationColumns) {
         // The database uniqueness contract is the exact test description. Resolve that
-        // identity before fuzzy/localized fallbacks so a repeat import always updates the
-        // same row, including when several descriptions share one legacy normalized key.
+        // identity before fuzzy/localized fallbacks so a repeat import always updates
+        // the
+        // same row, including when several descriptions share one legacy normalized
+        // key.
         Test existingTest = testService.getTestByDescription(testName);
         if (existingTest != null) {
             return existingTest;
@@ -400,8 +402,8 @@ public class TestConfigurationHandler implements DomainConfigurationHandler {
         if (description == null) {
             return "";
         }
-        return Normalizer.normalize(description, Normalizer.Form.NFD).replaceAll("\\p{M}+", "")
-                .toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9#%]", "");
+        return Normalizer.normalize(description, Normalizer.Form.NFD).replaceAll("\\p{M}+", "").toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9#%]", "");
     }
 
     private String getValueOrEmpty(String[] values, int index) {
@@ -494,6 +496,7 @@ public class TestConfigurationHandler implements DomainConfigurationHandler {
 
         // Create test
         Test test = new Test();
+        test.setName(translations.getOrDefault("en", testName));
         test.setDescription(testName);
         test.setTestSection(testSection);
         test.setLocalizedTestName(localization);

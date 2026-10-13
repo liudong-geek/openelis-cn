@@ -9,4 +9,10 @@ public interface TestModifyService {
 
     void updateTestSets(List<TestSet> testSets, TestAddParams testAddParams, Localization nameLocalization,
             Localization reportingNameLocalization, String currentUserId);
+
+    void updateTestNames(String testId, Localization nameLocalization, Localization reportingNameLocalization,
+            String currentUserId);
+
+    void updateTestNames(String testId, String nameEnglish, String nameFrench, String reportNameEnglish,
+            String reportNameFrench, String currentUserId);
 }

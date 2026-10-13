@@ -6,11 +6,8 @@ import org.openelisglobal.common.controller.BaseController;
 import org.openelisglobal.common.exception.LIMSRuntimeException;
 import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.common.services.DisplayListService;
-import org.openelisglobal.localization.service.LocalizationService;
-import org.openelisglobal.localization.valueholder.Localization;
-import org.openelisglobal.test.service.TestService;
-import org.openelisglobal.test.valueholder.Test;
 import org.openelisglobal.testconfiguration.form.TestRenameEntryForm;
+import org.openelisglobal.testconfiguration.service.TestModifyService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.BindingResult;
@@ -32,9 +29,7 @@ public class TestRenameEntryRestController extends BaseController {
             "reportNameEnglish", "reportNameFrench" };
 
     @Autowired
-    private LocalizationService localizationService;
-    @Autowired
-    private TestService testService;
+    private TestModifyService testModifyService;
 
     @InitBinder
     public void initBinder(WebDataBinder binder) {
@@ -93,24 +88,11 @@ public class TestRenameEntryRestController extends BaseController {
 
     private void updateTestNames(String testId, String nameEnglish, String nameFrench, String reportNameEnglish,
             String reportNameFrench, String userId) {
-        Test test = testService.get(testId);
-
-        if (test != null) {
-
-            Localization name = test.getLocalizedTestName();
-            Localization reportingName = test.getLocalizedReportingName();
-            name.setEnglish(nameEnglish.trim());
-            name.setFrench(nameFrench.trim());
-            name.setSysUserId(userId);
-            reportingName.setEnglish(reportNameEnglish.trim());
-            reportingName.setFrench(reportNameFrench.trim());
-            reportingName.setSysUserId(userId);
-
-            try {
-                localizationService.updateTestNames(name, reportingName);
-            } catch (LIMSRuntimeException e) {
-                LogEvent.logError(e);
-            }
+        try {
+            testModifyService.updateTestNames(testId, nameEnglish, nameFrench, reportNameEnglish, reportNameFrench,
+                    userId);
+        } catch (LIMSRuntimeException e) {
+            LogEvent.logError(e);
         }
 
         // Refresh test names
