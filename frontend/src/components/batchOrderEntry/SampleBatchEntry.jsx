@@ -21,6 +21,7 @@ import PageBreadCrumb from "../common/PageBreadCrumb";
 import {
   getFromOpenElisServer,
   postToOpenElisServerJsonResponse,
+  resolveApiErrorMessage,
 } from "../utils/Utils";
 import CustomLabNumberInput from "../common/CustomLabNumberInput";
 import PatientInfo from "../addOrder/PatientInfo";
@@ -376,9 +377,24 @@ const SampleBatchEntry = (props) => {
       responseStatus >= 400
     ) {
       savingOrder.current = false;
-      setGenerateSaveButtonDisabled(false);
+      const rejected = responseStatus >= 400 && responseStatus < 500;
+      setGenerateSaveButtonDisabled(!rejected);
+      const details = [
+        ...(Array.isArray(res?.fieldErrors)
+          ? res.fieldErrors.map((field) => field.defaultMessage)
+          : []),
+        ...(Array.isArray(res?.globalErrors) ? res.globalErrors : []),
+      ].filter((message) => typeof message === "string" && message.trim());
       showAlertMessage(
-        <FormattedMessage id="error.save.order" />,
+        rejected ? (
+          resolveApiErrorMessage(
+            intl,
+            { ...res, message: details.join("; ") || res?.message },
+            "error.save.order",
+          )
+        ) : (
+          <FormattedMessage id="order.save.readbackUnconfirmed" />
+        ),
         NotificationKinds.error,
       );
       return;

@@ -403,17 +403,77 @@ class BatchOrderEntry {
     );
   }
   typeLabNumber(labNumber) {
-    cy.wait(200);
-    cy.get("#labNo, #display_labNo")
-      .filter(":visible")
-      .should("have.length", 1)
-      .clear()
-      .type(labNumber);
-    cy.get("#labNo")
-      .invoke("val")
-      .then((value) => {
-        this.expected.typedAccession = value;
-        expect(value).to.eq(labNumber);
+    expect(labNumber, "original legacy preprinted fixture").to.eq("123456");
+    expect(this.expected.method, "unchanged manual preprinted workflow").to.eq(
+      "Pre-Printed",
+    );
+    return cy
+      .request({
+        url: "/api/OpenELIS-Global/rest/labnumbermanagement",
+        followRedirect: false,
+        headers: { Accept: "application/json" },
+      })
+      .then((configuration) => {
+        expectJSON(configuration);
+        expect(configuration.body.labNumberType).to.eq("SITEYEARNUM");
+        return cy.request({
+          url: "/api/OpenELIS-Global/rest/SampleEntryGenerateScanProvider",
+          followRedirect: false,
+          headers: { Accept: "application/json" },
+        });
+      })
+      .then((generated) => {
+        expectJSON(generated);
+        expect(generated.body.status).to.eq(true);
+        const accession = generated.body.body;
+        expect(accession, "server-prepared unique preprinted label").to.be.a(
+          "string",
+        ).and.not.be.empty;
+        expect(accession).not.to.eq(labNumber);
+        return cy
+          .request({
+            url: "/api/OpenELIS-Global/rest/SampleEntryAccessionNumberValidation",
+            qs: {
+              accessionNumber: accession,
+              field: "labNo",
+              isRequired: "true",
+            },
+            followRedirect: false,
+            headers: { Accept: "application/json" },
+          })
+          .then((validation) => {
+            expectJSON(validation);
+            expect(
+              validation.body.status,
+              "same active format and unused label",
+            ).to.eq(true);
+            return cy.request({
+              url: "/api/OpenELIS-Global/rest/order/saved",
+              qs: { queryVersion: "2", labNumber: accession },
+              failOnStatusCode: false,
+              followRedirect: false,
+              headers: { Accept: "application/json" },
+            });
+          })
+          .then((absent) => {
+            expect(absent.status).to.eq(404);
+            expect(absent.headers["content-type"]).to.match(
+              /application\/json/i,
+            );
+            expect(absent.body.code).to.eq("SAVED_ORDER_NOT_FOUND");
+            cy.get("#labNo, #display_labNo")
+              .filter(":visible")
+              .should("have.length", 1)
+              .clear()
+              .type(accession);
+            return cy
+              .get("#labNo")
+              .invoke("val")
+              .then((value) => {
+                this.expected.typedAccession = value;
+                expect(value).to.eq(accession);
+              });
+          });
       });
   }
   clickGenerateAndSaveBarcode() {
@@ -548,11 +608,10 @@ class BatchOrderEntry {
             "exactly one clinical POST per label",
           ).to.have.length(1);
           expect(this.saves[0].sampleOrderItems.labNo).to.eq(saved.labNumber);
-          cy.get(".post-save-dialog__accession-tag").should(
-            "contain.text",
-            saved.labNumber,
-          );
-          return saved;
+          return cy
+            .get(".post-save-dialog__accession-tag")
+            .should("contain.text", saved.labNumber)
+            .then(() => saved);
         });
     });
   }

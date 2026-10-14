@@ -28,6 +28,7 @@ import org.openelisglobal.patient.action.bean.PatientManagementInfo;
 import org.openelisglobal.patient.action.bean.PatientSearch;
 import org.openelisglobal.sample.action.util.SamplePatientUpdateData;
 import org.openelisglobal.sample.bean.SampleOrderItem;
+import org.openelisglobal.sample.controller.rest.SamplePatientEntryRestController;
 import org.openelisglobal.sample.form.SamplePatientEntryForm;
 import org.openelisglobal.sample.service.PatientManagementUpdate;
 import org.openelisglobal.sample.service.SamplePatientEntryService;
@@ -40,6 +41,7 @@ import org.openelisglobal.test.service.TestServiceImpl;
 import org.openelisglobal.typeofsample.service.TypeOfSampleService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.WebDataBinder;
@@ -158,15 +160,15 @@ public class SampleBatchEntryRestController extends BaseController {
 
     @PostMapping(value = "/SamplePatientEntryBatch", consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseBody
-    public SamplePatientEntryForm showSamplePatientEntrySave(HttpServletRequest request,
+    public ResponseEntity<?> showSamplePatientEntrySave(HttpServletRequest request,
             @RequestBody @Validated(SamplePatientEntryForm.SamplePatientEntryBatch.class) SamplePatientEntryForm form,
             BindingResult result, RedirectAttributes redirectAttributes)
             throws IllegalAccessException, InvocationTargetException, NoSuchMethodException {
 
         entryFormValidator.validate(form, result);
         if (result.hasErrors()) {
-            saveErrors(result);
-            return form;
+            return ResponseEntity.badRequest().cacheControl(org.springframework.http.CacheControl.noStore())
+                    .body(SamplePatientEntryRestController.buildErrorBody(result, "Validation failed"));
         }
         SamplePatientUpdateData updateData = new SamplePatientUpdateData(getSysUserId(request));
 
@@ -200,8 +202,8 @@ public class SampleBatchEntryRestController extends BaseController {
         updateData.validateSample(result);
 
         if (result.hasErrors()) {
-            saveErrors(result);
-            return form;
+            return ResponseEntity.badRequest().cacheControl(org.springframework.http.CacheControl.noStore())
+                    .body(SamplePatientEntryRestController.buildErrorBody(result, "Validation failed"));
         }
 
         try {
@@ -219,12 +221,12 @@ public class SampleBatchEntryRestController extends BaseController {
                 result.reject("errors.UpdateException", "errors.UpdateException");
             }
             LogEvent.logInfo(this.getClass().getSimpleName(), "showSamplePatientEntrySave", result.toString());
-            saveErrors(result);
-            request.setAttribute(ALLOW_EDITS_KEY, "false");
+            return ResponseEntity.status(500).cacheControl(org.springframework.http.CacheControl.noStore())
+                    .body(SamplePatientEntryRestController.buildErrorBody(result, "Failed to save order"));
         }
 
         redirectAttributes.addFlashAttribute(FWD_SUCCESS, true);
-        return (form);
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(form);
     }
 
     private void testAndInitializePatientForSaving(HttpServletRequest request, PatientManagementInfo patientInfo,

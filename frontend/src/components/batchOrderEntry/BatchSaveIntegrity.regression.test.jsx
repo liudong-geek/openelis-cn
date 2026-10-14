@@ -11,10 +11,12 @@ import {
   getFromOpenElisServer,
   postToOpenElisServerJsonResponse,
 } from "../utils/Utils";
-vi.mock("../utils/Utils", () => ({
+vi.mock("../utils/Utils", async (importOriginal) => ({
+  ...(await importOriginal()),
   getFromOpenElisServer: vi.fn(),
   postToOpenElisServerJsonResponse: vi.fn(),
 }));
+const notifications = vi.fn();
 const validOrder = (method = "On Demand", labNo = "123456") => ({
   method,
   PatientInfoCheck: false,
@@ -55,7 +57,7 @@ const wrap = (child) => (
           value={{
             notificationVisible: false,
             setNotificationVisible: vi.fn(),
-            addNotification: vi.fn(),
+            addNotification: notifications,
           }}
         >
           {child}
@@ -90,6 +92,7 @@ function StatefulBatch({ initial, allowPatientChange = false }) {
 }
 let generatorCallbacks, saveCallbacks, receiptCallbacks, consoleError;
 beforeEach(() => {
+  notifications.mockReset();
   generatorCallbacks = [];
   saveCallbacks = [];
   receiptCallbacks = [];
@@ -359,6 +362,70 @@ describe("batch clinical save integrity", () => {
     expect(generatorCallbacks).toHaveLength(2);
     expect(bodies()).toHaveLength(1);
   });
+  test("shows rejected field details and keeps the draft editable after a 400", async () => {
+    render(wrap(<StatefulBatch initial={validOrder()} />));
+    fireEvent.click(
+      screen.getByTestId("generate-barcode-link-BatchOrderEntry"),
+    );
+    await act(async () =>
+      generatorCallbacks[0]({ status: true, body: "GENERATED-REJECTED" }),
+    );
+    await act(async () =>
+      saveCallbacks[0]({
+        statusCode: 400,
+        error: "Validation failed",
+        fieldErrors: [
+          { field: "sampleOrderItems.labNo", defaultMessage: "条码格式不正确" },
+        ],
+      }),
+    );
+    expect(notifications).toHaveBeenLastCalledWith(
+      expect.objectContaining({ message: "条码格式不正确" }),
+    );
+    expect(
+      screen.getByTestId("generate-barcode-link-BatchOrderEntry"),
+    ).not.toBeDisabled();
+    expect(screen.getByTestId("next-button-BatchOrderEntry")).toBeDisabled();
+    expect(receiptCallbacks).toHaveLength(0);
+    expect(bodies()).toHaveLength(1);
+  });
+  test.each([
+    undefined,
+    { status: 0, error: "Network error" },
+    { statusCode: 500, error: "Save failed" },
+    { error: "Malformed success" },
+  ])(
+    "locks an unverified write outcome without another POST: %j",
+    async (failure) => {
+      render(wrap(<StatefulBatch initial={validOrder()} />));
+      fireEvent.click(
+        screen.getByTestId("generate-barcode-link-BatchOrderEntry"),
+      );
+      await act(async () =>
+        generatorCallbacks[0]({ status: true, body: "GENERATED-UNCERTAIN" }),
+      );
+      await act(async () => saveCallbacks[0](failure));
+      expect(
+        screen.getByTestId("generate-barcode-link-BatchOrderEntry"),
+      ).toHaveAttribute("aria-disabled", "true");
+      expect(screen.getByTestId("next-button-BatchOrderEntry")).toBeDisabled();
+      expect(
+        document.querySelector(".post-save-dialog__accession-tag"),
+      ).toBeNull();
+      expect(notifications).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          message: expect.objectContaining({
+            props: { id: "order.save.readbackUnconfirmed" },
+          }),
+        }),
+      );
+      fireEvent.click(
+        screen.getByTestId("generate-barcode-link-BatchOrderEntry"),
+      );
+      expect(generatorCallbacks).toHaveLength(1);
+      expect(bodies()).toHaveLength(1);
+    },
+  );
   test("never saves an obsolete patient snapshot when a late patient selection changes during accession generation", async () => {
     render(wrap(<StatefulBatch initial={validOrder()} allowPatientChange />));
     fireEvent.click(

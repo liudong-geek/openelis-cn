@@ -249,7 +249,9 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
             try {
                 var command = org.openelisglobal.sample.service.EntrySubmissionCommand.fromRequest(request, form);
                 var saved = entrySubmissions.submit(command, form, request, result);
-                if (!saved.replayed()) { notifyCommittedEntry(form.getSampleOrderItems()); }
+                if (!saved.replayed()) {
+                    notifyCommittedEntry(form.getSampleOrderItems());
+                }
                 return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore()).body(saved);
             } catch (org.springframework.validation.BindException failure) {
                 return ResponseEntity.status(hasDuplicatePatientError(result) ? 409 : 400)
@@ -261,17 +263,15 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
         }
 
         if (form.isCollectionOnly() && form.getRequestedSpecimens() != null) {
-            result.rejectValue("requestedSpecimens", "order.entry.specimens.invalid",
-                    "采集操作不能同时新建标本申请，请先完成首次开单。");
+            result.rejectValue("requestedSpecimens", "order.entry.specimens.invalid", "采集操作不能同时新建标本申请，请先完成首次开单。");
             return ResponseEntity.badRequest().body(buildErrorBody(result, "Validation failed"));
         }
-
 
         // Branch before loading or copying ANY ordinary order/patient form data.
         // Those initializers mutate managed entities, even without an explicit save.
         if (form.isCollectionOnly()) {
-            if (request.getSession(false) == null
-                    || org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication() == null) {
+            if (request.getSession(false) == null || org.springframework.security.core.context.SecurityContextHolder
+                    .getContext().getAuthentication() == null) {
                 return collectionFailure(new org.openelisglobal.sample.exception.SampleCollectionValidationException(
                         401, "collection.authRequired"));
             }
@@ -514,12 +514,16 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
         String code = "ENTRY_SAVE_UNKNOWN";
         String message = "暂时无法确认保存结果，请保留原保存标识并查询，不要重复开单。";
         if (failure instanceof org.openelisglobal.sample.exception.EntrySubmissionException expected) {
-            status = expected.getStatus(); code = expected.getCode(); message = expected.getMessage();
+            status = expected.getStatus();
+            code = expected.getCode();
+            message = expected.getMessage();
         } else if (failure instanceof org.springframework.security.access.AccessDeniedException) {
-            status = 403; code = "ENTRY_SUBMISSION_FORBIDDEN";
+            status = 403;
+            code = "ENTRY_SUBMISSION_FORBIDDEN";
             message = "当前登录身份或登记权限不足，请重新登录后核对保存记录。";
         }
-        // Never expose raw persistence messages, patient data or a false rollback claim.
+        // Never expose raw persistence messages, patient data or a false rollback
+        // claim.
         return ResponseEntity.status(status).cacheControl(org.springframework.http.CacheControl.noStore())
                 .body(Map.of("success", false, "code", code, "message", message));
     }
@@ -632,7 +636,7 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
      * human-readable `error` plus the per-field list — kept separate from the form
      * (success path) to avoid mixing concerns.
      */
-    private static Map<String, Object> buildErrorBody(BindingResult result, String fallbackMessage) {
+    public static Map<String, Object> buildErrorBody(BindingResult result, String fallbackMessage) {
         org.springframework.validation.FieldError firstFe = result.getFieldError();
         String message;
         if (firstFe != null) {
@@ -665,13 +669,13 @@ public class SamplePatientEntryRestController extends BaseSampleEntryController 
     public ResponseEntity<Map<String, Object>> collectionFailure(
             org.openelisglobal.sample.exception.SampleCollectionValidationException error) {
         return ResponseEntity.status(error.getStatus()).cacheControl(org.springframework.http.CacheControl.noStore())
-                .body(Map.of("success", false, "code", error.getCode(),
-                "errorKey", error.getErrorKey(), "error", error.getErrorKey()));
+                .body(Map.of("success", false, "code", error.getCode(), "errorKey", error.getErrorKey(), "error",
+                        error.getErrorKey()));
     }
 
     private static boolean hasDuplicatePatientError(BindingResult result) {
-        return result.getAllErrors().stream().anyMatch(error -> error.getCode() != null
-                && error.getCode().startsWith("error.duplicate."));
+        return result.getAllErrors().stream()
+                .anyMatch(error -> error.getCode() != null && error.getCode().startsWith("error.duplicate."));
     }
 
     private static Map<String, Object> buildDuplicatePatientErrorBody(BindingResult result) {
