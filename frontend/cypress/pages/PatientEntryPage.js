@@ -411,10 +411,20 @@ class PatientEntryPage {
       expect(savedPatientId, "saved patient database id").to.match(
         /^[1-9][0-9]*$/,
       );
-      cy.contains(
-        "[role='status']",
-        messagePattern("success.save.patient"),
-      ).should("be.visible");
+      cy.get("body").should(($body) => {
+        const successMessage = messagePattern("success.save.patient");
+        const visibleSuccess = $body
+          .find("[role='status']")
+          .toArray()
+          .some(
+            (notice) =>
+              successMessage.test(notice.textContent || "") &&
+              Cypress.dom.isVisible(Cypress.$(notice)),
+          );
+        expect(visibleSuccess, "visible patient save success notice").to.eq(
+          true,
+        );
+      });
       cy.get(".patient-create-modal").should("not.exist");
       cy.location("pathname").should("eq", "/PatientManagement");
 

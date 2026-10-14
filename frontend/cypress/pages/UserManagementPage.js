@@ -363,34 +363,133 @@ class UserManagementPage {
   }
   searchUser(value) {
     const alias = `actualUserSearch${++this.sequence}`;
-    this.lastSearch = value;
-    cy.intercept({
-      method: "GET",
-      pathname: "**/rest/SearchUnifiedSystemUserMenu",
-      query: { searchString: value },
-    }).as(alias);
+    let queryContext;
     cy.get("#user-name-search-bar")
       .should("be.visible")
       .and("be.enabled")
-      .clear()
-      .type(value);
-    cy.wait(`@${alias}`).then(({ response }) => {
+      .then(($input) => {
+        this.lastSearch = value;
+        queryContext = {
+          startingRecNo: "1",
+          filter: [
+            ...(Cypress.$("#only-active").prop("checked") ? ["isActive"] : []),
+            ...(Cypress.$("#only-administrator").prop("checked")
+              ? ["isAdmin"]
+              : []),
+          ].join(","),
+          roleFilter: String(Cypress.$("#filters").val() || ""),
+        };
+        cy.intercept({
+          method: "GET",
+          pathname: "**/rest/SearchUnifiedSystemUserMenu",
+          query: { search: "Y", searchString: value, ...queryContext },
+        }).as(alias);
+        if (String($input.val()) === value) {
+          const clearAlias = `${alias}Cleared`;
+          cy.intercept({
+            method: "GET",
+            pathname: "**/rest/SearchUnifiedSystemUserMenu",
+            query: { search: "N", ...queryContext },
+          }).as(clearAlias);
+          cy.get("#user-name-search-bar").clear().should("have.value", "");
+          cy.wait(`@${clearAlias}`).then(({ request, response }) => {
+            expect(response.statusCode).to.eq(200);
+            const query = new URL(request.url).searchParams;
+            expect(query.get("search")).to.eq("N");
+            expect(query.has("searchString")).to.eq(false);
+            Object.entries(queryContext).forEach(([key, expected]) =>
+              expect(query.get(key), `cleared query ${key}`).to.eq(expected),
+            );
+            expect(response.body.menuList).to.be.an("array");
+          });
+        } else {
+          cy.get("#user-name-search-bar").clear();
+        }
+        cy.get("#user-name-search-bar").type(value).should("have.value", value);
+      });
+    cy.wait(`@${alias}`).then(({ request, response }) => {
       expect(response.statusCode).to.eq(200);
+      const query = new URL(request.url).searchParams;
+      expect(query.get("search")).to.eq("Y");
+      expect(query.get("searchString")).to.eq(value);
+      Object.entries(queryContext).forEach(([key, expected]) =>
+        expect(query.get(key), `current user query ${key}`).to.eq(expected),
+      );
+      expect(response.body.menuList).to.be.an("array");
       this.lastList = response.body;
     });
   }
   clearSearchBar() {
-    cy.get("#user-name-search-bar").clear();
-    this.lastSearch = "";
+    const alias = `actualUserClearSearch${++this.sequence}`;
+    cy.get("#user-name-search-bar")
+      .should("be.visible")
+      .and("be.enabled")
+      .then(($input) => {
+        this.lastSearch = "";
+        const queryContext = {
+          search: "N",
+          startingRecNo: "1",
+          filter: [
+            ...(Cypress.$("#only-active").prop("checked") ? ["isActive"] : []),
+            ...(Cypress.$("#only-administrator").prop("checked")
+              ? ["isAdmin"]
+              : []),
+          ].join(","),
+          roleFilter: String(Cypress.$("#filters").val() || ""),
+        };
+        if (String($input.val()).trim() === "") {
+          adminJsonRead("/rest/SearchUnifiedSystemUserMenu", queryContext).then(
+            (response) => {
+              expect(response.menuList).to.be.an("array");
+              this.lastList = response;
+            },
+          );
+          return;
+        }
+        cy.intercept({
+          method: "GET",
+          pathname: "**/rest/SearchUnifiedSystemUserMenu",
+          query: queryContext,
+        }).as(alias);
+        cy.get("#user-name-search-bar").clear().should("have.value", "");
+        cy.wait(`@${alias}`).then(({ request, response }) => {
+          expect(response.statusCode).to.eq(200);
+          const query = new URL(request.url).searchParams;
+          expect(query.has("searchString")).to.eq(false);
+          Object.entries(queryContext).forEach(([key, expected]) =>
+            expect(query.get(key), `cleared user query ${key}`).to.eq(expected),
+          );
+          expect(response.body.menuList).to.be.an("array");
+          this.lastList = response.body;
+        });
+      });
   }
   searchByFilters(v) {
     const alias = `actualUserRoleSearch${++this.sequence}`;
-    cy.intercept("GET", "**/rest/SearchUnifiedSystemUserMenu?*").as(alias);
-    selectOriginalLab("#filters", v);
+    let expectedRoleId;
+    selectOriginalLab("#filters", v, (roleId) => {
+      expectedRoleId = roleId;
+      cy.intercept({
+        method: "GET",
+        pathname: "**/rest/SearchUnifiedSystemUserMenu",
+        query: {
+          search: "N",
+          startingRecNo: "1",
+          filter: "",
+          roleFilter: roleId,
+        },
+      }).as(alias);
+    });
     cy.wait(`@${alias}`).then(({ request, response }) => {
       expect(response.statusCode).to.eq(200);
-      const roleId = new URL(request.url).searchParams.get("roleFilter");
+      const query = new URL(request.url).searchParams;
+      const roleId = query.get("roleFilter");
       expect(roleId).to.match(/^[1-9]\d*$/);
+      expect(roleId, "original selected laboratory unit").to.eq(expectedRoleId);
+      expect(query.get("search")).to.eq("N");
+      expect(query.get("startingRecNo")).to.eq("1");
+      expect(query.get("filter")).to.eq("");
+      expect(query.has("searchString")).to.eq(false);
       expect(response.body.menuList.some((r) => r.firstName === "Willy")).to.eq(
         true,
       );
@@ -527,29 +626,48 @@ class UserManagementPage {
   deactivateUser() {
     const alias = `actualUserDeactivate${++this.sequence}`;
     cy.intercept("POST", "**/rest/DeleteUnifiedSystemUser?*").as(alias);
-    cy.contains(
-      `${PAGE} button`,
-      adminLabel("externalconnections.action.deactivate"),
-    )
-      .should("be.enabled")
+    const assertDeactivateLabel = ($button) => {
+      // Carbon danger buttons include an aria-describedby assistive span.
+      const $label = $button.clone();
+      $label.find(".cds--visually-hidden").remove();
+      expect($label.text().trim(), "exact visible deactivation label").to.match(
+        adminLabel("externalconnections.action.deactivate"),
+      );
+    };
+    cy.get(`${PAGE} .admin-list-workspace__selection-actions button`)
+      .should("have.length", 1)
+      .and("be.visible")
+      .and("be.enabled")
+      .should(assertDeactivateLabel)
       .click();
-    cy.contains(
-      ".oe-admin-modal.is-visible .cds--modal-footer button",
-      adminLabel("externalconnections.action.deactivate"),
+    cy.get(
+      ".oe-admin-modal.is-visible .cds--modal-footer button.cds--btn--danger",
     )
-      .should("be.visible")
+      .should("have.length", 1)
+      .and("be.visible")
+      .should(assertDeactivateLabel)
       .click();
     cy.wait(`@${alias}`).then(({ request, response }) => {
       expect(response.statusCode).to.eq(200);
       const ids = parse(request.body).selectedIDs;
       expect(ids).to.have.length(1);
+      const identity = /^([1-9]\d*)-([1-9]\d*)$/.exec(String(ids[0]));
+      expect(identity, "actual selected system and login identities").not.to.eq(
+        null,
+      );
+      // Deactivation retains the system user for audit and removes its login.
+      // Read the retained identity rather than the now-deleted login row.
       adminJsonRead("/rest/UnifiedSystemUser", {
-        ID: ids[0],
+        ID: `${identity[1]}-`,
         startingRecNo: 1,
         roleFilter: "",
-      }).then((u) =>
-        expect(u.accountActive, "independent account deactivation").to.eq("N"),
-      );
+      }).then((u) => {
+        expect(String(u.systemUserId), "retained audit user identity").to.eq(
+          identity[1],
+        );
+        expect(u.userFirstName, "same selected user").to.eq(this.selectedName);
+        expect(u.accountActive, "independent account deactivation").to.eq("N");
+      });
     });
   }
   enterLoginName(v) {

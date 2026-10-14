@@ -485,11 +485,51 @@ class ResultsPage {
   }
 
   row(row) {
-    return cy
-      .get(ROW_CELLS)
-      .filter((_, cell) => cell.firstChild.textContent.trim() === row.testName)
-      .should("have.length", 1)
-      .closest("tr");
+    return cy.then(() => {
+      ["analysisId", "sampleItemId", "testId"].forEach((key) =>
+        expect(row[key], `target clinical ${key}`).to.match(ID),
+      );
+      const component = row.testResultComponentId || "primary";
+      const matches = this.rows.filter(
+        (current) =>
+          ["analysisId", "sampleItemId", "testId", "accessionNumber"].every(
+            (key) => current[key] === row[key],
+          ) && (current.testResultComponentId || "primary") === component,
+      );
+      expect(
+        matches,
+        "same complete identity in the actual worklist response",
+      ).to.have.length(1);
+      const current = matches[0];
+      expect(current.testName).to.eq(row.testName);
+      expect(
+        current.sampleItemExternalId,
+        "actual target specimen barcode",
+      ).to.be.a("string").and.not.be.empty;
+      expect(row.sampleItemExternalId).to.eq(current.sampleItemExternalId);
+      const field = `unifiedResultValue-${current.analysisId}-${component}`;
+      return cy
+        .get(ROW_CELLS)
+        .filter((_, cell) => {
+          const tr = cell.closest("tr");
+          const accession = tr.querySelector(".results-workbench__accession");
+          const barcode = tr.querySelector(".results-workbench__barcode-value");
+          const controls = [
+            ...tr.querySelectorAll("[id^='unifiedResultValue-']"),
+          ];
+          return (
+            cell.firstChild.textContent.trim() === current.testName &&
+            accession?.textContent === current.accessionNumber &&
+            barcode?.textContent === current.sampleItemExternalId &&
+            controls.every(
+              (control) =>
+                control.id === field || control.id.startsWith(field + "-"),
+            )
+          );
+        })
+        .should("have.length", 1)
+        .closest("tr");
+    });
   }
 
   focusKnownSpecimen() {
@@ -671,6 +711,16 @@ class ResultsPage {
   }
 
   saveReceivedHIV() {
+    cy.request({ url: API + "/rest/esig/enabled", log: false }).then(
+      ({ status, headers, body: setting }) => {
+        expect(status).to.eq(200);
+        expect(headers["content-type"]).to.match(/application\/json/i);
+        expect(
+          setting.enabled,
+          "real signing must be prepared before this signed-save scenario",
+        ).to.eq(true);
+      },
+    );
     return this.query({ labNumber: POSITIVE, unit: "117" }).then(() => {
       const row = this.exactRows("positive", "31");
       expect(row.readOnly).to.eq(false);

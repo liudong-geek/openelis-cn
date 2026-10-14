@@ -25,8 +25,9 @@ export const adminJsonRead = (path, qs) =>
       );
       return body;
     });
-export const selectOriginalLab = (selector, originalName) => {
+export const selectOriginalLab = (selector, originalName, beforeSelect) => {
   if (originalName === "All Lab Units") {
+    beforeSelect?.("AllLabUnits");
     cy.get(selector).should("be.visible").select("AllLabUnits");
     cy.get(selector).should("have.value", "AllLabUnits");
     return;
@@ -46,6 +47,7 @@ export const selectOriginalLab = (selector, originalName) => {
     ).to.have.length(1);
     const id = String(matches[0].id);
     expect(id).to.match(/^[1-9]\d*$/);
+    beforeSelect?.(id);
     cy.get(selector).find(`option[value='${id}']`).should("have.length", 1);
     cy.get(selector).should("be.visible").and("be.enabled").select(id);
     cy.get(selector).should("have.value", id);

@@ -22,15 +22,13 @@ const messagePattern = (key) => {
 const searchPatientManagementByName = (patient, { merged = false } = {}) => {
   cy.visit("/PatientManagement");
   cy.get("#patient-management-title").should("be.visible");
-  cy.get("[role='group'][aria-label]")
-    .filter((_, group) =>
-      messagePattern("patient.management.mode.label").test(
-        group.getAttribute("aria-label") || "",
-      ),
-    )
+  cy.contains(
+    ".patient-master-list__search button",
+    messagePattern("advanced.search"),
+  )
     .should("have.length", 1)
-    .contains("button", messagePattern("advanced.search"))
-    .should("be.visible")
+    .and("be.visible")
+    .and("be.enabled")
     .click();
   cy.get("#local_search").should("be.visible");
 

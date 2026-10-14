@@ -11,6 +11,7 @@
 --   - Provider: Optimus Prime (used in Order.json fixture)
 --   - Organization: CAMES MAN (referring clinic, used in Order.json fixture)
 --   - Organization: CEDRES (referral lab)
+--   - Synthetic QA department: 9000102 under exact CAMES MAN 9000100
 -- =============================================================================
 
 -- =============================================================================
@@ -114,6 +115,77 @@ AND NOT EXISTS (
 );
 
 -- =============================================================================
+-- SYNTHETIC ACCEPTANCE DEPARTMENT: fixed CAMES parent, not a hospital policy
+-- =============================================================================
+-- Original preprinted BatchOrderEntry verifies a real configured department.
+-- Add one fixed QA child only; never repair or overwrite conflicting records.
+DO $cames_department_fixture$
+DECLARE
+  department_type_id BIGINT;
+  department_type_count INTEGER;
+  inserted_organizations INTEGER;
+  inserted_type_links INTEGER;
+BEGIN
+  IF (SELECT COUNT(*) FROM organization
+      WHERE id = 9000100 AND name = 'CAMES MAN' AND short_name = '279'
+        AND is_active = 'Y' AND org_id IS NULL) <> 1 THEN
+    RAISE EXCEPTION 'CAMES QA department requires exact parent 9000100 / 279 / CAMES MAN';
+  END IF;
+
+  IF (SELECT COUNT(*) FROM organization_organization_type oot
+      JOIN organization_type ot ON ot.id = oot.org_type_id
+      WHERE oot.org_id = 9000100 AND ot.short_name = 'referring clinic') <> 1 THEN
+    RAISE EXCEPTION 'CAMES QA parent must retain its existing referring-clinic type';
+  END IF;
+
+  SELECT COUNT(*), MIN(id) INTO department_type_count, department_type_id
+  FROM organization_type WHERE short_name = 'dept';
+  IF department_type_count <> 1 THEN
+    RAISE EXCEPTION 'CAMES QA department requires one existing dept organization type';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM organization WHERE id = 9000102
+      AND (name IS DISTINCT FROM 'CAMES合成验收科室'
+        OR short_name IS DISTINCT FROM 'E2E-CAMES-DEPT'
+        OR org_id IS DISTINCT FROM 9000100 OR is_active IS DISTINCT FROM 'Y'))
+    OR EXISTS (SELECT 1 FROM organization WHERE org_id = 9000100
+      AND id <> 9000102 AND (is_active = 'Y' OR name = 'CAMES合成验收科室')) THEN
+    RAISE EXCEPTION 'CAMES QA department identity or active-child conflict; refusing replacement';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM organization_organization_type
+      WHERE org_id = 9000102 AND org_type_id <> department_type_id) THEN
+    RAISE EXCEPTION 'CAMES QA department has an unexpected organization type';
+  END IF;
+
+  INSERT INTO organization
+    (id, name, short_name, is_active, org_id, org_mlt_org_mlt_id,
+     lastupdated, fhir_uuid)
+  SELECT 9000102, 'CAMES合成验收科室', 'E2E-CAMES-DEPT', 'Y', 9000100,
+    NULL, CURRENT_TIMESTAMP, gen_random_uuid()
+  WHERE NOT EXISTS (SELECT 1 FROM organization WHERE id = 9000102);
+  GET DIAGNOSTICS inserted_organizations = ROW_COUNT;
+
+  INSERT INTO organization_organization_type (org_id, org_type_id)
+  SELECT 9000102, department_type_id
+  WHERE NOT EXISTS (SELECT 1 FROM organization_organization_type
+    WHERE org_id = 9000102 AND org_type_id = department_type_id);
+  GET DIAGNOSTICS inserted_type_links = ROW_COUNT;
+
+  IF (SELECT COUNT(*) FROM organization_organization_type
+      WHERE org_id = 9000102) <> 1 THEN
+    RAISE EXCEPTION 'CAMES QA department must retain exactly one dept type link';
+  END IF;
+  IF (SELECT COUNT(*) FROM organization
+      WHERE org_id = 9000100 AND is_active = 'Y') <> 1 THEN
+    RAISE EXCEPTION 'CAMES QA department must be the single active configured child';
+  END IF;
+  RAISE NOTICE 'CAMES synthetic preparation: organizationsInserted=%, typeLinksInserted=%; parent=9000100, department=9000102',
+    inserted_organizations, inserted_type_links;
+END;
+$cames_department_fixture$;
+
+-- =============================================================================
 -- ORGANIZATION: CEDRES (Referral Lab)
 -- =============================================================================
 -- This is the second organization created by organizationManagement.cy.js
@@ -159,6 +231,7 @@ DO $$
 DECLARE
   provider_count INTEGER;
   org_count INTEGER;
+  department_count INTEGER;
 BEGIN
   SELECT COUNT(*) INTO provider_count FROM provider pr
   JOIN person pe ON pr.person_id = pe.id
@@ -167,7 +240,11 @@ BEGIN
   SELECT COUNT(*) INTO org_count FROM organization
   WHERE name IN ('CAMES MAN', 'CEDRES');
 
+  SELECT COUNT(*) INTO department_count FROM organization
+  WHERE id = 9000102 AND org_id = 9000100 AND is_active = 'Y';
+
   RAISE NOTICE 'E2E Foundational Data Loaded:';
   RAISE NOTICE '  - Providers: % (expected: 2)', provider_count;
   RAISE NOTICE '  - Organizations: % (expected: 2)', org_count;
+  RAISE NOTICE '  - Synthetic CAMES QA departments: % (expected: 1)', department_count;
 END $$;

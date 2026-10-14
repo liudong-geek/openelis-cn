@@ -141,9 +141,6 @@ class ModifyOrderPage {
         this.expectedNewSample = null;
         this.expectedMetadata = null;
         this.saves = [];
-        cy.intercept("POST", "**/rest/SampleEdit", (save) => {
-          this.saves.push(bodyJSON(save));
-        }).as("currentSampleEditSave");
         cy.location("pathname").should("eq", "/ModifyOrder");
         cy.location("search").should(
           "contain",
@@ -222,21 +219,18 @@ class ModifyOrderPage {
   }
 
   rememberSiteAndRequester() {
-    cy.get("#rememberSiteAndRequester").then(($input) => {
-      if (!$input.prop("checked"))
-        cy.get("label[for='rememberSiteAndRequester']")
-          .should("be.visible")
-          .click();
-    });
-    cy.get("#rememberSiteAndRequester").should("be.checked");
+    // Remembering the requester belongs to continuing order creation, not edits.
+    cy.get("#rememberSiteAndRequester").should("not.exist");
+    cy.get("label[for='rememberSiteAndRequester']").should("not.exist");
   }
 
   addSerumWithOriginalPanels(order) {
     expect(order.samples[0].sampleType).to.eq("Serum");
-    cy.contains(
-      ".modify-order-workspace button",
-      labelPattern("sample.add.action"),
-    )
+    cy.get(".modify-order-workspace button")
+      .filter((_, button) =>
+        labelPattern("sample.add.action").test(button.textContent.trim()),
+      )
+      .should("have.length", 1)
       .should("be.visible")
       .and("be.enabled")
       .click();
@@ -305,6 +299,27 @@ class ModifyOrderPage {
   }
 
   setOriginalSiteAndRequester(order) {
+    // The original foundational fixture binds Provider 9000001. The order
+    // autocomplete uses Person IDs, so a repeated name is not its identity.
+    let originalProvider;
+    cy.request({
+      url: `${API_BASE}/rest/Provider/raw/9000001`,
+      followRedirect: false,
+      headers: { Accept: "application/json" },
+    }).then((response) => {
+      originalProvider = realJSON(response);
+      expect(String(originalProvider.id), "original fixture provider ID").to.eq(
+        "9000001",
+      );
+      expect(originalProvider.person.firstName).to.eq(
+        order.requester.firstName,
+      );
+      expect(originalProvider.person.lastName).to.eq(order.requester.lastName);
+      expect(
+        String(originalProvider.person.id),
+        "original provider person ID",
+      ).to.match(/^[1-9][0-9]*$/);
+    });
     return cy
       .request({
         url: `${API_BASE}/rest/SamplePatientEntry`,
@@ -323,13 +338,32 @@ class ModifyOrderPage {
           "same original referring institution",
         ).to.have.length(1);
         const providerMatches = defaults.providersList.filter(
-          (provider) => provider.value === order.requester.fullName,
+          (provider) =>
+            String(provider.id) === String(originalProvider.person.id) &&
+            provider.value === order.requester.fullName,
         );
-        expect(providerMatches, "same original requester").to.have.length(1);
+        expect(
+          providerMatches,
+          "same original requester identity",
+        ).to.have.length(1);
+        const requesterOptions = defaults.providersList.filter((provider) =>
+          provider.value
+            .toLowerCase()
+            .includes(order.requester.fullName.toLowerCase()),
+        );
+        const requesterIndex = requesterOptions.findIndex(
+          (provider) =>
+            String(provider.id) === String(originalProvider.person.id),
+        );
+        expect(
+          requesterIndex,
+          "original person in the filtered option order",
+        ).to.be.at.least(0);
         this.expectedMetadata = {
           referringSiteId: String(siteMatches[0].id),
           referringSiteName: order.siteName,
-          providerId: String(providerMatches[0].id),
+          providerId: String(originalProvider.id),
+          providerPersonId: String(originalProvider.person.id),
           providerFirstName: order.requester.firstName,
           providerLastName: order.requester.lastName,
         };
@@ -340,13 +374,36 @@ class ModifyOrderPage {
         )
           .should("be.visible")
           .click();
+        cy.intercept({
+          method: "GET",
+          pathname: `${API_BASE}/rest/practitioner`,
+          query: { providerId: String(originalProvider.person.id) },
+        }).as("originalOrderRequester");
         cy.get("#requesterId").clear().type(order.requester.fullName);
-        cy.contains(
-          ".suggestions li",
-          new RegExp(`^${Cypress._.escapeRegExp(order.requester.fullName)}$`),
-        )
+        cy.get(".suggestions li")
+          .should(($options) => {
+            expect(
+              [...$options].map((option) => option.textContent.trim()),
+              "unchanged autocomplete option order",
+            ).to.deep.equal(requesterOptions.map((provider) => provider.value));
+          })
+          .eq(requesterIndex)
           .should("be.visible")
           .click();
+        cy.wait("@originalOrderRequester").then(({ request, response }) => {
+          expect(new URL(request.url).searchParams.get("providerId")).to.eq(
+            String(originalProvider.person.id),
+          );
+          const selected = realJSON(response);
+          expect(String(selected.id), "selected original provider").to.eq(
+            String(originalProvider.id),
+          );
+          expect(String(selected.person.id)).to.eq(
+            String(originalProvider.person.id),
+          );
+          expect(selected.person.firstName).to.eq(order.requester.firstName);
+          expect(selected.person.lastName).to.eq(order.requester.lastName);
+        });
         cy.get("#requesterFirstName")
           .clear()
           .type(order.requester.firstName)
@@ -360,6 +417,10 @@ class ModifyOrderPage {
 
   clickSubmitAndReadBack() {
     const baseline = this.baseline;
+    this.saves = [];
+    cy.intercept("POST", "**/rest/SampleEdit", (save) => {
+      this.saves.push(bodyJSON(save));
+    }).as("currentSampleEditSave");
     cy.get("[data-cy='submit-order']")
       .should("be.visible")
       .and("be.enabled")
@@ -380,7 +441,7 @@ class ModifyOrderPage {
       expect(String(payload.patientId)).to.eq(
         String(baseline.patient.patientId),
       );
-      expect(payload.rememberSiteAndRequester).to.eq(true);
+      expect(payload).not.to.have.property("rememberSiteAndRequester");
       const xml = new DOMParser().parseFromString(
         payload.sampleXML,
         "application/xml",
@@ -420,6 +481,7 @@ class ModifyOrderPage {
         for (const key of [
           "referringSiteId",
           "providerId",
+          "providerPersonId",
           "providerFirstName",
           "providerLastName",
         ])
