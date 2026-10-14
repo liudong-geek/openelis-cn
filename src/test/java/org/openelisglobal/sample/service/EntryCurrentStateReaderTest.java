@@ -705,4 +705,140 @@ public class EntryCurrentStateReaderTest {
         assertThrows(AccessDeniedException.class, () -> reader.readCurrentClinical("301", "7"));
         verifyZeroInteractions(patients);
     }
+
+    private SpecimenLookupService dailyLookup() throws Exception {
+        var candidateDAO = mock(org.openelisglobal.sample.dao.SpecimenLookupCandidateDAO.class);
+        when(candidateDAO.exactMatches("SIM-CURRENT.10"))
+                .thenReturn(new org.openelisglobal.sample.dao.SpecimenLookupCandidateDAO.Candidates(
+                        List.of(new org.openelisglobal.sample.dao.SpecimenLookupCandidateDAO.Candidate("301",
+                                "SIM-CURRENT", "H", "801", "10")),
+                        false));
+        var dashboard = mock(org.openelisglobal.sample.dao.OrderDashboardDAO.class);
+        when(dashboard.findIntakeFacts(eq("301"), any()))
+                .thenReturn(java.util.Optional.of(new org.openelisglobal.sample.form.SpecimenIntakeFacts(true, false,
+                        false, false, false, false, false, false)));
+        var actorConstructor = OrderEntryActorGuard.BoundActor.class.getDeclaredConstructor(
+                org.springframework.security.core.Authentication.class, Object.class, String.class, String.class,
+                jakarta.servlet.http.HttpSession.class, int.class, java.util.Set.class);
+        actorConstructor.setAccessible(true);
+        var actor = actorConstructor.newInstance(null, null, "operator", "7", null, 1, java.util.Set.of());
+        var scope = new OrderDashboardAccess.Scope(actor, List.of("41", "42"), List.of("3"), false);
+        var access = mock(OrderDashboardAccess.class);
+        when(access.bind(any())).thenReturn(scope);
+        var service = new SpecimenLookupService(candidateDAO, reader, dashboard, access,
+                (DefaultConfigurationProperties) ReflectionTestUtils.getField(reader, "configuration"));
+        ReflectionTestUtils.setField(service, "clinicalAccess",
+                mock(org.openelisglobal.result.service.ResultRestrictionAccess.class));
+        when(intakeDecisions.read(eq("301"), eq("SIM-CURRENT"), eq("601"), anyList(), eq("7"), anyList()))
+                .thenReturn(List.of(new SpecimenIntakeDecisionReader.Tube("801", "NOT_RECORDED", null, null, null, null,
+                        null, false, null)));
+        return service;
+    }
+
+    private void assertDailyLookup(SpecimenLookupService lookup) {
+        var result = lookup.lookup("SIM-CURRENT.10", new org.springframework.mock.web.MockHttpServletRequest());
+        assertTrue(result.readOnly());
+        assertEquals("specimen", result.matchedKind());
+        assertEquals("301", result.selection().sampleId());
+        assertEquals("801", result.selection().sampleItemId());
+        assertEquals("701", result.selection().requestId());
+        var tube = result.current().physicalSpecimens().get(0);
+        assertEquals("801", tube.id());
+        assertEquals("701", tube.requestId());
+        assertEquals("NOT_RECORDED", tube.decisionState());
+        assertNull(tube.receivedDate());
+        assertNull(tube.expectedEvidenceDigest());
+        assertNull(tube.recordedDecision());
+    }
+
+    @Test
+    public void dailyLookupPreservesUnknownRequestedQuantityWithoutInventingOne() throws Exception {
+        collect(0, "801");
+        logical.get(0).setRequestedQuantity(null);
+        assertDailyLookup(dailyLookup());
+        var current = reader.readCurrentClinical("301", "7");
+        assertNull(current.requestedSpecimens().get(0).requestedQuantity());
+        assertEquals(Double.valueOf(0.5), current.physicalSpecimens().get(0).quantity());
+        assertNull(logical.get(0).getRequestedQuantity());
+    }
+
+    @Test
+    public void dailyLookupPreservesUnknownActualQuantityIndependently() throws Exception {
+        collect(0, "801").setQuantity(null);
+        assertDailyLookup(dailyLookup());
+        var current = reader.readCurrentClinical("301", "7");
+        assertEquals(Double.valueOf(1.0), current.requestedSpecimens().get(0).requestedQuantity());
+        assertNull(current.physicalSpecimens().get(0).quantity());
+        assertNull(physical.get(0).getQuantity());
+    }
+
+    @Test
+    public void dailyLookupPreservesBothLegacyUnknownQuantitiesAsReadOnlyFacts() throws Exception {
+        collect(0, "801").setQuantity(null);
+        logical.get(0).setRequestedQuantity(null);
+        assertDailyLookup(dailyLookup());
+        var current = reader.readCurrentClinical("301", "7");
+        assertNull(current.requestedSpecimens().get(0).requestedQuantity());
+        assertNull(current.physicalSpecimens().get(0).quantity());
+        assertNull(logical.get(0).getRequestedQuantity());
+        assertNull(physical.get(0).getQuantity());
+    }
+
+    @Test
+    public void originalSubmissionRecoveryStillRejectsUnknownQuantities() {
+        var tube = collect(0, "801");
+        logical.get(0).setRequestedQuantity(null);
+        conflict();
+        logical.get(0).setRequestedQuantity(1.0);
+        tube.setQuantity(null);
+        conflict();
+        logical.get(0).setRequestedQuantity(null);
+        conflict();
+    }
+
+    @Test
+    public void dailyLookupStillRejectsMalformedNumbersAndZeroRequestedQuantity() throws Exception {
+        var tube = collect(0, "801");
+        var lookup = dailyLookup();
+        for (Double quantity : List.of(-1.0, 0.0, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)) {
+            logical.get(0).setRequestedQuantity(quantity);
+            var failure = assertThrows(SpecimenLookupService.Failure.class,
+                    () -> lookup.lookup("SIM-CURRENT.10", new org.springframework.mock.web.MockHttpServletRequest()));
+            assertEquals("SPECIMEN_LOOKUP_STATE_CONFLICT", failure.code());
+        }
+        logical.get(0).setRequestedQuantity(1.0);
+        for (Double quantity : List.of(-1.0, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)) {
+            tube.setQuantity(quantity);
+            assertThrows(SpecimenLookupService.Failure.class,
+                    () -> lookup.lookup("SIM-CURRENT.10", new org.springframework.mock.web.MockHttpServletRequest()));
+        }
+        tube.setQuantity(0.0);
+        assertDailyLookup(lookup);
+        assertEquals(Double.valueOf(0.0), reader.readCurrentClinical("301", "7").physicalSpecimens().get(0).quantity());
+    }
+
+    @Test
+    public void nullableDailyQuantitiesNeverBypassLinkageIdentityOrCurrentReceptionGrant() throws Exception {
+        var tube = collect(0, "801");
+        tube.setQuantity(null);
+        logical.get(0).setRequestedQuantity(null);
+        var lookup = dailyLookup();
+        var other = new SampleItem();
+        other.setId("802");
+        logical.get(0).setSampleItem(other);
+        assertThrows(SpecimenLookupService.Failure.class,
+                () -> lookup.lookup("SIM-CURRENT.10", new org.springframework.mock.web.MockHttpServletRequest()));
+        logical.get(0).setSampleItem(tube);
+        var originalSample = logical.get(0).getSample();
+        var otherSample = new Sample();
+        otherSample.setId("302");
+        logical.get(0).setSample(otherSample);
+        assertThrows(SpecimenLookupService.Failure.class,
+                () -> lookup.lookup("SIM-CURRENT.10", new org.springframework.mock.web.MockHttpServletRequest()));
+        logical.get(0).setSample(originalSample);
+        when(users.getAllDisplayUserTestsByLabUnit("7", Constants.ROLE_RECEPTION)).thenReturn(List.of());
+        assertThrows(AccessDeniedException.class,
+                () -> lookup.lookup("SIM-CURRENT.10", new org.springframework.mock.web.MockHttpServletRequest()));
+        verifyZeroInteractions(patients);
+    }
 }

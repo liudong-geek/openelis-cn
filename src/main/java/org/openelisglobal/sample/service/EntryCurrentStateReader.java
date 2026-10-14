@@ -139,7 +139,10 @@ public class EntryCurrentStateReader {
                 original.path("workflowType").asText(), original, actorId);
     }
 
-    /** Current clinical facts for an independently authorized daily lookup, never a receipt. */
+    /**
+     * Current clinical facts for an independently authorized daily lookup, never a
+     * receipt.
+     */
     @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
     public Snapshot readCurrentClinical(String sampleId, String actorId) {
         return readInternal(requiredId(sampleId), null, "clinical", null, actorId);
@@ -172,8 +175,7 @@ public class EntryCurrentStateReader {
         var rows = requests.getRequestsBySampleId(sampleId);
         var physicalRows = items.getSampleItemsBySampleId(sampleId); // DAO intentionally includes voided items.
         if (original == null && rows != null && rows.isEmpty()) {
-            throw new EntrySubmissionException(409, "SPECIMEN_LOOKUP_LEGACY_READONLY",
-                    "该旧申请没有完整的逻辑标本关系，暂不能在采收工作区操作。");
+            throw new EntrySubmissionException(409, "SPECIMEN_LOOKUP_LEGACY_READONLY", "该旧申请没有完整的逻辑标本关系，暂不能在采收工作区操作。");
         }
         if (rows == null || rows.isEmpty() || physicalRows == null) {
             throw conflict();
@@ -218,7 +220,7 @@ public class EntryCurrentStateReader {
             List<String> tests = ids(row.getRequestedTests(), true);
             allTests.addAll(tests);
             var view = new RequestView(row.getId().toString(), row.getSortOrder(), typeId,
-                    quantity(row.getRequestedQuantity(), false),
+                    quantity(row.getRequestedQuantity(), false, original == null),
                     row.getUnitOfMeasure() == null ? null : requiredId(row.getUnitOfMeasure().getId()), tests,
                     ids(row.getRequestedPanels(), false), row.getStatus().name(), itemId,
                     wallClockTime(row.getCreatedDate()), wallClockTime(row.getLastupdated()));
@@ -273,7 +275,7 @@ public class EntryCurrentStateReader {
             }
             itemAnalyses.sort(Comparator.comparing(AnalysisView::id));
             specimens.add(new SpecimenView(itemId, requestId, item.getSortOrder(),
-                    requiredId(item.getTypeOfSample().getId()), quantity(item.getQuantity(), true),
+                    requiredId(item.getTypeOfSample().getId()), quantity(item.getQuantity(), true, original == null),
                     item.getUnitOfMeasure() == null ? null : requiredId(item.getUnitOfMeasure().getId()),
                     status(item.getStatusId(), "SAMPLE"), item.isVoided(), item.isRejected(),
                     instantTime(item.getCollectionDate()), instantTime(item.getReceivedDate()), item.getCollector(),
@@ -457,7 +459,12 @@ public class EntryCurrentStateReader {
         return value;
     }
 
-    private static Double quantity(Double value, boolean zeroAllowed) {
+    private static Double quantity(Double value, boolean zeroAllowed, boolean dailyRead) {
+        // A legacy clinical tube may have no measured/requested quantity. Daily
+        // lookup exposes that unknown fact; submission recovery remains strict.
+        if (value == null && dailyRead) {
+            return null;
+        }
         if (value == null || !Double.isFinite(value) || value < 0 || (!zeroAllowed && value == 0)) {
             throw conflict();
         }
