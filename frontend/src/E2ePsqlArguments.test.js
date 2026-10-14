@@ -160,11 +160,11 @@ describe("buildPsqlQueryArguments", () => {
       "-t",
       "-v",
       `national_id=${maliciousNationalId}`,
-      "-c",
-      query,
+      "-f",
+      "-",
     ]);
-    expect(argumentsList.at(-1)).toBe(query);
-    expect(argumentsList.at(-1)).not.toContain(maliciousNationalId);
+    expect(query).not.toContain(maliciousNationalId);
+    expect(argumentsList).not.toContain("-c");
   });
 
   it("rejects variable names that could add psql syntax", () => {

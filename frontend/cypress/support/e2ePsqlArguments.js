@@ -91,6 +91,8 @@ export function assertDisposableE2eDatabaseVolumeLabels(
  * Query text must reference values through psql's SQL-literal form, for
  * example `WHERE national_id = :'national_id'`. Keeping values in their own
  * argv entry lets execFileSync avoid both shell parsing and SQL interpolation.
+ * Supply query as stdin together with these arguments: psql only expands
+ * variables in script input, not in a SQL command passed through -c.
  */
 export function buildPsqlQueryArguments(
   query,
@@ -113,5 +115,5 @@ export function buildPsqlQueryArguments(
     },
   );
 
-  return [...outputArguments, ...variableArguments, "-c", query];
+  return [...outputArguments, ...variableArguments, "-f", "-"];
 }

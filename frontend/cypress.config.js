@@ -81,10 +81,10 @@ function executeE2ePsql(psqlArgs, options = {}) {
 }
 
 function executeE2ePsqlQuery(query, queryOptions = {}, processOptions = {}) {
-  return executeE2ePsql(
-    buildPsqlQueryArguments(query, queryOptions),
-    processOptions,
-  );
+  return executeE2ePsql(buildPsqlQueryArguments(query, queryOptions), {
+    ...processOptions,
+    input: query,
+  });
 }
 
 /**

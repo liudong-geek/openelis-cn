@@ -574,8 +574,19 @@ export const ReportNonConformingEvent = ({
                     }
                     onChange={(event) => {
                       const v = event.target.value;
-                      setDateText(v);
                       const d = parseDateForLocale(v, dateLocale);
+                      // Carbon applies value through Flatpickr.setDate. Keep a
+                      // partial keyboard draft in the input until it is complete.
+                      if (
+                        v === "" ||
+                        (d &&
+                          v ===
+                            formatDateForLocale(
+                              new Date(d.year, d.month - 1, d.day),
+                              dateLocale,
+                            ))
+                      )
+                        setDateText(v);
                       change(
                         "dateOfEvent",
                         d

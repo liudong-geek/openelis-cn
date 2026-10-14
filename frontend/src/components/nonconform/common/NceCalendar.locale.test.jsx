@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event";
 import React from "react";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { screen, waitFor } from "@testing-library/dom";
@@ -212,3 +213,86 @@ test.each([
     await selectAndSubmit(calendar, input, selectedText, en, onSaved);
   },
 );
+
+const fillOtherRequiredFieldsAndSubmit = (messages) => {
+  fireEvent.change(document.querySelector("#reporting-unit"), {
+    target: { value: "3" },
+  });
+  fireEvent.change(document.querySelector("#nce-category"), {
+    target: { value: "3" },
+  });
+  fireEvent.change(document.querySelector("#nce-description"), {
+    target: { value: "Original date input regression" },
+  });
+  fireEvent.click(document.querySelector("#nce-severity-MINOR"));
+  fireEvent.click(
+    screen.getByRole("button", { name: messages["nce.button.submit"] }),
+  );
+};
+
+test.each([
+  ["zh-CN", "zh-CN", zh, "2024/07/10"],
+  ["fr-FR", "fr-FR", en, "10/07/2024"],
+  ["en-US", "en-US", en, "07/10/2024"],
+])(
+  "real keyboard input keeps every original date prefix for %s and submits the same ISO day",
+  async (uiLocale, dateLocale, messages, text) => {
+    const { input, onSaved } = await renderForm(uiLocale, dateLocale, messages);
+    const user = userEvent.setup();
+    await user.clear(input);
+    expect(input).toHaveValue("");
+    for (let index = 0; index < text.length; index += 1) {
+      await user.type(input, text[index], { skipClick: true });
+      expect(input).toHaveValue(text.slice(0, index + 1));
+    }
+    fireEvent.blur(input);
+    expect(input).toHaveValue(text);
+    expect(
+      input._flatpickr.selectedDates.map((date) => [
+        date.getFullYear(),
+        date.getMonth() + 1,
+        date.getDate(),
+      ]),
+    ).toEqual([[2024, 7, 10]]);
+    fillOtherRequiredFieldsAndSubmit(messages);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+    const posts = fetcher.mock.calls.filter(
+      ([, options]) => options.method === "POST",
+    );
+    expect(posts).toHaveLength(1);
+    expect(JSON.parse(posts[0][1].body)).toMatchObject({
+      dateOfEvent: "2024-07-10",
+      currentUserId: "1",
+    });
+  },
+);
+
+test.each(["2024/07/", "2024/02/31", "2024/13/10"])(
+  "partial or invalid typed date %s cannot normalize into a saved date or reuse the initial date",
+  async (text) => {
+    const { input, onSaved } = await renderForm("zh-CN", "zh-CN", zh);
+    const user = userEvent.setup();
+    await user.clear(input);
+    await user.type(input, text, { skipClick: true });
+    fireEvent.blur(input);
+    fillOtherRequiredFieldsAndSubmit(zh);
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(
+      fetcher.mock.calls.filter(([, options]) => options.method === "POST"),
+    ).toHaveLength(0);
+  },
+);
+
+test("clearing the current real calendar date prevents an implicit previous-date save", async () => {
+  const { input, onSaved } = await renderForm("zh-CN", "zh-CN", zh);
+  const user = userEvent.setup();
+  await user.clear(input);
+  fireEvent.blur(input);
+  expect(input).toHaveValue("");
+  expect(input._flatpickr.selectedDates).toHaveLength(0);
+  fillOtherRequiredFieldsAndSubmit(zh);
+  expect(onSaved).not.toHaveBeenCalled();
+  expect(
+    fetcher.mock.calls.filter(([, options]) => options.method === "POST"),
+  ).toHaveLength(0);
+});
