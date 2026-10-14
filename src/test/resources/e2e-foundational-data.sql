@@ -248,3 +248,153 @@ BEGIN
   RAISE NOTICE '  - Organizations: % (expected: 2)', org_count;
   RAISE NOTICE '  - Synthetic CAMES QA departments: % (expected: 1)', department_count;
 END $$;
+
+-- Synthetic E2E fixture only: explicit legacy ALPHA result definition.
+-- Histopathology changeSet16 creates this exact test without a result definition.
+-- Keep its existing ALPHA display type; do not alter clinical guards or components.
+DO $pathology_alpha_fixture$
+DECLARE
+  primary_id VARCHAR;
+  primary_count INTEGER;
+  inserted_definitions INTEGER;
+BEGIN
+  IF (SELECT COUNT(*) FROM clinlims.test t JOIN clinlims.test_section s
+      ON s.id = t.test_section_id
+      WHERE t.id = 321 AND t.name = 'Histopathology examination'
+        AND t.description = 'Histopathology examination'
+        AND t.guid = 'fe92e08b-43ad-444e-9256-4ababc287560'
+        AND t.is_active = 'Y' AND s.name = 'Pathology') <> 1 THEN
+    RAISE EXCEPTION 'Pathology QA result definition requires exact seeded test 321';
+  END IF;
+
+  SELECT COUNT(*), MIN(id) INTO primary_count, primary_id
+  FROM clinlims.test_result_component
+  WHERE test_id = 321 AND is_active = 'Y';
+  IF primary_count <> 1 OR NOT EXISTS (
+      SELECT 1 FROM clinlims.test_result_component
+      WHERE id = primary_id AND test_id = 321 AND is_primary = true
+        AND code = 'PRIMARY' AND is_active = 'Y' AND result_type IS NULL) THEN
+    RAISE EXCEPTION 'Pathology QA result definition requires the unchanged single legacy primary component';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM clinlims.test_result WHERE test_id = 321 AND id <> 9000321)
+    OR EXISTS (SELECT 1 FROM clinlims.test_result WHERE id = 9000321
+      AND (test_id IS DISTINCT FROM 321 OR tst_rslt_type IS DISTINCT FROM 'A'
+        OR is_active IS DISTINCT FROM true OR component_id IS DISTINCT FROM primary_id
+        OR sort_order IS DISTINCT FROM 0 OR value IS NOT NULL)) THEN
+    RAISE EXCEPTION 'Pathology QA result definition identity conflict; refusing replacement';
+  END IF;
+
+  INSERT INTO clinlims.test_result
+    (id, test_id, tst_rslt_type, is_active, component_id, sort_order, lastupdated)
+  SELECT 9000321, 321, 'A', true, primary_id, 0, CURRENT_TIMESTAMP
+  WHERE NOT EXISTS (SELECT 1 FROM clinlims.test_result WHERE id = 9000321);
+  GET DIAGNOSTICS inserted_definitions = ROW_COUNT;
+
+  IF (SELECT COUNT(*) FROM clinlims.test_result WHERE test_id = 321
+      AND id = 9000321 AND tst_rslt_type = 'A' AND is_active = true
+      AND component_id = primary_id AND sort_order = 0 AND value IS NULL) <> 1 THEN
+    RAISE EXCEPTION 'Pathology QA result definition must retain one exact ALPHA option';
+  END IF;
+  RAISE NOTICE 'Pathology synthetic preparation: definitionsInserted=%; test=321, definition=9000321',
+    inserted_definitions;
+END;
+$pathology_alpha_fixture$;
+
+-- CHG-117: explicitly synthetic E2E Cytology report, not a COVID test.
+-- Same foundation serves both isolated acceptance profiles; production never loads it.
+-- Original COVIDPCR(Fluid)302/Molecular136 and all pre-existing objects stay unchanged.
+DO $e2e_cytology_report$
+DECLARE
+  inserted_count INTEGER := 0;
+  row_count INTEGER;
+  expected_localization JSONB := $json${"id":9000165,"description":"test name"}$json$::jsonb;
+  expected_test JSONB := $json${"id":9000165,"guid":"ccec4c2b-9ece-5e64-806c-b729b01dd139","name":"e2e.cytology.report","loinc":null,"domain":"CLINICAL","uom_id":null,"label_id":null,"is_active":"Y","label_qty":null,"method_id":null,"orderable":true,"time_wait":null,"active_end":null,"local_code":"E2ECYTO","sort_order":0,"description":"E2E Synthetic Cytology Report","in_lab_only":false,"time_ta_max":null,"active_begin":null,"scriptlet_id":null,"time_holding":null,"is_reportable":"Y","notify_results":false,"test_format_id":null,"test_section_id":165,"test_trailer_id":null,"time_ta_average":null,"time_ta_warning":null,"sticker_req_flag":null,"name_localization_id":9000165,"reporting_description":null,"default_test_result_id":null,"normalized_description":"e2esyntheticcytologyreport","antimicrobial_resistance":false,"reporting_name_localization_id":9000165}$json$::jsonb;
+  expected_sampletype_test JSONB := $json${"id":9000165,"test_id":9000165,"is_panel":false,"display_order":0,"sample_type_id":32}$json$::jsonb;
+  expected_test_result_component JSONB := $json${"id":"f6d33d95-f34d-5372-83a3-5ea37d7d5238","code":"PRIMARY","label":"E2E Synthetic Cytology Report","uom_id":null,"test_id":9000165,"is_active":"Y","is_primary":true,"result_type":"A","display_order":0,"default_result":null,"show_on_report":true,"significant_digits":0,"allow_multiple_readings":false}$json$::jsonb;
+  expected_test_result JSONB := $json${"id":9000165,"flags":null,"value":null,"test_id":9000165,"is_active":true,"is_normal":null,"cont_level":null,"sort_order":0,"quant_limit":null,"component_id":"f6d33d95-f34d-5372-83a3-5ea37d7d5238","result_group":null,"scriptlet_id":null,"tst_rslt_type":"A","is_quantifiable":false,"significant_digits":0}$json$::jsonb;
+  expected_labels JSONB := $json$[{"id":90001651,"localization_id":9000165,"locale":"en","value":"E2E Synthetic Cytology Report"},{"id":90001652,"localization_id":9000165,"locale":"zh","value":"E2E 合成细胞学报告"},{"id":90001653,"localization_id":9000165,"locale":"zh_CN","value":"E2E 合成细胞学报告"}]$json$::jsonb;
+  label_row JSONB;
+BEGIN
+  IF (SELECT count(*) FROM clinlims.program p JOIN clinlims.test_section ts ON ts.id=p.test_section_id
+      WHERE p.id=5 AND p.name='Cytology' AND p.code='CYTO' AND ts.id=165
+        AND ts.name='Cytology' AND ts.domain='CLINICAL' AND ts.is_active='Y') <> 1
+     OR (SELECT count(*) FROM clinlims.type_of_sample WHERE id=32 AND description='Fluid'
+        AND domain='CLINICAL' AND is_active=true) <> 1 THEN
+    RAISE EXCEPTION 'CHG117 requires unchanged program5/Cytology165/Fluid32';
+  END IF;
+  IF EXISTS (SELECT 1 FROM clinlims.localization r WHERE r.id=9000165 AND to_jsonb(r) - 'lastupdated' IS DISTINCT FROM expected_localization) THEN
+    RAISE EXCEPTION 'CHG117 full localization identity conflict; refusing update';
+  END IF;
+  IF EXISTS (SELECT 1 FROM clinlims.test r WHERE r.id=9000165 AND to_jsonb(r) - 'lastupdated' IS DISTINCT FROM expected_test) THEN
+    RAISE EXCEPTION 'CHG117 full test identity conflict; refusing update';
+  END IF;
+  IF EXISTS (SELECT 1 FROM clinlims.sampletype_test r WHERE r.id=9000165 AND to_jsonb(r) IS DISTINCT FROM expected_sampletype_test) THEN
+    RAISE EXCEPTION 'CHG117 full sampletype_test identity conflict; refusing update';
+  END IF;
+  IF EXISTS (SELECT 1 FROM clinlims.test_result_component r WHERE r.id='f6d33d95-f34d-5372-83a3-5ea37d7d5238' AND to_jsonb(r) - 'lastupdated' - 'last_updated' IS DISTINCT FROM expected_test_result_component) THEN
+    RAISE EXCEPTION 'CHG117 full test_result_component identity conflict; refusing update';
+  END IF;
+  IF EXISTS (SELECT 1 FROM clinlims.test_result r WHERE r.id=9000165 AND to_jsonb(r) - 'lastupdated' IS DISTINCT FROM expected_test_result) THEN
+    RAISE EXCEPTION 'CHG117 full test_result identity conflict; refusing update';
+  END IF;
+  IF EXISTS (SELECT 1 FROM clinlims.test WHERE id<>9000165 AND
+      (guid='ccec4c2b-9ece-5e64-806c-b729b01dd139' OR name='e2e.cytology.report' OR description='E2E Synthetic Cytology Report' OR local_code='E2ECYTO'))
+     OR EXISTS (SELECT 1 FROM clinlims.sampletype_test WHERE test_id=9000165 AND id<>9000165)
+     OR EXISTS (SELECT 1 FROM clinlims.test_result_component WHERE test_id=9000165 AND id<>'f6d33d95-f34d-5372-83a3-5ea37d7d5238')
+     OR EXISTS (SELECT 1 FROM clinlims.test_result WHERE test_id=9000165 AND id<>9000165)
+     OR EXISTS (SELECT 1 FROM clinlims.test WHERE id<>9000165 AND
+          (name_localization_id=9000165 OR reporting_name_localization_id=9000165)) THEN
+    RAISE EXCEPTION 'CHG117 reserved identity or relationship conflict; refusing replacement';
+  END IF;
+  IF EXISTS (SELECT 1 FROM clinlims.localization_value r
+      WHERE (r.id IN (90001651,90001652,90001653) OR r.localization_id=9000165) AND
+        NOT EXISTS (SELECT 1 FROM jsonb_array_elements(expected_labels) e
+          WHERE to_jsonb(r)-'last_updated'=e)) THEN
+    RAISE EXCEPTION 'CHG117 full localized E2E label conflict; refusing update';
+  END IF;
+  INSERT INTO clinlims.localization SELECT (jsonb_populate_record(NULL::clinlims.localization,
+      expected_localization || jsonb_build_object('lastupdated',CURRENT_TIMESTAMP))).*
+    WHERE NOT EXISTS (SELECT 1 FROM clinlims.localization WHERE id=9000165);
+  GET DIAGNOSTICS row_count = ROW_COUNT; inserted_count := inserted_count + row_count;
+  FOR label_row IN SELECT value FROM jsonb_array_elements(expected_labels) LOOP
+    INSERT INTO clinlims.localization_value SELECT (jsonb_populate_record(NULL::clinlims.localization_value,
+        label_row || jsonb_build_object('last_updated',CURRENT_TIMESTAMP))).*
+      WHERE NOT EXISTS (SELECT 1 FROM clinlims.localization_value WHERE id=(label_row->>'id')::numeric);
+    GET DIAGNOSTICS row_count = ROW_COUNT; inserted_count := inserted_count + row_count;
+  END LOOP;
+  INSERT INTO clinlims.test SELECT (jsonb_populate_record(NULL::clinlims.test,expected_test || jsonb_build_object('lastupdated',CURRENT_TIMESTAMP))).*
+    WHERE NOT EXISTS (SELECT 1 FROM clinlims.test WHERE id=9000165);
+  GET DIAGNOSTICS row_count = ROW_COUNT; inserted_count := inserted_count + row_count;
+  INSERT INTO clinlims.sampletype_test SELECT (jsonb_populate_record(NULL::clinlims.sampletype_test,expected_sampletype_test)).*
+    WHERE NOT EXISTS (SELECT 1 FROM clinlims.sampletype_test WHERE id=9000165);
+  GET DIAGNOSTICS row_count = ROW_COUNT; inserted_count := inserted_count + row_count;
+  INSERT INTO clinlims.test_result_component SELECT (jsonb_populate_record(NULL::clinlims.test_result_component,expected_test_result_component || jsonb_build_object('lastupdated',CURRENT_TIMESTAMP,'last_updated',CURRENT_TIMESTAMP))).*
+    WHERE NOT EXISTS (SELECT 1 FROM clinlims.test_result_component WHERE id='f6d33d95-f34d-5372-83a3-5ea37d7d5238');
+  GET DIAGNOSTICS row_count = ROW_COUNT; inserted_count := inserted_count + row_count;
+  INSERT INTO clinlims.test_result SELECT (jsonb_populate_record(NULL::clinlims.test_result,expected_test_result || jsonb_build_object('lastupdated',CURRENT_TIMESTAMP))).*
+    WHERE NOT EXISTS (SELECT 1 FROM clinlims.test_result WHERE id=9000165);
+  GET DIAGNOSTICS row_count = ROW_COUNT; inserted_count := inserted_count + row_count;
+  IF (SELECT count(*) FROM clinlims.localization r WHERE r.id=9000165 AND to_jsonb(r) - 'lastupdated'=expected_localization) <> 1 THEN
+    RAISE EXCEPTION 'CHG117 exact localization readback failed';
+  END IF;
+  IF (SELECT count(*) FROM clinlims.test r WHERE r.id=9000165 AND to_jsonb(r) - 'lastupdated'=expected_test) <> 1 THEN
+    RAISE EXCEPTION 'CHG117 exact test readback failed';
+  END IF;
+  IF (SELECT count(*) FROM clinlims.sampletype_test r WHERE r.id=9000165 AND to_jsonb(r)=expected_sampletype_test) <> 1 THEN
+    RAISE EXCEPTION 'CHG117 exact sampletype_test readback failed';
+  END IF;
+  IF (SELECT count(*) FROM clinlims.test_result_component r WHERE r.id='f6d33d95-f34d-5372-83a3-5ea37d7d5238' AND to_jsonb(r) - 'lastupdated' - 'last_updated'=expected_test_result_component) <> 1 THEN
+    RAISE EXCEPTION 'CHG117 exact test_result_component readback failed';
+  END IF;
+  IF (SELECT count(*) FROM clinlims.test_result r WHERE r.id=9000165 AND to_jsonb(r) - 'lastupdated'=expected_test_result) <> 1 THEN
+    RAISE EXCEPTION 'CHG117 exact test_result readback failed';
+  END IF;
+  IF (SELECT count(*) FROM clinlims.localization_value r
+      WHERE r.localization_id=9000165 AND EXISTS
+        (SELECT 1 FROM jsonb_array_elements(expected_labels) e WHERE to_jsonb(r)-'last_updated'=e)) <> 3 THEN
+    RAISE EXCEPTION 'CHG117 exact E2E localized labels readback failed';
+  END IF;
+  RAISE NOTICE 'CHG117 synthetic Cytology report rowsInserted=%; test9000165/Fluid32/program5/section165', inserted_count;
+END;
+$e2e_cytology_report$;
