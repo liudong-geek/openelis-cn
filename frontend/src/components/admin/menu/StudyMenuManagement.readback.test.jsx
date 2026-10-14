@@ -83,7 +83,7 @@ test("retains every concurrently loaded real menu ID in reverse response order",
   await act(async () =>
     fireEvent.click(screen.getByRole("button", { name: "提交" })),
   );
-  expect(mocks.post.mock.calls[0][0]).toBe("/rest/menu/");
+  expect(mocks.post.mock.calls[0][0]).toBe("/rest/menu");
   expect(saved).toHaveLength(12);
   expect(saved).toEqual(expect.arrayContaining(loaded));
   expect(

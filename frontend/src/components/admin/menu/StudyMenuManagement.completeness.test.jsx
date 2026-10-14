@@ -133,7 +133,7 @@ test("natural root ON and OFF submit the same twelve records and original action
     fireEvent.click(screen.getByRole("button", { name: "提交" })),
   );
   const on = JSON.parse(mocks.post.mock.calls[0][1]);
-  expect(mocks.post.mock.calls[0][0]).toBe("/rest/menu/");
+  expect(mocks.post.mock.calls[0][0]).toBe("/rest/menu");
   expect(on).toHaveLength(12);
   expect(
     on.map((value) => ({

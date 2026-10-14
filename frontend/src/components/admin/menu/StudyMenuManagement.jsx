@@ -159,7 +159,7 @@ function StudyMenuManagement({ embedded = false, onEditorStateChange } = {}) {
       return;
     setIsSubmitting(true);
     postToOpenElisServerFullResponse(
-      "/rest/menu/",
+      "/rest/menu",
       JSON.stringify(menuItem.childMenus),
       (response) => displayStatus(response, readOwner),
     );
