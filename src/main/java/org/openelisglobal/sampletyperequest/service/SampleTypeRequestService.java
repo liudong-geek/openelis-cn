@@ -2,6 +2,7 @@ package org.openelisglobal.sampletyperequest.service;
 
 import java.util.List;
 import java.util.Map;
+import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.service.BaseObjectService;
 import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
@@ -13,12 +14,22 @@ import org.springframework.validation.BindingResult;
 public interface SampleTypeRequestService extends BaseObjectService<SampleTypeRequest, Integer> {
 
     /**
-     * Create every requested tube in the caller's first-entry transaction. Validates
-     * the entire batch before inserting any tube; never fulfills physical specimens.
-     * This is not an idempotent edit/replay API.
+     * Create every requested tube in the caller's first-entry transaction.
+     * Validates the entire batch before inserting any tube; never fulfills physical
+     * specimens. This is not an idempotent edit/replay API.
      */
     List<SampleTypeRequestDTO> createRequestsForEntry(Sample sample, List<SampleTypeRequestDTO> requestedSpecimens,
             String actor, BindingResult errors) throws BindException;
+
+    record LegacyEntryTube(SampleItem item, List<Analysis> analyses) {
+    }
+
+    /**
+     * Register only the actual tubes/analyses of the caller's new clinical order
+     * transaction.
+     */
+    List<SampleTypeRequestDTO> registerLegacyEntryTubes(Sample sample, List<LegacyEntryTube> tubes, String actor,
+            BindingResult errors) throws BindException;
 
     /**
      * Get all sample type requests for a given sample.

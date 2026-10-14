@@ -14,6 +14,7 @@ import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.service.AuditableBaseObjectServiceImpl;
 import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.StatusService.SampleStatus;
+import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.panel.service.PanelService;
 import org.openelisglobal.panelitem.service.PanelItemService;
 import org.openelisglobal.sample.exception.SampleCollectionValidationException;
@@ -74,6 +75,111 @@ public class SampleTypeRequestServiceImpl extends AuditableBaseObjectServiceImpl
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
+    public List<SampleTypeRequestDTO> registerLegacyEntryTubes(Sample sample, List<LegacyEntryTube> tubes, String actor,
+            BindingResult errors) throws BindException {
+        String clinicalDomain = ConfigurationProperties.getInstance().getPropertyValue("domain.human");
+        if (sample == null || !entryId(sample.getId()) || !entryId(actor) || tubes == null || tubes.isEmpty()
+                || clinicalDomain == null || clinicalDomain.isBlank()
+                || !java.util.Objects.equals(sample.getDomain(), clinicalDomain)
+                || !sampleTypeRequestDAO.getRequestsBySampleId(sample.getId()).isEmpty()) {
+            throw legacyEntryError(errors);
+        }
+        Set<String> permitted = new HashSet<>();
+        var allowed = userService.getAllDisplayUserTestsByLabUnit(actor, Constants.ROLE_RECEPTION);
+        if (allowed != null)
+            allowed.stream().filter(java.util.Objects::nonNull).forEach(t -> permitted.add(t.getId()));
+        Set<String> itemIds = new HashSet<>();
+        Set<String> analysisIds = new HashSet<>();
+        List<SampleTypeRequest> prepared = new ArrayList<>();
+        for (LegacyEntryTube tube : tubes) {
+            SampleItem item = tube == null ? null : tube.item();
+            if (item == null || !entryId(item.getId()) || !itemIds.add(item.getId()) || item.getSample() == null
+                    || !sample.getId().equals(item.getSample().getId()) || item.getParentSampleItem() != null
+                    || item.isVoided() || item.isRejected() || !actor.equals(item.getSysUserId())
+                    || item.getTypeOfSample() == null || !entryId(item.getTypeOfSample().getId())
+                    || tube.analyses() == null || tube.analyses().isEmpty()) {
+                throw legacyEntryError(errors);
+            }
+            var type = typeOfSampleService.get(item.getTypeOfSample().getId());
+            if (type == null || !type.isActive() || !item.getTypeOfSample().getId().equals(type.getId())
+                    || item.getQuantity() != null && (!Double.isFinite(item.getQuantity()) || item.getQuantity() <= 0)
+                    || item.getUnitOfMeasure() != null && (!entryId(item.getUnitOfMeasure().getId())
+                            || !"Y".equals(item.getUnitOfMeasure().getIsActive()))) {
+                throw legacyEntryError(errors);
+            }
+            Set<String> eligible = currentEntryTests(type.getId());
+            Set<String> planned = new LinkedHashSet<>();
+            Set<String> panels = new LinkedHashSet<>();
+            for (var analysis : tube.analyses()) {
+                if (analysis == null || !entryId(analysis.getId()) || !analysisIds.add(analysis.getId())
+                        || analysis.getSampleItem() == null || !item.getId().equals(analysis.getSampleItem().getId())
+                        || analysis.getSampleItem().getSample() == null
+                        || !sample.getId().equals(analysis.getSampleItem().getSample().getId())
+                        || analysis.getTest() == null || !entryId(analysis.getTest().getId())
+                        || !planned.add(analysis.getTest().getId()) || !eligible.contains(analysis.getTest().getId())
+                        || !permitted.contains(analysis.getTest().getId())) {
+                    throw legacyEntryError(errors);
+                }
+                if (analysis.getPanel() != null) {
+                    if (!entryId(analysis.getPanel().getId()))
+                        throw legacyEntryError(errors);
+                    panels.add(analysis.getPanel().getId());
+                }
+            }
+            boolean collected = item.getCollectionDate() != null;
+            if (collected && (item.getCollectionDate().getTime() > System.currentTimeMillis()
+                    || !statusService.matches(item.getStatusId(), SampleStatus.Entered))) {
+                throw legacyEntryError(errors);
+            }
+            var entity = new SampleTypeRequest();
+            entity.setSample(sample);
+            entity.setTypeOfSample(type);
+            entity.setSortOrder(prepared.size());
+            entity.setRequestedQuantity(item.getQuantity());
+            entity.setUnitOfMeasure(item.getUnitOfMeasure());
+            entity.setRequestedTests(String.join(",", planned));
+            entity.setRequestedPanels(String.join(",", panels));
+            entity.setStatus(collected ? SampleTypeRequest.Status.COLLECTED : SampleTypeRequest.Status.REQUESTED);
+            entity.setSampleItem(collected ? item : null);
+            entity.setCreatedDate(new Timestamp(System.currentTimeMillis()));
+            entity.setSysUserId(actor);
+            prepared.add(entity);
+        }
+        Set<Integer> ids = new HashSet<>();
+        List<SampleTypeRequestDTO> saved = new ArrayList<>();
+        for (var entity : prepared) {
+            Integer id = insert(entity);
+            if (id == null || id <= 0 || !ids.add(id))
+                throw new IllegalStateException("标本申请保存未获得完整结果，请勿重复提交。");
+            entity.setId(id);
+            auditTrailService.saveNewHistory(entity, actor, sampleTypeRequestDAO.getTableName());
+            saved.add(new SampleTypeRequestDTO(entity));
+        }
+        return saved;
+    }
+
+    private static BindException legacyEntryError(BindingResult errors) {
+        errors.reject("order.entry.specimens.invalid", "标本、采集事实或已保存检验项目不符合当前登记权限，请重新确认申请。");
+        return new BindException(errors);
+    }
+
+    private Set<String> currentEntryTests(String typeId) {
+        Set<String> eligible = new HashSet<>();
+        var links = typeOfSampleTestService.getTypeOfSampleTestsForSampleType(typeId);
+        if (links != null) {
+            for (var link : links) {
+                if (link == null || !typeId.equals(link.getTypeOfSampleId()))
+                    continue;
+                var test = entryId(link.getTestId()) ? testService.get(link.getTestId()) : null;
+                if (test != null && link.getTestId().equals(test.getId()) && test.isActive() && test.getOrderable())
+                    eligible.add(test.getId());
+            }
+        }
+        return eligible;
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY, rollbackFor = Exception.class)
     public List<SampleTypeRequestDTO> createRequestsForEntry(Sample sample,
             List<SampleTypeRequestDTO> requestedSpecimens, String actor, BindingResult errors) throws BindException {
         int previousErrors = errors.getErrorCount();
@@ -126,19 +232,7 @@ public class SampleTypeRequestServiceImpl extends AuditableBaseObjectServiceImpl
             Set<String> requestedPanels = entryIds(dto.getRequestedPanels(), errors, field + ".requestedPanels", false);
             // Resolve current junction rows and current tests; do not trust display names
             // or the long-lived display-list cache as the master-data authority.
-            Set<String> eligibleTests = new HashSet<>();
-            var links = typeOfSampleTestService.getTypeOfSampleTestsForSampleType(type.getId());
-            if (links != null) {
-                for (var link : links) {
-                    if (link == null || !type.getId().equals(link.getTypeOfSampleId())) {
-                        continue;
-                    }
-                    var test = entryId(link.getTestId()) ? testService.get(link.getTestId()) : null;
-                    if (test != null && link.getTestId().equals(test.getId()) && test.isActive() && test.getOrderable()) {
-                        eligibleTests.add(test.getId());
-                    }
-                }
-            }
+            Set<String> eligibleTests = currentEntryTests(type.getId());
             if (!eligibleTests.containsAll(requestedTests) || !authorizedTests.containsAll(requestedTests)) {
                 entryError(errors, field + ".requestedTests", "检验项目已失效、不适用此标本，或不在当前用户的登记权限内。");
             }
@@ -322,18 +416,18 @@ public class SampleTypeRequestServiceImpl extends AuditableBaseObjectServiceImpl
         return request;
     }
 
-    /** Identity checks apply to new links AND read-only retries of existing links. */
+    /**
+     * Identity checks apply to new links AND read-only retries of existing links.
+     */
     private String fulfillmentIdentityConflict(SampleTypeRequest request, Integer requestId, SampleItem item,
             String itemId) {
-        if (requestId == null || requestId <= 0 || !requestId.equals(request.getId())
-                || !entryId(itemId) || !itemId.equals(item.getId())) {
+        if (requestId == null || requestId <= 0 || !requestId.equals(request.getId()) || !entryId(itemId)
+                || !itemId.equals(item.getId())) {
             return "requestChanged";
         }
-        if (request.getSample() == null || item.getSample() == null
-                || !entryId(request.getSample().getId())
-                || !request.getSample().getId().equals(item.getSample().getId())
-                || request.getTypeOfSample() == null || item.getTypeOfSample() == null
-                || !entryId(request.getTypeOfSample().getId())
+        if (request.getSample() == null || item.getSample() == null || !entryId(request.getSample().getId())
+                || !request.getSample().getId().equals(item.getSample().getId()) || request.getTypeOfSample() == null
+                || item.getTypeOfSample() == null || !entryId(request.getTypeOfSample().getId())
                 || !request.getTypeOfSample().getId().equals(item.getTypeOfSample().getId())) {
             return "sampleMismatch";
         }
@@ -446,7 +540,8 @@ public class SampleTypeRequestServiceImpl extends AuditableBaseObjectServiceImpl
         }
         List<SampleTypeRequest> ordered = requests.stream()
                 .sorted(Comparator.comparing(SampleTypeRequest::getSortOrder, Comparator.nullsLast(Integer::compareTo))
-                        .thenComparing(SampleTypeRequest::getId)).toList();
+                        .thenComparing(SampleTypeRequest::getId))
+                .toList();
         // Visit the submitted list, not IdentityHashMap's unstable iteration order.
         for (SampleItem item : sampleItems) {
             if (!matches.containsKey(item)) {
@@ -458,7 +553,8 @@ public class SampleTypeRequestServiceImpl extends AuditableBaseObjectServiceImpl
                     .orElseThrow();
             int number = ordered.indexOf(request) + 1;
             if (occupied.contains(number)) {
-                long next = Math.max((long) ordered.size(), occupied.stream().mapToInt(Integer::intValue).max().orElse(0)) + 1;
+                long next = Math.max((long) ordered.size(),
+                        occupied.stream().mapToInt(Integer::intValue).max().orElse(0)) + 1;
                 if (next > Integer.MAX_VALUE) {
                     throw collectionError(409, "requestChanged");
                 }
@@ -514,15 +610,20 @@ public class SampleTypeRequestServiceImpl extends AuditableBaseObjectServiceImpl
                             || original.getTypeOfSample() == null
                             || !request.getTypeOfSample().getId().equals(original.getTypeOfSample().getId())
                             || (item.getId() != null && !item.getId().equals(original.getId()))
-                            || original.getCollectionDate().getTime() / 60000 != item.getCollectionDate().getTime() / 60000) {
+                            || original.getCollectionDate().getTime() / 60000 != item.getCollectionDate().getTime()
+                                    / 60000) {
                         throw collectionError(409, "requestChanged");
                     }
                     // Resolve a lost response by the original request identity, not a
                     // fresh physical row. Preserve every committed collection field.
-                    item.setId(original.getId()); item.setSortOrder(original.getSortOrder());
-                    item.setCollectionDate(original.getCollectionDate()); item.setCollector(original.getCollector());
-                    item.setReceivedDate(original.getReceivedDate()); item.setQuantity(original.getQuantity());
-                    item.setUnitOfMeasure(original.getUnitOfMeasure()); item.setCollectionConditions(original.getCollectionConditions());
+                    item.setId(original.getId());
+                    item.setSortOrder(original.getSortOrder());
+                    item.setCollectionDate(original.getCollectionDate());
+                    item.setCollector(original.getCollector());
+                    item.setReceivedDate(original.getReceivedDate());
+                    item.setQuantity(original.getQuantity());
+                    item.setUnitOfMeasure(original.getUnitOfMeasure());
+                    item.setCollectionConditions(original.getCollectionConditions());
                     matches.put(item, requestId);
                     continue;
                 }

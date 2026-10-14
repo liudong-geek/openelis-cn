@@ -16,8 +16,8 @@ import java.util.Map;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.InOrder;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.barcode.service.BarcodeInfoService;
 import org.openelisglobal.common.formfields.FormFields;
@@ -30,11 +30,11 @@ import org.openelisglobal.sample.dao.SpecimenReceiptDAO;
 import org.openelisglobal.sample.exception.EntrySubmissionException;
 import org.openelisglobal.sample.form.SamplePatientEntryForm;
 import org.openelisglobal.sample.valueholder.Sample;
+import org.openelisglobal.samplehuman.service.SampleHumanService;
+import org.openelisglobal.samplehuman.valueholder.SampleHuman;
 import org.openelisglobal.sampleitem.dao.SampleItemDAO;
 import org.openelisglobal.sampleitem.service.SampleItemService;
 import org.openelisglobal.sampleitem.valueholder.SampleItem;
-import org.openelisglobal.samplehuman.service.SampleHumanService;
-import org.openelisglobal.samplehuman.valueholder.SampleHuman;
 import org.openelisglobal.sampletyperequest.service.SampleTypeRequestService;
 import org.openelisglobal.spring.util.SpringContext;
 import org.openelisglobal.typeofsample.valueholder.TypeOfSample;
@@ -42,7 +42,9 @@ import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
-/** Ordinary whole-order saves must not rewrite facts owned by intake actions. */
+/**
+ * Ordinary whole-order saves must not rewrite facts owned by intake actions.
+ */
 public class OrdinaryOrderSpecimenWriteGuardTest {
     private SamplePatientEntryServiceImpl service;
     private SamplePatientUpdateData data;
@@ -125,8 +127,8 @@ public class OrdinaryOrderSpecimenWriteGuardTest {
         SampleItem incomingSigned = copyFacts(signed);
         SampleItem incomingCollected = copyFacts(collected);
         incomingCollected.setReceivedDate(time("2026-09-26 08:03:00"));
-        List<SampleAddService.SampleTestCollection> entries =
-                List.of(row("11", incomingSigned), row("12", incomingCollected));
+        List<SampleAddService.SampleTestCollection> entries = List.of(row("11", incomingSigned),
+                row("12", incomingCollected));
         when(items.get("11")).thenReturn(signed);
         when(items.get("12")).thenReturn(collected);
         when(data.getSampleItemsTests()).thenReturn(entries);
@@ -212,8 +214,7 @@ public class OrdinaryOrderSpecimenWriteGuardTest {
         incomingSigned.setCollectionDate(time("2026-09-26 08:00:00"));
         incomingSigned.setReceivedDate(time("2026-09-26 08:01:00"));
         SampleItem newTube = item(null, null);
-        List<SampleAddService.SampleTestCollection> entries =
-                List.of(row("11", incomingSigned), row(null, newTube));
+        List<SampleAddService.SampleTestCollection> entries = List.of(row("11", incomingSigned), row(null, newTube));
         when(items.get("11")).thenReturn(signed);
         when(data.getSampleItemsTests()).thenReturn(entries);
 
@@ -227,8 +228,7 @@ public class OrdinaryOrderSpecimenWriteGuardTest {
         SampleItem signed = item("11", time("2026-09-26 08:01:22"));
         SampleItem incomingSigned = copyFacts(signed);
         SampleItem newTube = item(null, null);
-        List<SampleAddService.SampleTestCollection> entries =
-                List.of(row("11", incomingSigned), row(null, newTube));
+        List<SampleAddService.SampleTestCollection> entries = List.of(row("11", incomingSigned), row(null, newTube));
         when(items.get("11")).thenReturn(signed);
         when(items.get("12")).thenReturn(newTube);
         when(items.insert(newTube)).thenAnswer(call -> {
@@ -240,7 +240,7 @@ public class OrdinaryOrderSpecimenWriteGuardTest {
         when(data.getSampleHuman()).thenReturn(new SampleHuman());
 
         java.util.Set<String> protectedIds = service.preflightExistingTubes(data);
-        ReflectionTestUtils.invokeMethod(service, "persistSampleData", data, protectedIds);
+        ReflectionTestUtils.invokeMethod(service, "persistSampleData", data, protectedIds, null, null);
 
         verify(items).insert(newTube);
         verify(itemDao, never()).update(signed);

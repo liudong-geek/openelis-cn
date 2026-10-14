@@ -13,17 +13,14 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.openelisglobal.common.action.IActionConstants;
+import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.formfields.FormFields;
 import org.openelisglobal.common.util.DefaultConfigurationProperties;
 import org.openelisglobal.common.validator.BaseErrors;
 import org.openelisglobal.labelpreset.dto.OrderLabelPersistRequest;
-import org.openelisglobal.login.valueholder.UserSessionData;
-import org.openelisglobal.login.valueholder.LoginUser;
 import org.openelisglobal.login.service.LoginUserService;
-import org.openelisglobal.systemuser.valueholder.SystemUser;
-import org.openelisglobal.systemuser.service.SystemUserService;
-import org.openelisglobal.userrole.service.UserRoleService;
-import org.openelisglobal.common.constants.Constants;
+import org.openelisglobal.login.valueholder.LoginUser;
+import org.openelisglobal.login.valueholder.UserSessionData;
 import org.openelisglobal.patient.action.IPatientUpdate.PatientUpdateStatus;
 import org.openelisglobal.patient.action.bean.PatientManagementInfo;
 import org.openelisglobal.sample.action.util.SamplePatientUpdateData;
@@ -33,6 +30,9 @@ import org.openelisglobal.sample.valueholder.Sample;
 import org.openelisglobal.sampletyperequest.dto.SampleTypeRequestDTO;
 import org.openelisglobal.sampletyperequest.service.SampleTypeRequestService;
 import org.openelisglobal.spring.util.SpringContext;
+import org.openelisglobal.systemuser.service.SystemUserService;
+import org.openelisglobal.systemuser.valueholder.SystemUser;
+import org.openelisglobal.userrole.service.UserRoleService;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.context.ApplicationEvent;
@@ -58,7 +58,8 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 /**
- * Actual entry service and annotated Spring proxy, with SIM memory resources only.
+ * Actual entry service and annotated Spring proxy, with SIM memory resources
+ * only.
  */
 public class SamplePatientEntryTransactionTest {
     private Object oldFactory;
@@ -80,6 +81,11 @@ public class SamplePatientEntryTransactionTest {
     private EntrySubmissionService submissionService;
     private org.openelisglobal.sample.dao.EntrySubmissionReceiptDAO submissionReceipts;
     private EntrySubmissionCommand submissionCommand;
+    private org.openelisglobal.sampletyperequest.service.SampleTypeRequestServiceImpl legacyRequests;
+    private org.openelisglobal.audittrail.dao.AuditTrailService legacyAudit;
+    private final List<org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest> legacyInserted = new ArrayList<>();
+    private org.openelisglobal.sampleitem.valueholder.SampleItem legacyItem;
+    private org.openelisglobal.typeofsample.service.TypeOfSampleTestService legacyTypeTests;
 
     @Before
     public void setUp() throws Exception {
@@ -123,10 +129,10 @@ public class SamplePatientEntryTransactionTest {
         doAnswer(call -> {
             manager.write("SIM-initialized");
             return null;
-        }).when(data)
-                .initSampleData(eq(""), eq("13/09/2026 00:00"), eq(false), same(form.getSampleOrderItems()));
+        }).when(data).initSampleData(eq(""), eq("13/09/2026 00:00"), eq(false), same(form.getSampleOrderItems()));
         events = mock(ApplicationEventPublisher.class);
-        // Any event instance is allowed here; the real persistData method constructs it.
+        // Any event instance is allowed here; the real persistData method constructs
+        // it.
         doAnswer(call -> {
             manager.write("SIM-order");
             return null;
@@ -135,8 +141,7 @@ public class SamplePatientEntryTransactionTest {
         doAnswer(call -> {
             manager.write("SIM-label");
             return List.of();
-        }).when(target)
-                .persistLabelRequests(data, labels, "7");
+        }).when(target).persistLabelRequests(data, labels, "7");
         ProxyFactory proxy = new ProxyFactory(target);
         proxy.setInterfaces(SamplePatientEntryService.class);
         proxy.addAdvice(new TransactionInterceptor(manager, new AnnotationTransactionAttributeSource()));
@@ -429,7 +434,8 @@ public class SamplePatientEntryTransactionTest {
         manager.failCommit = true;
         assertThrows(TransactionSystemException.class, this::save);
         assertEquals("SIM-PRIOR", request.getSession().getAttribute("lastAccessionNumber"));
-        // A real connection loss during commit is unknown, not proof of database rollback.
+        // A real connection loss during commit is unknown, not proof of database
+        // rollback.
         assertEquals(0, manager.commits);
     }
 
@@ -437,8 +443,9 @@ public class SamplePatientEntryTransactionTest {
     public void testSaveEntry_ExplicitSpecimensShareOrderAndLabelTransaction() throws Exception {
         prepareSpecimens();
         save();
-        assertEquals(List.of("SIM-initialized", "SIM-order-record", "SIM-order", "SIM-tube-1", "SIM-tube-2",
-                "SIM-label"), manager.committed);
+        assertEquals(
+                List.of("SIM-initialized", "SIM-order-record", "SIM-order", "SIM-tube-1", "SIM-tube-2", "SIM-label"),
+                manager.committed);
         assertEquals(1, manager.commits);
         assertEquals("301", form.getSampleOrderItems().getSampleId());
         assertEquals("701", form.getRequestedSpecimens().get(0).getId());
@@ -566,8 +573,8 @@ public class SamplePatientEntryTransactionTest {
         var result = submitEntry();
         assertEquals("301", result.receipt().path("sampleId").asText());
         assertEquals(1, manager.commits);
-        assertEquals(List.of("SIM-receipt-claim", "SIM-initialized", "SIM-order-record", "SIM-order",
-                "SIM-tube-1", "SIM-tube-2", "SIM-label", "SIM-receipt-complete"), manager.committed);
+        assertEquals(List.of("SIM-receipt-claim", "SIM-initialized", "SIM-order-record", "SIM-order", "SIM-tube-1",
+                "SIM-tube-2", "SIM-label", "SIM-receipt-complete"), manager.committed);
         assertEquals("SIM-ENTRY", request.getSession().getAttribute("lastAccessionNumber"));
     }
 
@@ -585,7 +592,8 @@ public class SamplePatientEntryTransactionTest {
         prepareSubmission();
         when(specimenRequests.getRequestsBySampleId("301")).thenReturn(List.of());
         assertThrows(org.openelisglobal.sample.exception.EntrySubmissionException.class, this::submitEntry);
-        verify(submissionReceipts, never()).complete(any(), any()); assertRolledBack();
+        verify(submissionReceipts, never()).complete(any(), any());
+        assertRolledBack();
     }
 
     @Test
@@ -593,7 +601,8 @@ public class SamplePatientEntryTransactionTest {
         prepareSubmission();
         doThrow(new IllegalStateException("SIM unique conflict")).when(submissionReceipts).claim(any());
         assertThrows(IllegalStateException.class, this::submitEntry);
-        verify(target, never()).createEntryUpdateData(anyString()); assertRolledBack();
+        verify(target, never()).createEntryUpdateData(anyString());
+        assertRolledBack();
     }
 
     @Test
@@ -601,15 +610,21 @@ public class SamplePatientEntryTransactionTest {
         prepareSubmission();
         doThrow(new IllegalStateException("SIM label failure")).when(target).persistLabelRequests(data, labels, "7");
         assertThrows(IllegalStateException.class, this::submitEntry);
-        verify(submissionReceipts, never()).complete(any(), any()); assertRolledBack();
+        verify(submissionReceipts, never()).complete(any(), any());
+        assertRolledBack();
     }
 
     @Test
     public void actorChangesAfterReceiptReturnAbortOuterCommit() throws Exception {
         prepareSubmission();
         assertThrows(AccessDeniedException.class, () -> new TransactionTemplate(manager).execute(status -> {
-            try { submitEntry(); } catch (Exception error) { throw new AssertionError(error); }
-            authenticate("SIM-other-operator"); return null;
+            try {
+                submitEntry();
+            } catch (Exception error) {
+                throw new AssertionError(error);
+            }
+            authenticate("SIM-other-operator");
+            return null;
         }));
         assertRolledBack();
     }
@@ -622,42 +637,61 @@ public class SamplePatientEntryTransactionTest {
         prepareSpecimens();
         form.getPatientProperties().setPatientPK("501");
         form.getPatientProperties().setPatientUpdateStatus(PatientUpdateStatus.NO_ACTION);
-        var patient = new org.openelisglobal.patient.valueholder.Patient(); patient.setId("501");
-        when(samples.get("301")).thenReturn(savedSample); when(samples.getPatient(savedSample)).thenReturn(patient);
+        var patient = new org.openelisglobal.patient.valueholder.Patient();
+        patient.setId("501");
+        when(samples.get("301")).thenReturn(savedSample);
+        when(samples.getPatient(savedSample)).thenReturn(patient);
         var rows = new ArrayList<org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest>();
         for (int index = 0; index < 2; index++) {
             var row = new org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest();
-            row.setId(701 + index); row.setSortOrder(index); row.setSample(savedSample);
-            var type = new org.openelisglobal.typeofsample.valueholder.TypeOfSample(); type.setId("31");
-            row.setTypeOfSample(type); row.setRequestedTests("41"); rows.add(row);
+            row.setId(701 + index);
+            row.setSortOrder(index);
+            row.setSample(savedSample);
+            var type = new org.openelisglobal.typeofsample.valueholder.TypeOfSample();
+            type.setId("31");
+            row.setTypeOfSample(type);
+            row.setRequestedTests("41");
+            rows.add(row);
         }
         when(specimenRequests.getRequestsBySampleId("301")).thenReturn(rows);
         when(specimenRequests.createRequestsForEntry(same(savedSample), anyList(), eq("7"), same(errors)))
                 .thenAnswer(call -> {
-                    manager.write("SIM-tube-1"); manager.write("SIM-tube-2");
+                    manager.write("SIM-tube-1");
+                    manager.write("SIM-tube-2");
                     List<SampleTypeRequestDTO> result = new ArrayList<>();
                     for (var row : rows) {
-                        var dto = new SampleTypeRequestDTO(); dto.setId(row.getId().toString());
-                        dto.setSampleId("301"); dto.setTypeOfSampleId("31"); dto.setSortOrder(row.getSortOrder());
-                        dto.setRequestedQuantity(1.0); dto.setRequestedTests("41"); dto.setStatus("REQUESTED");
+                        var dto = new SampleTypeRequestDTO();
+                        dto.setId(row.getId().toString());
+                        dto.setSampleId("301");
+                        dto.setTypeOfSampleId("31");
+                        dto.setSortOrder(row.getSortOrder());
+                        dto.setRequestedQuantity(1.0);
+                        dto.setRequestedTests("41");
+                        dto.setStatus("REQUESTED");
                         result.add(dto);
                     }
                     return result;
                 });
         var coordinator = new EntrySubmissionService();
         submissionReceipts = mock(org.openelisglobal.sample.dao.EntrySubmissionReceiptDAO.class);
-        doAnswer(call -> { manager.write("SIM-receipt-claim"); return null; }).when(submissionReceipts).claim(any());
+        doAnswer(call -> {
+            manager.write("SIM-receipt-claim");
+            return null;
+        }).when(submissionReceipts).claim(any());
         doAnswer(call -> {
             manager.write("SIM-receipt-complete");
-            ((org.openelisglobal.sample.valueholder.EntrySubmissionReceipt) call.getArgument(0)).complete(call.getArgument(1));
+            ((org.openelisglobal.sample.valueholder.EntrySubmissionReceipt) call.getArgument(0))
+                    .complete(call.getArgument(1));
             return null;
         }).when(submissionReceipts).complete(any(), any());
         ReflectionTestUtils.setField(coordinator, "receipts", submissionReceipts);
-        ReflectionTestUtils.setField(coordinator, "actors", ReflectionTestUtils.getField(target, "orderEntryActorGuard"));
+        ReflectionTestUtils.setField(coordinator, "actors",
+                ReflectionTestUtils.getField(target, "orderEntryActorGuard"));
         ReflectionTestUtils.setField(coordinator, "entries", service);
         ReflectionTestUtils.setField(coordinator, "samples", samples);
         ReflectionTestUtils.setField(coordinator, "specimenRequests", specimenRequests);
-        ReflectionTestUtils.setField(coordinator, "validator", mock(org.openelisglobal.sample.validator.SamplePatientEntryFormValidator.class));
+        ReflectionTestUtils.setField(coordinator, "validator",
+                mock(org.openelisglobal.sample.validator.SamplePatientEntryFormValidator.class));
         var labelDao = mock(org.openelisglobal.labelpreset.dao.OrderLabelRequestDAO.class);
         when(labelDao.listByParentSampleId("301")).thenReturn(List.of());
         ReflectionTestUtils.setField(coordinator, "labels", labelDao);
@@ -666,7 +700,8 @@ public class SamplePatientEntryTransactionTest {
         submissionService = (EntrySubmissionService) proxy.getProxy();
         String key = "f3cdcd87-a1ef-4e67-b297-b26af08a36fc";
         request.addHeader(EntrySubmissionCommand.HEADER, key);
-        submissionCommand = new EntrySubmissionCommand(key, EntrySubmissionCommand.fingerprint(new byte[] {1, 2}), form);
+        submissionCommand = new EntrySubmissionCommand(key, EntrySubmissionCommand.fingerprint(new byte[] { 1, 2 }),
+                form);
         request.setAttribute(EntrySubmissionCommand.ATTRIBUTE, submissionCommand);
     }
 
@@ -674,6 +709,244 @@ public class SamplePatientEntryTransactionTest {
         assertThrows(BindException.class, this::save);
         verify(target, never()).createEntryUpdateData("7");
         assertRolledBack();
+    }
+
+    @Test
+    public void legacyFirstXmlUsesActualSavedTubeAndAuditsItsCollectedRequest() throws Exception {
+        prepareLegacyXml();
+        save();
+        assertEquals(1, legacyInserted.size());
+        var inserted = legacyInserted.get(0);
+        assertSame(savedSample, inserted.getSample());
+        assertSame(legacyItem, inserted.getSampleItem());
+        assertEquals("41", inserted.getRequestedTests());
+        assertEquals("7", inserted.getSysUserId());
+        assertNull(inserted.getRequestedQuantity());
+        assertEquals(org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest.Status.COLLECTED,
+                inserted.getStatus());
+        assertEquals("801", form.getRequestedSpecimens().get(0).getSampleItemId());
+        verify(legacyAudit).saveNewHistory(same(inserted), eq("7"), eq("sample_type_request"));
+        verify(legacyRequests, never()).fulfillMatchingRequests(anyString(), anyList());
+        assertEquals(1, manager.commits);
+    }
+
+    @Test
+    public void legacyUncollectedTubeStaysRequestedWithoutWeakTypeFulfillment() throws Exception {
+        prepareLegacyXml();
+        legacyItem.setCollectionDate(null);
+        save();
+        assertEquals(1, legacyInserted.size());
+        assertEquals(org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest.Status.REQUESTED,
+                legacyInserted.get(0).getStatus());
+        assertNull(legacyInserted.get(0).getSampleItem());
+        assertNull(legacyItem.getCollectionDate());
+        assertNull(legacyItem.getReceivedDate());
+        assertNull(form.getRequestedSpecimens().get(0).getSampleItemId());
+        verify(legacyRequests, never()).fulfillMatchingRequests(anyString(), anyList());
+    }
+
+    @Test
+    public void legacyInvalidPersistedPlanRollsBackBeforeAnyRequestInsert() throws Exception {
+        prepareLegacyXml();
+        when(legacyTypeTests.getTypeOfSampleTestsForSampleType("31")).thenReturn(List.of());
+        var failure = assertThrows(org.openelisglobal.sample.exception.EntrySubmissionException.class, this::save);
+        assertEquals(400, failure.getStatus());
+        assertTrue(legacyInserted.isEmpty());
+        assertRolledBack();
+        verify(legacyAudit, never()).saveNewHistory(any(), anyString(), anyString());
+    }
+
+    @Test
+    public void legacyRequestAuditFailureRollsBackOrderAndTube() throws Exception {
+        prepareLegacyXml();
+        doThrow(new IllegalStateException("SIM request audit failure")).when(legacyAudit).saveNewHistory(any(),
+                anyString(), anyString());
+        assertThrows(IllegalStateException.class, this::save);
+        assertRolledBack();
+    }
+
+    @Test
+    public void legacyActorChangeAfterRequestCreationRollsBackEntry() throws Exception {
+        prepareLegacyXml();
+        doAnswer(call -> {
+            authenticate("SIM-other-operator");
+            return null;
+        }).when(legacyAudit).saveNewHistory(any(), anyString(), anyString());
+        assertThrows(AccessDeniedException.class, this::save);
+        assertRolledBack();
+    }
+
+    @Test
+    public void legacyDirectPersistDataUsesSameBoundActorAndSavedPlan() throws Exception {
+        prepareLegacyXml();
+        persistLegacyDirectly();
+        assertEquals(1, legacyInserted.size());
+        assertSame(legacyItem, legacyInserted.get(0).getSampleItem());
+        assertEquals("7", legacyInserted.get(0).getSysUserId());
+        verify(legacyAudit).saveNewHistory(same(legacyInserted.get(0)), eq("7"), eq("sample_type_request"));
+        verify(legacyRequests, never()).fulfillMatchingRequests(anyString(), anyList());
+        assertEquals(1, manager.commits);
+    }
+
+    @Test
+    public void legacyDirectPersistDataRejectsMismatchedServerActorBeforeWriting() throws Exception {
+        prepareLegacyXml();
+        when(data.getCurrentUserId()).thenReturn("8");
+        assertThrows(AccessDeniedException.class, this::persistLegacyDirectly);
+        assertTrue(legacyInserted.isEmpty());
+        verify(legacyRequests, never()).insert(any());
+        assertRolledBack();
+    }
+
+    @Test
+    public void legacyOrderEntryOnlyDoesNotRegisterPhysicalRequests() throws Exception {
+        prepareLegacyXml();
+        form.setOrderEntryOnly(true);
+        persistLegacyDirectly();
+        assertNoLegacyRegistration();
+    }
+
+    @Test
+    public void legacyCollectionOnlyDoesNotRegisterNewRequests() throws Exception {
+        prepareLegacyXml();
+        form.setCollectionOnly(true);
+        persistLegacyDirectly();
+        assertNoLegacyRegistration();
+    }
+
+    @Test
+    public void environmentalXmlDoesNotRegisterClinicalRequests() throws Exception {
+        prepareLegacyXml();
+        form.getSampleOrderItems().setEnvironmentalFields(java.util.Map.of("workflowType", "environmental"));
+        savedSample.setDomain("E");
+        persistLegacyDirectly();
+        assertNoLegacyRegistration();
+    }
+
+    @Test
+    public void existingXmlOrderDoesNotBackfillRequests() throws Exception {
+        prepareLegacyXml();
+        savedSample.setId("301");
+        var receipt = mock(org.openelisglobal.sample.dao.SpecimenReceiptDAO.class);
+        when(receipt.lockOrder("301")).thenReturn(savedSample);
+        ReflectionTestUtils.setField(target, "specimenReceiptDAO", receipt);
+        persistLegacyDirectly();
+        assertNoLegacyRegistration();
+    }
+
+    @Test
+    public void forgedClientEditIdentityCannotSkipPreInitializationActorBinding() throws Exception {
+        prepareLegacyXml();
+        form.getSampleOrderItems().setModified(true);
+        form.getSampleOrderItems().setSampleId("999");
+        SecurityContextHolder.clearContext();
+        assertThrows(AccessDeniedException.class, this::save);
+        verify(target, never()).createEntryUpdateData(anyString());
+        verify(data, never()).initSampleData(eq("<SIM-physical/>"), anyString(), anyBoolean(), any());
+        assertTrue(legacyInserted.isEmpty());
+        assertRolledBack();
+    }
+
+    private void persistLegacyDirectly() {
+        new TransactionTemplate(manager).execute(status -> {
+            target.persistData(data, patientUpdate, form.getPatientProperties(), form, request);
+            return null;
+        });
+    }
+
+    private void assertNoLegacyRegistration() {
+        assertTrue(legacyInserted.isEmpty());
+        assertNull(form.getRequestedSpecimens());
+        verify(legacyAudit, never()).saveNewHistory(any(), anyString(), anyString());
+        verify(legacyRequests).fulfillMatchingRequests(eq("301"), anyList());
+        assertEquals(1, manager.commits);
+    }
+
+    private void prepareLegacyXml() throws Exception {
+        prepareSpecimens();
+        form.setRequestedSpecimens(null);
+        form.setOrderEntryOnly(false);
+        form.setSampleXML("<SIM-physical/>");
+        savedSample.setDomain("H");
+        when(factory.getBean(DefaultConfigurationProperties.class).getPropertyValue("domain.human")).thenReturn("H");
+        when(data.getCurrentUserId()).thenReturn("7");
+        doAnswer(call -> {
+            manager.write("SIM-initialized");
+            return null;
+        }).when(data).initSampleData(eq("<SIM-physical/>"), eq("13/09/2026 00:00"), eq(false),
+                same(form.getSampleOrderItems()));
+        var type = mock(org.openelisglobal.typeofsample.valueholder.TypeOfSample.class);
+        when(type.getId()).thenReturn("31");
+        when(type.isActive()).thenReturn(true);
+        when(type.getLocalizedName()).thenReturn("SIM specimen");
+        var test = new org.openelisglobal.test.valueholder.Test();
+        test.setId("41");
+        test.setIsActive("Y");
+        test.setOrderable(true);
+        legacyItem = new org.openelisglobal.sampleitem.valueholder.SampleItem();
+        legacyItem.setSample(savedSample);
+        legacyItem.setTypeOfSample(type);
+        legacyItem.setStatusId("20");
+        legacyItem.setSysUserId("7");
+        legacyItem.setCollectionDate(new java.sql.Timestamp(System.currentTimeMillis() - 60000));
+        var analysis = new org.openelisglobal.analysis.valueholder.Analysis();
+        analysis.setId("901");
+        analysis.setSampleItem(legacyItem);
+        analysis.setTest(test);
+        var sampleAdder = new org.openelisglobal.common.services.SampleAddService("<SIM-unused/>", "7", savedSample,
+                "");
+        var collection = sampleAdder.new SampleTestCollection(legacyItem, List.of(test), "", List.of(),
+                java.util.Map.of(), java.util.Map.of(), null);
+        collection.item = legacyItem;
+        collection.tests = List.of(test);
+        collection.analysises = List.of(analysis);
+        when(data.getSampleItemsTests()).thenReturn(List.of(collection));
+        var items = mock(org.openelisglobal.sampleitem.service.SampleItemService.class);
+        doAnswer(call -> {
+            manager.write("SIM-physical-tube");
+            legacyItem.setId("801");
+            return "801";
+        }).when(items).insert(same(legacyItem));
+        when(items.get("801")).thenReturn(legacyItem);
+        ReflectionTestUtils.setField(target, "sampleItemService", items);
+        var analyses = mock(org.openelisglobal.analysis.service.AnalysisService.class);
+        when(analyses.getAnalysisBySampleItemAndTest("801", "41")).thenReturn(analysis);
+        ReflectionTestUtils.setField(target, "analysisService", analyses);
+        var tests = mock(org.openelisglobal.test.service.TestService.class);
+        when(tests.get("41")).thenReturn(test);
+        ReflectionTestUtils.setField(target, "testService", tests);
+        legacyRequests = spy(new org.openelisglobal.sampletyperequest.service.SampleTypeRequestServiceImpl());
+        var dao = mock(org.openelisglobal.sampletyperequest.dao.SampleTypeRequestDAO.class);
+        when(dao.getTableName()).thenReturn("sample_type_request");
+        ReflectionTestUtils.setField(legacyRequests, "sampleTypeRequestDAO", dao);
+        var types = mock(org.openelisglobal.typeofsample.service.TypeOfSampleService.class);
+        when(types.get("31")).thenReturn(type);
+        ReflectionTestUtils.setField(legacyRequests, "typeOfSampleService", types);
+        legacyTypeTests = mock(org.openelisglobal.typeofsample.service.TypeOfSampleTestService.class);
+        var link = new org.openelisglobal.typeofsample.valueholder.TypeOfSampleTest();
+        link.setTypeOfSampleId("31");
+        link.setTestId("41");
+        when(legacyTypeTests.getTypeOfSampleTestsForSampleType("31")).thenReturn(List.of(link));
+        ReflectionTestUtils.setField(legacyRequests, "typeOfSampleTestService", legacyTypeTests);
+        ReflectionTestUtils.setField(legacyRequests, "testService", tests);
+        var permitted = mock(org.openelisglobal.systemuser.service.UserService.class);
+        when(permitted.getAllDisplayUserTestsByLabUnit("7", Constants.ROLE_RECEPTION))
+                .thenReturn(List.of(new org.openelisglobal.common.util.IdValuePair("41", "SIM test")));
+        ReflectionTestUtils.setField(legacyRequests, "userService", permitted);
+        var statuses = mock(org.openelisglobal.common.services.IStatusService.class);
+        when(statuses.matches("20", org.openelisglobal.common.services.StatusService.SampleStatus.Entered))
+                .thenReturn(true);
+        ReflectionTestUtils.setField(legacyRequests, "statusService", statuses);
+        legacyAudit = mock(org.openelisglobal.audittrail.dao.AuditTrailService.class);
+        ReflectionTestUtils.setField(legacyRequests, "auditTrailService", legacyAudit);
+        doAnswer(call -> {
+            assertTrue(TransactionSynchronizationManager.isActualTransactionActive());
+            manager.write("SIM-request");
+            var entity = (org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest) call.getArgument(0);
+            legacyInserted.add(entity);
+            return 700 + legacyInserted.size();
+        }).when(legacyRequests).insert(any(org.openelisglobal.sampletyperequest.valueholder.SampleTypeRequest.class));
+        ReflectionTestUtils.setField(target, "sampleTypeRequestService", legacyRequests);
     }
 
     private void prepareSpecimens() throws Exception {
@@ -772,9 +1045,19 @@ public class SamplePatientEntryTransactionTest {
         private boolean failCommit;
         private boolean rollbackOnly;
 
-        @Override public boolean isRollbackOnly() { return rollbackOnly; }
-        @Override public void flush() { }
-        @Override protected void doSetRollbackOnly(DefaultTransactionStatus status) { rollbackOnly = true; }
+        @Override
+        public boolean isRollbackOnly() {
+            return rollbackOnly;
+        }
+
+        @Override
+        public void flush() {
+        }
+
+        @Override
+        protected void doSetRollbackOnly(DefaultTransactionStatus status) {
+            rollbackOnly = true;
+        }
 
         void write(String value) {
             assertTrue("write outside transaction", active);

@@ -21,18 +21,18 @@ import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.barcode.service.BarcodeInfoService;
 import org.openelisglobal.common.constants.Constants;
-import org.openelisglobal.common.formfields.FormFields.Field;
 import org.openelisglobal.common.formfields.FormFields;
+import org.openelisglobal.common.formfields.FormFields.Field;
 import org.openelisglobal.common.log.LogEvent;
-import org.openelisglobal.common.services.DisplayListService.ListType;
 import org.openelisglobal.common.services.DisplayListService;
+import org.openelisglobal.common.services.DisplayListService.ListType;
 import org.openelisglobal.common.services.IStatusService;
-import org.openelisglobal.common.services.SampleAddService.SampleTestCollection;
 import org.openelisglobal.common.services.SampleAddService;
+import org.openelisglobal.common.services.SampleAddService.SampleTestCollection;
 import org.openelisglobal.common.services.StatusService.AnalysisStatus;
 import org.openelisglobal.common.services.TableIdService;
-import org.openelisglobal.common.util.ConfigurationProperties.Property;
 import org.openelisglobal.common.util.ConfigurationProperties;
+import org.openelisglobal.common.util.ConfigurationProperties.Property;
 import org.openelisglobal.common.util.ControllerUtills;
 import org.openelisglobal.common.util.DateUtil;
 import org.openelisglobal.common.util.IdValuePair;
@@ -50,10 +50,10 @@ import org.openelisglobal.note.valueholder.Note;
 import org.openelisglobal.notification.service.AnalysisNotificationConfigService;
 import org.openelisglobal.notification.service.TestNotificationConfigService;
 import org.openelisglobal.notification.valueholder.AnalysisNotificationConfig;
+import org.openelisglobal.notification.valueholder.NotificationConfigOption;
 import org.openelisglobal.notification.valueholder.NotificationConfigOption.NotificationMethod;
 import org.openelisglobal.notification.valueholder.NotificationConfigOption.NotificationNature;
 import org.openelisglobal.notification.valueholder.NotificationConfigOption.NotificationPersonType;
-import org.openelisglobal.notification.valueholder.NotificationConfigOption;
 import org.openelisglobal.notification.valueholder.TestNotificationConfig;
 import org.openelisglobal.observationhistory.service.ObservationHistoryService;
 import org.openelisglobal.observationhistory.valueholder.ObservationHistory;
@@ -86,8 +86,8 @@ import org.openelisglobal.sample.exception.EntrySubmissionException;
 import org.openelisglobal.sample.exception.SampleCollectionValidationException;
 import org.openelisglobal.sample.form.SamplePatientEntryForm;
 import org.openelisglobal.sample.valueholder.Sample;
-import org.openelisglobal.sample.valueholder.SampleAdditionalField.AdditionalFieldName;
 import org.openelisglobal.sample.valueholder.SampleAdditionalField;
+import org.openelisglobal.sample.valueholder.SampleAdditionalField.AdditionalFieldName;
 import org.openelisglobal.samplehuman.service.SampleHumanService;
 import org.openelisglobal.samplehuman.valueholder.SampleHuman;
 import org.openelisglobal.sampleitem.dao.SampleItemDAO;
@@ -200,8 +200,11 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
     @Transactional(rollbackFor = Exception.class)
     public void saveEntry(SamplePatientEntryForm form, HttpServletRequest request, BindingResult errors)
             throws IllegalAccessException, InvocationTargetException, NoSuchMethodException, BindException {
-        OrderEntryActorGuard.BoundActor boundActor = form.getRequestedSpecimens() == null ? null
-                : orderEntryActorGuard.bind(request);
+        List<SampleTypeRequestDTO> initialRequestedSpecimens = form.getRequestedSpecimens();
+        boolean legacyCandidate = legacyPhysicalEntry(form);
+        OrderEntryActorGuard.BoundActor boundActor = initialRequestedSpecimens != null || legacyCandidate
+                ? orderEntryActorGuard.bind(request)
+                : null;
         SampleOrderItem order = form.getSampleOrderItems();
         boolean environmental = order != null
                 && "environmental".equals(order.getEnvironmentalFieldAsString("workflowType"));
@@ -229,8 +232,8 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
             }
             patientUpdate.setPatientUpdateStatus(patientInfo);
             data.setSavePatient(patientUpdate.getPatientUpdateStatus() != PatientUpdateStatus.NO_ACTION);
-            data.setPatientErrors(data.isSavePatient() ? patientUpdate.preparePatientData(request, patientInfo)
-                    : new BaseErrors());
+            data.setPatientErrors(
+                    data.isSavePatient() ? patientUpdate.preparePatientData(request, patientInfo) : new BaseErrors());
         } else {
             // Do not load or mutate patient entities for an explicitly patient-free order.
             data.setSavePatient(false);
@@ -265,20 +268,29 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
                     order.getContactTracingIndexRecordNumber());
         }
         data.validateSample(errors, !form.isOrderEntryOnly());
-        // A normal return on invalid data would let Hibernate flush initialized entities.
+        // A normal return on invalid data would let Hibernate flush initialized
+        // entities.
         rejectEntryErrors(errors, environmental);
         persistData(data, patientUpdate, patientInfo, form, request);
-        List<SampleTypeRequestDTO> savedSpecimens = form.getRequestedSpecimens() == null ? null
-                : sampleTypeRequestService.createRequestsForEntry(data.getSample(), form.getRequestedSpecimens(),
-                        actor, errors);
+        List<SampleTypeRequestDTO> savedSpecimens = initialRequestedSpecimens == null ? form.getRequestedSpecimens()
+                : sampleTypeRequestService.createRequestsForEntry(data.getSample(), initialRequestedSpecimens, actor,
+                        errors);
         if (form.getLabelPersistRequest() != null) {
             persistLabelRequests(data, form.getLabelPersistRequest(), actor);
         }
-        if (savedSpecimens != null) {
+        if (boundActor != null)
             orderEntryActorGuard.requireUnchanged(request, boundActor);
+        if (savedSpecimens != null) {
             form.setRequestedSpecimens(savedSpecimens);
             order.setSampleId(data.getSample().getId());
         }
+    }
+
+    private static boolean legacyPhysicalEntry(SamplePatientEntryForm form) {
+        return form != null && form.getSampleOrderItems() != null && form.getRequestedSpecimens() == null
+                && !form.isOrderEntryOnly() && !form.isCollectionOnly()
+                && !GenericValidator.isBlankOrNull(form.getSampleXML())
+                && !"environmental".equals(form.getSampleOrderItems().getEnvironmentalFieldAsString("workflowType"));
     }
 
     private void validateFirstEntrySpecimens(SamplePatientEntryForm form, BindingResult errors) throws BindException {
@@ -295,8 +307,7 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
         }
         if (!GenericValidator.isBlankOrNull(order.getLabNo())
                 && sampleService.getSampleByAccessionNumber(order.getLabNo()) != null) {
-            errors.rejectValue("sampleOrderItems.labNo", "accession.invalid",
-                    "该申请编号已经存在，请查询保存结果，不要重复新建。");
+            errors.rejectValue("sampleOrderItems.labNo", "accession.invalid", "该申请编号已经存在，请查询保存结果，不要重复新建。");
             throw new BindException(errors);
         }
         OrderLabelPersistRequest labels = form.getLabelPersistRequest();
@@ -344,6 +355,11 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
         // same order graph, in the same order, as the dedicated receipt/decision
         // actions. A receipt cannot commit between this preflight and the later
         // item update; these locks remain held through the enclosing transaction.
+        boolean legacyFirst = legacyPhysicalEntry(form) && updateData.getSample() != null
+                && updateData.getSample().getId() == null;
+        OrderEntryActorGuard.BoundActor legacyActor = legacyFirst ? orderEntryActorGuard.bind(request) : null;
+        if (legacyActor != null && !Objects.equals(legacyActor.userId(), updateData.getCurrentUserId()))
+            throw new org.springframework.security.access.AccessDeniedException("error.notAuthorized");
         lockExistingOrderGraph(updateData);
         Set<String> protectedTubeIds = preflightExistingTubes(updateData);
 
@@ -359,7 +375,10 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
         updateData.setPatientId(patientUpdate.getPatientId(form));
 
         persistProviderData(updateData);
-        persistSampleData(updateData, protectedTubeIds);
+        List<SampleTypeRequestDTO> legacyRequests = persistSampleData(updateData, protectedTubeIds,
+                legacyActor == null ? null : legacyActor.userId(), form);
+        if (legacyRequests != null)
+            form.setRequestedSpecimens(legacyRequests);
 
         // Only persist requester data and observations if sample was successfully
         // created
@@ -385,7 +404,10 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
             referralSetService.createSaveReferralSetsSamplePatientEntry(form.getReferralItems(), updateData);
         }
 
-        SampleEntrySessionContext.publishAfterCommit(request, updateData.getAccessionNumber(), updateData.getPatientId());
+        if (legacyActor != null)
+            orderEntryActorGuard.requireUnchanged(request, legacyActor);
+        SampleEntrySessionContext.publishAfterCommit(request, updateData.getAccessionNumber(),
+                updateData.getPatientId());
 
         // Publish post-persist event INSIDE this @Transactional method so any
         // listener (e.g. SampleStorageAssignmentListener) runs while this tx
@@ -569,8 +591,7 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
             if (request == null)
                 throw new SampleCollectionValidationException(409, "collection.requestChanged");
             if (collection.item.getQuantity() == null || !Double.isFinite(collection.item.getQuantity())
-                    || collection.item.getQuantity() <= 0
-                    || (collection.item.getUnitOfMeasure() != null
+                    || collection.item.getQuantity() <= 0 || (collection.item.getUnitOfMeasure() != null
                             && !"Y".equals(collection.item.getUnitOfMeasure().getIsActive()))) {
                 throw new SampleCollectionValidationException(400, "collection.requestInvalid");
             }
@@ -887,8 +908,8 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
                 // Receipt is its own audited action, never a side effect of a generic save.
                 throw ordinaryTubeConflict();
             }
-            if (existing.getReceivedDate() == null && !decidedIds.contains(existing.getId())
-                    && !existing.isRejected() && !existing.isVoided()) {
+            if (existing.getReceivedDate() == null && !decidedIds.contains(existing.getId()) && !existing.isRejected()
+                    && !existing.isVoided()) {
                 continue;
             }
             protectedIds.add(existing.getId());
@@ -953,11 +974,12 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
                 "该标本的采集、签收或验收状态已变化，请重新查询；签收与验收须使用对应操作。");
     }
 
-    private void persistSampleData(SamplePatientUpdateData updateData, Set<String> protectedTubeIds) {
+    private List<SampleTypeRequestDTO> persistSampleData(SamplePatientUpdateData updateData,
+            Set<String> protectedTubeIds, String legacyActor, SamplePatientEntryForm form) {
         String analysisRevision = ConfigurationProperties.getInstance().getPropertyValue("analysis.default.revision");
 
         if (updateData.getSample() == null) {
-            return;
+            return null;
         }
 
         // Set GPS data from first sample test collection if available
@@ -1122,9 +1144,23 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
         }
 
         // Decoupled order workflow: collecting a specimen fulfills its original
-        // request in the same transaction.  This prevents a saved sample and a
+        // request in the same transaction. This prevents a saved sample and a
         // still-pending request from diverging when a second client call fails.
-        sampleTypeRequestService.fulfillMatchingRequests(updateData.getSample().getId(), fulfillmentCandidates);
+        List<SampleTypeRequestDTO> legacyRequests = null;
+        if (legacyActor != null) {
+            List<SampleTypeRequestService.LegacyEntryTube> tubes = updateData.getSampleItemsTests().stream().map(
+                    collection -> new SampleTypeRequestService.LegacyEntryTube(collection.item, collection.analysises))
+                    .toList();
+            try {
+                legacyRequests = sampleTypeRequestService.registerLegacyEntryTubes(updateData.getSample(), tubes,
+                        legacyActor, new org.springframework.validation.BeanPropertyBindingResult(form, "form"));
+            } catch (BindException failure) {
+                throw new EntrySubmissionException(400, "ORDER_ENTRY_SPECIMENS_INVALID",
+                        "标本、采集事实或已保存检验项目不符合当前登记权限，请重新确认申请。");
+            }
+        } else {
+            sampleTypeRequestService.fulfillMatchingRequests(updateData.getSample().getId(), fulfillmentCandidates);
+        }
 
         if (!specimenLabelQuantities.isEmpty()) {
             persistOrderSpecimenBarcodeCounts(updateData.getSample(), orderLabelQuantity, specimenLabelQuantities);
@@ -1150,6 +1186,7 @@ public class SamplePatientEntryServiceImpl implements SamplePatientEntryService 
         if (updateData.getElectronicOrder() != null) {
             electronicOrderService.update(updateData.getElectronicOrder());
         }
+        return legacyRequests;
     }
 
     private void persistSampleEQAData(SamplePatientUpdateData updateData) {
