@@ -8,12 +8,21 @@ const MODAL = ".oe-admin-modal.is-visible:has(.user-editor-page)";
 const PAGE = ".user-management-page";
 const parse = (value) =>
   typeof value === "string" ? JSON.parse(value) : value;
-const permissionScope = (map) =>
-  Object.fromEntries(
+const permissionScope = (map) => {
+  const allRoles = map.AllLabUnits?.map(String);
+  return Object.fromEntries(
     Object.keys(map)
       .sort()
+      // The GET folds AllLabUnits; remove only units fully covered by its roles.
+      .filter(
+        (id) =>
+          !allRoles ||
+          id === "AllLabUnits" ||
+          map[id].some((role) => !allRoles.includes(String(role))),
+      )
       .map((id) => [id, map[id].map(String).sort()]),
   );
+};
 const calendarDate = (value) => {
   const s = String(value);
   const iso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
@@ -86,8 +95,16 @@ class UserManagementPage {
       .clear()
       .type(`${y}/${m.padStart(2, "0")}/${d.padStart(2, "0")}`)
       .blur();
-    cy.get("body").type("{esc}");
-    cy.get(`${MODAL} #password-expire-date`).should("not.have.value", "");
+    cy.get(`${MODAL} #password-expire-date`)
+      .should("be.visible")
+      .invoke("val")
+      .should((actual) => {
+        expect(calendarDate(actual), "original future expiry date").to.deep.eq([
+          Number(y),
+          Number(m),
+          Number(d),
+        ]);
+      });
   }
   enterUserTimeout(v) {
     cy.get(`${MODAL} #login-timeout`).clear().type(v);
