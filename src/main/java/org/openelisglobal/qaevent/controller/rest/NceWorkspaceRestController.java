@@ -3,6 +3,10 @@ package org.openelisglobal.qaevent.controller.rest;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,12 +26,12 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.multipart.MultipartHttpServletRequest;
 
 /**
  * Versioned detached NCE contract; legacy handlers retain their explicit
@@ -36,6 +40,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/rest/nce")
 public class NceWorkspaceRestController {
+    private static final int MAX_COMMAND_CHARS = 1024 * 1024;
     private final NceWorkspaceService service;
     private final ObjectMapper strict;
 
@@ -94,17 +99,26 @@ public class NceWorkspaceRestController {
     }
 
     @PostMapping(value = "/registration", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<?> create(@RequestParam Map<String, String> query, @RequestBody String body,
-            HttpServletRequest request) {
+    public ResponseEntity<?> create(@RequestParam Map<String, String> query, HttpServletRequest request)
+            throws IOException {
         query(query, Set.of("queryVersion"));
-        return create(parse(body, NceRegistrationCommand.class, request), List.of(), request);
+        return create(parse(rawJson(request.getInputStream()), NceRegistrationCommand.class, request), List.of(),
+                request);
     }
 
     @PostMapping(value = "/registration", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> upload(@RequestParam Map<String, String> query, @RequestPart("nceData") String body,
-            @RequestPart(value = "files", required = false) List<MultipartFile> files, HttpServletRequest request) {
+    public ResponseEntity<?> upload(@RequestParam Map<String, String> query,
+            @RequestPart(value = "files", required = false) List<MultipartFile> files,
+            MultipartHttpServletRequest request) throws IOException {
         // Multipart text parts are not query filters; inspect URL parameters only.
         query(query, Set.of("queryVersion", "nceData"));
+        String body = request.getParameter("nceData");
+        if (body == null) {
+            var part = request.getFile("nceData");
+            if (part == null)
+                throw new IllegalArgumentException("INVALID_NCE_REQUEST");
+            body = rawJson(part.getInputStream());
+        }
         return create(parse(body, NceRegistrationCommand.class, request), files, request);
     }
 
@@ -120,9 +134,9 @@ public class NceWorkspaceRestController {
 
     @PostMapping(value = "/events/{eventId}/actions", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> action(@PathVariable String eventId, @RequestParam Map<String, String> query,
-            @RequestBody String body, HttpServletRequest request) {
+            HttpServletRequest request) throws IOException {
         query(query, Set.of("queryVersion"));
-        var command = parse(body, NceActionCommand.class, request);
+        var command = parse(rawJson(request.getInputStream()), NceActionCommand.class, request);
         request.setAttribute("nceRequestId", command.requestId());
         try {
             return ok(service.action(eventId, command, request));
@@ -179,8 +193,26 @@ public class NceWorkspaceRestController {
         return ResponseEntity.status(status).header(HttpHeaders.CACHE_CONTROL, "no-store").body(body);
     }
 
+    // Read this strict JSON contract before any general-purpose message converter
+    // can interpret its object as a String or discard duplicate/trailing tokens.
+    private String rawJson(InputStream stream) throws IOException {
+        var body = new StringBuilder();
+        char[] buffer = new char[4096];
+        try (var reader = new InputStreamReader(stream, StandardCharsets.UTF_8.newDecoder())) {
+            int count;
+            while ((count = reader.read(buffer)) != -1) {
+                if (body.length() + count > MAX_COMMAND_CHARS)
+                    throw new IllegalArgumentException("INVALID_NCE_REQUEST");
+                body.append(buffer, 0, count);
+            }
+        } catch (CharacterCodingException invalidUtf8) {
+            throw new IllegalArgumentException("INVALID_NCE_REQUEST");
+        }
+        return body.toString();
+    }
+
     private <T> T parse(String body, Class<T> type, HttpServletRequest request) {
-        if (body == null || body.length() > 1024 * 1024)
+        if (body == null || body.length() > MAX_COMMAND_CHARS)
             throw new IllegalArgumentException("INVALID_NCE_REQUEST");
         try {
             var tree = strict.readTree(body);

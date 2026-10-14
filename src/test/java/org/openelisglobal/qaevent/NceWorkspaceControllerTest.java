@@ -6,14 +6,20 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
+import org.openelisglobal.config.AppConfig;
 import org.openelisglobal.qaevent.controller.rest.NceWorkspaceRestController;
+import org.openelisglobal.qaevent.form.NceActionCommand;
+import org.openelisglobal.qaevent.form.NceRegistrationCommand;
 import org.openelisglobal.qaevent.form.NceWorkspaceResponse.Receipt;
 import org.openelisglobal.qaevent.service.NceWorkspaceException;
 import org.openelisglobal.qaevent.service.NceWorkspaceService;
 import org.springframework.http.MediaType;
+import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.web.servlet.MockMvc;
@@ -28,7 +34,10 @@ public class NceWorkspaceControllerTest {
     public void setup() {
         service = mock(NceWorkspaceService.class);
         mapper = new ObjectMapper();
-        mvc = MockMvcBuilders.standaloneSetup(new NceWorkspaceRestController(service)).build();
+        mvc = MockMvcBuilders.standaloneSetup(new NceWorkspaceRestController(service))
+                .setMessageConverters(new AppConfig().jacksonMessageConverter(),
+                        new StringHttpMessageConverter(StandardCharsets.UTF_8))
+                .build();
     }
 
     private String body() throws Exception {
@@ -165,4 +174,84 @@ public class NceWorkspaceControllerTest {
                 .andExpect(jsonPath("$.currentUserId").doesNotExist());
         verify(service, times(2)).create(any(), anyList(), any());
     }
+
+    @Test
+    public void productionConverterReceivesChineseRegistrationAsExactObject() throws Exception {
+        when(service.create(any(), anyList(), any())).thenReturn(applied());
+        String command = body().replace("Title", "标本采集异常").replace("Description", "采集后发现标本溶血");
+        mvc.perform(post("/rest/nce/registration").param("queryVersion", "2")
+                .contentType(MediaType.APPLICATION_JSON).content(command.getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.requestId").value(NceWorkspaceTestSupport.KEY))
+                .andExpect(jsonPath("$.eventId").value("21"));
+        var captured = ArgumentCaptor.forClass(NceRegistrationCommand.class);
+        verify(service, times(1)).create(captured.capture(), eq(List.of()), any());
+        assertEquals("标本采集异常", captured.getValue().title());
+        assertEquals("采集后发现标本溶血", captured.getValue().description());
+        assertEquals("7", captured.getValue().currentUserId());
+    }
+
+    @Test
+    public void productionConverterReceivesExactActionAndAuthoritativeReceipt() throws Exception {
+        var command = new NceActionCommand(NceWorkspaceTestSupport.KEY, "7", NceWorkspaceTestSupport.VERSION,
+                "ADD_NOTE", "补充处理记录", null);
+        var receipt = new Receipt("2", "7", NceWorkspaceTestSupport.KEY, "a".repeat(64), "APPLIED", "ADD_NOTE", "21",
+                "NCE-2026-00001", "Pending", NceWorkspaceTestSupport.VERSION, List.of(), List.of());
+        when(service.action(eq("21"), any(), any())).thenReturn(receipt);
+        mvc.perform(post("/rest/nce/events/21/actions").param("queryVersion", "2")
+                .contentType(MediaType.APPLICATION_JSON).content(mapper.writeValueAsBytes(command)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.operation").value("ADD_NOTE"))
+                .andExpect(jsonPath("$.eventId").value("21"))
+                .andExpect(jsonPath("$.requestId").value(NceWorkspaceTestSupport.KEY));
+        verify(service, times(1)).action(eq("21"), eq(command), any());
+    }
+
+    @Test
+    public void rawJsonRetainsDuplicateTrailingUnknownAndBoundedBodyRejection() throws Exception {
+        String command = body();
+        for (String invalid : List.of(command + " {}",
+                command.replace("\"title\":\"Title\"", "\"title\":\"first\",\"title\":\"Title\""),
+                command.substring(0, command.length() - 1) + ",\"nceNumber\":\"NCE-FAKE\"}",
+                mapper.writeValueAsString(command), " ".repeat(1024 * 1024 + 1) + command)) {
+            mvc.perform(post("/rest/nce/registration").param("queryVersion", "2")
+                    .contentType(MediaType.APPLICATION_JSON).content(invalid.getBytes(StandardCharsets.UTF_8)))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.outcome").value("NOT_APPLIED"));
+        }
+        verifyZeroInteractions(service);
+    }
+
+    @Test
+    public void stringMultipartMetadataPreservesChineseCommandAndEveryAttachment() throws Exception {
+        when(service.create(any(), anyList(), any())).thenReturn(applied());
+        String command = body().replace("Title", "标本采集异常");
+        mvc.perform(multipart("/rest/nce/registration")
+                .file(new MockMultipartFile("files", "first.txt", "text/plain", new byte[] { 1 }))
+                .file(new MockMultipartFile("files", "second.txt", "text/plain", new byte[] { 2 }))
+                .param("queryVersion", "2").param("nceData", command))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.requestId").value(NceWorkspaceTestSupport.KEY));
+        var captured = ArgumentCaptor.forClass(NceRegistrationCommand.class);
+        var uploads = ArgumentCaptor.forClass(List.class);
+        verify(service).create(captured.capture(), uploads.capture(), any());
+        assertEquals("标本采集异常", captured.getValue().title());
+        assertEquals(2, uploads.getValue().size());
+        assertEquals("first.txt", ((org.springframework.web.multipart.MultipartFile) uploads.getValue().get(0))
+                .getOriginalFilename());
+        assertEquals("second.txt", ((org.springframework.web.multipart.MultipartFile) uploads.getValue().get(1))
+                .getOriginalFilename());
+    }
+
+    @Test
+    public void actionRawJsonRetainsStrictTokensFieldsAndSizeBeforeAnyWrite() throws Exception {
+        String command = mapper.writeValueAsString(new NceActionCommand(NceWorkspaceTestSupport.KEY, "7",
+                NceWorkspaceTestSupport.VERSION, "ADD_NOTE", "补充处理记录", null));
+        for (String invalid : List.of(command + " {}",
+                command.replace("\"type\":\"ADD_NOTE\"", "\"type\":\"ACKNOWLEDGE\",\"type\":\"ADD_NOTE\""),
+                command.substring(0, command.length() - 1) + ",\"status\":\"Completed\"}",
+                mapper.writeValueAsString(command), " ".repeat(1024 * 1024 + 1) + command)) {
+            mvc.perform(post("/rest/nce/events/21/actions").param("queryVersion", "2")
+                    .contentType(MediaType.APPLICATION_JSON).content(invalid.getBytes(StandardCharsets.UTF_8)))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.outcome").value("NOT_APPLIED"));
+        }
+        verifyZeroInteractions(service);
+    }
+
 }
