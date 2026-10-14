@@ -141,7 +141,7 @@ export interface PatientMergeRequest {
 export interface PatientMergeResult {
   mergedPatientId?: string;
   primaryPatientId?: string;
-  auditId?: string;
+  mergeAuditId?: string;
   [key: string]: unknown;
 }
 

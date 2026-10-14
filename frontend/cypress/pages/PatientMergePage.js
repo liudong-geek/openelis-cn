@@ -498,7 +498,7 @@ class PatientMergePage {
       expect(response?.statusCode, "patient merge status").to.eq(200);
       expect(response?.body?.primaryPatientId, "surviving patient id").to.exist;
       expect(response?.body?.mergedPatientId, "merged patient id").to.exist;
-      expect(response?.body?.auditId, "patient merge audit id").to.exist;
+      expect(response?.body?.mergeAuditId, "patient merge audit id").to.exist;
     });
     return this;
   }

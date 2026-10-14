@@ -1,8 +1,69 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import React from "react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { waitFor } from "@testing-library/dom";
+import { IntlProvider } from "react-intl";
+import { MemoryRouter } from "react-router-dom";
+import PatientMerge from "../PatientMerge";
+import { NotificationContext } from "../../layout/Layout";
+import zhMessages from "../../../languages/zh_CN.json";
 import {
   MAX_PATIENT_MERGE_SEARCH_PAGES,
   searchPatients,
 } from "./patientMergeService";
+
+vi.mock("../../layout/Layout", () => ({
+  NotificationContext: React.createContext(null),
+}));
+vi.mock("../../common/PageBreadCrumb", () => ({ default: () => null }));
+vi.mock("../../common/CustomNotification", () => ({
+  AlertDialog: () => null,
+  NotificationKinds: { success: "success", error: "error" },
+}));
+vi.mock("./PatientSelectionStep", () => ({
+  default: ({ onPatient1Select, onPatient2Select }) =>
+    React.createElement(
+      "div",
+      null,
+      React.createElement(
+        "button",
+        {
+          onClick: () =>
+            onPatient1Select({ patientID: "9200107", patientPK: "9200107" }),
+        },
+        "选择患者甲",
+      ),
+      React.createElement(
+        "button",
+        {
+          onClick: () =>
+            onPatient2Select({ patientID: "9200108", patientPK: "9200108" }),
+        },
+        "选择患者乙",
+      ),
+    ),
+}));
+vi.mock("./PrimarySelectionStep", () => ({
+  default: ({ onPrimarySelect }) =>
+    React.createElement(
+      "button",
+      { onClick: () => onPrimarySelect("9200107") },
+      "保留患者甲",
+    ),
+}));
+vi.mock("./ConfirmationStep", () => ({
+  default: ({ onReasonChange, onConfirmedChange }) =>
+    React.createElement(
+      "button",
+      {
+        onClick: () => {
+          onReasonChange("SIM-MERGE-AUDIT-WIRE");
+          onConfirmedChange(true);
+        },
+      },
+      "填写原因并确认",
+    ),
+}));
 
 const jsonResponse = (body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -19,6 +80,80 @@ const deferred = <T>() => {
 };
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("patient merge execution wire result", () => {
+  it("shows the backend mergeAuditId in the success notice after a real service response", async () => {
+    const wireResult = {
+      success: true,
+      mergeAuditId: "1",
+      primaryPatientId: "9200107",
+      mergedPatientId: "9200108",
+      message: "Patient merge completed successfully",
+      mergeDurationMs: 331,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ patientId: "9200107" }))
+      .mockResolvedValueOnce(jsonResponse({ patientId: "9200108" }))
+      .mockResolvedValueOnce(jsonResponse(wireResult));
+    vi.stubGlobal("fetch", fetchMock);
+    const addNotification = vi.fn();
+    render(
+      React.createElement(
+        MemoryRouter,
+        null,
+        React.createElement(
+          IntlProvider,
+          { locale: "zh-CN", messages: zhMessages },
+          React.createElement(
+            NotificationContext.Provider,
+            {
+              value: {
+                notificationVisible: false,
+                addNotification,
+                setNotificationVisible: vi.fn(),
+              },
+            },
+            React.createElement(PatientMerge),
+          ),
+        ),
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "选择患者甲" }));
+    fireEvent.click(screen.getByRole("button", { name: "选择患者乙" }));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.click(await screen.findByRole("button", { name: "保留患者甲" }));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.click(screen.getByRole("button", { name: "填写原因并确认" }));
+    const confirmButton = document.querySelector<HTMLButtonElement>(
+      ".patientMergeNavigation button.cds--btn--danger",
+    );
+    expect(confirmButton).not.toBeNull();
+    expect(confirmButton).not.toBeDisabled();
+    fireEvent.click(confirmButton);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+
+    await waitFor(() =>
+      expect(addNotification).toHaveBeenCalledWith({
+        title: zhMessages["patient.merge.success"],
+        message: "患者 9200108 已合并到患者 9200107 中。审计ID：1",
+        kind: "success",
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const [url, options] = fetchMock.mock.calls[2];
+    expect(url).toMatch(/\/rest\/patient\/merge\/execute$/);
+    expect(options.method).toBe("POST");
+    expect(options.credentials).toBe("include");
+    expect(JSON.parse(options.body)).toEqual({
+      patient1Id: "9200107",
+      patient2Id: "9200108",
+      primaryPatientId: "9200107",
+      reason: "SIM-MERGE-AUDIT-WIRE",
+      confirmed: true,
+    });
+  });
+});
 
 describe("patient merge search paging", () => {
   it("aggregates every page with the original criteria and one queryId", async () => {

@@ -115,7 +115,7 @@ function PatientMerge() {
           {
             mergedId: result.mergedPatientId,
             primaryId: result.primaryPatientId,
-            auditId: result.auditId,
+            auditId: result.mergeAuditId,
           },
         ),
         kind: NotificationKinds.success,
