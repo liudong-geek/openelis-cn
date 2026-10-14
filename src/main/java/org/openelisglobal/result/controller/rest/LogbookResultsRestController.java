@@ -344,6 +344,14 @@ public class LogbookResultsRestController extends LogbookResultsBaseController {
                 tests = new ArrayList<>();
             }
 
+            // Exact accession is also a constraint when a unit/date/status branch ran.
+            // Apply it after role filtering and before creating the session page snapshot.
+            if (!doRange && !GenericValidator.isBlankOrNull(labNumber)) {
+                filteredTests = new ArrayList<>(filteredTests);
+                filteredTests.removeIf(item -> !labNumber.equals(item.getAccessionNumber()));
+                request.setAttribute("pageSize", filteredTests.size());
+            }
+
             if (ConfigurationProperties.getInstance().isPropertyValueEqual(Property.PATIENT_DATA_ON_RESULTS_BY_ROLE,
                     "true") && !userHasPermissionForModule(request, "PatientResults")) {
                 for (TestResultItem resultItem : filteredTests) {
