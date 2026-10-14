@@ -1,5 +1,6 @@
 package org.openelisglobal.sample.service;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.util.List;
@@ -47,18 +48,19 @@ public class SpecimenLookupService {
     }
 
     public record RequestedSpecimen(String id, String typeOfSampleId, String sampleTypeName, String status,
-            String sampleItemId) {
+            @JsonInclude(JsonInclude.Include.ALWAYS) String sampleItemId) {
     }
 
-    public record PhysicalSpecimen(String id, String requestId, String sortOrder, String typeOfSampleId,
-            String statusId, boolean voided, boolean rejected, String collectionDate, String receivedDate,
-            String decisionState, String recordedDecision, String expectedEvidenceDigest, String operationId,
-            SpecimenIntakeDecision.Reason recordedReason, String recordedEvidenceDigest) {
+    public record PhysicalSpecimen(String id, @JsonInclude(JsonInclude.Include.ALWAYS) String requestId,
+            String sortOrder, String typeOfSampleId, String statusId, boolean voided, boolean rejected,
+            String collectionDate, String receivedDate, String decisionState, String recordedDecision,
+            String expectedEvidenceDigest, String operationId, SpecimenIntakeDecision.Reason recordedReason,
+            String recordedEvidenceDigest) {
     }
 
-    public record Current(String sampleId, String labNo, String orderStatusId, boolean patientMasked, Patient patient,
-            List<RequestedSpecimen> requestedSpecimens, List<PhysicalSpecimen> physicalSpecimens,
-            SpecimenIntakeDecisionReader.Reasons intakeReasons) {
+    public record Current(String sampleId, String labNo, String orderStatusId, boolean patientMasked,
+            @JsonInclude(JsonInclude.Include.ALWAYS) Patient patient, List<RequestedSpecimen> requestedSpecimens,
+            List<PhysicalSpecimen> physicalSpecimens, SpecimenIntakeDecisionReader.Reasons intakeReasons) {
     }
 
     public record Result(int version, String source, boolean readOnly, String matchedKind, Selection selection,
