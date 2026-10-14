@@ -193,3 +193,10 @@ a10登记POST实际500、68字节UNKNOWN响应；独立只读查询本次CYPRESS
 登记／动作有界读取UTF-8原JSON；multipart保留当前普通文本FormData和既有JSON MIME元数据，全部附件传入原服务。修复首轮35项通过；补充文本附件与动作非法JSON守卫后，两个Java限定格式检查通过，最终控制器14、命令5、服务11、权限7共37项通过，0失败／错误／跳过。补充测试初次链式构造编译失败记录保留，修正后通过，不计产品故障或已运行测试。
 
 根非作者复审通过。红／绿JUnit及实际500／零写入证据位于工作区outputs/lis-six-batch-20261013/nce-raw-json-converter-fix。当前仅局部通过；新WAR、原不符合项浏览器场景、完整349和部署仍待，a10已冻结产物保持。
+
+
+## 项目表单验收助手校正（E-01）
+
+原项目表单6场景首轮保存POST200与独立GET200，业务身份和字段一致，仅FHIR编码省略空item列表导致旧深等判断失败。比较只规范化恰为空数组的顶层item，所有非空问题内容及其他字段完整保留；POST原始内容、UUID、名称、专业组、写入次数与未修改时零写入断言保持。末项下拉位于滚动区域外，先正常滚动精确目标，再保留可见性和普通点击。
+
+a10 targeted-program-catalog-remaining193的原programEntry6项全部通过，无失败／跳过；随后其他文件失败不能计后续通过。仅改ProgramEntryPage.js，未改产品或原6场景／3000毫秒预算。源码及失败证据位于outputs/lis-six-batch-20261013/program-questionnaire-helper-fix，真实日志位于release-runtime/runs/a10。最终完整349仍待通过。

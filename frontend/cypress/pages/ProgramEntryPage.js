@@ -14,6 +14,9 @@ const questionnaireContent = (value) => {
     id: _resourceIdentity,
     ...content
   } = parseQuestionnaire(value);
+  // The FHIR encoder omits empty item lists; retain all nonempty question content.
+  if (Array.isArray(content.item) && content.item.length === 0)
+    delete content.item;
   return content;
 };
 
@@ -48,6 +51,7 @@ class ProgramEntryPage {
       "#program-selector [role='option']",
       new RegExp(`^${Cypress._.escapeRegExp(value)}$`),
     )
+      .scrollIntoView()
       .should("be.visible")
       .click();
     cy.get("#program-selector .cds--list-box__label").should(
