@@ -143,3 +143,14 @@ a6严格workflow夹具及同库实际五POST通过，独立实际核对接受。
 同a6原11条码反馈先红9／1／1，原始血清2响应固定panel1／4，适用项目1、2、4、5、7、8、9、39，不适用3、6、40。助手逐项核对适用复选框选中及不适用框不存在，打印请求精确等于全部八项目，并禁止其他标本项目；实际打印200及PDF、关闭、原申请重印查询通过。最后11通过、0失败／跳过／待定，600秒诊断边界、原34／349和原业务超时保持。独审无阻断。前端产品／单测／配置及构建输入未变，不重复全量检查或构建；d18的5777和日历12+4、de5后台产物继续复用并在新冻结点核对。
 
 实际证据在交付工作区release-runtime/runs/a6/barcode-feedback-red.log、barcode-feedback-green.log及barcode-feedback/evidence下的原始查询、打印和终态。正式系统未更新，原349、真实四岗、配置及备份部署仍待验收。
+
+
+## 规则实际JSON返回确认补修（CHG-094，D-03／E-01）
+
+a9原计算／复检10反馈先真实复现Serum与中文血清不匹配；中文固定身份助手越过此处后，计算前5场景通过，第6保存POST200及明细定义读回一致，但原3000毫秒modal关闭断言失败。rule1已保存，不重复POST；实际GET缺configurationVersion，非结果来源的运算步骤缺sampleId键。实际MVC使用AppConfig的Jackson／Hibernate模块和NON_NULL，与旧standalone默认converter不同，前端严格完整对象确认据此拒绝判为保存成功。
+
+后端改动仅5实体的两个版本getter显式JsonProperty及9个必需可空getter的局部JsonInclude(ALWAYS)。保留JPA Transient、全局NON_NULL、业务服务清除客户端缓存版本及以服务器精确Timestamp回读、原前端完整性和并发校验；没有schema、控制器、权限、临床状态或全局序列化变化。
+
+真实AppConfig converter合同先版本红9项中6失败，补版本后9通过；完整nullable键合同再红13项中2失败，最后规则HTTP合同13、权限3、表达式7共23通过，无失败／错误／跳过。覆盖保存／明细／列表／启停、显式null键、微秒精度及同毫秒差1微秒409。定向Spotless首次0匹配不计，通过修正限定绝对后缀regex实际覆盖6Java（2改4整洁），格式后同23再次通过；不把两轮相加。非作者两轴复审无阻断。
+
+证据保存在交付工作区outputs/lis-six-batch-20261013/rules-version-fix：verification.json、independent-review.json、完整原红／绿日志及稳定JUnit XML。原10浏览器场景及完整349仍待新WAR实测，正式系统尚未部署本补丁；后续字典查询乱序问题另行收口。

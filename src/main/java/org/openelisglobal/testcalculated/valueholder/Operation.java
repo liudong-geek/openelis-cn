@@ -1,5 +1,6 @@
 package org.openelisglobal.testcalculated.valueholder;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -79,6 +80,7 @@ public class Operation implements Comparable<Operation> {
         this.value = value;
     }
 
+    @JsonInclude(JsonInclude.Include.ALWAYS)
     public Integer getSampleId() {
         return sampleId;
     }

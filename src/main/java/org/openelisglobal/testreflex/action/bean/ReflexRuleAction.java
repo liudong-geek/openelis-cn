@@ -1,5 +1,6 @@
 package org.openelisglobal.testreflex.action.bean;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -71,6 +72,7 @@ public class ReflexRuleAction {
         this.reflexTestId = reflexTestId;
     }
 
+    @JsonInclude(JsonInclude.Include.ALWAYS)
     public String getInternalNote() {
         return internalNote;
     }
@@ -79,6 +81,7 @@ public class ReflexRuleAction {
         this.internalNote = internalNote;
     }
 
+    @JsonInclude(JsonInclude.Include.ALWAYS)
     public String getExternalNote() {
         return externalNote;
     }
@@ -95,6 +98,7 @@ public class ReflexRuleAction {
         this.addNotification = addNotification;
     }
 
+    @JsonInclude(JsonInclude.Include.ALWAYS)
     public Integer getTestReflexId() {
         return testReflexId;
     }

@@ -1,5 +1,6 @@
 package org.openelisglobal.testreflex.action.bean;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -63,6 +64,7 @@ public class ReflexRule extends BaseObject<Integer> {
     /**
      * Exact database version, independent of JSON timestamp millisecond precision.
      */
+    @JsonProperty("configurationVersion")
     public String getConfigurationVersion() {
         return configurationVersion != null ? configurationVersion
                 : getLastupdated() == null ? null : getLastupdated().toInstant().toString();

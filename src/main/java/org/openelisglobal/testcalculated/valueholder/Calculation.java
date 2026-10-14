@@ -1,5 +1,7 @@
 package org.openelisglobal.testcalculated.valueholder;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -63,6 +65,7 @@ public class Calculation extends BaseObject<Integer> {
     /**
      * Exact database version, independent of JSON timestamp millisecond precision.
      */
+    @JsonProperty("configurationVersion")
     public String getConfigurationVersion() {
         return configurationVersion != null ? configurationVersion
                 : getLastupdated() == null ? null : getLastupdated().toInstant().toString();
@@ -148,6 +151,7 @@ public class Calculation extends BaseObject<Integer> {
         this.stringId = stringId;
     }
 
+    @JsonInclude(JsonInclude.Include.ALWAYS)
     public String getResult() {
         return result;
     }
@@ -156,6 +160,7 @@ public class Calculation extends BaseObject<Integer> {
         this.result = result;
     }
 
+    @JsonInclude(JsonInclude.Include.ALWAYS)
     public String getNote() {
         return note;
     }
