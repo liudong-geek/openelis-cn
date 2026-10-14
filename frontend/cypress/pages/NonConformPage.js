@@ -269,6 +269,7 @@ class NonConform {
       "Serology-Immunology",
     );
     cy.get("#reporting-unit")
+      .scrollIntoView()
       .should("be.visible")
       .and("be.enabled")
       .should(($select) => {

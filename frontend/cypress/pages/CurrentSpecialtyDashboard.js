@@ -517,6 +517,9 @@ class CurrentSpecialtyDashboard {
         );
         expect(persistedIds).to.include(this.state.orderableId);
         const specimen = saved.samples[0];
+        expect(specimen.sortOrder, "actual saved clinical tube sort order")
+          .to.be.a("string")
+          .and.match(/^[1-9]\d{0,4}$/);
         expect(
           saved.requests,
           "one real collected specialty request",
@@ -545,6 +548,7 @@ class CurrentSpecialtyDashboard {
           sampleItemId: String(specimen.sampleItemId),
           sampleTypeId: String(specimen.sampleTypeId),
           barcode: specimen.barcode,
+          lookupCode: `${saved.labNumber}.${specimen.sortOrder}`,
           requestId: String(planned.sampleTypeRequestId),
           analysisIds: analyses
             .map((analysis) => String(analysis.analysisId))
@@ -590,39 +594,39 @@ class CurrentSpecialtyDashboard {
       ).not.to.eq(true);
       this.state.intakePreparationStarted = true;
       const readTube = () =>
-        jsonRead("/rest/specimen-intake/lookup", { code: target.barcode }).then(
-          (lookup) => {
-            expect(lookup.version).to.eq(1);
-            expect(lookup.source).to.eq("specimen_lookup");
-            expect(lookup.readOnly).to.eq(true);
-            expect(lookup.matchedKind).to.eq("specimen");
-            expect(lookup.selection).to.deep.eq({
-              sampleId: target.sampleId,
-              sampleItemId: target.sampleItemId,
-              requestId: target.requestId,
-            });
-            const current = lookup.current;
-            expect(current.sampleId).to.eq(target.sampleId);
-            expect(current.labNo).to.eq(target.labNo);
-            expect(current.patientMasked).to.eq(false);
-            expect(current.patient.id).to.eq(target.patientId);
-            expect(current.requestedSpecimens).to.have.length(1);
-            expect(current.physicalSpecimens).to.have.length(1);
-            const planned = current.requestedSpecimens[0],
-              tube = current.physicalSpecimens[0];
-            expect(planned.id).to.eq(target.requestId);
-            expect(planned.sampleItemId).to.eq(target.sampleItemId);
-            expect(planned.status).to.eq("COLLECTED");
-            expect(planned.typeOfSampleId).to.eq(target.sampleTypeId);
-            expect(tube.id).to.eq(target.sampleItemId);
-            expect(tube.requestId).to.eq(target.requestId);
-            expect(tube.typeOfSampleId).to.eq(target.sampleTypeId);
-            expect(target.barcode).to.eq(`${target.labNo}.${tube.sortOrder}`);
-            expect(tube.voided).to.eq(false);
-            expect(tube.rejected).to.eq(false);
-            return tube;
-          },
-        );
+        jsonRead("/rest/specimen-intake/lookup", {
+          code: target.lookupCode,
+        }).then((lookup) => {
+          expect(lookup.version).to.eq(1);
+          expect(lookup.source).to.eq("specimen_lookup");
+          expect(lookup.readOnly).to.eq(true);
+          expect(lookup.matchedKind).to.eq("specimen");
+          expect(lookup.selection).to.deep.eq({
+            sampleId: target.sampleId,
+            sampleItemId: target.sampleItemId,
+            requestId: target.requestId,
+          });
+          const current = lookup.current;
+          expect(current.sampleId).to.eq(target.sampleId);
+          expect(current.labNo).to.eq(target.labNo);
+          expect(current.patientMasked).to.eq(false);
+          expect(current.patient.id).to.eq(target.patientId);
+          expect(current.requestedSpecimens).to.have.length(1);
+          expect(current.physicalSpecimens).to.have.length(1);
+          const planned = current.requestedSpecimens[0],
+            tube = current.physicalSpecimens[0];
+          expect(planned.id).to.eq(target.requestId);
+          expect(planned.sampleItemId).to.eq(target.sampleItemId);
+          expect(planned.status).to.eq("COLLECTED");
+          expect(planned.typeOfSampleId).to.eq(target.sampleTypeId);
+          expect(tube.id).to.eq(target.sampleItemId);
+          expect(tube.requestId).to.eq(target.requestId);
+          expect(tube.typeOfSampleId).to.eq(target.sampleTypeId);
+          expect(target.lookupCode).to.eq(`${target.labNo}.${tube.sortOrder}`);
+          expect(tube.voided).to.eq(false);
+          expect(tube.rejected).to.eq(false);
+          return tube;
+        });
       const postOnce = (path, body, csrf) =>
         cy
           .request({
