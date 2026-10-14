@@ -70,6 +70,44 @@ const studyRoot = (items) => ({
     items.find((item) => item.menu.elementId === id),
   ),
 });
+const studyMenuNodes = (items) =>
+  items.flatMap((item) => [item, ...studyMenuNodes(item.childMenus)]);
+const studyDisplayRoot = (items) => {
+  // The twelve API records overlap: some configured roots are children of others.
+  const nestedIds = new Set(
+    items.flatMap((item) =>
+      studyMenuNodes(item.childMenus).map((child) => child.menu.elementId),
+    ),
+  );
+  const clone = (item) => ({
+    ...item,
+    menu: { ...item.menu },
+    childMenus: item.childMenus.map(clone),
+  });
+  return {
+    ...studyRoot(items),
+    childMenus: items
+      .filter((item) => !nestedIds.has(item.menu.elementId))
+      .map(clone),
+  };
+};
+const updateStudyItems = (items, displayRoot) => {
+  const activeById = new Map(
+    studyMenuNodes(displayRoot.childMenus).map((item) => [
+      item.menu.elementId,
+      item.menu.isActive,
+    ]),
+  );
+  const update = (item) => ({
+    ...item,
+    menu: {
+      ...item.menu,
+      isActive: activeById.get(item.menu.elementId) ?? item.menu.isActive,
+    },
+    childMenus: item.childMenus.map(update),
+  });
+  return items.map(update);
+};
 
 function StudyMenuManagement({ embedded = false, onEditorStateChange } = {}) {
   const { notificationVisible, setNotificationVisible, addNotification } =
@@ -293,12 +331,13 @@ function StudyMenuManagement({ embedded = false, onEditorStateChange } = {}) {
                 <br></br>
                 {readComplete && (
                   <MenuCheckBox
-                    menuItem={menuItem}
-                    curMenuItem={menuItem}
+                    menuItem={studyDisplayRoot(menuItem.childMenus)}
                     path="$"
                     setMenuItem={(next) => {
                       setDirty(true);
-                      setMenuItem(studyRoot(next.childMenus));
+                      setMenuItem(
+                        studyRoot(updateStudyItems(menuItem.childMenus, next)),
+                      );
                     }}
                     labelKey="menu.study.active"
                     recurse={showChildren}

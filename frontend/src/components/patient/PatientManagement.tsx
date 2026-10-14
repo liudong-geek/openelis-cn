@@ -345,6 +345,7 @@ function PatientManagement() {
                 />
               ) : (
                 <SearchPatientForm
+                  showNotifications={false}
                   key={`${location.search || "advanced-search"}-${patientListVersion}`}
                   initialSearch={location.search}
                   initialState={listState.current.advanced}

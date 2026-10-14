@@ -119,6 +119,58 @@ const renderSearchForm = (props: SearchPatientFormProps = {}) =>
   );
 
 describe("SearchPatientForm history mode", () => {
+  it.each([
+    { option: undefined, shows: true, label: "default" },
+    { option: true, shows: true, label: "explicit true" },
+    { option: false, shows: false, label: "delegated false" },
+  ])(
+    "keeps the real notification host contract for $label",
+    ({ option, shows }) => {
+      render(
+        <IntlProvider locale="en" messages={enMessages}>
+          <NotificationContext.Provider
+            value={{
+              notificationVisible: true,
+              notifications: [
+                {
+                  title: "SIM notification",
+                  message: "SIM patient saved",
+                  kind: "success",
+                },
+              ],
+              setNotificationVisible: vi.fn(),
+              addNotification: vi.fn(),
+              removeNotification: vi.fn(),
+            }}
+          >
+            <ConfigurationContext.Provider
+              value={{
+                configurationProperties: {
+                  FIRST_NAME_REGEX: ".*",
+                  LAST_NAME_REGEX: ".*",
+                  AccessionFormat: "NUMERIC",
+                  UseExternalPatientInfo: "false",
+                  ENABLE_CLIENT_REGISTRY: "false",
+                  DEFAULT_DATE_LOCALE: "en-US",
+                },
+              }}
+            >
+              <SearchPatientForm showNotifications={option} />
+            </ConfigurationContext.Provider>
+          </NotificationContext.Provider>
+        </IntlProvider>,
+      );
+      if (shows) {
+        expect(screen.getByRole("status")).toBeVisible();
+        expect(screen.getByRole("status")).toHaveTextContent(
+          "SIM patient saved",
+        );
+      } else {
+        expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      }
+    },
+  );
+
   it("uses explicit local-patient actions without changing the default shared form API", async () => {
     const getSelectedPatient = vi.fn<(patient: PatientRecord) => void>();
     getFromOpenElisServer.mockImplementation(

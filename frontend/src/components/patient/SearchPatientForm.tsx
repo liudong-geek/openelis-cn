@@ -46,6 +46,7 @@ import {
 } from "./patientSearchPagingContract";
 
 export interface SearchPatientFormProps {
+  showNotifications?: boolean;
   getSelectedPatient?: (patient: PatientRecord) => void;
   setOrderFormValues?: React.Dispatch<
     React.SetStateAction<Record<string, unknown>>
@@ -726,7 +727,11 @@ export function SearchPatientForm(props: SearchPatientFormProps) {
   }, []);
   return (
     <>
-      {notificationVisible === true ? <AlertDialog /> : ""}
+      {notificationVisible === true && props.showNotifications !== false ? (
+        <AlertDialog />
+      ) : (
+        ""
+      )}
       {loading && <Loading />}
       <Formik
         initialValues={searchFormValues}

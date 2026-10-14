@@ -138,7 +138,20 @@ vi.mock("../PatientMasterList", () => ({
     );
   },
 }));
-vi.mock("../SearchPatientForm", () => ({ default: () => null }));
+// The SearchPatientForm mock reproduces only its real notification-host boundary.
+// Search transport, table and demographic behavior are outside this Carbon seam.
+vi.mock("../SearchPatientForm", () => ({
+  default: (props) => {
+    const notification = React.useContext(NotificationContext);
+    return (
+      <div>
+        {notification.notificationVisible === true &&
+          props.showNotifications !== false && <AlertDialog />}
+        SIM advanced search
+      </div>
+    );
+  },
+}));
 const patientMenus = (historyFlag = true) => [
   {
     menu: { elementId: "menu_patient", isActive: true },
@@ -235,6 +248,44 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("patient list maintenance modal", () => {
+  test("advanced search delegates to the persistent page host after save without duplicating or replaying its toast", () => {
+    vi.useFakeTimers();
+    try {
+      const { history } = mount({
+        pathname: "/PatientManagement",
+        state: { listState: { managementMode: "advanced" } },
+      });
+      expect(screen.getByText("SIM advanced search")).toBeVisible();
+      fireEvent.click(
+        screen.getByRole("button", { name: messages["new.patient.label"] }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "SIM saved with notification" }),
+      );
+      expect(
+        document.querySelector(".patient-create-modal"),
+      ).not.toBeInTheDocument();
+      const statuses = screen.getAllByRole("status");
+      expect(statuses).toHaveLength(1);
+      const toast = statuses[0];
+      expect(toast).toBeVisible();
+      expect(toast).toHaveTextContent(messages["success.save.patient"]);
+      expect(history.location.pathname).toBe("/PatientManagement");
+      expect(screen.getByText("SIM advanced search")).toBeVisible();
+      act(() => vi.advanceTimersByTime(1500));
+      fireEvent.click(
+        screen.getByRole("button", { name: messages["new.patient.label"] }),
+      );
+      expect(screen.getAllByRole("status")).toEqual([toast]);
+      act(() => vi.advanceTimersByTime(600));
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "SIM cancel" }));
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test.each(["SIM new", "SIM view"])(
     "a successful %s save leaves one real status notification visible after the modal closes",
     (launcher) => {
