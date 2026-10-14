@@ -127,6 +127,7 @@ interface CreatePatientFormProps {
     React.SetStateAction<Record<string, unknown>>
   >;
   showActionsButton?: boolean;
+  showNotifications?: boolean;
   showPatientSearch?: boolean;
   onCancel?: () => void;
   maintenanceMode?: boolean;
@@ -1424,7 +1425,11 @@ function CreatePatientForm(props: CreatePatientFormProps) {
 
   return (
     <>
-      {notificationVisible === true ? <AlertDialog /> : ""}
+      {notificationVisible === true && props.showNotifications !== false ? (
+        <AlertDialog />
+      ) : (
+        ""
+      )}
       {props.selectedPatient?.isMerged === true && (
         <InlineNotification
           kind="warning"

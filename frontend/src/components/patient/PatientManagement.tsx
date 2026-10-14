@@ -40,7 +40,8 @@ import type { PatientRecord } from "./types";
 import ProductPageHeader from "../common/ProductPageHeader";
 import { fromList } from "../common/listWorkspace";
 import { getFromOpenElisServer } from "../utils/Utils";
-import { ConfigurationContext } from "../layout/Layout";
+import { ConfigurationContext, NotificationContext } from "../layout/Layout";
+import { AlertDialog } from "../common/CustomNotification";
 import { canViewPatientHistory } from "../layout/navigationMenuAvailability";
 
 const breadcrumbs = [
@@ -114,6 +115,7 @@ function PatientManagement() {
   const [actionsContainer, setActionsContainer] =
     useState<HTMLDivElement | null>(null);
   const { userSessionDetails } = useContext(UserSessionDetailsContext);
+  const { notificationVisible } = useContext(NotificationContext) || {};
   const { navigationMenuItems = null } = useContext(ConfigurationContext) || {};
   const historyAvailable = canViewPatientHistory(
     userSessionDetails,
@@ -262,6 +264,7 @@ function PatientManagement() {
 
   return (
     <>
+      {notificationVisible && <AlertDialog />}
       <PageBreadCrumb breadcrumbs={breadcrumbs} />
       <ProductPageHeader
         titleId="patient-management-title"
@@ -436,6 +439,7 @@ function PatientManagement() {
               <CreatePatientForm
                 key={`${modal.sequence}-${patient?.patientPK || "new"}`}
                 showActionsButton
+                showNotifications={false}
                 selectedPatient={patient || {}}
                 maintenanceMode={!!modal.patientId}
                 maintenanceActorKey={maintenanceActorKey}

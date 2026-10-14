@@ -8,7 +8,11 @@ import { IntlProvider } from "react-intl";
 import messages from "../../../languages/zh_CN.json";
 import UserSessionDetailsContext from "../../../UserSessionDetailsContext";
 import PatientManagement from "../PatientManagement";
-import { ConfigurationContext } from "../../layout/Layout";
+import { ConfigurationContext, NotificationContext } from "../../layout/Layout";
+import {
+  AlertDialog,
+  NotificationKinds,
+} from "../../common/CustomNotification";
 const mocks = vi.hoisted(() => ({
   form: vi.fn(),
   list: vi.fn(),
@@ -49,8 +53,11 @@ vi.mock("../usePatientDetails", () => ({
 vi.mock("../CreatePatientForm", () => ({
   default: (props) => {
     mocks.form(props);
+    const notification = React.useContext(NotificationContext);
     return (
       <div>
+        {notification.notificationVisible &&
+          props.showNotifications !== false && <AlertDialog />}
         SIM editor
         <input aria-label="SIM draft" defaultValue="SIM draft" />
         <button
@@ -73,6 +80,31 @@ vi.mock("../CreatePatientForm", () => ({
         </button>
         <button onClick={props.onCancel}>SIM cancel</button>
         <button onClick={() => props.onSaveSuccess("42")}>SIM saved</button>
+        <button
+          onClick={() => {
+            notification.setNotificationVisible(true);
+            notification.addNotification({
+              title: messages["notification.title"],
+              message: messages["success.save.patient"],
+              kind: NotificationKinds.success,
+            });
+            props.onSaveSuccess("42");
+          }}
+        >
+          SIM saved with notification
+        </button>
+        <button
+          onClick={() => {
+            notification.setNotificationVisible(true);
+            notification.addNotification({
+              title: "SIM",
+              message: "SIM rejected",
+              kind: NotificationKinds.error,
+            });
+          }}
+        >
+          SIM rejected notification
+        </button>
       </div>
     );
   },
@@ -117,6 +149,27 @@ const patientMenus = (historyFlag = true) => [
     ],
   },
 ];
+function NotificationProvider({ children }) {
+  const [notifications, setNotifications] = React.useState<any[]>([]);
+  const [notificationVisible, setNotificationVisible] = React.useState(false);
+  return (
+    <NotificationContext.Provider
+      value={{
+        notifications,
+        notificationVisible,
+        setNotificationVisible,
+        addNotification: (body) =>
+          setNotifications((current) => [...current, body]),
+        removeNotification: (index) =>
+          setNotifications((current) =>
+            current.filter((_body, position) => position !== index),
+          ),
+      }}
+    >
+      {children}
+    </NotificationContext.Provider>
+  );
+}
 const mount = (
   path: string | { pathname: string; state: unknown } = "/PatientManagement",
   actor = "SIM-A",
@@ -139,15 +192,17 @@ const mount = (
           },
         }}
       >
-        <ConfigurationContext.Provider value={{ navigationMenuItems: menus }}>
-          <Router history={history}>
-            <IntlProvider locale="zh-CN" messages={messages}>
-              <Route path="/PatientManagement/:patientId?">
-                <PatientManagement />
-              </Route>
-            </IntlProvider>
-          </Router>
-        </ConfigurationContext.Provider>
+        <NotificationProvider>
+          <ConfigurationContext.Provider value={{ navigationMenuItems: menus }}>
+            <Router history={history}>
+              <IntlProvider locale="zh-CN" messages={messages}>
+                <Route path="/PatientManagement/:patientId?">
+                  <PatientManagement />
+                </Route>
+              </IntlProvider>
+            </Router>
+          </ConfigurationContext.Provider>
+        </NotificationProvider>
       </UserSessionDetailsContext.Provider>
     );
   };
@@ -180,6 +235,72 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("patient list maintenance modal", () => {
+  test.each(["SIM new", "SIM view"])(
+    "a successful %s save leaves one real status notification visible after the modal closes",
+    (launcher) => {
+      const { history } = mount();
+      fireEvent.click(screen.getByRole("button", { name: launcher }));
+      expect(screen.getByText("SIM editor")).toBeVisible();
+      fireEvent.click(
+        screen.getByRole("button", { name: "SIM saved with notification" }),
+      );
+      expect(
+        document.querySelector(".patient-create-modal"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByText("SIM list")).toBeVisible();
+      expect(history.location.pathname).toBe("/PatientManagement");
+      const statuses = screen.getAllByRole("status");
+      expect(statuses).toHaveLength(1);
+      expect(statuses[0]).toBeVisible();
+      expect(statuses[0]).toHaveTextContent(messages["success.save.patient"]);
+      expect(statuses[0].closest(".patient-create-modal")).toBeNull();
+      expect(mocks.list.mock.calls.at(-1)[0].initialState).toMatchObject({
+        managementMode: "list",
+      });
+    },
+  );
+  test("reopening the modal preserves the original toast lifetime and cannot replay an expired notice", () => {
+    vi.useFakeTimers();
+    try {
+      mount();
+      fireEvent.click(screen.getByRole("button", { name: "SIM new" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: "SIM saved with notification" }),
+      );
+      const toast = screen.getByRole("status");
+      act(() => vi.advanceTimersByTime(1500));
+      fireEvent.click(screen.getByRole("button", { name: "SIM view" }));
+      expect(
+        document.querySelectorAll(".cds--toast-notification"),
+      ).toHaveLength(1);
+      expect(document.querySelector(".cds--toast-notification")).toBe(toast);
+      act(() => vi.advanceTimersByTime(600));
+      expect(
+        document.querySelector(".cds--toast-notification"),
+      ).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "SIM cancel" }));
+      expect(
+        document.querySelector(".patient-create-modal"),
+      ).not.toBeInTheDocument();
+      expect(
+        document.querySelector(".cds--toast-notification"),
+      ).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  test("keeps only one real notification while the patient modal remains open", () => {
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "SIM view" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "SIM rejected notification" }),
+    );
+    const statuses = screen.getAllByRole("status");
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]).toHaveTextContent("SIM rejected");
+    expect(statuses[0]).toBeVisible();
+    expect(statuses[0].closest(".patient-create-modal")).toBeNull();
+  });
   test("keeps the order return context without applying its paging to patients", () => {
     const listOrigin = {
       pathname: "/order",

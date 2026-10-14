@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { IntlProvider } from "react-intl";
 import CreatePatientForm from "../CreatePatientForm";
 import messages from "../../../languages/zh_CN.json";
+import { NotificationContext } from "../../layout/Layout";
 
 // Real form, Formik, validation and Carbon. Network and picker shims expose
 // the production value/onChange contracts; they do not implement a reset.
@@ -39,7 +40,7 @@ vi.mock("../../layout/Layout", () => ({
   }),
 }));
 vi.mock("../../common/CustomNotification", () => ({
-  AlertDialog: () => null,
+  AlertDialog: () => <div data-testid="SIM form notification" />,
   NotificationKinds: { success: "success", error: "error" },
 }));
 vi.mock("../AddressSearch", () => ({ default: () => null }));
@@ -150,6 +151,36 @@ beforeEach(() => {
 });
 
 describe("new patient form inside the list modal", () => {
+  test.each([undefined, false])(
+    "delegates notification hosting only when showNotifications is %s",
+    (showNotifications) => {
+      render(
+        <NotificationContext.Provider
+          value={{
+            notificationVisible: true,
+            setNotificationVisible: () => {},
+            addNotification: state.notify,
+          }}
+        >
+          <IntlProvider locale="zh-CN" messages={messages}>
+            <CreatePatientForm
+              showActionsButton
+              selectedPatient={{}}
+              showNotifications={showNotifications}
+            />
+          </IntlProvider>
+        </NotificationContext.Provider>,
+      );
+      if (showNotifications === false) {
+        expect(
+          screen.queryByTestId("SIM form notification"),
+        ).not.toBeInTheDocument();
+      } else {
+        expect(screen.getByTestId("SIM form notification")).toBeVisible();
+      }
+      expect(state.post).not.toHaveBeenCalled();
+    },
+  );
   test("clears the same mounted draft without POST or cancel and submits the refilled identity", async () => {
     const user = userEvent.setup();
     const { onCancel, onSaveSuccess } = mount();
