@@ -403,7 +403,32 @@ class BatchOrderEntry {
     );
   }
   typeLabNumber(labNumber) {
-    expect(labNumber, "original legacy preprinted fixture").to.eq("123456");
+    expect(labNumber, "original legacy batch fixture").to.eq("123456");
+    expect(["On Demand", "Pre-Printed"]).to.include(this.expected.method);
+    if (this.expected.method === "On Demand") {
+      return cy
+        .get("#labNo, #display_labNo")
+        .filter(":visible")
+        .should("have.length", 1)
+        .clear()
+        .type(labNumber)
+        .then(() =>
+          cy
+            .get("#labNo")
+            .invoke("val")
+            .then((value) => {
+              this.expected.typedAccession = value;
+              expect(
+                value,
+                "original stale value before on-demand generation",
+              ).to.eq(labNumber);
+              expect(
+                this.saves,
+                "typing must not submit a clinical order",
+              ).to.have.length(0);
+            }),
+        );
+    }
     expect(this.expected.method, "unchanged manual preprinted workflow").to.eq(
       "Pre-Printed",
     );

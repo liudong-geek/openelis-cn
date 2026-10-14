@@ -31,8 +31,18 @@ import SampleBatchEntry from "./SampleBatchEntry";
 import "./sample-batch-entry-setup.scss";
 
 const SampleBatchEntrySetup = () => {
-  const [orderFormValues, setOrderFormValues] = useState(
-    BatchOrderEntryFormValues,
+  const [batchSession, setBatchSession] = useState(0);
+  return (
+    <SampleBatchEntrySession
+      key={batchSession}
+      onFinish={() => setBatchSession((current) => current + 1)}
+    />
+  );
+};
+
+const SampleBatchEntrySession = ({ onFinish }) => {
+  const [orderFormValues, setOrderFormValues] = useState(() =>
+    structuredClone(BatchOrderEntryFormValues),
   );
   const [status, setStatus] = useState("");
   const { configurationProperties } = useContext(ConfigurationContext);
@@ -347,6 +357,7 @@ const SampleBatchEntrySetup = () => {
         <SampleBatchEntry
           orderFormValues={orderFormValues}
           setOrderFormValues={setOrderFormValues}
+          onFinish={onFinish}
         />
       ) : (
         <>

@@ -1,5 +1,4 @@
 import React, { useContext, useState, useEffect, useRef } from "react";
-import { useHistory } from "react-router-dom";
 import { ConfigurationContext, NotificationContext } from "../layout/Layout";
 import {
   Button,
@@ -76,14 +75,13 @@ const extractSampleXmlLabelQuantity = (sampleXml, attributeName) => {
 };
 
 const SampleBatchEntry = (props) => {
-  const { orderFormValues, setOrderFormValues } = props;
+  const { orderFormValues, setOrderFormValues, onFinish } = props;
   // const [notificationVisible, setNotificationVisible] = useState(false);
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
   const { configurationProperties } = useContext(ConfigurationContext);
   const intl = useIntl();
   const componentMounted = useRef(false);
-  const history = useHistory();
   const [siteNames, setSiteNames] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -833,7 +831,8 @@ const SampleBatchEntry = (props) => {
               <Grid>
                 <Button
                   data-cy="finishButton"
-                  onClick={() => history.push("/SampleBatchEntrySetup")}
+                  onClick={onFinish}
+                  disabled={generateSaveButtonDisabled && buttonDisabled}
                 >
                   <FormattedMessage id="label.button.finish" />
                 </Button>
