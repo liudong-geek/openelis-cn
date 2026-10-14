@@ -25,7 +25,11 @@ export const setCheckbox = (id, checked) => {
   cy.get(`#${id}`).should(checked ? "be.checked" : "not.be.checked");
 };
 
-export const openAuthorizedSidebarLink = (workspaceId, href) => {
+export const openAuthorizedSidebarLink = (
+  workspaceId,
+  href,
+  expectedSearch,
+) => {
   cy.get(".cds--side-nav").then(($nav) => {
     if (!$nav.hasClass("cds--side-nav--expanded")) {
       cy.get("[data-cy='menuButton']").should("be.visible").click();
@@ -49,7 +53,10 @@ export const openAuthorizedSidebarLink = (workspaceId, href) => {
     .click();
   const [pathname, search = ""] = href.split("?");
   cy.location("pathname").should("eq", pathname);
-  cy.location("search").should("eq", search ? `?${search}` : "");
+  cy.location("search").should(
+    "eq",
+    expectedSearch ?? (search ? `?${search}` : ""),
+  );
   cy.get("body").then(($body) => {
     if ($body.find("[data-cy='menuButton']").length) {
       if ($body.find(".cds--side-nav--expanded").length) {

@@ -1,6 +1,21 @@
 import enMessages from "../../src/languages/en.json";
 import zhMessages from "../../src/languages/zh.json";
 import zhCNMessages from "../../src/languages/zh_CN.json";
+import originalFixture from "../fixtures/NonConform.json";
+
+let rememberedReceipt = null;
+const resolveOriginalNceNumber = (value) => {
+  if (String(value) !== String(originalFixture.NceNumber)) return value;
+  expect(
+    rememberedReceipt,
+    "original NCE placeholder requires a saved receipt",
+  ).to.be.an("object");
+  expect(rememberedReceipt.outcome).to.eq("APPLIED");
+  expect(rememberedReceipt.operation).to.eq("CREATE");
+  expect(rememberedReceipt.requestId).to.be.a("string").and.not.be.empty;
+  expect(rememberedReceipt.nceNumber).to.be.a("string").and.not.be.empty;
+  return rememberedReceipt.nceNumber;
+};
 const label = (key) =>
   new RegExp(
     [enMessages[key], zhMessages[key], zhCNMessages[key]]
@@ -99,10 +114,14 @@ class NonConform {
   }
 
   enterSearchField(value) {
-    this.searchValue = value;
+    const target =
+      this.searchType === "NCE Number"
+        ? resolveOriginalNceNumber(value)
+        : value;
+    this.searchValue = target;
     cy.get(this.registration ? "#search-value" : this.selectors.searchField)
       .clear()
-      .type(value);
+      .type(target);
   }
 
   clickSearchButton() {
@@ -140,8 +159,11 @@ class NonConform {
         ).to.eq(this.searchValue);
         if (response.body.nceEventsSearchResults.length > 1) {
           cy.fixture("NonConform").then((fixture) => {
+            const rememberedNumber = resolveOriginalNceNumber(
+              fixture.NceNumber,
+            );
             const selected = response.body.nceEventsSearchResults.find(
-              (row) => String(row.nceNumber) !== String(fixture.NceNumber),
+              (row) => String(row.nceNumber) !== String(rememberedNumber),
             );
             expect(selected, "separate real event for lab-number workflow").to
               .exist;
@@ -175,7 +197,10 @@ class NonConform {
   }
 
   validateNCESearchResult(NCENo) {
-    cy.get(this.selectors.nceNumberResult).invoke("text").should("eq", NCENo);
+    const expected = resolveOriginalNceNumber(NCENo);
+    cy.get(this.selectors.nceNumberResult)
+      .invoke("text")
+      .should("eq", expected);
   }
 
   clickCheckbox() {
@@ -376,6 +401,8 @@ class NonConform {
       });
       return;
     }
+    const rememberNumber = this.rememberNextNumber === true;
+    this.rememberNextNumber = false;
     cy.intercept("POST", "**/rest/nce/registration?queryVersion=2").as(
       "nceRegistrationSave",
     );
@@ -401,14 +428,17 @@ class NonConform {
       expect(response.body.requestId).to.eq(command.requestId);
       expect(response.body.nceNumber).to.be.a("string").and.not.be.empty;
       this.savedNumber = response.body.nceNumber;
-      if (this.rememberNextNumber) {
-        cy.readFile("cypress/fixtures/NonConform.json").then((fixture) =>
-          cy.writeFile("cypress/fixtures/NonConform.json", {
-            ...fixture,
-            NceNumber: this.savedNumber,
-          }),
-        );
-        this.rememberNextNumber = false;
+      if (rememberNumber) {
+        expect(
+          response.body.requestId,
+          "same marked registration receipt",
+        ).to.be.a("string").and.not.be.empty;
+        rememberedReceipt = Object.freeze({
+          outcome: response.body.outcome,
+          operation: response.body.operation,
+          requestId: response.body.requestId,
+          nceNumber: response.body.nceNumber,
+        });
       }
     });
     cy.get(".nce-registration-modal.is-visible").should("not.exist");
@@ -468,6 +498,7 @@ class NonConform {
 
   getAndSaveNceNumber() {
     // The number is allocated at commit; remember only the actual receipt.
+    rememberedReceipt = null;
     this.rememberNextNumber = true;
     cy.get("#nce-number").should("have.attr", "readonly");
   }

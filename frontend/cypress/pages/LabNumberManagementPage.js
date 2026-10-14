@@ -1,6 +1,25 @@
 import config from "../../src/config.json";
 import { body, label, setCheckbox } from "./AdminUiContract";
 
+const assertLabNumberReadback = (actual, expected) => {
+  for (const key of Object.keys(expected)) {
+    // GET reads blank configuration as null, which NON_NULL omits from JSON.
+    // Only a disabled empty prefix has this equivalent read representation.
+    if (
+      key === "alphanumPrefix" &&
+      expected[key] === "" &&
+      expected.usePrefix === false &&
+      !Object.prototype.hasOwnProperty.call(actual, key)
+    ) {
+      expect(actual, "unused empty prefix omitted by GET").not.to.have.property(
+        key,
+      );
+    } else {
+      expect(actual[key], key).to.deep.eq(expected[key]);
+    }
+  }
+};
+
 class LabNumberManagementPage {
   verifyPageLoaded() {
     cy.get(".lab-number-workspace h1")
@@ -77,7 +96,19 @@ class LabNumberManagementPage {
         cy.get(".cds--modal-header__heading")
           .invoke("text")
           .should("match", label("labNumber.confirm.title"));
-        cy.contains("button", label("labNumber.confirm.save"))
+        cy.get(".cds--modal-footer button.cds--btn--danger")
+          .should("have.length", 1)
+          .should(($button) => {
+            // Carbon prepends an assistive danger description to the visible label.
+            expect($button.find(".cds--visually-hidden").text()).to.eq(
+              "danger",
+            );
+            const visibleLabel = $button.clone();
+            visibleLabel.find(".cds--visually-hidden").remove();
+            expect(visibleLabel.text()).to.match(
+              label("labNumber.confirm.save"),
+            );
+          })
           .should("be.visible")
           .and("not.be.disabled")
           .click();
@@ -92,8 +123,7 @@ class LabNumberManagementPage {
       cy.request(`${config.serverBaseUrl}/rest/labnumbermanagement`).then(
         (read) => {
           expect(read.status).to.eq(200);
-          for (const key of Object.keys(expected))
-            expect(read.body[key], key).to.deep.eq(expected[key]);
+          assertLabNumberReadback(read.body, expected);
         },
       );
     });

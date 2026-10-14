@@ -226,15 +226,18 @@ class HomePage {
   // Patient Merge (Admin function)
   goToPatientMerge() {
     this.goToPatientEntry();
-    cy.get(".oe-page-header__actions button[aria-label]")
-      .filter((_, button) =>
-        labelPattern("patient.management.moreActions").test(
-          button.getAttribute("aria-label") || "",
-        ),
-      )
+    cy.get(".oe-page-header__actions button.cds--overflow-menu")
       .should("have.length", 1)
       .and("be.visible")
       .and("be.enabled")
+      .should(($button) => {
+        expect($button.attr("aria-haspopup")).to.eq("true");
+        const icons = $button.find("svg[aria-label]");
+        expect(icons).to.have.length(1);
+        expect(icons.attr("aria-label")).to.match(
+          labelPattern("patient.management.moreActions"),
+        );
+      })
       .click();
     cy.contains(
       ".patient-management-actions__options button",

@@ -233,3 +233,11 @@ a10 targeted-catalog-return-remaining160中原testManagement4项全部实际通�
 实际合并已成功，后台返回字段为mergeAuditId；前端类型及成功提示误读auditId，导致审计编号空白。仅将类型和取值对齐原DTO，国际化模板的auditId占位名保持；原请求、权限、合并事务与审计持久化均未修改。浏览器助手同步核对原始mergeAuditId，原10场景与断言保持。
 
 既有服务测试追加一个真实组件／服务边界回归，HTTP按实际DTO结构模拟；修改前8通过／1失败，集成后3文件33项通过、0失败／跳过，6.25秒，限定格式通过。独立只读核对已有审计1及患者9200107←9200108，未重复合并；原10实际浏览器仍待新隔离库，不以单测代替。证据位于交付工作区patient-merge-menu-helper-fix/audit-wire-contract；未推送或部署。
+
+## 后续验收助手校正（E-01）
+
+手册助手按已发布文档0.6核对，并保留下载DOM元素供完整PDF字节验证；原4项实际通过。患者合并入口按Carbon实际overflow按钮和SVG标签定位，原保存成功后读回的审计字段另由CHG-104修复。编号配置确认只剔除Carbon隐藏danger说明后精确匹配可见文案；独立GET仅允许未启用且为空的前缀被NON_NULL省略，原POST完整字段保持。编号原5、报告原38及界面配色原1分别真实通过，0失败／跳过；不拼接为完整门禁。
+
+结果助手按原文件字节验证临床输入SHA后严格UTF-8解析，避免Cypress自动JSON对象被转成[object Object]；入口仍精确核对/Results并核对现有pending/page1/pageSize25 URL。原30实际前4通过、第5暴露后台空结果缺testResult问题，仍待产品修复及完整浏览器验证，不降低数组检查。
+
+不符合项助手用当前spec内不可变的APPLIED CREATE回执记住原占位编号，完整requestId及事件身份保留；不再覆盖原fixture，后续普通保存不能替换该回执。实际助手模块7项局部契约通过，原19浏览器仍待新WAR。6个助手限定格式通过，原spec/fixture、权限、超时与失败停止规则保持。证据见交付工作区helper-final-review/late-helper-integration.json及各项原始日志；正式系统未替换。

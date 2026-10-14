@@ -76,10 +76,14 @@ class ResultsPage {
       /^[a-f0-9]{64}$/,
     );
     return cy
-      .readFile(path, "utf8", { log: false })
+      .readFile(path, null, { log: false })
       .then((raw) =>
         cy.window({ log: false }).then(async (window) => {
-          const bytes = new window.TextEncoder().encode(raw);
+          expect(
+            Cypress.Buffer.isBuffer(raw),
+            "raw clinical envelope bytes",
+          ).to.eq(true);
+          const bytes = new window.Uint8Array(raw);
           const digest = await window.crypto.subtle.digest("SHA-256", bytes);
           const actualSHA = Array.from(new Uint8Array(digest))
             .map((value) => value.toString(16).padStart(2, "0"))
@@ -87,7 +91,9 @@ class ResultsPage {
           expect(actualSHA, "exact reviewed runtime clinical envelope").to.eq(
             expectedSHA,
           );
-          const envelope = JSON.parse(raw);
+          const envelope = JSON.parse(
+            new window.TextDecoder("utf-8", { fatal: true }).decode(bytes),
+          );
           expect(envelope.schema).to.eq(
             "lis-cypress-current-clinical-results-input-v1",
           );
@@ -309,7 +315,11 @@ class ResultsPage {
     cy.intercept("GET", "**/rest/results-entry/pending").as(pending);
     cy.intercept("GET", "**/rest/results-entry/lab-units").as(units);
     cy.intercept("GET", "**/rest/analysis-status-types").as(statuses);
-    openAuthorizedSidebarLink("menu_testing_workspace", "/Results");
+    openAuthorizedSidebarLink(
+      "menu_testing_workspace",
+      "/Results",
+      "?scope=pending&page=1&pageSize=25",
+    );
     cy.wait("@" + units).then(({ response }) => {
       expect(response.statusCode).to.eq(200);
       expect(response.body).to.be.an("array");

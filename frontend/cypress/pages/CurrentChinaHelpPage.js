@@ -26,7 +26,7 @@ class CurrentChinaHelpPage {
       });
     cy.location("pathname").should("eq", MANUAL_URL);
     cy.get("h1").should("have.text", MANUAL_TITLE);
-    cy.get(".hero-actions").should("contain.text", "版本 0.5");
+    cy.get(".hero-actions").should("contain.text", "版本 0.6");
     cy.get("nav[aria-label='手册目录']").should("be.visible");
   }
 
@@ -49,7 +49,9 @@ class CurrentChinaHelpPage {
     cy.visit(MANUAL_URL);
     cy.get("a.manual-pdf-action")
       .should("be.visible")
-      .and("have.attr", "download")
+      .should(($link) => {
+        expect($link).to.have.attr("download");
+      })
       .then(($link) => {
         const pdfURL = $link[0].href;
         expect(new URL(pdfURL).pathname).to.eq(
