@@ -81,22 +81,23 @@ class BatchOrderEntry {
     ).should("be.visible");
   }
   selectSampleType(serumSample) {
-    const pattern =
-      serumSample === "Serum"
-        ? labelPattern("sample.type.serum")
-        : new RegExp(`^${Cypress._.escapeRegExp(serumSample)}$`);
+    expect(serumSample, "original Serum fixture").to.eq("Serum");
     cy.intercept("GET", "**/rest/sample-type-tests?*").as("batchTypeTests");
-    cy.get("#selectSampleType option").then(($options) => {
-      const rows = [...$options].filter((option) =>
-        pattern.test(option.text.trim()),
-      );
-      expect(rows, "same clinical tube type").to.have.length(1);
-      this.expected.sampleTypeId = rows[0].value;
-      expect(this.expected.sampleTypeId).to.match(/^[1-9]\d*$/);
-      cy.get("#selectSampleType")
-        .should("be.visible")
-        .select(this.expected.sampleTypeId);
-    });
+    cy.get("#selectSampleType")
+      .should("be.visible")
+      .and("be.enabled")
+      .should(($select) => {
+        const $option = $select.find("option[value='2']");
+        expect($option, "one original Serum type 2").to.have.length(1);
+        expect(
+          $option.text().trim(),
+          "legal original Serum display",
+        ).to.be.oneOf(["Serum", "血清"]);
+      })
+      .then(() => {
+        this.expected.sampleTypeId = "2";
+        cy.get("#selectSampleType").select("2").should("have.value", "2");
+      });
     cy.wait("@batchTypeTests").then(({ request, response }) => {
       expectJSON(response);
       expect(String(request.query.sampleType)).to.eq(
@@ -106,15 +107,44 @@ class BatchOrderEntry {
     });
   }
   checkNamedCheckbox(kind, name) {
+    const fixture = {
+      "panel:Bilan Biochimique": {
+        id: "1",
+        names: ["Bilan Biochimique", "生化检验组合"],
+      },
+      "panel:Serologie VIH": {
+        id: "4",
+        names: ["Serologie VIH", "HIV血清学"],
+      },
+      "test:Creatinine": { id: "4", names: ["Creatinine", "肌酐"] },
+      "test:DENGUE PCR": { names: ["DENGUE PCR"] },
+      "test:HIV VIRAL LOAD": { names: ["HIV VIRAL LOAD"] },
+    }[`${kind}:${name}`];
+    expect(fixture, "original batch fixture selection").to.be.an("object");
     cy.contains(
       `label[for^='${kind}_']`,
-      new RegExp(`^${Cypress._.escapeRegExp(name)}$`),
+      new RegExp(
+        `^(?:${fixture.names.map(Cypress._.escapeRegExp).join("|")})$`,
+      ),
     )
       .should("be.visible")
       .then(($label) => {
+        const available = this.available[kind === "panel" ? "panels" : "tests"];
+        const matching = available.filter((item) =>
+          fixture.id
+            ? String(item.id) === fixture.id
+            : fixture.names.includes(item.name),
+        );
+        expect(matching, "one original object for Serum 2").to.have.length(1);
+        expect(matching[0].name, "legal original display name").to.be.oneOf(
+          fixture.names,
+        );
+        const expectedId = String(matching[0].id);
         const id = $label.attr("for");
         const value = id.slice(kind.length + 1);
         expect(value).to.match(/^[1-9]\d*$/);
+        expect(value, "selected original object identity").to.eq(expectedId);
+        expect(id).to.eq(`${kind}_${expectedId}`);
         if (kind === "panel") this.expected.panelIds.push(value);
         cy.get(`#${id}`).then(($input) => {
           if (!$input.prop("checked")) cy.wrap($label).click();
@@ -387,6 +417,7 @@ class BatchOrderEntry {
       });
   }
   clickGenerateAndSaveBarcode() {
+    this.watchClinicalSaves();
     cy.intercept("GET", "**/rest/SampleEntryGenerateScanProvider").as(
       "batchGeneratedAccession",
     );
@@ -406,6 +437,7 @@ class BatchOrderEntry {
       .should("be.enabled");
   }
   saveOrder() {
+    this.watchClinicalSaves();
     cy.then(() => {
       this.expected.accession = this.expected.typedAccession;
     });

@@ -248,21 +248,53 @@ class ModifyOrderPage {
     cy.get("#sampleId_0").select("2").should("have.value", "2");
     return cy.wait("@currentSerumChoices").then(({ response }) => {
       const choices = realJSON(response);
-      const panelNames = ["Bilan Biochimique", "Serologie VIH"];
-      const panels = panelNames.map((name) => {
-        const matches = choices.panels.filter((panel) => panel.name === name);
-        expect(matches, `original clinical panel ${name}`).to.have.length(1);
-        return matches[0];
+      expect(
+        String(choices.sampleTypeId),
+        "original Serum choice identity",
+      ).to.eq("2");
+      expect(choices.tests).to.be.an("array");
+      expect(choices.panels).to.be.an("array");
+      const availableIds = new Set(
+        choices.tests.map((test) => String(test.id)),
+      );
+      const expectedTestIds = [];
+      const excludedTestIds = [];
+      const panels = [
+        { id: "1", names: ["Bilan Biochimique", "生化检验组合"] },
+        { id: "4", names: ["Serologie VIH", "HIV血清学"] },
+      ].map((fixture) => {
+        const matches = choices.panels.filter((panel) =>
+          fixture.names.includes(panel.name),
+        );
+        expect(
+          matches,
+          `unique original clinical panel ${fixture.id}`,
+        ).to.have.length(1);
+        const panel = matches[0];
+        expect(String(panel.id), "unchanged original panel identity").to.eq(
+          fixture.id,
+        );
+        const panelTestIds = csv(panel.testIds).map((id) => id.trim());
+        const eligible = panelTestIds.filter((id) => availableIds.has(id));
+        const excluded = panelTestIds.filter((id) => !availableIds.has(id));
+        expect(eligible, `panel ${fixture.id} current Serum tests`).not.to.be
+          .empty;
+        expectedTestIds.push(...eligible);
+        excludedTestIds.push(...excluded);
+        return { panel, eligible, excluded };
       });
       this.expectedNewSample = {
         sampleTypeId: "2",
-        panels: panels.map((panel) => String(panel.id)),
-        tests: [...new Set(panels.flatMap((panel) => csv(panel.testIds)))],
+        panels: panels.map(({ panel }) => String(panel.id)),
+        tests: [...new Set(expectedTestIds)],
+        excludedTests: [...new Set(excludedTestIds)],
       };
       expect(this.expectedNewSample.tests).not.to.be.empty;
-      panels.forEach((panel) => {
+      panels.forEach(({ panel, eligible, excluded }) => {
         cy.get(`label[for='panel_0_${panel.id}']`).should("be.visible").click();
         cy.get(`#panel_0_${panel.id}`).should("be.checked");
+        eligible.forEach((id) => cy.get(`#test_0_${id}`).should("be.checked"));
+        excluded.forEach((id) => cy.get(`#test_0_${id}`).should("not.exist"));
       });
       cy.get("input[id^='test_0_']:checked").then(($inputs) => {
         expect(
@@ -374,6 +406,12 @@ class ModifyOrderPage {
         expect(csv(added[0].getAttribute("tests")).sort()).to.deep.equal(
           [...this.expectedNewSample.tests].sort(),
         );
+        this.expectedNewSample.excludedTests.forEach((id) =>
+          expect(
+            csv(added[0].getAttribute("tests")),
+            `other-specimen panel test ${id} excluded from saved request`,
+          ).not.to.include(id),
+        );
         expect(csv(added[0].getAttribute("panels")).sort()).to.deep.equal(
           [...this.expectedNewSample.panels].sort(),
         );
@@ -434,6 +472,12 @@ class ModifyOrderPage {
           expect(
             tube.analyses.map((analysis) => String(analysis.testId)).sort(),
           ).to.deep.equal([...this.expectedNewSample.tests].sort());
+          this.expectedNewSample.excludedTests.forEach((id) =>
+            expect(
+              tube.analyses.map((analysis) => String(analysis.testId)),
+              `other-specimen panel test ${id} excluded from persisted tube`,
+            ).not.to.include(id),
+          );
           expect(
             [
               ...new Set(

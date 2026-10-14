@@ -240,7 +240,24 @@ class NonConform {
   }
 
   selectReportingUnit(unit) {
-    cy.get("#reporting-unit").should("be.enabled").select(unit);
+    expect(unit, "original Serology-Immunology fixture").to.eq(
+      "Serology-Immunology",
+    );
+    cy.get("#reporting-unit")
+      .should("be.visible")
+      .and("be.enabled")
+      .should(($select) => {
+        const $option = $select.find("option[value='117']");
+        expect($option, "one original professional group 117").to.have.length(
+          1,
+        );
+        expect(
+          $option.text().trim(),
+          "legal original group display",
+        ).to.be.oneOf(["Serology-Immunology", "血清免疫学"]);
+      })
+      .select("117")
+      .should("have.value", "117");
   }
 
   enterDescription(description) {
@@ -374,6 +391,10 @@ class NonConform {
           ? JSON.parse(request.body)
           : request.body;
       expect(command.severity).to.eq("MINOR");
+      expect(
+        String(command.reportingUnit),
+        "original professional group",
+      ).to.eq("117");
       expect(command.linkedSpecimens).to.have.length.greaterThan(0);
       expect(response.body.outcome).to.eq("APPLIED");
       expect(response.body.operation).to.eq("CREATE");
