@@ -1985,7 +1985,7 @@ const UnifiedResults: React.FC = () => {
                               <TableCell className="results-workbench__cell--result">
                                 {blocked ? (
                                   <span className="unifiedResultsReadOnlyValue">
-                                    {blockedResultDisplay(row)}
+                                    {blockedResultDisplay(row) || "—"}
                                   </span>
                                 ) : (
                                   <PolymorphicResultCell

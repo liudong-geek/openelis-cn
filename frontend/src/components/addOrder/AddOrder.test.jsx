@@ -223,6 +223,37 @@ describe("AddOrder — order-level label aggregation (OGC-285 M5b)", () => {
     utilsMock.getFromOpenElisServer.mockImplementation(() => {});
   });
 
+  test("keeps the real Carbon remember preference functional when creating an order", () => {
+    wireAggregationResponse(labelRequestFixture());
+    const orderFormValues = baseOrderFormValues();
+    const { setOrderFormValues } = renderAddOrder({ orderFormValues });
+    const checkbox = screen.getByLabelText(
+      messages["order.remember.site.and.requester.label"],
+    );
+    expect(checkbox).toHaveAttribute("type", "checkbox");
+    fireEvent.click(checkbox);
+    expect(setOrderFormValues).toHaveBeenLastCalledWith({
+      ...orderFormValues,
+      rememberSiteAndRequester: true,
+    });
+    fireEvent.click(checkbox);
+    expect(setOrderFormValues).toHaveBeenLastCalledWith({
+      ...orderFormValues,
+      rememberSiteAndRequester: false,
+    });
+  });
+
+  test("does not offer a creation-only remember preference when modifying an order", () => {
+    wireAggregationResponse(labelRequestFixture());
+    renderAddOrder({ isModifyOrder: true });
+    expect(
+      screen.queryByRole("checkbox", {
+        name: messages["order.remember.site.and.requester.label"],
+      }),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector("#rememberSiteAndRequester")).toBeNull();
+  });
+
   test("POSTs the aggregation with positional sample_id_local + deduped numeric test ids", () => {
     wireAggregationResponse(labelRequestFixture());
     renderAddOrder();

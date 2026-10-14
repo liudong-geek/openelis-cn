@@ -67,6 +67,24 @@ const parseSamples = (payload) => {
 };
 
 describe("buildSampleEditPayload", () => {
+  it.each([true, false])(
+    "omits local remember preference %s from the edit DTO without mutating the draft",
+    (remembered) => {
+      const original = freeze({
+        ...form(),
+        rememberSiteAndRequester: remembered,
+      });
+      const payload = buildSampleEditPayload(original, []);
+      expect(payload).not.toHaveProperty("rememberSiteAndRequester");
+      expect(original.rememberSiteAndRequester).toBe(remembered);
+      expect(payload.existingTests).toEqual(original.existingTests);
+      expect(payload.possibleTests).toEqual(original.possibleTests);
+      expect(payload.referralItems).toEqual(original.referralItems);
+      expect(payload.sampleOrderItems.program).toBe(
+        original.sampleOrderItems.program,
+      );
+    },
+  );
   it("copies the complete form and retains tube identity, null group markers and flags", () => {
     const original = freeze(form());
     const payload = buildSampleEditPayload(original, []);

@@ -68,8 +68,25 @@ vi.mock("../addOrder/AddOrder", () => ({
     disabled,
     isSubmitting,
     error,
+    isModifyOrder,
   }) => (
     <section aria-label="送检信息编辑" data-testid="referring-information">
+      {!isModifyOrder && (
+        <label>
+          {messages["order.remember.site.and.requester.label"]}
+          <input
+            type="checkbox"
+            checked={Boolean(orderFormValues.rememberSiteAndRequester)}
+            onChange={(event) => {
+              const checked = event.currentTarget.checked;
+              setOrderFormValues({
+                ...orderFormValues,
+                rememberSiteAndRequester: checked,
+              });
+            }}
+          />
+        </label>
+      )}
       <label>
         申请医生名字
         <input
@@ -342,6 +359,64 @@ beforeEach(() => {
 });
 
 describe("ModifyOrder Chinese existing-application workspace", () => {
+  test.each([true, false])(
+    "the actual modify save caller omits local preference %s while retaining draft and business fields through failure/retry",
+    async (remembered) => {
+      const source = { ...fixture(), rememberSiteAndRequester: remembered };
+      const snapshot = JSON.stringify(source);
+      setup({ response: source });
+      await loaded();
+      nextStep();
+      await screen.findByTestId("referring-information");
+      expect(
+        screen.queryByRole("checkbox", {
+          name: messages["order.remember.site.and.requester.label"],
+        }),
+      ).not.toBeInTheDocument();
+      api.post.mockImplementationOnce((_url, _raw, callback) =>
+        callback(response(400)),
+      );
+      save();
+      await screen.findByText(messages["modify.order.invalid"]);
+      await waitFor(() => expect(saveButton()).not.toBeDisabled());
+      expect(
+        screen.queryByRole("checkbox", {
+          name: messages["order.remember.site.and.requester.label"],
+        }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByLabelText("申请医生名字")).toHaveValue(
+        source.sampleOrderItems.providerFirstName,
+      );
+      const [url, raw] = api.post.mock.calls[0];
+      expect(url).toBe("/rest/SampleEdit");
+      const payload = JSON.parse(raw);
+      expect(payload).not.toHaveProperty("rememberSiteAndRequester");
+      expect(payload.accessionNumber).toBe(source.accessionNumber);
+      expect(payload.existingTests).toEqual(source.existingTests);
+      expect(payload.possibleTests).toEqual(source.possibleTests);
+      expect(payload.sampleOrderItems).toMatchObject({
+        labNo: source.sampleOrderItems.labNo,
+        sampleId: source.sampleOrderItems.sampleId,
+        programId: source.sampleOrderItems.programId,
+        providerFirstName: source.sampleOrderItems.providerFirstName,
+        referringSiteId: source.sampleOrderItems.referringSiteId,
+        additionalQuestions: source.sampleOrderItems.additionalQuestions,
+        modified: true,
+      });
+      expect(payload.sampleXML).toBe("<samples/>");
+      expect(JSON.stringify(source)).toBe(snapshot);
+      api.post.mockImplementationOnce((_url, _raw, callback) =>
+        callback(response(200)),
+      );
+      save();
+      await screen.findByRole("heading", {
+        name: messages["modify.order.saved"],
+        exact: true,
+      });
+      expect(api.post).toHaveBeenCalledTimes(2);
+      expect(JSON.parse(api.post.mock.calls[1][1])).toEqual(payload);
+    },
+  );
   test("opens existing tubes directly with a readable Chinese patient summary and two steps", async () => {
     setup();
     await loaded();

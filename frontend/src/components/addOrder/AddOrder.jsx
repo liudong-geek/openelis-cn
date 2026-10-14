@@ -1347,15 +1347,17 @@ const AddOrder = (props) => {
             </Column>
 
             {/* Remember Site and Requester + Informed Consent Row */}
-            <Column lg={8} md={4} sm={4}>
-              <Checkbox
-                labelText={
-                  <FormattedMessage id="order.remember.site.and.requester.label" />
-                }
-                id="rememberSiteAndRequester"
-                onChange={handleRememberCheckBox}
-              />
-            </Column>
+            {!isModifyOrder && (
+              <Column lg={8} md={4} sm={4}>
+                <Checkbox
+                  labelText={
+                    <FormattedMessage id="order.remember.site.and.requester.label" />
+                  }
+                  id="rememberSiteAndRequester"
+                  onChange={handleRememberCheckBox}
+                />
+              </Column>
+            )}
             <Column lg={8} md={4} sm={4}>
               <Checkbox
                 labelText={

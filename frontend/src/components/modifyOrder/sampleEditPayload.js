@@ -77,6 +77,8 @@ const sampleElement = (sample) => {
 
 export const buildSampleEditPayload = (orderFormValues, samples = []) => {
   const payload = copyValue(orderFormValues);
+  // This preference belongs to creating the next order, not editing one.
+  delete payload.rememberSiteAndRequester;
   payload.sampleOrderItems = { ...payload.sampleOrderItems, modified: true };
   [
     "priorityList",

@@ -126,6 +126,65 @@ beforeEach(() => {
   });
 });
 
+test.each([
+  ["N", {}],
+  ["D", { dictionaryResults: [] }],
+  ["M", { multiSelectResultValues: "{}", dictionaryResults: [] }],
+  ["C", { multiSelectResultValues: "", dictionaryResults: [] }],
+])(
+  "empty restricted %s results show a neutral placeholder without an editor or Save",
+  (resultType, extra) => {
+    open([blocked("101", "201", { resultType, ...extra })]);
+    const subject = within(screen.getByRole("table"))
+      .getByText("模拟项目101")
+      .closest("tr");
+    const display = subject.querySelector(".unifiedResultsReadOnlyValue");
+    expect(display).toBeVisible();
+    expect(display).toHaveTextContent(/^—$/);
+    expect(subject.querySelectorAll("input, select, textarea")).toHaveLength(0);
+    expect(within(subject).queryByRole("button", { name: "保存" })).toBeNull();
+    expect(records[0].resultValue).toBe("");
+    expect(io.save).not.toHaveBeenCalled();
+  },
+);
+
+test.each([
+  ["N", { resultValue: "0" }, "0"],
+  [
+    "D",
+    { resultValue: "10", dictionaryResults: [{ id: "10", value: "阴性" }] },
+    "阴性",
+  ],
+  [
+    "M",
+    {
+      multiSelectResultValues: '{"1":"10,11"}',
+      dictionaryResults: [
+        { id: "10", value: "阴性" },
+        { id: "11", value: "阳性" },
+      ],
+    },
+    "阴性, 阳性",
+  ],
+  ["C", { multiSelectResultValues: "historical-text" }, "historical-text"],
+])(
+  "restricted %s results preserve their existing value without a write",
+  (resultType, extra, expected) => {
+    const original = blocked("101", "201", { resultType, ...extra });
+    open([original]);
+    const subject = within(screen.getByRole("table"))
+      .getByText("模拟项目101")
+      .closest("tr");
+    expect(
+      subject.querySelector(".unifiedResultsReadOnlyValue"),
+    ).toHaveTextContent(expected);
+    expect(subject.querySelectorAll("input, select, textarea")).toHaveLength(0);
+    expect(within(subject).queryByRole("button", { name: "保存" })).toBeNull();
+    expect(records[0]).toEqual(original);
+    expect(io.save).not.toHaveBeenCalled();
+  },
+);
+
 test("all-specimen view explains a shared restriction once, counts analyses and links every restricted row", () => {
   open([
     blocked("101", "201", { testResultComponentId: "701" }),
