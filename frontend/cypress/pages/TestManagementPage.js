@@ -51,10 +51,21 @@ class TestManagementPage {
           "[role='option']",
           new RegExp(`^${Cypress._.escapeRegExp(sampleName)}$`),
         )
+          .scrollIntoView()
           .should("be.visible")
           .click();
         cy.get("#basic-info-create-amr").should("not.be.checked");
         cy.get("#basic-info-create-orderable").should("not.be.checked");
+        cy.get("#basic-info-create-notifyResults").should(
+          "have.attr",
+          "aria-checked",
+          "false",
+        );
+        cy.get("#basic-info-create-inLabOnly").should(
+          "have.attr",
+          "aria-checked",
+          "false",
+        );
         cy.get("#create-domain-CLINICAL").should("be.checked");
       });
     // Close the real list box before the save button; retain the chosen sample.
@@ -83,6 +94,8 @@ class TestManagementPage {
         domain: "CLINICAL",
         amr: false,
         orderable: false,
+        notifyResults: false,
+        inLabOnly: false,
         description: "",
       });
       this.id = String(body(response.body).testId);
@@ -99,6 +112,8 @@ class TestManagementPage {
         expect(read.body.active).to.eq(false);
         expect(read.body.orderable).to.eq(false);
         expect(read.body.antimicrobialResistance).to.eq(false);
+        expect(read.body.notifyResults).to.eq(false);
+        expect(read.body.inLabOnly).to.eq(false);
       });
     });
     cy.get(".test-catalog-create-modal.is-visible").should("not.exist");
@@ -187,20 +202,37 @@ class TestManagementPage {
     );
     cy.wait("@catalogEditorEnvelope").then(({ response }) => {
       expect(response.statusCode).to.eq(200);
-      expect(body(response.body).name).to.eq(this.name);
+      const envelope = body(response.body);
+      expect(String(envelope.testId), "same selected catalog identity").to.eq(
+        this.id,
+      );
+      expect(this.sampleId, "original Serum sample identity").to.eq("2");
+      expect(
+        envelope.name,
+        "complete localized test and sample display name",
+      ).to.eq(`${this.name}(血清)`);
+      expect(envelope.code).to.eq(this.code);
     });
     cy.wait("@catalogEditorBasic").then(({ response }) => {
       expect(response.statusCode).to.eq(200);
-      expect(body(response.body).code).to.eq(this.code);
+      const basic = body(response.body);
+      expect(String(basic.testId)).to.eq(this.id);
+      expect(basic.name, "unchanged canonical catalog name").to.eq(this.name);
+      expect(basic.code).to.eq(this.code);
+      expect(
+        basic.sampleTypeIds.map(String),
+        "original Serum association",
+      ).to.deep.eq(["2"]);
     });
     cy.get("#basic-info-name").should("have.value", this.name);
     cy.get("#basic-info-code").should("have.value", this.code);
     cy.intercept("GET", "**/rest/test-catalog/tests?*").as(
       "catalogReturnedPage",
     );
-    cy.get(`.cds--breadcrumb a[href="${this.returnTo}"]`)
+    cy.get('[data-testid="test-catalog-back-to-list"]')
       .should("have.length", 1)
       .should("be.visible")
+      .and("have.attr", "href", this.returnTo)
       .click();
     cy.wait("@catalogReturnedPage").then(({ request, response }) => {
       expect(response.statusCode).to.eq(200);

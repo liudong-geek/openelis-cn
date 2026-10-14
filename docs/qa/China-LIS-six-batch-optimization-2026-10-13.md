@@ -200,3 +200,10 @@ a10登记POST实际500、68字节UNKNOWN响应；独立只读查询本次CYPRESS
 原项目表单6场景首轮保存POST200与独立GET200，业务身份和字段一致，仅FHIR编码省略空item列表导致旧深等判断失败。比较只规范化恰为空数组的顶层item，所有非空问题内容及其他字段完整保留；POST原始内容、UUID、名称、专业组、写入次数与未修改时零写入断言保持。末项下拉位于滚动区域外，先正常滚动精确目标，再保留可见性和普通点击。
 
 a10 targeted-program-catalog-remaining193的原programEntry6项全部通过，无失败／跳过；随后其他文件失败不能计后续通过。仅改ProgramEntryPage.js，未改产品或原6场景／3000毫秒预算。源码及失败证据位于outputs/lis-six-batch-20261013/program-questionnaire-helper-fix，真实日志位于release-runtime/runs/a10。最终完整349仍待通过。
+
+
+## 检验目录原4场景核对（E-01）
+
+创建选择先正常滚动原血清2选项；完整POST及独立读回同时检查原默认notifyResults=false、inLabOnly=false。关联页envelope严格核对同testId、编码及“项目名(血清)”，基础明细另核原名称和精确sampleTypeIds=[2]。返回使用当前侧栏唯一“返回检验项目目录”链接，href必须等于保存的完整筛选分页URL；原返回GET、结果身份、筛选及页大小检查保持。当前面包屑最后项为页名文本，旧链接定位已过期。
+
+a10 targeted-catalog-return-remaining160中原testManagement4项全部实际通过，零失败／跳过；此前创建POST201后字段期待及返回定位失败均留存，不重放旧创建。限定格式与根非作者源码核对通过，原spec、fixture、业务预算及产品不改。证据见交付工作区test-catalog-editor-name-contract-fix及该次原始结果。完整349及部署仍待，不能把此4项当作全量通过。
