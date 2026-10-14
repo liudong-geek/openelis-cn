@@ -317,6 +317,8 @@ public class LogbookResultsRestController extends LogbookResultsBaseController {
                     }
 
                     if (StringUtils.isBlank(patientPK)) {
+                        form.setSearchFinished(true);
+                        paging.setDatabaseResults(request, form, filteredTests);
                         return (form);
                     }
                     patient = patientService.get(patientPK);

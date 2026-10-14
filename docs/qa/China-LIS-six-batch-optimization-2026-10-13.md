@@ -241,3 +241,11 @@ a10 targeted-catalog-return-remaining160中原testManagement4项全部实际通�
 结果助手按原文件字节验证临床输入SHA后严格UTF-8解析，避免Cypress自动JSON对象被转成[object Object]；入口仍精确核对/Results并核对现有pending/page1/pageSize25 URL。原30实际前4通过、第5暴露后台空结果缺testResult问题，仍待产品修复及完整浏览器验证，不降低数组检查。
 
 不符合项助手用当前spec内不可变的APPLIED CREATE回执记住原占位编号，完整requestId及事件身份保留；不再覆盖原fixture，后续普通保存不能替换该回执。实际助手模块7项局部契约通过，原19浏览器仍待新WAR。6个助手限定格式通过，原spec/fixture、权限、超时与失败停止规则保持。证据见交付工作区helper-final-review/late-helper-integration.json及各项原始日志；正式系统未替换。
+
+## 结果空查询与旧分页清理（CHG-105，D-03／E-01）
+
+实际不存在的实验室编号查询返回缺少testResult，且提前返回未清理同一会话上一条结果分页。该分支仅增加searchFinished和既有ResultsPaging空集合调用；请求、加载器身份、专业组角色过滤及保存接口保持。
+
+回归使用实际AppConfig转换器和ResultsPaging，覆盖空查询、旧会话翻页、范围查询与角色过滤。原实现4项为1通过／3失败；候选加原6项写保护共10通过。根从集成后的仓内源码重新编译并执行同10项，全部通过，JUnit 2.264秒；限定格式及非作者复审通过。证据位于交付工作区result-empty-query-fix，包含编译来源、实际命令、红绿日志及独立复审。
+
+原结果30浏览器最近仍为4通过／1失败／25未执行，需新WAR重验；新版完整前端、CHG-101主交付与兼容配置验收、部署均待。局部通过不替代发布门禁，正式数据和旧失败记录保持。
