@@ -2,9 +2,9 @@ import enMessages from "../../src/languages/en.json";
 import zhMessages from "../../src/languages/zh.json";
 
 const API_BASE = "/api/OpenELIS-Global";
-const labelPattern = (id) =>
+const labelPattern = (id, withCount = false) =>
   new RegExp(
-    `^(?:${[enMessages[id], zhMessages[id]].map(Cypress._.escapeRegExp).join("|")})$`,
+    `^(?:${[enMessages[id], zhMessages[id]].map(Cypress._.escapeRegExp).join("|")})${withCount ? "\\s*\\d+" : ""}$`,
   );
 
 class NotifyUserPage {
@@ -152,8 +152,17 @@ class NotifyUserPage {
         ).to.eq(String(this.savedReceipt.id));
         expect(added[0].message).to.eq(this.message);
         expect(String(added[0].user?.id)).to.eq(this.recipientId);
-        expect(added[0].readAt).to.eq(null);
-        expect(added[0].createdDate).to.be.a("string").and.not.to.eq("");
+        // The production NON_NULL converter omits the fresh notice's null read time.
+        expect(
+          added[0],
+          "new saved notification remains unread",
+        ).not.to.have.property("readAt");
+        // Jackson writes OffsetDateTime as epoch seconds, matching formatTimestamp.
+        expect(added[0].createdDate).to.be.a("number").and.be.greaterThan(0);
+        expect(
+          Number.isFinite(new Date(added[0].createdDate * 1000).getTime()),
+          "persisted notification has a valid creation timestamp",
+        ).to.eq(true);
         expect(
           observation.requests,
           "no automatic duplicate send",
@@ -163,7 +172,7 @@ class NotifyUserPage {
       cy.get(this.selectors.submit).should("be.disabled");
       cy.contains(
         ".notification-workspace__tabs button",
-        labelPattern("notify.tab.history"),
+        labelPattern("notify.tab.history", true),
       )
         .should("be.visible")
         .click();

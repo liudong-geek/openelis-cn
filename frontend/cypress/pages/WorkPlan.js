@@ -52,10 +52,20 @@ class WorkPlan {
 
   selectDropdownOption(option) {
     const [type, , inputId] = this.mode;
+    if (type === "unit")
+      expect(option, "original professional-group fixture").to.eq(
+        "Serology-Immunology",
+      );
+    if (type === "panel")
+      expect(option, "original panel fixture").to.eq("Bilan Biochimique");
     const expected =
-      type === "priority" && option === "Routine"
-        ? labels("order.priority.option.ROUTINE")
-        : new RegExp(`^${Cypress._.escapeRegExp(option)}$`);
+      type === "unit"
+        ? /^(?:Serology-Immunology|血清免疫学)$/
+        : type === "panel"
+          ? /^(?:Bilan Biochimique|生化检验组合)$/
+          : type === "priority" && option === "Routine"
+            ? labels("order.priority.option.ROUTINE")
+            : new RegExp(`^${Cypress._.escapeRegExp(option)}$`);
     cy.intercept("GET", "**/rest/Workplan?*").as("workplanQuery");
     cy.get(`#${inputId}`)
       .should("be.visible")
@@ -65,16 +75,31 @@ class WorkPlan {
       .then((listId) => {
         expect(listId, "real ComboBox option list").to.be.a("string").and.not.be
           .empty;
-        cy.get(`#${listId}`)
-          .contains("[role='option']", expected)
-          .scrollIntoView()
-          .should("be.visible")
-          .click();
+        const list = cy.get(`#${listId}`);
+        const choice =
+          type === "unit" || type === "panel"
+            ? list
+                .find("[role='option']")
+                .filter((_, item) => expected.test(item.textContent.trim()))
+                .should("have.length", 1)
+            : list.contains("[role='option']", expected);
+        choice.scrollIntoView().should("be.visible").click();
       });
-    cy.wait("@workplanQuery").then(({ response }) => {
+    cy.wait("@workplanQuery").then(({ request, response }) => {
       expect(response.statusCode).to.eq(200);
       expect(response.body.queryVersion).to.eq("2");
       expect(response.body.query.type).to.eq(type);
+      if (type === "unit" || type === "panel") {
+        const originalFilterId = type === "unit" ? "117" : "1";
+        expect(
+          new URL(request.url).searchParams.get("filterId"),
+          "queried original filter identity",
+        ).to.eq(originalFilterId);
+        expect(
+          response.body.query.filterId,
+          "server-confirmed original filter identity",
+        ).to.eq(originalFilterId);
+      }
       expect(response.body.workplanTests).to.be.an("array");
     });
   }

@@ -65,10 +65,22 @@ export const setVisibleCheckbox = (id, checked) => {
 };
 export const setCarbonToggle = (id, checked) => {
   cy.get(`[id='${id}']`)
+    .should("have.length", 1)
     .should("have.attr", "role", "switch")
+    .and("be.enabled")
     .then(($button) => {
+      expect(
+        $button.attr("aria-checked"),
+        "real Carbon toggle state",
+      ).to.be.oneOf(["true", "false"]);
       if ($button.attr("aria-checked") !== String(checked))
-        cy.wrap($button).should("be.visible").click();
+        // Carbon visually hides the accessible button; its label exposes the switch.
+        cy.get(`label[for='${id}']`)
+          .should("have.length", 1)
+          .find(".cds--toggle__switch")
+          .should("have.length", 1)
+          .should("be.visible")
+          .click({ scrollBehavior: "center" });
     });
   cy.get(`[id='${id}']`).should("have.attr", "aria-checked", String(checked));
 };

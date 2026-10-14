@@ -198,7 +198,7 @@ class CurrentMenuContract {
       cy.wait(`@${observed.alias}`).then(({ request, response }) => {
         const expectedPath =
           this.category === "study"
-            ? `${API_BASE}/rest/menu/`
+            ? `${API_BASE}/rest/menu`
             : `${API_BASE}/rest/menu/${ROOTS[this.category]}`;
         expect(
           new URL(request.url).pathname,
@@ -233,11 +233,13 @@ class CurrentMenuContract {
   }
 
   openSidebar() {
-    cy.get("body").then(($body) => {
-      if ($body.find(".cds--side-nav--expanded").length === 0)
-        cy.get("[data-cy='menuButton']").should("be.visible").click();
-    });
-    cy.get(".cds--side-nav--expanded").should("be.visible");
+    cy.get(".cds--side-nav")
+      .should("be.visible")
+      .then(($nav) => {
+        if (!$nav.hasClass("cds--side-nav--expanded"))
+          cy.get("[data-cy='menuButton']").should("be.visible").click();
+      });
+    cy.get(".cds--side-nav").should("have.class", "cds--side-nav--expanded");
     cy.get("#menu_management_workspace").should("be.visible");
   }
 
@@ -267,7 +269,16 @@ class CurrentMenuContract {
       method: "GET",
       pathname: `${API_BASE}/rest/patient-management-list`,
     }).as(alias);
-    this.openTask("menu_intake_workspace", "/PatientManagement");
+    this.openTask("menu_intake_workspace", "/order");
+    cy.contains(
+      ".intake-header-actions button",
+      pattern("intake.workspace.patient"),
+    )
+      .should("have.length", 1)
+      .and("be.visible")
+      .and("be.enabled")
+      .click();
+    cy.location("pathname").should("eq", "/PatientManagement");
     cy.wait(`@${alias}`).then(({ response }) => {
       expect(response?.statusCode, "real ordinary clinical patient list").to.eq(
         200,
@@ -294,8 +305,9 @@ class CurrentMenuContract {
       .and("be.enabled")
       .click();
     cy.get(".patient-create-modal.is-visible").should("be.visible");
-    cy.get(".patient-create-modal.is-visible .cds--modal-close")
-      .should("be.visible")
+    cy.get(".patient-create-modal.is-visible .cds--modal-close:visible")
+      .should("have.length", 1)
+      .and("be.visible")
       .click();
     cy.get(".patient-create-modal.is-visible").should("not.exist");
     this.clinicalOrderPatientPicker(true);
@@ -395,6 +407,11 @@ class CurrentMenuContract {
       pathname: `${API_BASE}/rest/nce/registration/meta`,
     }).as(metaAlias);
     this.openTask("menu_quality_workspace", "/NceDashboard");
+    cy.contains(".nce-dashboard-header button", pattern("nce.button.reportNce"))
+      .should("be.visible")
+      .and("be.enabled")
+      .click();
+    cy.get(".nce-registration-modal.is-visible").should("be.visible");
     cy.wait(`@${metaAlias}`).then(({ response }) => {
       expect(
         response?.statusCode,
@@ -405,11 +422,6 @@ class CurrentMenuContract {
         "real ADD permission is required; no manufactured capability",
       ).to.eq(true);
     });
-    cy.contains(".nce-dashboard-header button", pattern("nce.button.reportNce"))
-      .should("be.visible")
-      .and("be.enabled")
-      .click();
-    cy.get(".nce-registration-modal.is-visible").should("be.visible");
     const title = `CYPRESS-MENU-NCE-${Date.now()}`;
     cy.get(".nce-registration-modal.is-visible").within(() => {
       ["reporting-unit", "nce-category"].forEach((id) =>

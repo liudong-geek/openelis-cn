@@ -97,23 +97,25 @@ class GeneralConfigurationsPage {
     cy.get(MODAL).should("be.visible");
   }
   checkValue(value) {
-    this.expectedValue = value.toLowerCase();
-    cy.then(() =>
-      cy
+    const expectedValue = value.toLowerCase();
+    cy.then(() => {
+      this.expectedValue = expectedValue;
+      return cy
         .get(`${MODAL} #config-boolean-${this.parameterId}`)
         .should("be.visible")
-        .select(this.expectedValue),
-    );
+        .select(expectedValue);
+    });
   }
   typeValue(value) {
-    this.expectedValue = value;
-    cy.then(() =>
-      cy
+    const expectedValue = value;
+    cy.then(() => {
+      this.expectedValue = expectedValue;
+      return cy
         .get(`${MODAL} #config-text-${this.parameterId}`)
         .should("be.visible")
         .clear()
-        .type(value),
-    );
+        .type(expectedValue);
+    });
   }
   saveChanges() {
     cy.then(() => {

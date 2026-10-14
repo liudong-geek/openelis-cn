@@ -42,14 +42,30 @@ class Validation {
   }
 
   selectTestUnit(unitType) {
+    // The retained fixture's original professional group remains ID 117.
+    expect(unitType, "original Serology-Immunology fixture").to.eq(
+      "Serology-Immunology",
+    );
     this.observeReviewQuery();
     cy.get("#unitType")
       .should("be.visible")
       .and("be.enabled")
-      .select(unitType)
+      .should(($select) => {
+        const $option = $select.find("option[value='117']");
+        expect($option, "one fixed professional group 117").to.have.length(1);
+        expect(
+          $option.text().trim(),
+          "legal display for original group",
+        ).to.be.oneOf(["Serology-Immunology", "血清免疫学"]);
+      })
+      .select("117")
+      .should("have.value", "117")
       .find("option:selected")
       .then(($option) => {
-        this.verifyReviewQuery({ unitType: $option.val() });
+        expect($option.val(), "selected original professional group").to.eq(
+          "117",
+        );
+        this.verifyReviewQuery({ unitType: "117" });
       });
   }
 
