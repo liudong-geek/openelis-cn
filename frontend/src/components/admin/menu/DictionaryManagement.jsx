@@ -37,6 +37,8 @@ import { refreshCurrentRoute } from "../../utils/NavigationUtils";
 function DictionaryManagement() {
   const intl = useIntl();
   const componentMounted = useRef(false);
+  const menuRequestGeneration = useRef(0);
+  const currentSearchTerm = useRef("");
   const dirtyFieldsRef = useRef(new Set());
 
   const { notificationVisible, setNotificationVisible, addNotification } =
@@ -73,14 +75,11 @@ function DictionaryManagement() {
 
   useEffect(() => {
     componentMounted.current = true;
-    getFromOpenElisServer(
-      `/rest/DictionaryMenu?paging=${paging}&startingRecNo=${startingRecNo}`,
-      fetchedDictionaryMenu,
-    );
     return () => {
       componentMounted.current = false;
+      menuRequestGeneration.current += 1;
     };
-  }, [paging, startingRecNo]);
+  }, []);
 
   useEffect(() => {
     if (selectedRowIds.length === 1) {
@@ -165,15 +164,25 @@ function DictionaryManagement() {
   };
 
   useEffect(() => {
-    if (panelSearchTerm) {
-      getFromOpenElisServer(
-        `/rest/SearchDictionaryMenu?search=Y&startingRecNo=1&searchString=${panelSearchTerm}`,
-        fetchedSearchedDictionaryMenu,
-      );
-    } else {
-      setSearchedMenuList([]);
-    }
-  }, [panelSearchTerm]);
+    const generation = ++menuRequestGeneration.current;
+    const query = panelSearchTerm;
+    const url = query
+      ? `/rest/SearchDictionaryMenu?search=Y&startingRecNo=1&searchString=${encodeURIComponent(query)}`
+      : `/rest/DictionaryMenu?paging=${paging}&startingRecNo=${startingRecNo}`;
+    getFromOpenElisServer(url, (res) => {
+      if (
+        !componentMounted.current ||
+        generation !== menuRequestGeneration.current ||
+        query !== currentSearchTerm.current
+      )
+        return;
+      if (query) fetchedSearchedDictionaryMenu(res);
+      else fetchedDictionaryMenu(res);
+    });
+    return () => {
+      menuRequestGeneration.current += 1;
+    };
+  }, [panelSearchTerm, paging, startingRecNo]);
 
   const fetchedSearchedDictionaryMenu = (res) => {
     if (componentMounted.current) {
@@ -206,22 +215,10 @@ function DictionaryManagement() {
   };
 
   useEffect(() => {
-    componentMounted.current = true;
-    getFromOpenElisServer("/rest/DictionaryMenu", fetchedDictionaryMenu);
-    return () => {
-      componentMounted.current = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    componentMounted.current = true;
     getFromOpenElisServer(
       "/rest/dictionary-categories",
       fetchedDictionaryCategory,
     );
-    return () => {
-      componentMounted.current = false;
-    };
   }, []);
 
   const postData = {
@@ -417,6 +414,13 @@ function DictionaryManagement() {
 
   const handlePanelSearchChange = (event) => {
     const query = event.target.value;
+    if (query !== currentSearchTerm.current) {
+      // Invalidate during the input event, before the next effect can dispatch.
+      currentSearchTerm.current = query;
+      menuRequestGeneration.current += 1;
+      setSelectedRowIds([]);
+      setSearchedMenuList([]);
+    }
     setPanelSearchTerm(query);
     setPage(1);
     if (query) {

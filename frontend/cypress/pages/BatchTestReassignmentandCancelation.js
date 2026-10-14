@@ -20,6 +20,7 @@ class BatchTestReassignmentandCancelationPage {
       );
       expect(matches, "original Serum specimen identity").to.have.length(1);
       this.sampleId = String(matches[0].id);
+      expect(this.sampleId, "original Serum ID").to.eq("2");
       const alias = `batchSerumTests${++this.sequence}`;
       cy.intercept({
         method: "GET",
@@ -30,9 +31,13 @@ class BatchTestReassignmentandCancelationPage {
       cy.wait(`@${alias}`).then(({ response }) => {
         expect(response.statusCode).to.eq(200);
         this.tests = response.body.tests;
-        const amylase = this.tests.filter((t) => t.name === "Amylase");
+        const amylase = this.tests.filter((t) =>
+          ["Amylase", "淀粉酶"].includes(t.name),
+        );
         expect(amylase, "original Amylase identity").to.have.length(1);
         this.testId = String(amylase[0].id);
+        expect(this.testId, "original Amylase ID").to.eq("5");
+        this.testDisplayName = amylase[0].name;
       });
     });
   }
@@ -82,10 +87,11 @@ class BatchTestReassignmentandCancelationPage {
             const texts = [...$root[0].querySelectorAll("[role='option']")].map(
               (x) => x.textContent.trim(),
             );
+            expect(texts, "available replacement options").not.to.be.empty;
             expect(
               texts,
               "same Amylase cannot be offered as a replacement",
-            ).not.to.include("Amylase");
+            ).not.to.include(this.testDisplayName);
           });
         });
       cy.get("body").type("{esc}");

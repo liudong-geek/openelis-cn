@@ -81,11 +81,36 @@ class ReflexTestsConfigPage {
   }
 
   select(selector, value) {
+    const fixture =
+      value === "Serum"
+        ? { id: "2", names: ["Serum", "血清"] }
+        : value === "Amylase(Serum)"
+          ? {
+              id: "5",
+              names: ["Amylase", "Amylase(Serum)", "淀粉酶", "淀粉酶(血清)"],
+            }
+          : null;
+    expect(fixture, "original rule fixture").not.to.eq(null);
     cy.get(`${modal} ${selector}`)
       .should("be.visible")
       .and("not.be.disabled")
-      .select(value);
-    cy.get(`${modal} ${selector} option:selected`).should("have.text", value);
+      .should(($select) => {
+        const matches = [...$select[0].options].filter((option) =>
+          fixture.names.includes(option.textContent),
+        );
+        expect(matches, `unique original ${value}`).to.have.length(1);
+        expect(matches[0].value, `original ${value} ID`).to.eq(fixture.id);
+      })
+      .then(($select) => {
+        const displayName = [...$select[0].options].find(
+          (option) => option.value === fixture.id,
+        ).textContent;
+        cy.wrap($select).select(fixture.id).should("have.value", fixture.id);
+        cy.get(`${modal} ${selector} option:selected`).should(
+          "have.text",
+          displayName,
+        );
+      });
   }
   selectSample(value) {
     this.select("#condition-0-sample", value);
@@ -214,6 +239,10 @@ class ReflexTestsConfigPage {
       this.name,
     );
     if (this.type === "calculation") {
+      expect(String(record.sampleId), "original output specimen").to.eq("2");
+      expect(String(record.testId), "original output test").to.eq("5");
+      expect(String(record.operations[0].sampleId)).to.eq("2");
+      expect(String(record.operations[0].value)).to.eq("5");
       expect(
         record.operations.map(({ type, value, sampleId, order }) => ({
           type,
@@ -247,6 +276,10 @@ class ReflexTestsConfigPage {
       expect(record.overall).to.eq("ALL");
       expect(record.conditions).to.have.length(1);
       expect(record.actions).to.have.length(1);
+      expect(String(record.conditions[0].sampleId)).to.eq("2");
+      expect(String(record.conditions[0].testId)).to.eq("5");
+      expect(String(record.actions[0].sampleId)).to.eq("2");
+      expect(String(record.actions[0].reflexTestId)).to.eq("5");
       for (const key of ["sampleId", "testId", "testName", "relation", "value"])
         expect(String(record.conditions[0][key]), key).to.eq(
           String(this.saved.conditions[0][key]),
