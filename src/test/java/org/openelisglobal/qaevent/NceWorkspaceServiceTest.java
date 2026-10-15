@@ -330,4 +330,37 @@ public class NceWorkspaceServiceTest {
         assertTrue(noAdd.reportingUnits().isEmpty());
         assertEquals("NCE_ADD_PERMISSION_DENIED", noAdd.createUnavailableReason());
     }
+
+    @Test
+    public void specimenOnlyReceiptReplaysExactlyWithNullableIdentitiesAndNoAdditionalWrites() throws Exception {
+        var specimenOnly = new LinkedSpecimen("1", "24-00001", NceWorkspaceTestSupport.VERSION, "1",
+                NceWorkspaceTestSupport.VERSION, null, null);
+        var command = NceWorkspaceTestSupport.command("2026-10-06", List.of(specimenOnly));
+        var first = service.create(command, List.of(), request);
+        var originalLink = first.linkedSpecimens().get(0);
+        assertTrue(originalLink.containsKey("analysisId"));
+        assertNull(originalLink.get("analysisId"));
+        assertTrue(originalLink.containsKey("analysisLastupdated"));
+        assertNull(originalLink.get("analysisLastupdated"));
+        assertTrue(originalLink.containsKey("externalId"));
+        assertNull(originalLink.get("externalId"));
+        String originalJson = stored.get().getResponseJson();
+        var storedLink = new com.fasterxml.jackson.databind.ObjectMapper().readTree(originalJson).get("linkedSpecimens")
+                .get(0);
+        assertTrue(storedLink.has("analysisId") && storedLink.get("analysisId").isNull());
+        assertTrue(storedLink.has("analysisLastupdated") && storedLink.get("analysisLastupdated").isNull());
+        assertTrue("private receipt mapper retains its existing optional null metadata",
+                storedLink.has("externalId") && storedLink.get("externalId").isNull());
+        var recovered = service.receipt(NceWorkspaceTestSupport.KEY, "CREATE", request);
+        var replay = service.create(command, List.of(), request);
+        assertEquals(first, recovered);
+        assertEquals(first, replay);
+        assertEquals(originalJson, stored.get().getResponseJson());
+        assertNull("serialization never changes the original association map", originalLink.get("analysisId"));
+        verify(events, times(1)).save(any());
+        verify(specimens, times(1)).save(any());
+        verify(dao, times(1)).claim(any());
+        verify(dao, times(1)).complete(any(), eq(21), anyString());
+        verify(history, times(1)).logActivity(eq(21), eq("CREATED"), anyString(), isNull(), eq("Pending"), eq(7));
+    }
 }

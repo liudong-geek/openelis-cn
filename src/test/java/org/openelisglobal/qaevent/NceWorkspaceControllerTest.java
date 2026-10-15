@@ -254,4 +254,68 @@ public class NceWorkspaceControllerTest {
         verifyZeroInteractions(service);
     }
 
+    private Receipt specimenOnlyReceipt() {
+        java.util.Map<String, Object> link = new java.util.LinkedHashMap<>();
+        link.put("sampleId", "1");
+        link.put("labNumber", "HMC00001");
+        link.put("sampleLastupdated", NceWorkspaceTestSupport.VERSION);
+        link.put("sampleItemId", "10");
+        link.put("lastupdated", NceWorkspaceTestSupport.VERSION);
+        link.put("analysisId", null);
+        link.put("analysisLastupdated", null);
+        link.put("testName", null);
+        return new Receipt("2", "1", NceWorkspaceTestSupport.KEY, "a".repeat(64), "APPLIED", "CREATE", "21",
+                "NCE-2026-00001", "Pending", NceWorkspaceTestSupport.VERSION, List.of(link), List.of());
+    }
+
+    private void assertSpecimenReceipt(org.springframework.test.web.servlet.MvcResult result, String file)
+            throws Exception {
+        String wire = result.getResponse().getContentAsString();
+        String output = System.getProperty("nceReceiptWireOutput");
+        if (output != null) {
+            java.nio.file.Path directory = java.nio.file.Path.of(output);
+            java.nio.file.Files.createDirectories(directory);
+            java.nio.file.Files.writeString(directory.resolve(file), wire);
+        }
+        var link = mapper.readTree(wire).get("linkedSpecimens").get(0);
+        assertTrue("specimen-only analysis identity must remain explicit null", link.has("analysisId"));
+        assertTrue(link.get("analysisId").isNull());
+        assertTrue("specimen-only analysis version must remain explicit null", link.has("analysisLastupdated"));
+        assertTrue(link.get("analysisLastupdated").isNull());
+        assertFalse("unrelated null metadata retains ordinary NON_NULL policy", link.has("testName"));
+    }
+
+    @Test
+    public void createSpecimenOnlyReceiptPreservesNullableIdentityWithProductionConverter() throws Exception {
+        when(service.create(any(), anyList(), any())).thenReturn(specimenOnlyReceipt());
+        var result = mvc.perform(post("/rest/nce/registration").param("queryVersion", "2")
+                .contentType(MediaType.APPLICATION_JSON).content(body())).andExpect(status().isOk()).andReturn();
+        assertSpecimenReceipt(result, "create.json");
+    }
+
+    @Test
+    public void readOriginalSpecimenOnlyReceiptPreservesNullableIdentityWithProductionConverter() throws Exception {
+        when(service.receipt(eq(NceWorkspaceTestSupport.KEY), eq("CREATE"), any())).thenReturn(specimenOnlyReceipt());
+        var result = mvc.perform(get("/rest/nce/registration/receipt").param("queryVersion", "2")
+                .param("requestId", NceWorkspaceTestSupport.KEY).param("operation", "CREATE"))
+                .andExpect(status().isOk()).andReturn();
+        assertSpecimenReceipt(result, "receipt.json");
+    }
+
+    @Test
+    public void analysisReceiptRetainsExactNonNullableAnalysisIdentity() throws Exception {
+        var original = specimenOnlyReceipt();
+        var link = new java.util.LinkedHashMap<>(original.linkedSpecimens().get(0));
+        link.put("analysisId", "100");
+        link.put("analysisLastupdated", "2026-10-06 09:11:12.345123");
+        when(service.receipt(anyString(), eq("CREATE"), any())).thenReturn(new Receipt(original.queryVersion(),
+                original.currentUserId(), original.requestId(), original.requestHash(), original.outcome(),
+                original.operation(), original.eventId(), original.nceNumber(), original.statusCode(),
+                original.lastupdated(), List.of(link), original.attachments()));
+        mvc.perform(get("/rest/nce/registration/receipt").param("queryVersion", "2")
+                .param("requestId", NceWorkspaceTestSupport.KEY).param("operation", "CREATE"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.linkedSpecimens[0].analysisId").value("100"))
+                .andExpect(jsonPath("$.linkedSpecimens[0].analysisLastupdated").value("2026-10-06 09:11:12.345123"))
+                .andExpect(jsonPath("$.linkedSpecimens[0].testName").doesNotExist());
+    }
 }

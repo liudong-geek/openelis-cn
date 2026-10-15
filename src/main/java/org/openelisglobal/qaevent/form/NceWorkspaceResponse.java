@@ -1,5 +1,12 @@
 package org.openelisglobal.qaevent.form;
 
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.node.NullNode;
+import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -42,7 +49,22 @@ public final class NceWorkspaceResponse {
 
     public record Receipt(String queryVersion, String currentUserId, String requestId, String requestHash,
             String outcome, String operation, String eventId, String nceNumber, String statusCode, String lastupdated,
-            List<Map<String, Object>> linkedSpecimens, List<Map<String, Object>> attachments) {
+            @JsonSerialize(contentUsing = ReceiptLinkedSpecimenSerializer.class) List<Map<String, Object>> linkedSpecimens,
+            List<Map<String, Object>> attachments) {
+    }
+
+    /** A specimen-only receipt keeps the two explicit empty analysis identities. */
+    public static final class ReceiptLinkedSpecimenSerializer extends JsonSerializer<Map<String, Object>> {
+        @Override
+        public void serialize(Map<String, Object> link, JsonGenerator generator, SerializerProvider provider)
+                throws IOException {
+            var projection = new LinkedHashMap<>(link);
+            for (String identity : List.of("analysisId", "analysisLastupdated")) {
+                if (projection.containsKey(identity) && projection.get(identity) == null)
+                    projection.put(identity, NullNode.getInstance());
+            }
+            provider.defaultSerializeValue(projection, generator);
+        }
     }
 
     public record User(String id, String firstName, String lastName, String loginName) {
