@@ -1,3 +1,4 @@
+import { waitFor } from "@testing-library/dom";
 import React, { useContext } from "react";
 import {
   act,
@@ -183,7 +184,7 @@ describe("anonymous login configuration continuity", () => {
     );
     const failure = new TypeError("current public configuration failure");
     await flush(() => configurations()[1].reject(failure));
-    expect(error).toHaveBeenCalledWith(failure);
+    await waitFor(() => expect(error).toHaveBeenCalledWith(failure));
     expect(
       screen.getByText(zhMessages["app.session.error.title"]),
     ).toBeVisible();
@@ -218,7 +219,7 @@ describe("anonymous login configuration continuity", () => {
       "current authenticated configuration failure",
     );
     await flush(() => authenticatedRead.reject(authFailure));
-    expect(error).toHaveBeenCalledWith(authFailure);
+    await waitFor(() => expect(error).toHaveBeenCalledWith(authFailure));
     expect(
       screen.getByText(zhMessages["app.session.error.title"]),
     ).toBeVisible();
@@ -257,7 +258,7 @@ describe("anonymous login configuration continuity", () => {
       "returned public configuration failure",
     );
     await flush(() => returnedPublicRead.reject(publicFailure));
-    expect(error).toHaveBeenCalledWith(publicFailure);
+    await waitFor(() => expect(error).toHaveBeenCalledWith(publicFailure));
     expect(
       screen.getByText(zhMessages["app.session.error.title"]),
     ).toBeVisible();
@@ -411,7 +412,7 @@ describe("Layout configuration read ownership", () => {
     );
     const failure = new TypeError("Failed to fetch");
     await flush(() => configurations()[1].reject(failure));
-    expect(error).toHaveBeenCalledWith(failure);
+    await waitFor(() => expect(error).toHaveBeenCalledWith(failure));
     expect(screen.getByTestId("configuration")).toHaveTextContent(
       "known configuration",
     );

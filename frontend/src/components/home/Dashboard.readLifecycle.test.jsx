@@ -1,3 +1,4 @@
+import { waitFor } from "@testing-library/dom";
 import React from "react";
 import {
   act,
@@ -261,7 +262,7 @@ describe("Dashboard legacy read lifetimes", () => {
     const next = requests.find((request) => request.url.endsWith("?page=2"));
     const failure = new TypeError("current page failure");
     await flush(() => next.reject(failure));
-    expect(error).toHaveBeenCalledWith(failure);
+    await waitFor(() => expect(error).toHaveBeenCalledWith(failure));
     expect(screen.getByText("DEV01263000000000002")).toBeVisible();
     expect(screen.getByText(messages["dashboard.error.load"])).toBeVisible();
     expect(
@@ -300,7 +301,7 @@ describe("Dashboard legacy read lifetimes", () => {
     await flush(() => window.dispatchEvent(resume));
     const failure = new TypeError("current time failure");
     await flush(() => reads()[1].reject(failure));
-    expect(error).toHaveBeenCalledWith(failure);
+    await waitFor(() => expect(error).toHaveBeenCalledWith(failure));
     expect(screen.getByText("42")).toBeVisible();
     expect(screen.getByText(messages["dashboard.error.load"])).toBeVisible();
   });
@@ -346,7 +347,9 @@ describe("Dashboard legacy read lifetimes", () => {
     expect(
       screen.queryByRole("cell", { name: "BEFORE-USER" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText(messages["dashboard.error.load"])).toBeVisible();
+    await waitFor(() =>
+      expect(screen.getByText(messages["dashboard.error.load"])).toBeVisible(),
+    );
     fireEvent.click(
       screen.getByRole("button", {
         name: messages["dashboard.back.to.overview"],
@@ -358,7 +361,9 @@ describe("Dashboard legacy read lifetimes", () => {
     expect(
       screen.queryByRole("cell", { name: "BEFORE-USER" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText(messages["dashboard.error.load"])).toBeVisible();
+    await waitFor(() =>
+      expect(screen.getByText(messages["dashboard.error.load"])).toBeVisible(),
+    );
     expect(error).toHaveBeenCalledTimes(2);
   });
 
@@ -368,7 +373,7 @@ describe("Dashboard legacy read lifetimes", () => {
     const failure = new TypeError("Failed to fetch");
     await flush(() => sections()[0].resolve(json([])));
     await flush(() => metrics()[0].reject(failure));
-    expect(error).toHaveBeenCalledWith(failure);
+    await waitFor(() => expect(error).toHaveBeenCalledWith(failure));
     expect(addNotification).toHaveBeenCalledWith(
       expect.objectContaining({
         title: messages["dashboard.error.title"],

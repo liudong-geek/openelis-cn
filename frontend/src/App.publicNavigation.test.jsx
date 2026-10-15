@@ -1,3 +1,4 @@
+import { waitFor } from "@testing-library/dom";
 import React from "react";
 import {
   act,
@@ -182,7 +183,9 @@ describe("public application navigation preserves current document reads", () =>
       const failure = new TypeError("Failed to fetch");
       expect(request.signal?.aborted).not.toBe(true);
       await flush(() => request.reject(failure));
-      expect(error).toHaveBeenCalledExactlyOnceWith(failure);
+      await waitFor(() =>
+        expect(error).toHaveBeenCalledExactlyOnceWith(failure),
+      );
     },
   );
 
