@@ -16,8 +16,6 @@ import org.openelisglobal.sample.bean.SampleOrderItem;
 import org.openelisglobal.sample.util.AccessionNumberUtil;
 import org.openelisglobal.validation.annotations.ValidAccessionNumber;
 import org.openelisglobal.validation.annotations.ValidDate;
-import org.openelisglobal.validation.annotations.ValidName;
-import org.openelisglobal.validation.constraintvalidator.NameValidator.NameType;
 
 public class SampleEditForm extends BaseForm {
 
@@ -33,7 +31,8 @@ public class SampleEditForm extends BaseForm {
     @NotNull(groups = { SampleEdit.class })
     private Boolean isEditable = Boolean.TRUE;
 
-    @ValidName(nameType = NameType.FULL_NAME, groups = { SampleEdit.class })
+    // This is server-formatted display text, not an editable person-name input.
+    @Pattern(regexp = "[^<>]*", groups = { SampleEdit.class })
     private String patientName = "";
 
     @ValidDate(relative = DateRelation.PAST)

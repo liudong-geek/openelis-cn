@@ -31,6 +31,7 @@ import org.openelisglobal.dataexchange.fhir.service.FhirTransformService;
 import org.openelisglobal.internationalization.MessageUtil;
 import org.openelisglobal.login.dao.UserModuleService;
 import org.openelisglobal.login.valueholder.UserSessionData;
+import org.openelisglobal.patient.form.PatientEntryByProjectForm;
 import org.openelisglobal.sample.action.util.SampleUtil;
 import org.openelisglobal.sample.bean.SampleOrderItem;
 import org.openelisglobal.sample.form.SampleEditForm;
@@ -49,6 +50,7 @@ import org.openelisglobal.test.service.TestService;
 import org.openelisglobal.typeofsample.service.TypeOfSampleService;
 import org.openelisglobal.typeofsample.service.TypeOfSampleTestService;
 import org.openelisglobal.userrole.service.UserRoleService;
+import org.openelisglobal.validation.constraintvalidator.NameValidator;
 import org.springframework.context.support.GenericApplicationContext;
 import org.springframework.context.support.StaticMessageSource;
 import org.springframework.http.MediaType;
@@ -73,8 +75,12 @@ public class SampleEditRestControllerValidationTest {
     private static Object previousFormFields;
     private static AccessionNumberValidatorFactory accessionFactory;
     private static IAccessionNumberGenerator accessionValidator;
+    private static final String[] NAME_REGEX_FIELDS = { "FIRST_NAME_REGEX", "LAST_NAME_REGEX", "FULL_NAME_REGEX",
+            "USER_NAME_REGEX" };
+    private static final Object[] previousNameRegex = new Object[NAME_REGEX_FIELDS.length];
 
     private MockMvc mvc;
+    private LocalValidatorFactoryBean beanValidator;
     private SampleEditRestController controller;
     private ObjectMapper mapper;
     private SampleEditService edits;
@@ -108,6 +114,10 @@ public class SampleEditRestControllerValidationTest {
         context.getBeanFactory().registerSingleton("siteInformation", mock(SiteInformationService.class));
         context.refresh();
         new SpringContext().setApplicationContext(context);
+        for (int index = 0; index < NAME_REGEX_FIELDS.length; index++) {
+            previousNameRegex[index] = ReflectionTestUtils.getField(NameValidator.class, NAME_REGEX_FIELDS[index]);
+        }
+        new NameValidator().initSpring();
         previousAccessionFactory = ReflectionTestUtils.getField(AccessionNumberUtil.class,
                 "accessionNumberValidatorFactory");
         ReflectionTestUtils.setField(AccessionNumberUtil.class, "accessionNumberValidatorFactory", accessionFactory);
@@ -122,6 +132,9 @@ public class SampleEditRestControllerValidationTest {
         ReflectionTestUtils.setField(SpringContext.class, "factory", previousFactory);
         ReflectionTestUtils.setField(MessageUtil.class, "instance", previousMessages);
         ReflectionTestUtils.setField(FormFields.class, "instance", previousFormFields);
+        for (int index = 0; index < NAME_REGEX_FIELDS.length; index++) {
+            ReflectionTestUtils.setField(NameValidator.class, NAME_REGEX_FIELDS[index], previousNameRegex[index]);
+        }
         context.close();
     }
 
@@ -146,7 +159,7 @@ public class SampleEditRestControllerValidationTest {
         authorization = mock(SampleEditAuthorizationService.class);
         ReflectionTestUtils.setField(controller, "authorization", authorization);
         ReflectionTestUtils.setField(controller, "fhirTransformService", fhir);
-        LocalValidatorFactoryBean beanValidator = new LocalValidatorFactoryBean();
+        beanValidator = new LocalValidatorFactoryBean();
         beanValidator.setMessageInterpolator(new ParameterMessageInterpolator());
         beanValidator.afterPropertiesSet();
         MappingJackson2HttpMessageConverter jsonConverter = new AppConfig().jacksonMessageConverter();
@@ -162,6 +175,56 @@ public class SampleEditRestControllerValidationTest {
         order.setReceivedDateForDisplay("01/01/2024");
         form.setSampleOrderItems(order);
         when(edits.getUpdatedAnalysisList()).thenReturn(List.of());
+    }
+
+    @Test
+    public void serverFormattedWesternDisplayNameCanBeSubmittedUnchanged() throws Exception {
+        form.setPatientName("Smith, John");
+        perform(200);
+        ArgumentCaptor<SampleEditForm> captured = ArgumentCaptor.forClass(SampleEditForm.class);
+        verify(edits).editSample(captured.capture(), any(), isNull(), eq(false), eq("12"));
+        assertEquals("Smith, John", captured.getValue().getPatientName());
+        assertEquals(ACCESSION, captured.getValue().getAccessionNumber());
+    }
+
+    @Test
+    public void serverFormattedChineseDisplayNameCanBeSubmittedUnchanged() throws Exception {
+        form.setPatientName("张, 伟");
+        perform(200);
+        ArgumentCaptor<SampleEditForm> captured = ArgumentCaptor.forClass(SampleEditForm.class);
+        verify(edits).editSample(captured.capture(), any(), isNull(), eq(false), eq("12"));
+        assertEquals("张, 伟", captured.getValue().getPatientName());
+        assertEquals(ACCESSION, captured.getValue().getAccessionNumber());
+    }
+
+    @Test
+    public void displayNameMarkupIsRejectedBeforeAnyWrite() throws Exception {
+        for (String name : new String[] { "<script>alert(1)</script>", "<b>Smith</b>", "Smith,\n<b>John</b>",
+                "张,\r\n<script>alert(1)</script>", "John<", "John>" }) {
+            form.setPatientName(name);
+            perform(400);
+        }
+        verify(validator, never()).validate(any(), any());
+        assertNoWrites();
+    }
+
+    @Test
+    public void editablePatientAndRequesterNamesKeepTheirOriginalCharacterRules() {
+        for (String field : new String[] { "firstName", "lastName" }) {
+            assertTrue(beanValidator.validateValue(PatientEntryByProjectForm.class, field, "张伟").isEmpty());
+            assertFalse(beanValidator.validateValue(PatientEntryByProjectForm.class, field, "Smith, John").isEmpty());
+            assertFalse(beanValidator.validateValue(PatientEntryByProjectForm.class, field, "<b>John</b>").isEmpty());
+        }
+        for (String field : new String[] { "providerFirstName", "providerLastName" }) {
+            assertTrue(beanValidator.validateValue(SampleOrderItem.class, field, "张伟", SampleEditForm.SampleEdit.class)
+                    .isEmpty());
+            assertFalse(beanValidator
+                    .validateValue(SampleOrderItem.class, field, "Smith, John", SampleEditForm.SampleEdit.class)
+                    .isEmpty());
+            assertFalse(beanValidator
+                    .validateValue(SampleOrderItem.class, field, "<b>John</b>", SampleEditForm.SampleEdit.class)
+                    .isEmpty());
+        }
     }
 
     @Test
