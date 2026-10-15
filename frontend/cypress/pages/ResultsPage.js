@@ -958,9 +958,27 @@ class ResultsPage {
       expect(same[0].accessionNumber).to.eq(POSITIVE);
       expect(same[0].testName).to.include(this.lastSaved.testName);
       cy.get("#validation-page-title").should("be.visible");
-      cy.contains("table tbody tr", this.lastSaved.testName).should(
-        "be.visible",
-      );
+      const reviewRowIndex = response.body.resultList.indexOf(same[0]);
+      expect(
+        reviewRowIndex,
+        "verified review response row index",
+      ).to.be.at.least(0);
+      cy.get(
+        `.validation-results-table [role="row"][id="row-${reviewRowIndex}"]`,
+      )
+        .should("have.length", 1)
+        .and("be.visible")
+        .within(() => {
+          cy.get('[role="cell"][data-column-id="testName"]')
+            .should("have.length", 1)
+            .and("contain.text", this.lastSaved.testName);
+          cy.get('[role="cell"][data-column-id="sampleInfo"]')
+            .should("have.length", 1)
+            .and("contain.text", POSITIVE);
+          cy.get('[role="cell"][data-column-id="result"]')
+            .should("have.length", 1)
+            .and("have.text", this.lastSaved.selectedLabel);
+        });
     });
     cy.then(() => expect(this.resultWrites).to.have.length(1));
   }
