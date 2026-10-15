@@ -663,7 +663,14 @@ class ResultsPage {
   }
 
   closeRestriction() {
-    cy.get("[role='dialog'] .cds--modal-close").should("be.visible").click();
+    cy.get("[role='dialog'] .result-restriction-facts")
+      .should("have.length", 1)
+      .should("be.visible")
+      .closest("[role='dialog']")
+      .find("button.cds--modal-close")
+      .should("have.length", 1)
+      .should("be.visible")
+      .click();
     cy.get("[role='dialog'] .result-restriction-facts").should("not.exist");
   }
 
