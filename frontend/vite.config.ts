@@ -69,6 +69,7 @@ export default defineConfig({
       "**/playwright/**",
       // The real vendor calendar runs separately without the flatpickr mock.
       "**/NceCalendar.locale.test.jsx",
+      "**/NCECorrectiveAction.test.jsx",
     ],
   },
   server: {

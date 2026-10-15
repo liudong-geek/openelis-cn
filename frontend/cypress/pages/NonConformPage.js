@@ -60,7 +60,7 @@ class NonConform {
       dateCompleted: "#dateCompleted",
       actionTypeCheckbox: "#correctiveAction",
       resolutionYes: "span:contains('Yes')",
-      dateCompleted0: ".cds--date-picker-input__wrapper > #dateCompleted-0",
+      dateCompleted0: "input#dateCompleted-0",
       submitButton: "[data-testid='nce-submit-button']",
       radioTable: "table",
       radioButton: 'input[type="radio"][name="radio-group"]',
@@ -125,6 +125,10 @@ class NonConform {
   }
 
   clickSearchButton() {
+    if (this.mode === "capa") {
+      this.searchCorrectiveForm();
+      return;
+    }
     if (this.registration) {
       cy.intercept("GET", "**/rest/nce/registration/orders?*").as("nceOrders");
       cy.contains(".nce-order-search button", label("label.button.search"))
@@ -179,6 +183,71 @@ class NonConform {
         }
       });
     }
+  }
+
+  searchCorrectiveForm() {
+    this.correctiveForm = null;
+    this.activeNceNumber = null;
+    cy.intercept("GET", "**/rest/NCECorrectiveAction?*").as(
+      "nceCorrectiveForm",
+    );
+    if (this.searchType === "Lab Number") {
+      cy.intercept("GET", "**/rest/nonconformingcorrectiveaction?*").as(
+        "nceCorrectiveSearch",
+      );
+    }
+    cy.get(this.selectors.searchButton)
+      .should("be.visible")
+      .and("be.enabled")
+      .click();
+    if (this.searchType === "Lab Number") {
+      cy.wait("@nceCorrectiveSearch").then(({ request, response }) => {
+        expect(response.statusCode).to.eq(200);
+        expect(new URL(request.url).searchParams.get("labNumber")).to.eq(
+          this.searchValue,
+        );
+        const rows = response.body.nceEventsSearchResults;
+        expect(rows).to.be.an("array").and.not.be.empty;
+        if (rows.length === 1) {
+          this.activeNceNumber = String(rows[0].nceNumber);
+          return;
+        }
+        return cy.fixture("NonConform").then((fixture) => {
+          const rememberedNumber = resolveOriginalNceNumber(fixture.NceNumber);
+          const selected = rows.find(
+            (row) => String(row.nceNumber) !== String(rememberedNumber),
+          );
+          expect(selected, "separate real event for lab-number workflow").to
+            .exist;
+          this.activeNceNumber = String(selected.nceNumber);
+          cy.contains("tbody tr", this.activeNceNumber).within(() => {
+            cy.get("input[name='radio-group']")
+              .should("have.length", 1)
+              .invoke("attr", "id")
+              .then((id) => {
+                cy.get(`label[for='${id}']`).should("be.visible").click();
+              });
+          });
+        });
+      });
+    } else {
+      expect(this.searchType).to.eq("NCE Number");
+      this.activeNceNumber = String(this.searchValue);
+    }
+    cy.wait("@nceCorrectiveForm").then(({ request, response }) => {
+      expect(response.statusCode).to.eq(200);
+      expect(new URL(request.url).searchParams.get("nceNumber")).to.eq(
+        this.activeNceNumber,
+      );
+      expect(String(response.body.nceNumber)).to.eq(this.activeNceNumber);
+      expect(response.body.id, "loaded corrective event identity").to.exist;
+      expect(
+        response.body.cancelAction,
+        "legacy form return destination",
+      ).to.eq("Home");
+      expect(response.body.actionLog).to.be.an("array");
+      this.correctiveForm = response.body;
+    });
   }
 
   validateSearchResult(expectedValue) {
@@ -345,10 +414,27 @@ class NonConform {
   }
 
   enterDiscussionDate(date) {
-    this.fillFixtureDate(this.selectors.discussionDate, date);
+    this.fillFixtureDate(this.selectors.discussionDate, date).then(($input) => {
+      this.correctiveDiscussionDate = $input.val();
+      cy.contains("button", label("nonconform.add.new.date"))
+        .scrollIntoView()
+        .should("be.visible")
+        .and("be.enabled")
+        .click();
+      cy.contains("p", this.correctiveDiscussionDate).should("be.visible");
+    });
   }
 
   enterProposedCorrectiveAction(action) {
+    this.correctiveAction = action;
+    this.correctiveResponsiblePerson = "E2E整改负责人";
+    cy.get("#text-area-person")
+      .should("have.length", 1)
+      .scrollIntoView()
+      .should("be.visible")
+      .and("be.enabled")
+      .clear()
+      .type(this.correctiveResponsiblePerson);
     cy.get(this.selectors.proposedCorrectiveAction)
       .scrollIntoView()
       .should("be.visible")
@@ -358,16 +444,18 @@ class NonConform {
   }
 
   enterDateCompleted(date) {
+    const [day, month, year] = date.split("/");
+    this.correctiveActionDate = `${year}-${month}-${day}`;
     this.fillFixtureDate(this.selectors.dateCompleted, date);
   }
 
   selectActionType() {
     cy.get("label[for='correctiveAction']")
-      .first()
+      .should("have.length", 1)
       .scrollIntoView()
       .should("be.visible")
       .click();
-    cy.get("#correctiveAction").first().should("be.checked");
+    cy.get("#correctiveAction").should("have.length", 1).and("be.checked");
   }
 
   checkResolution() {
@@ -378,7 +466,10 @@ class NonConform {
   }
 
   enterDateCompleted0(date) {
-    this.fillFixtureDate(this.selectors.dateCompleted0, date);
+    this.correctiveResolutionWireDate = date;
+    this.fillFixtureDate(this.selectors.dateCompleted0, date).then(($input) => {
+      this.correctiveResolutionDisplayDate = $input.val();
+    });
   }
 
   submitForm() {
@@ -449,7 +540,19 @@ class NonConform {
   }
 
   clickSubmitButton() {
-    cy.intercept("POST", "**/rest/NCECorrectiveAction").as("nceCapaSave");
+    // This delivery profile returns SQL-date epochs from its UTC backend.
+    // Verify that prerequisite before performing the intentional write.
+    cy.request("/api/OpenELIS-Global/rest/server-time").then((response) => {
+      expect(response.status).to.eq(200);
+      expect(
+        response.body.timezone,
+        "bound SQL-date epoch interpretation",
+      ).to.eq("UTC");
+    });
+    let writeCount = 0;
+    cy.intercept("POST", "**/rest/NCECorrectiveAction", () => {
+      writeCount += 1;
+    }).as("nceCapaSave");
     cy.get(this.selectors.submitButton)
       .scrollIntoView()
       .should("be.visible")
@@ -465,8 +568,62 @@ class NonConform {
         typeof request.body === "string"
           ? JSON.parse(request.body)
           : request.body;
-      expect(command.id, "same event identity").to.exist;
+      expect(command.id, "same event identity").to.eq(this.correctiveForm.id);
       expect(command.actionLog).to.be.an("array").and.not.be.empty;
+      expect(command.actionLog).to.have.length(
+        this.correctiveForm.actionLog.length + 1,
+      );
+      expect(command.actionLog.slice(0, -1), "preserved prior logs").to.deep.eq(
+        this.correctiveForm.actionLog,
+      );
+      const added = command.actionLog.at(-1);
+      expect(added).to.include({
+        correctiveAction: this.correctiveAction,
+        personResponsible: this.correctiveResponsiblePerson,
+        actionType: "1",
+        dateCompleted: this.correctiveActionDate,
+      });
+      expect(command.dateCompleted).to.eq(this.correctiveResolutionWireDate);
+      expect(command.discussionDate.split(",")).to.include(
+        this.correctiveDiscussionDate,
+      );
+      return cy
+        .request({
+          method: "GET",
+          url: `/api/OpenELIS-Global/rest/NCECorrectiveAction?nceNumber=${encodeURIComponent(this.activeNceNumber)}`,
+        })
+        .then((readback) => {
+          expect(readback.status).to.eq(200);
+          expect(readback.body.id).to.eq(command.id);
+          expect(String(readback.body.nceNumber)).to.eq(this.activeNceNumber);
+          expect(
+            readback.body.dateCompleted,
+            "persisted event completion day",
+          ).to.eq(this.correctiveResolutionDisplayDate);
+          expect(readback.body.discussionDate).to.eq(command.discussionDate);
+          expect(readback.body.actionLog).to.have.length(
+            command.actionLog.length,
+          );
+          const oldIds = new Set(
+            this.correctiveForm.actionLog.map((log) => log.id),
+          );
+          const created = readback.body.actionLog.filter(
+            (log) => !oldIds.has(log.id),
+          );
+          expect(
+            created,
+            "one independently persisted new action",
+          ).to.have.length(1);
+          const { dateCompleted: expectedDay, ...expectedAction } = added;
+          expect(created[0]).to.include(expectedAction);
+          expect(created[0].dateCompleted, "actual MVC SQL-date epoch").to.be.a(
+            "number",
+          );
+          expect(
+            new Date(created[0].dateCompleted).toISOString().slice(0, 10),
+          ).to.eq(expectedDay);
+          expect(writeCount, "one intentional corrective action save").to.eq(1);
+        });
     });
   }
 
@@ -485,7 +642,9 @@ class NonConform {
 
   fillFixtureDate(selector, fixtureDate) {
     const [day, month, year] = fixtureDate.split("/");
-    cy.get(selector)
+    return cy
+      .get(selector)
+      .should("have.length", 1)
       .scrollIntoView()
       .should("be.visible")
       .then(($input) => {

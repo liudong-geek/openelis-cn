@@ -297,6 +297,8 @@ public class NonConformingEventWorkerImpl implements NonConformingEventWorker {
             form.setColorCode(event.getColorCode());
             form.setCorrectiveAction(event.getCorrectiveAction());
             form.setDiscussionDate(event.getDiscussionDate());
+            form.setDateCompleted(
+                    event.getDateCompleted() != null ? DateUtil.formatDateAsText(event.getDateCompleted()) : "");
             form.setControlAction(event.getControlAction());
             form.setComments(event.getComments());
             form.setActionLog(nceActionLogService.getAllMatching("ncEventId", event.getId()));

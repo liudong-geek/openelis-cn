@@ -22,7 +22,6 @@ import {
 import { FormattedMessage, useIntl } from "react-intl";
 import { initialReportFormValues, selectOptions } from "./ViewNonConforming";
 import {
-  getDifferenceInDays,
   getFromOpenElisServer,
   postToOpenElisServerJsonResponse,
 } from "../../utils/Utils";
@@ -32,7 +31,11 @@ import {
   NotificationKinds,
   AlertDialog,
 } from "../../common/CustomNotification";
-import { NotificationContext } from "../../layout/Layout";
+import { ConfigurationContext, NotificationContext } from "../../layout/Layout";
+import {
+  formatDatePartsForLocale,
+  parseDateForLocale,
+} from "../../common/dateLocaleUtils";
 
 const initialFormData = {
   dateCompleted: null,
@@ -62,6 +65,49 @@ export const NCECorrectiveAction = () => {
     useContext(NotificationContext);
 
   const intl = useIntl();
+  const { configurationProperties = {} } =
+    useContext(ConfigurationContext) || {};
+  const dateLocale = configurationProperties.DEFAULT_DATE_LOCALE || "en-US";
+  const parseDate = (value) => {
+    // The existing MVC converter returns java.sql.Date as an epoch value.
+    if (typeof value === "number" && Number.isFinite(value)) {
+      const date = new Date(value);
+      if (!Number.isNaN(date.getTime())) {
+        return {
+          year: date.getUTCFullYear(),
+          month: date.getUTCMonth() + 1,
+          day: date.getUTCDate(),
+        };
+      }
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value || "")) {
+      return parseDateForLocale(value.replaceAll("-", "/"), "zh-CN");
+    }
+    return parseDateForLocale(value, dateLocale);
+  };
+  const displayDate = (value) => {
+    const parsed = parseDate(value);
+    return parsed
+      ? formatDatePartsForLocale(
+          parsed.year,
+          parsed.month,
+          parsed.day,
+          dateLocale,
+        )
+      : "";
+  };
+  const actionDate = parseDate(formData.actionLog.dateCompleted);
+  const reportedDate = parseDate(data?.reportDate);
+  const turnAroundTime =
+    actionDate && reportedDate
+      ? (Date.UTC(actionDate.year, actionDate.month - 1, actionDate.day) -
+          Date.UTC(
+            reportedDate.year,
+            reportedDate.month - 1,
+            reportedDate.day,
+          )) /
+        86400000
+      : null;
 
   useEffect(() => {
     if (selected) {
@@ -74,9 +120,13 @@ export const NCECorrectiveAction = () => {
             }
             setTData(null);
             setFormData({
-              ...formData,
+              ...initialFormData,
+              actionLog: { ...initialFormData.actionLog },
+              dateCompleted: displayDate(data.dateCompleted),
               discussionDate: data.discussionDate,
             });
+            setTDiscussionDate(null);
+            setSubmit(null);
 
             setData(data);
           },
@@ -115,13 +165,13 @@ export const NCECorrectiveAction = () => {
   const actionLogIsBlank =
     !formData.actionLog.correctiveAction &&
     !formData.actionLog.personResponsible &&
-    !formData.dateCompleted &&
+    !formData.actionLog.dateCompleted &&
     !formData.actionLog.actionType;
 
   const actionLogIsComplete =
     !!formData.actionLog.correctiveAction?.trim() &&
     !!formData.actionLog.personResponsible?.trim() &&
-    !!formData.dateCompleted &&
+    !!actionDate &&
     !!formData.actionLog.actionType?.split(",").filter(Boolean).length;
 
   const canSubmit = !!submit && (actionLogIsBlank || actionLogIsComplete);
@@ -131,20 +181,31 @@ export const NCECorrectiveAction = () => {
       return;
     }
 
-    let turnAroundTime = formData[`dateCompleted`]
-      ? getDifferenceInDays(data.reportDate, formData[`dateCompleted`])
-      : 0;
-
-    formData.actionLog.turnAroundTime = turnAroundTime;
-
-    let body = {
+    const completedDate = parseDate(formData.dateCompleted);
+    const actionLog = actionLogIsBlank
+      ? data.actionLog
+      : [
+          ...data.actionLog,
+          {
+            ...formData.actionLog,
+            dateCompleted: `${actionDate.year}-${String(actionDate.month).padStart(2, "0")}-${String(actionDate.day).padStart(2, "0")}`,
+            turnAroundTime,
+          },
+        ];
+    const body = {
       id: data.id,
-      actionLog: actionLogIsBlank
-        ? data["actionLog"]
-        : [...data["actionLog"], formData["actionLog"]],
-
-      dateCompleted: formData[`dateCompleted`] ?? "",
-      discussionDate: formData[`discussionDate`] ?? "",
+      actionLog,
+      // The existing form field is parsed as dd/MM/yyyy by the legacy worker;
+      // actionLog dates are java.sql.Date JSON values and therefore use ISO.
+      dateCompleted: completedDate
+        ? formatDatePartsForLocale(
+            completedDate.year,
+            completedDate.month,
+            completedDate.day,
+            "fr-FR",
+          )
+        : "",
+      discussionDate: formData.discussionDate ?? "",
     };
 
     postToOpenElisServerJsonResponse(
@@ -152,11 +213,10 @@ export const NCECorrectiveAction = () => {
       JSON.stringify(body),
       (df) => {
         setNotificationVisible(true);
-        setData(null);
-        setFormData(initialFormData);
-        setSubmit(null);
-
-        if (df.success) {
+        if (df?.success) {
+          setData(null);
+          setFormData(initialFormData);
+          setSubmit(null);
           addNotification({
             kind: NotificationKinds.success,
             title: intl.formatMessage({ id: "notification.title" }),
@@ -176,13 +236,11 @@ export const NCECorrectiveAction = () => {
   };
 
   const handleCorrectiveActionChange = (e) => {
-    setFormData({
-      ...data,
-      actionLog: {
-        ...formData.actionLog,
-        correctiveAction: e.target.value,
-      },
-    });
+    const value = e.target.value;
+    setFormData((previous) => ({
+      ...previous,
+      actionLog: { ...previous.actionLog, correctiveAction: value },
+    }));
   };
 
   const handleDiscussionDateChange = (date) => {
@@ -191,30 +249,23 @@ export const NCECorrectiveAction = () => {
 
   const handleAddDiscussionDate = () => {
     if (tdiscussionDate) {
-      if (data.discussionDate) {
-        setFormData({
-          ...formData,
-          discussionDate: data.discussionDate + "," + tdiscussionDate,
-        });
-      } else {
-        setFormData({
-          ...formData,
-          discussionDate: tdiscussionDate,
-        });
-      }
+      setFormData((previous) => ({
+        ...previous,
+        discussionDate: [previous.discussionDate, tdiscussionDate]
+          .filter(Boolean)
+          .join(","),
+      }));
 
       setTDiscussionDate(null);
     }
   };
 
   const handlePersonResponsibleChange = (e) => {
-    setFormData({
-      ...formData,
-      actionLog: {
-        ...formData.actionLog,
-        personResponsible: e.target.value,
-      },
-    });
+    const value = e.target.value;
+    setFormData((previous) => ({
+      ...previous,
+      actionLog: { ...previous.actionLog, personResponsible: value },
+    }));
   };
 
   const handleActionTypeChange = (value) => {
@@ -605,7 +656,7 @@ export const NCECorrectiveAction = () => {
                 </div>
 
                 <CustomDatePicker
-                  key="tdiscussionDate"
+                  key={`tdiscussionDate-${data.id}-${formData.discussionDate || ""}`}
                   id={"tdiscussionDate"}
                   data-testid="start-date"
                   labelText={
@@ -617,6 +668,7 @@ export const NCECorrectiveAction = () => {
                   style={{ marginBottom: "5px" }}
                 />
                 <button
+                  type="button"
                   disabled={!tdiscussionDate}
                   onClick={handleAddDiscussionDate}
                   style={{ margin: "5px 0" }}
@@ -684,17 +736,20 @@ export const NCECorrectiveAction = () => {
 
               <Column lg={3} md={3} sm={3}>
                 <CustomDatePicker
-                  key="dateCompleted"
+                  key={`dateCompleted-${data.id}`}
                   id={"dateCompleted"}
                   labelText=""
                   autofillDate={true}
-                  value={formData[`dateCompleted`] ?? undefined}
-                  onChange={(e) => {
-                    setFormData({
-                      ...formData,
-                      dateCompleted: e,
-                    });
-                  }}
+                  value={formData.actionLog.dateCompleted ?? undefined}
+                  onChange={(value) =>
+                    setFormData((previous) => ({
+                      ...previous,
+                      actionLog: {
+                        ...previous.actionLog,
+                        dateCompleted: value,
+                      },
+                    }))
+                  }
                   style={{ marginTop: "5px" }}
                 />
               </Column>
@@ -735,19 +790,10 @@ export const NCECorrectiveAction = () => {
                 />
               </Column>
               <Column lg={3} md={3} sm={3}>
-                {formData[`dateCompleted`] && (
-                  <div>
-                    <div>
-                      {getDifferenceInDays(
-                        data.reportDate,
-                        formData[`dateCompleted`],
-                      )}
-                    </div>
-                  </div>
-                )}
+                {turnAroundTime !== null && <div>{turnAroundTime}</div>}
               </Column>
               {data.actionLog?.map((log, index) => (
-                <>
+                <React.Fragment key={log.id ?? `history-${index}`}>
                   <Column lg={16} md={8} sm={4}>
                     {" "}
                     <br></br>
@@ -758,7 +804,7 @@ export const NCECorrectiveAction = () => {
                       value={log[`correctiveAction`] ?? ""}
                       disabled
                       rows={1}
-                      id="text-area-corrective"
+                      id={`text-area-corrective-history-${index}`}
                     />
                   </Column>
 
@@ -768,17 +814,17 @@ export const NCECorrectiveAction = () => {
                       value={log[`personResponsible`] ?? ""}
                       disabled
                       rows={1}
-                      id="text-area-person"
+                      id={`text-area-person-history-${index}`}
                     />
                   </Column>
 
                   <Column lg={3} md={3} sm={3}>
                     <CustomDatePicker
                       key="dateCompleted"
-                      id={"dateCompleted"}
+                      id={`dateCompleted-history-${index}`}
                       labelText=""
                       autofillDate={true}
-                      value={log[`dateCompleted`] ?? undefined}
+                      value={displayDate(log.dateCompleted)}
                       onChange={(e) => {}}
                       disabled
                       style={{ marginTop: "5px" }}
@@ -792,7 +838,7 @@ export const NCECorrectiveAction = () => {
                         <FormattedMessage id="banner.menu.nonconformity.correctiveActions" />
                       }
                       disabled
-                      id="correctiveAction"
+                      id={`correctiveAction-history-${index}`}
                     />
 
                     <Checkbox
@@ -801,7 +847,7 @@ export const NCECorrectiveAction = () => {
                       }
                       disabled
                       checked={log.actionType?.split(",").includes("2")}
-                      id="preventiveAction"
+                      id={`preventiveAction-history-${index}`}
                     />
 
                     <Checkbox
@@ -810,7 +856,7 @@ export const NCECorrectiveAction = () => {
                       }
                       disabled
                       checked={log.actionType?.split(",").includes("3")}
-                      id="concurrent Control Action"
+                      id={`concurrent Control Action-history-${index}`}
                     />
                   </Column>
                   <Column lg={3} md={3} sm={3}>
@@ -818,7 +864,7 @@ export const NCECorrectiveAction = () => {
                       <div>{log[`turnAroundTime`] ?? ""}</div>
                     </div>
                   </Column>
-                </>
+                </React.Fragment>
               ))}
               <Column lg={16} md={8} sm={4}>
                 <br></br>
@@ -863,19 +909,19 @@ export const NCECorrectiveAction = () => {
               </Column>
               <Column lg={8} md={4} sm={4}>
                 <CustomDatePicker
-                  key="dateCompleted-0"
+                  key={`dateCompleted-0-${data.id}`}
                   id="dateCompleted-0"
                   labelText={
                     <FormattedMessage id="nonconform.date.completed" />
                   }
                   autofillDate={true}
-                  value={data[`dateCompleted`] ?? undefined}
-                  onChange={(e) => {
-                    setData({
-                      ...data,
-                      dateCompleted: e,
-                    });
-                  }}
+                  value={formData.dateCompleted ?? undefined}
+                  onChange={(value) =>
+                    setFormData((previous) => ({
+                      ...previous,
+                      dateCompleted: value,
+                    }))
+                  }
                   style={{ marginBottom: "5px" }}
                 />
               </Column>
