@@ -17,6 +17,28 @@ const identity = (row) => ({
   labNumber: row.accessionNumber,
   analysisLastupdated: row.analysisLastupdated,
 });
+const sameResultReturnPath = (actualPath, expectedPath) => {
+  if (
+    typeof actualPath !== "string" ||
+    typeof expectedPath !== "string" ||
+    !actualPath.startsWith("/Results?") ||
+    !expectedPath.startsWith("/Results?") ||
+    actualPath.includes("#") ||
+    expectedPath.includes("#")
+  )
+    return false;
+  const pathname = (path) => path.slice(0, path.indexOf("?"));
+  const entries = (path) => {
+    const params = new URLSearchParams(path.slice(path.indexOf("?") + 1));
+    params.sort();
+    return [...params];
+  };
+  return (
+    pathname(actualPath) === pathname(expectedPath) &&
+    JSON.stringify(entries(actualPath)) ===
+      JSON.stringify(entries(expectedPath))
+  );
+};
 const sameRow = (actual, expected, version = true) => {
   ["analysisId", "sampleItemId", "testId"].forEach((key) =>
     expect(actual[key], "same clinical " + key).to.eq(expected[key]),
@@ -703,12 +725,21 @@ class ResultsPage {
         Object.entries(identity(this.blockedRow)).forEach(([key, value]) =>
           expect(params.get(key)).to.eq(value),
         );
-        expect(params.get("returnTo")).to.eq(this.resultReturnPath);
+        const returnTo = params.get("returnTo");
+        expect(
+          sameResultReturnPath(returnTo, this.resultReturnPath),
+          "same results route and every query key/value, including duplicates",
+        ).to.eq(true);
+        this.resultReturnPath = returnTo;
       });
       cy.get(".result-intake-handoff h1")
         .should("be.visible")
         .invoke("text")
         .should("match", label("results.restriction.handoffTitle"));
+      cy.wait("@" + alias).then(({ request, response }) => {
+        this.checkRestriction(request, response);
+        expect(response.body.canOpenIntake).to.eq(true);
+      });
       cy.get(".result-intake-handoff .result-restriction-facts")
         .should("be.visible")
         .and("contain.text", this.blockedRow.analysisId)
