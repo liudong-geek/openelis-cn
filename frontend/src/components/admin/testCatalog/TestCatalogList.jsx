@@ -546,340 +546,332 @@ const TestCatalogList = () => {
           )}
 
         <Column lg={16} md={8} sm={4}>
-          {loading ? (
-            <div className="testCatalogList__state" role="status">
-              <Loading
-                small
-                description={intl.formatMessage({ id: "label.loading" })}
-                withOverlay={false}
-              />
-              <span>
-                {intl.formatMessage({
-                  id: "label.testCatalog.list.loading",
-                })}
-              </span>
-            </div>
-          ) : error ? (
-            <div className="testCatalogList__state" role="alert">
-              <InlineNotification
-                kind="error"
-                lowContrast
-                hideCloseButton
-                title={intl.formatMessage({
-                  id: "label.testCatalog.list.error",
-                })}
-                subtitle={intl.formatMessage({
-                  id: "label.testCatalog.list.errorDetail",
-                })}
-              />
-              <Button
-                kind="tertiary"
-                size="sm"
-                onClick={() => setReloadKey((value) => value + 1)}
-              >
-                {intl.formatMessage({ id: "button.testCatalog.retry" })}
-              </Button>
-            </div>
-          ) : (
-            <DataTable rows={tableRows} headers={headers}>
-              {({
-                rows,
-                headers: hdrs,
-                getHeaderProps,
-                getRowProps,
-                getSelectionProps,
-                getBatchActionProps,
-                getTableProps,
-                getToolbarProps,
-                selectedRows,
-              }) => (
-                <TableContainer>
-                  <TableToolbar {...getToolbarProps()}>
-                    <TableBatchActions
-                      {...getBatchActionProps()}
-                      translateWithId={translateBatchAction}
+          <DataTable rows={loading || error ? [] : tableRows} headers={headers}>
+            {({
+              rows,
+              headers: hdrs,
+              getHeaderProps,
+              getRowProps,
+              getSelectionProps,
+              getBatchActionProps,
+              getTableProps,
+              getToolbarProps,
+              selectedRows,
+            }) => (
+              <TableContainer>
+                <TableToolbar {...getToolbarProps()}>
+                  <TableBatchActions
+                    {...getBatchActionProps()}
+                    translateWithId={translateBatchAction}
+                  >
+                    <TableBatchAction
+                      renderIcon={Edit}
+                      disabled={loading || error || selectedRows.length < 2}
+                      onClick={() => openRelatedEditor(selectedRows)}
                     >
-                      <TableBatchAction
-                        renderIcon={Edit}
-                        disabled={selectedRows.length < 2}
-                        onClick={() => openRelatedEditor(selectedRows)}
-                      >
-                        {intl.formatMessage({
-                          id: "button.testCatalog.editRelated",
-                        })}
-                      </TableBatchAction>
-                    </TableBatchActions>
-                    <TableToolbarContent>
-                      <Button
-                        className="testCatalogList__filterTrigger"
-                        kind="ghost"
-                        renderIcon={Filter}
-                        onClick={() => setFiltersOpen((open) => !open)}
-                        aria-expanded={filtersOpen}
-                      >
-                        {activeFilterCount > 0
-                          ? intl.formatMessage(
-                              {
-                                id: "label.testCatalog.list.filters.count",
-                              },
-                              { count: activeFilterCount },
-                            )
-                          : intl.formatMessage({
-                              id: "label.testCatalog.list.filters",
-                            })}
-                      </Button>
-                      <Search
-                        size="lg"
-                        id="test-search"
-                        labelText={intl.formatMessage({ id: "label.search" })}
-                        placeholder={intl.formatMessage({
-                          id: "label.testCatalog.list.search",
-                        })}
-                        closeButtonLabelText={intl.formatMessage({
-                          id: "label.testCatalog.list.clearSearch",
-                        })}
-                        onChange={(e) => {
-                          setPage(1);
-                          setSearch(e.target.value);
-                        }}
-                        value={search}
-                      />
-                      <Button
-                        renderIcon={Add}
-                        onClick={openNewTest}
-                        data-testid="new-test-button"
-                      >
-                        {intl.formatMessage({
-                          id: "button.testCatalog.newTest",
-                        })}
-                      </Button>
-                    </TableToolbarContent>
-                  </TableToolbar>
-                  {filtersOpen && filterPanel}
-                  {tableRows.length === 0 ? (
-                    <div className="testCatalogList__state" role="status">
-                      <InlineNotification
-                        kind="info"
-                        lowContrast
-                        hideCloseButton
-                        title={intl.formatMessage({
-                          id: "label.testCatalog.list.empty",
-                        })}
-                        subtitle={intl.formatMessage({
-                          id: hasActiveQuery
-                            ? "label.testCatalog.list.emptyFilteredDetail"
-                            : "label.testCatalog.list.emptyDefaultDetail",
-                        })}
-                      />
-                      {hasActiveQuery && (
-                        <Button
-                          kind="tertiary"
-                          size="sm"
-                          onClick={clearFilters}
-                        >
-                          {intl.formatMessage({
-                            id: "button.testCatalog.clearFilters",
+                      {intl.formatMessage({
+                        id: "button.testCatalog.editRelated",
+                      })}
+                    </TableBatchAction>
+                  </TableBatchActions>
+                  <TableToolbarContent>
+                    <Button
+                      className="testCatalogList__filterTrigger"
+                      kind="ghost"
+                      renderIcon={Filter}
+                      onClick={() => setFiltersOpen((open) => !open)}
+                      aria-expanded={filtersOpen}
+                    >
+                      {activeFilterCount > 0
+                        ? intl.formatMessage(
+                            {
+                              id: "label.testCatalog.list.filters.count",
+                            },
+                            { count: activeFilterCount },
+                          )
+                        : intl.formatMessage({
+                            id: "label.testCatalog.list.filters",
                           })}
-                        </Button>
-                      )}
-                    </div>
-                  ) : (
-                    <Table {...getTableProps()}>
-                      <TableHead>
-                        <TableRow>
-                          <TableSelectAll
-                            {...getSelectionProps()}
-                            aria-label={intl.formatMessage({
-                              id: "button.testCatalog.selectAllRows",
-                            })}
-                          />
-                          {hdrs.map((header) => (
-                            <TableHeader
-                              key={header.key}
-                              {...getHeaderProps({ header })}
-                            >
-                              {header.header}
-                            </TableHeader>
-                          ))}
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {rows.map((row) => {
-                          const source = tableRows.find((t) => t.id === row.id);
-                          return (
-                            <React.Fragment key={row.id}>
-                              <TableRow
-                                {...getRowProps({ row })}
-                                onClick={(event) => {
-                                  if (
-                                    !event.target.closest(
-                                      "button, a, input, label",
-                                    )
-                                  )
-                                    openEditor(row.id);
-                                }}
-                                onKeyDown={(e) => {
-                                  if (
-                                    e.target === e.currentTarget &&
-                                    (e.key === "Enter" || e.key === " ")
-                                  ) {
-                                    e.preventDefault();
-                                    openEditor(row.id);
-                                  }
-                                }}
-                                tabIndex={0}
-                                style={{ cursor: "pointer" }}
-                                data-cy={`test-row-${row.id}`}
-                              >
-                                {/* Selecting a row must not open the editor. */}
-                                <TableSelectRow
-                                  {...getSelectionProps({ row })}
-                                  aria-label={intl.formatMessage(
-                                    {
-                                      id: "button.testCatalog.selectTestAria",
-                                    },
-                                    { name: source?.name || "" },
-                                  )}
-                                  onClick={(e) => e.stopPropagation()}
-                                />
-                                {row.cells.map((cell) => (
-                                  <TableCell key={cell.id}>
-                                    {cell.info.header === "domain" ? (
-                                      <>
-                                        {cell.value && (
-                                          <Tag type="gray" size="sm">
-                                            {intl.formatMessage({
-                                              id: `label.testCatalog.basicInfo.domain.${cell.value}`,
-                                              defaultMessage: cell.value,
-                                            })}
-                                          </Tag>
-                                        )}
-                                      </>
-                                    ) : cell.info.header === "status" ? (
-                                      <Tag
-                                        type={
-                                          source && source.active
-                                            ? "green"
-                                            : "cool-gray"
-                                        }
-                                        size="sm"
-                                      >
-                                        <FormattedMessage
-                                          id={
-                                            source && source.active
-                                              ? "label.testCatalog.basicInfo.active"
-                                              : "label.testCatalog.list.filter.inactive"
-                                          }
-                                        />
-                                      </Tag>
-                                    ) : cell.info.header === "sampleType" &&
-                                      source &&
-                                      (source.sampleTypes || []).length > 1 ? (
-                                      // OGC-1145 FR-9 — one row per test; the cell
-                                      // summarizes its specimens, full list in the
-                                      // tooltip.
-                                      <span
-                                        title={source.sampleTypes.join(", ")}
-                                      >
-                                        {intl.formatMessage(
-                                          {
-                                            id: "label.testCatalog.list.sampleTypesSummary",
-                                          },
-                                          {
-                                            first: source.sampleTypes[0],
-                                            n: source.sampleTypes.length - 1,
-                                          },
-                                        )}
-                                      </span>
-                                    ) : cell.info.header === "actions" ? (
-                                      <div className="testCatalogList__rowActions">
-                                        <Button
-                                          kind="ghost"
-                                          size="sm"
-                                          hasIconOnly
-                                          renderIcon={Edit}
-                                          iconDescription={intl.formatMessage(
-                                            {
-                                              id: "button.testCatalog.editTestAria",
-                                            },
-                                            { name: source?.name || "" },
-                                          )}
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            openEditor(row.id);
-                                          }}
-                                        />
-                                        <Button
-                                          kind="ghost"
-                                          size="sm"
-                                          onClick={(event) => {
-                                            event.stopPropagation();
-                                            openConfiguration(row.id);
-                                          }}
-                                        >
-                                          {intl.formatMessage({
-                                            id: "common.action.relatedConfiguration",
-                                          })}
-                                        </Button>
-                                      </div>
-                                    ) : (
-                                      cell.value
-                                    )}
-                                    {cell.info.header === "name" &&
-                                      source &&
-                                      source.amr && (
-                                        <Tag type="magenta" size="sm">
-                                          <FormattedMessage id="label.testCatalog.list.amrTag" />
-                                        </Tag>
-                                      )}
-                                    {cell.info.header === "name" &&
-                                      source &&
-                                      source.active &&
-                                      !source.hasLoinc && (
-                                        <Tag type="warm-gray" size="sm">
-                                          <FormattedMessage id="label.testCatalog.list.noLoinc" />
-                                        </Tag>
-                                      )}
-                                    {cell.info.header === "name" &&
-                                      source &&
-                                      source.coverageIncomplete && (
-                                        <Tag type="red" size="sm">
-                                          <FormattedMessage id="label.testCatalog.list.coverageIncomplete" />
-                                        </Tag>
-                                      )}
-                                    {/* FR-61b/62/63 — per-row issue tags, errors first,
-                                      tooltip carries the one-line explanation. */}
-                                    {cell.info.header === "name" &&
-                                      source &&
-                                      [...source.findings]
-                                        .sort(
-                                          (a, b) =>
-                                            SEVERITY_RANK[a.severity] -
-                                            SEVERITY_RANK[b.severity],
-                                        )
-                                        .map((f, fi) => (
-                                          <Tag
-                                            key={fi}
-                                            type={findingTagType(f.severity)}
-                                            size="sm"
-                                            title={f.message}
-                                          >
-                                            {f.message}
-                                          </Tag>
-                                        ))}
-                                  </TableCell>
-                                ))}
-                              </TableRow>
-                            </React.Fragment>
-                          );
+                    </Button>
+                    <Search
+                      size="lg"
+                      id="test-search"
+                      labelText={intl.formatMessage({ id: "label.search" })}
+                      placeholder={intl.formatMessage({
+                        id: "label.testCatalog.list.search",
+                      })}
+                      closeButtonLabelText={intl.formatMessage({
+                        id: "label.testCatalog.list.clearSearch",
+                      })}
+                      onChange={(e) => {
+                        setPage(1);
+                        setSearch(e.target.value);
+                      }}
+                      value={search}
+                    />
+                    <Button
+                      renderIcon={Add}
+                      onClick={openNewTest}
+                      data-testid="new-test-button"
+                    >
+                      {intl.formatMessage({
+                        id: "button.testCatalog.newTest",
+                      })}
+                    </Button>
+                  </TableToolbarContent>
+                </TableToolbar>
+                {filtersOpen && filterPanel}
+                {loading ? (
+                  <div className="testCatalogList__state" role="status">
+                    <Loading
+                      small
+                      description={intl.formatMessage({ id: "label.loading" })}
+                      withOverlay={false}
+                    />
+                    <span>
+                      {intl.formatMessage({
+                        id: "label.testCatalog.list.loading",
+                      })}
+                    </span>
+                  </div>
+                ) : error ? (
+                  <div className="testCatalogList__state" role="alert">
+                    <InlineNotification
+                      kind="error"
+                      lowContrast
+                      hideCloseButton
+                      title={intl.formatMessage({
+                        id: "label.testCatalog.list.error",
+                      })}
+                      subtitle={intl.formatMessage({
+                        id: "label.testCatalog.list.errorDetail",
+                      })}
+                    />
+                    <Button
+                      kind="tertiary"
+                      size="sm"
+                      onClick={() => setReloadKey((value) => value + 1)}
+                    >
+                      {intl.formatMessage({ id: "button.testCatalog.retry" })}
+                    </Button>
+                  </div>
+                ) : tableRows.length === 0 ? (
+                  <div className="testCatalogList__state" role="status">
+                    <InlineNotification
+                      kind="info"
+                      lowContrast
+                      hideCloseButton
+                      title={intl.formatMessage({
+                        id: "label.testCatalog.list.empty",
+                      })}
+                      subtitle={intl.formatMessage({
+                        id: hasActiveQuery
+                          ? "label.testCatalog.list.emptyFilteredDetail"
+                          : "label.testCatalog.list.emptyDefaultDetail",
+                      })}
+                    />
+                    {hasActiveQuery && (
+                      <Button kind="tertiary" size="sm" onClick={clearFilters}>
+                        {intl.formatMessage({
+                          id: "button.testCatalog.clearFilters",
                         })}
-                      </TableBody>
-                    </Table>
-                  )}
-                </TableContainer>
-              )}
-            </DataTable>
-          )}
+                      </Button>
+                    )}
+                  </div>
+                ) : (
+                  <Table {...getTableProps()}>
+                    <TableHead>
+                      <TableRow>
+                        <TableSelectAll
+                          {...getSelectionProps()}
+                          aria-label={intl.formatMessage({
+                            id: "button.testCatalog.selectAllRows",
+                          })}
+                        />
+                        {hdrs.map((header) => (
+                          <TableHeader
+                            key={header.key}
+                            {...getHeaderProps({ header })}
+                          >
+                            {header.header}
+                          </TableHeader>
+                        ))}
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {rows.map((row) => {
+                        const source = tableRows.find((t) => t.id === row.id);
+                        return (
+                          <React.Fragment key={row.id}>
+                            <TableRow
+                              {...getRowProps({ row })}
+                              onClick={(event) => {
+                                if (
+                                  !event.target.closest(
+                                    "button, a, input, label",
+                                  )
+                                )
+                                  openEditor(row.id);
+                              }}
+                              onKeyDown={(e) => {
+                                if (
+                                  e.target === e.currentTarget &&
+                                  (e.key === "Enter" || e.key === " ")
+                                ) {
+                                  e.preventDefault();
+                                  openEditor(row.id);
+                                }
+                              }}
+                              tabIndex={0}
+                              style={{ cursor: "pointer" }}
+                              data-cy={`test-row-${row.id}`}
+                            >
+                              {/* Selecting a row must not open the editor. */}
+                              <TableSelectRow
+                                {...getSelectionProps({ row })}
+                                aria-label={intl.formatMessage(
+                                  {
+                                    id: "button.testCatalog.selectTestAria",
+                                  },
+                                  { name: source?.name || "" },
+                                )}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                              {row.cells.map((cell) => (
+                                <TableCell key={cell.id}>
+                                  {cell.info.header === "domain" ? (
+                                    <>
+                                      {cell.value && (
+                                        <Tag type="gray" size="sm">
+                                          {intl.formatMessage({
+                                            id: `label.testCatalog.basicInfo.domain.${cell.value}`,
+                                            defaultMessage: cell.value,
+                                          })}
+                                        </Tag>
+                                      )}
+                                    </>
+                                  ) : cell.info.header === "status" ? (
+                                    <Tag
+                                      type={
+                                        source && source.active
+                                          ? "green"
+                                          : "cool-gray"
+                                      }
+                                      size="sm"
+                                    >
+                                      <FormattedMessage
+                                        id={
+                                          source && source.active
+                                            ? "label.testCatalog.basicInfo.active"
+                                            : "label.testCatalog.list.filter.inactive"
+                                        }
+                                      />
+                                    </Tag>
+                                  ) : cell.info.header === "sampleType" &&
+                                    source &&
+                                    (source.sampleTypes || []).length > 1 ? (
+                                    // OGC-1145 FR-9 — one row per test; the cell
+                                    // summarizes its specimens, full list in the
+                                    // tooltip.
+                                    <span title={source.sampleTypes.join(", ")}>
+                                      {intl.formatMessage(
+                                        {
+                                          id: "label.testCatalog.list.sampleTypesSummary",
+                                        },
+                                        {
+                                          first: source.sampleTypes[0],
+                                          n: source.sampleTypes.length - 1,
+                                        },
+                                      )}
+                                    </span>
+                                  ) : cell.info.header === "actions" ? (
+                                    <div className="testCatalogList__rowActions">
+                                      <Button
+                                        kind="ghost"
+                                        size="sm"
+                                        hasIconOnly
+                                        renderIcon={Edit}
+                                        iconDescription={intl.formatMessage(
+                                          {
+                                            id: "button.testCatalog.editTestAria",
+                                          },
+                                          { name: source?.name || "" },
+                                        )}
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          openEditor(row.id);
+                                        }}
+                                      />
+                                      <Button
+                                        kind="ghost"
+                                        size="sm"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          openConfiguration(row.id);
+                                        }}
+                                      >
+                                        {intl.formatMessage({
+                                          id: "common.action.relatedConfiguration",
+                                        })}
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    cell.value
+                                  )}
+                                  {cell.info.header === "name" &&
+                                    source &&
+                                    source.amr && (
+                                      <Tag type="magenta" size="sm">
+                                        <FormattedMessage id="label.testCatalog.list.amrTag" />
+                                      </Tag>
+                                    )}
+                                  {cell.info.header === "name" &&
+                                    source &&
+                                    source.active &&
+                                    !source.hasLoinc && (
+                                      <Tag type="warm-gray" size="sm">
+                                        <FormattedMessage id="label.testCatalog.list.noLoinc" />
+                                      </Tag>
+                                    )}
+                                  {cell.info.header === "name" &&
+                                    source &&
+                                    source.coverageIncomplete && (
+                                      <Tag type="red" size="sm">
+                                        <FormattedMessage id="label.testCatalog.list.coverageIncomplete" />
+                                      </Tag>
+                                    )}
+                                  {/* FR-61b/62/63 — per-row issue tags, errors first,
+                                      tooltip carries the one-line explanation. */}
+                                  {cell.info.header === "name" &&
+                                    source &&
+                                    [...source.findings]
+                                      .sort(
+                                        (a, b) =>
+                                          SEVERITY_RANK[a.severity] -
+                                          SEVERITY_RANK[b.severity],
+                                      )
+                                      .map((f, fi) => (
+                                        <Tag
+                                          key={fi}
+                                          type={findingTagType(f.severity)}
+                                          size="sm"
+                                          title={f.message}
+                                        >
+                                          {f.message}
+                                        </Tag>
+                                      ))}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          </React.Fragment>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </TableContainer>
+            )}
+          </DataTable>
           {!loading && !error && pageData.total > 0 && (
             <Pagination
               className="testCatalogList__pagination"

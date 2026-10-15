@@ -29,7 +29,7 @@ vi.mock("../../common/PageBreadCrumb", () => ({ default: () => null }));
 // ========== IMPORTS ==========
 import React from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { waitFor } from "@testing-library/dom";
+import { waitFor, within } from "@testing-library/dom";
 import "@testing-library/jest-dom";
 import { IntlProvider } from "react-intl";
 import { BrowserRouter } from "react-router-dom";
@@ -50,9 +50,158 @@ const renderList = ({ locale = "en", catalogMessages = messages } = {}) =>
 
 const pageOf = (rows) => ({ rows, total: rows.length });
 
+// Hold only the list transport callback. Carbon controls and the real list
+// lifecycle remain mounted by React throughout the pending query.
+function renderWithPendingQueries() {
+  const queries = [];
+  const existingRows = [
+    { testId: "7", name: "Glucose", code: "GLU", active: true },
+    { testId: "8", name: "Creatinine", code: "CREA", active: false },
+  ];
+  getFromOpenElisServer.mockImplementation((url, callback, signal) => {
+    if (!url.includes("/tests?")) return callback([]);
+    queries.push({ url, callback, signal });
+    if (queries.length === 1) callback(pageOf(existingRows));
+  });
+  const view = renderList();
+  const answer = (query, response = pageOf(existingRows)) => {
+    // The real transport does not deliver an aborted fetch to its callback.
+    if (!query.signal.aborted) act(() => query.callback(response));
+  };
+  return { ...view, queries, answer };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockHistory.location = { search: "" };
+});
+
+describe("TestCatalogList loading continuity", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("keeps an open status dropdown usable across the debounced request", () => {
+    const { container, queries, answer } = renderWithPendingQueries();
+    const search = screen.getByPlaceholderText(
+      messages["label.testCatalog.list.search"],
+    );
+    fireEvent.change(search, { target: { value: "Glucose" } });
+    fireEvent.click(container.querySelector(".testCatalogList__filterTrigger"));
+    const status = container.querySelector("#filter-status button");
+    fireEvent.click(status);
+    expect(screen.getByRole("option", { name: "Inactive" })).toBeVisible();
+
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    expect(queries).toHaveLength(2);
+    expect(queries[1].url).toContain("search=Glucose");
+    expect(container.querySelector("#test-search")).toBe(search);
+    expect(container.querySelector("#filter-status button")).toBe(status);
+    expect(status).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("option", { name: "Inactive" })).toBeVisible();
+    expect(
+      screen.getByText(messages["label.testCatalog.list.loading"]),
+    ).toBeVisible();
+    expect(container.querySelector("tbody tr")).not.toBeInTheDocument();
+
+    answer(queries[1]);
+    expect(container.querySelector("#filter-status button")).toBe(status);
+    fireEvent.click(screen.getByRole("option", { name: "Inactive" }));
+    expect(queries).toHaveLength(3);
+    expect(queries[2].url).toContain("status=inactive");
+    expect(queries[2].url).toContain("search=Glucose");
+    answer(queries[2]);
+    expect(status).toHaveTextContent("Inactive");
+  });
+
+  it("retains search focus and cancels the earlier pending query when typing continues", () => {
+    const { container, queries, answer } = renderWithPendingQueries();
+    const search = screen.getByPlaceholderText(
+      messages["label.testCatalog.list.search"],
+    );
+    search.focus();
+    fireEvent.change(search, { target: { value: "Glu" } });
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(container.querySelector("#test-search")).toBe(search);
+    expect(search).toHaveFocus();
+    fireEvent.change(search, { target: { value: "Glucose" } });
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(queries).toHaveLength(3);
+    expect(queries[1].signal.aborted).toBe(true);
+    expect(queries[2].signal.aborted).toBe(false);
+    expect(search).toHaveFocus();
+    expect(search).toHaveValue("Glucose");
+    answer(queries[2]);
+    expect(search).toHaveFocus();
+  });
+
+  it("keeps filters available after a failed query and retries the same applied state", () => {
+    const { container, queries, answer } = renderWithPendingQueries();
+    const search = screen.getByPlaceholderText(
+      messages["label.testCatalog.list.search"],
+    );
+    fireEvent.click(container.querySelector(".testCatalogList__filterTrigger"));
+    const status = container.querySelector("#filter-status button");
+    fireEvent.click(status);
+    fireEvent.click(screen.getByRole("option", { name: "Inactive" }));
+    act(() => queries[1].callback(undefined));
+
+    expect(container.querySelector("#test-search")).toBe(search);
+    expect(container.querySelector("#filter-status button")).toBe(status);
+    expect(status).toHaveTextContent("Inactive");
+    expect(
+      screen.getByText(messages["label.testCatalog.list.error"]),
+    ).toBeVisible();
+    expect(
+      screen.queryByText(messages["label.testCatalog.list.empty"]),
+    ).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: messages["button.testCatalog.retry"],
+      }),
+    );
+    expect(queries).toHaveLength(3);
+    expect(queries[2].url).toBe(queries[1].url);
+    answer(queries[2]);
+    expect(screen.getByText("Glucose")).toBeVisible();
+    expect(container.querySelector("#test-search")).toBe(search);
+  });
+
+  it("removes stale row actions and selection while another page is loading", () => {
+    const { container, queries, answer } = renderWithPendingQueries();
+    const table = screen.getByRole("table");
+    fireEvent.click(within(table).getAllByRole("checkbox")[0]);
+    const batchButton = screen.getByRole("button", {
+      name: messages["button.testCatalog.editRelated"],
+    });
+    expect(batchButton).not.toBeDisabled();
+    fireEvent.change(
+      container.querySelector(".testCatalogList__pagination select"),
+      { target: { value: "10" } },
+    );
+    expect(queries).toHaveLength(2);
+    expect(container.querySelector("tbody tr")).not.toBeInTheDocument();
+    const pendingBatchButton = container.querySelector(
+      ".cds--batch-actions button",
+    );
+    if (pendingBatchButton) expect(pendingBatchButton).toBeDisabled();
+    else expect(batchButton).not.toBeInTheDocument();
+    answer(queries[1]);
+    expect(
+      within(screen.getByRole("table")).getAllByRole("checkbox")[0],
+    ).not.toBeChecked();
+    expect(
+      screen
+        .getByText(messages["button.testCatalog.editRelated"])
+        .closest("button"),
+    ).toBeDisabled();
+  });
 });
 
 describe("TestCatalogList", () => {
