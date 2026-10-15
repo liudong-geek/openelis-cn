@@ -108,6 +108,17 @@ export const getFromOpenElisServer = <T = LegacyApiResponse>(
   signal: AbortSignal | null = null,
 ): Promise<void> => {
   const controller = new AbortController();
+  let failureTimer: ReturnType<typeof setTimeout> | undefined;
+  let finishFailureWait: (() => void) | undefined;
+  const finishFailure = () => {
+    if (failureTimer !== undefined) {
+      clearTimeout(failureTimer);
+      failureTimer = undefined;
+    }
+    const finish = finishFailureWait;
+    finishFailureWait = undefined;
+    finish?.();
+  };
   const removeListeners = () => {
     signal?.removeEventListener("abort", cancel);
     window.removeEventListener("pagehide", cancel);
@@ -115,6 +126,7 @@ export const getFromOpenElisServer = <T = LegacyApiResponse>(
   const cancel = () => {
     controller.abort();
     removeListeners();
+    finishFailure();
   };
   signal?.addEventListener("abort", cancel, { once: true });
   window.addEventListener("pagehide", cancel);
@@ -140,7 +152,15 @@ export const getFromOpenElisServer = <T = LegacyApiResponse>(
       }
       return undefined;
     } catch (error) {
-      if (!controller.signal.aborted) console.error(error);
+      if (!controller.signal.aborted) {
+        // Native pagehide can run promise continuations between listeners. Keep
+        // cancellation attached until that event has finished dispatching.
+        await new Promise<void>((resolve) => {
+          finishFailureWait = resolve;
+          failureTimer = setTimeout(finishFailure, 0);
+        });
+        if (!controller.signal.aborted) console.error(error);
+      }
       return undefined;
     }
   };

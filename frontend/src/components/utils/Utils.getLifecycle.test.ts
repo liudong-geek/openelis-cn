@@ -35,6 +35,7 @@ const delayedJson = () => {
 };
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -240,5 +241,54 @@ describe("owned legacy GET lifetimes", () => {
     await completed;
     expect(error).toHaveBeenCalledExactlyOnceWith(failure);
     expect(callback).toHaveBeenCalledExactlyOnceWith(undefined);
+  });
+});
+
+describe("GET failure delivery while pagehide is pending", () => {
+  test("two rejected GETs remain cancellable until pagehide finishes without reporting or delivering failures", async () => {
+    vi.useFakeTimers();
+    const failure = new TypeError("Failed to fetch");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(failure));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const callbacks = [vi.fn(), vi.fn()];
+    const completed = callbacks.map((callback, index) =>
+      getFromOpenElisServer("/rest/example/" + index, callback),
+    );
+    // Rejection continuations can run between native pagehide listeners.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(error).not.toHaveBeenCalled();
+    callbacks.forEach((callback) => expect(callback).not.toHaveBeenCalled());
+    window.dispatchEvent(new Event("pagehide"));
+    await Promise.all(completed);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(error).not.toHaveBeenCalled();
+    callbacks.forEach((callback) => expect(callback).not.toHaveBeenCalled());
+    vi.mocked(fetch).mock.calls.forEach(([, options]) =>
+      expect(options?.signal?.aborted).toBe(true),
+    );
+  });
+
+  test("caller cancellation releases a rejected GET without waiting for a timer to run", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
+    );
+    const caller = new AbortController();
+    const callback = vi.fn();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const completed = getFromOpenElisServer(
+      "/rest/example",
+      callback,
+      caller.signal,
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    caller.abort();
+    await completed;
+    expect(vi.getTimerCount()).toBe(0);
+    expect(error).not.toHaveBeenCalled();
+    expect(callback).not.toHaveBeenCalled();
   });
 });
