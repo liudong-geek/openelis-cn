@@ -689,6 +689,13 @@ class HomePage {
       unit: ["WorkPlanByTestSection", "banner.menu.workplan.bench"],
       priority: ["WorkPlanByPriority", "banner.menu.workplan.priority"],
     };
+    const optionPaths = {
+      test: "/rest/displayList/ALL_TESTS",
+      panel: "/rest/displayList/PANELS",
+      unit: "/rest/user-test-sections/Results",
+      priority: "/rest/displayList/ORDER_PRIORITY",
+    };
+    cy.intercept("GET", `**${optionPaths[type]}`).as("workplanOptions");
     this.openWorkspaceTask(
       "#menu_testing_workspace",
       /^\/WorkPlanByTest(?:\?|$)/,
@@ -703,6 +710,11 @@ class HomePage {
     }
     cy.location("pathname").should("eq", `/${modes[type][0]}`);
     cy.location("search").should("include", `type=${type}`);
+    cy.wait("@workplanOptions").then(({ response }) => {
+      expect(response.statusCode, "workplan options loaded").to.eq(200);
+      expect(response.headers["content-type"]).to.include("application/json");
+      expect(response.body).to.be.an("array").and.not.be.empty;
+    });
     return new WorkPlan();
   }
 
