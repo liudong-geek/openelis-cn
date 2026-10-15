@@ -12,6 +12,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
@@ -62,6 +63,20 @@ public class CytologyResultReleaseServiceTest {
 
     @Test
     public void cytologyReleaseUsesDedicatedGuardedPersistence() {
+        verifyRelease(true, false);
+    }
+
+    @Test
+    public void cytologyFinishesWithTheCurrentVersionAfterResultPersistence() {
+        verifyRelease(true, true);
+    }
+
+    @Test
+    public void cytologyDoesNotFinishPendingWorkAfterTheIntermediateSampleUpdate() {
+        verifyRelease(false, true);
+    }
+
+    private void verifyRelease(boolean terminal, boolean intermediateUpdate) {
         IStatusService statuses = mock(IStatusService.class);
         DefaultConfigurationProperties properties = mock(DefaultConfigurationProperties.class);
         when(properties.getPropertyValueUpperCase(Property.StatusRules)).thenReturn("DEFAULT");
@@ -126,6 +141,7 @@ public class CytologyResultReleaseServiceTest {
         CytologySampleServiceImpl service = org.mockito.Mockito.spy(new CytologySampleServiceImpl());
         SampleService samples = mock(SampleService.class);
         when(samples.getPatient(sample)).thenReturn(patient);
+        when(samples.get(sample.getId())).thenReturn(sample);
         AnalysisService analyses = mock(AnalysisService.class);
         when(analyses.get(item.getAnalysisId())).thenReturn(analysis);
         LogbookResultsPersistService persistence = mock(LogbookResultsPersistService.class);
@@ -133,7 +149,7 @@ public class CytologyResultReleaseServiceTest {
         ReflectionTestUtils.setField(service, "analysisService", analyses);
         ReflectionTestUtils.setField(service, "logbookResultsPersistService", persistence);
         SpecialtyCaseWriteGuard writeGuard = mock(SpecialtyCaseWriteGuard.class);
-        when(writeGuard.allAnalysesTerminal(eq(sample), anySet())).thenReturn(true);
+        when(writeGuard.allAnalysesTerminal(eq(sample), anySet())).thenReturn(terminal);
         ReflectionTestUtils.setField(service, "specialtyCaseWriteGuard", writeGuard);
         Result result = new Result();
         result.setAnalysis(analysis);
@@ -148,6 +164,29 @@ public class CytologyResultReleaseServiceTest {
         form.setSystemUserId("11");
         Authorization authorization = new Authorization("11", Set.of("101"), List.of(analysis),
                 List.of(analysis, foreignAnalysis));
+        Sample current = new Sample();
+        current.setId(sample.getId());
+        current.setLastupdated(Timestamp.valueOf("2026-10-15 12:00:01"));
+        current.setStatusId("2");
+        current.setAccessionNumber("CURRENT-VERSION");
+        if (intermediateUpdate) {
+            sample.setLastupdated(Timestamp.valueOf("2026-10-15 12:00:00"));
+            sample.setStatusId("1");
+            AtomicReference<Sample> persisted = new AtomicReference<>(sample);
+            when(persistence.persistSpecialtyReleaseDataSet(any(), anyList(), eq("11"), any())).thenAnswer(call -> {
+                sample.setStatusId("2");
+                persisted.set(current);
+                return List.of();
+            });
+            when(samples.get(sample.getId())).thenAnswer(call -> persisted.get());
+            when(samples.update(any(Sample.class))).thenAnswer(call -> {
+                Sample update = call.getArgument(0);
+                if (!persisted.get().getLastupdated().equals(update.getLastupdated())) {
+                    throw new org.hibernate.StaleObjectStateException(Sample.class.getName(), update.getId());
+                }
+                return update;
+            });
+        }
         ReflectionTestUtils.invokeMethod(service, "validateCytologySample", owner, form, authorization);
 
         verify(analyses).get("101");
@@ -166,10 +205,24 @@ public class CytologyResultReleaseServiceTest {
         assertEquals("90", audited.getStatusId());
         assertTrue(audited.getReleasedDate() != null);
         assertTrue(data.getValue().getNewResults().get(0).result.getAnalysis() == audited);
+        if (!terminal) {
+            verify(samples, never()).update(any(Sample.class));
+            verify(samples, never()).get(sample.getId());
+            assertEquals("2", current.getStatusId());
+            return;
+        }
         ArgumentCaptor<Sample> finishedSample = ArgumentCaptor.forClass(Sample.class);
         verify(samples).update(finishedSample.capture());
         assertTrue(finishedSample.getValue() != sample);
         assertEquals("11", finishedSample.getValue().getSysUserId());
         assertEquals("20", finishedSample.getValue().getStatusId());
+        if (intermediateUpdate) {
+            verify(samples).get(sample.getId());
+            assertTrue(finishedSample.getValue() != current);
+            assertEquals(current.getLastupdated(), finishedSample.getValue().getLastupdated());
+            assertEquals("CURRENT-VERSION", finishedSample.getValue().getAccessionNumber());
+            assertEquals("2", current.getStatusId());
+            assertEquals(Timestamp.valueOf("2026-10-15 12:00:00"), sample.getLastupdated());
+        }
     }
 }

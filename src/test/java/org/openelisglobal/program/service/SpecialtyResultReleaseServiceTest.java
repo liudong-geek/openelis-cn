@@ -12,6 +12,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
@@ -217,9 +218,127 @@ public class SpecialtyResultReleaseServiceTest {
         assertEquals("101", data.getValue().getModifiedAnalysis().get(0).getId());
     }
 
+    @Test
+    public void pathologyFinishesWithTheCurrentVersionAfterResultPersistence() {
+        PathologySampleServiceImpl service = org.mockito.Mockito.spy(new PathologySampleServiceImpl());
+        LogbookResultsPersistService persistence = prepare(service);
+        Sample current = advanceSampleDuringResultPersistence(persistence);
+        PathologySample owner = new PathologySample();
+        owner.setId(51);
+        owner.setSample(sample);
+        stubResultBuilder(service, result(null));
+        PathologySampleForm form = new PathologySampleForm();
+        form.setSystemUserId("11");
+
+        ReflectionTestUtils.invokeMethod(service, "validatePathologySample", owner, form, authorization());
+
+        assertCurrentSampleFinished(current);
+        assertDedicatedRelease(persistence, SpecialtyResultRelease.Kind.PATHOLOGY, false);
+    }
+
+    @Test
+    public void ihcFinishesWithTheCurrentVersionAfterResultPersistence() {
+        ImmunohistochemistrySampleServiceImpl service = org.mockito.Mockito
+                .spy(new ImmunohistochemistrySampleServiceImpl());
+        LogbookResultsPersistService persistence = prepare(service);
+        Sample current = advanceSampleDuringResultPersistence(persistence);
+        ImmunohistochemistrySample owner = new ImmunohistochemistrySample();
+        owner.setId(52);
+        owner.setSample(sample);
+        stubResultBuilder(service, result(null));
+        ImmunohistochemistrySampleForm form = new ImmunohistochemistrySampleForm();
+        form.setSystemUserId("11");
+
+        ReflectionTestUtils.invokeMethod(service, "validateImmunohistochemistrySample", owner, form, authorization());
+
+        assertCurrentSampleFinished(current);
+        assertDedicatedRelease(persistence, SpecialtyResultRelease.Kind.IMMUNOHISTOCHEMISTRY, false);
+    }
+
+    @Test
+    public void pathologyDoesNotFinishPendingWorkAfterTheIntermediateSampleUpdate() {
+        PathologySampleServiceImpl service = org.mockito.Mockito.spy(new PathologySampleServiceImpl());
+        LogbookResultsPersistService persistence = prepare(service);
+        Sample current = advanceSampleDuringResultPersistence(persistence);
+        when(writeGuard.allAnalysesTerminal(eq(sample), anySet())).thenReturn(false);
+        PathologySample owner = new PathologySample();
+        owner.setId(51);
+        owner.setSample(sample);
+        stubResultBuilder(service, result(null));
+        PathologySampleForm form = new PathologySampleForm();
+        form.setSystemUserId("11");
+
+        ReflectionTestUtils.invokeMethod(service, "validatePathologySample", owner, form, authorization());
+
+        verify(persistence).persistSpecialtyReleaseDataSet(any(), anyList(), eq("11"), any());
+        verify(samples, never()).update(any(Sample.class));
+        verify(samples, never()).get(sample.getId());
+        assertEquals("2", current.getStatusId());
+    }
+
+    @Test
+    public void ihcDoesNotFinishPendingWorkAfterTheIntermediateSampleUpdate() {
+        ImmunohistochemistrySampleServiceImpl service = org.mockito.Mockito
+                .spy(new ImmunohistochemistrySampleServiceImpl());
+        LogbookResultsPersistService persistence = prepare(service);
+        Sample current = advanceSampleDuringResultPersistence(persistence);
+        when(writeGuard.allAnalysesTerminal(eq(sample), anySet())).thenReturn(false);
+        ImmunohistochemistrySample owner = new ImmunohistochemistrySample();
+        owner.setId(52);
+        owner.setSample(sample);
+        stubResultBuilder(service, result(null));
+        ImmunohistochemistrySampleForm form = new ImmunohistochemistrySampleForm();
+        form.setSystemUserId("11");
+
+        ReflectionTestUtils.invokeMethod(service, "validateImmunohistochemistrySample", owner, form, authorization());
+
+        verify(persistence).persistSpecialtyReleaseDataSet(any(), anyList(), eq("11"), any());
+        verify(samples, never()).update(any(Sample.class));
+        verify(samples, never()).get(sample.getId());
+        assertEquals("2", current.getStatusId());
+    }
+
+    private Sample advanceSampleDuringResultPersistence(LogbookResultsPersistService persistence) {
+        sample.setLastupdated(Timestamp.valueOf("2026-10-15 12:00:00"));
+        sample.setStatusId("1");
+        Sample current = new Sample();
+        current.setId(sample.getId());
+        current.setLastupdated(Timestamp.valueOf("2026-10-15 12:00:01"));
+        current.setStatusId("2");
+        current.setAccessionNumber("CURRENT-VERSION");
+        AtomicReference<Sample> persisted = new AtomicReference<>(sample);
+        // The audited Started update evicts the old instance and merges a new one.
+        when(persistence.persistSpecialtyReleaseDataSet(any(), anyList(), eq("11"), any())).thenAnswer(call -> {
+            sample.setStatusId("2");
+            persisted.set(current);
+            return List.of();
+        });
+        when(samples.get(sample.getId())).thenAnswer(call -> persisted.get());
+        when(samples.update(any(Sample.class))).thenAnswer(call -> {
+            Sample update = call.getArgument(0);
+            if (!persisted.get().getLastupdated().equals(update.getLastupdated())) {
+                throw new org.hibernate.StaleObjectStateException(Sample.class.getName(), update.getId());
+            }
+            return update;
+        });
+        return current;
+    }
+
+    private void assertCurrentSampleFinished(Sample current) {
+        verify(samples).get(sample.getId());
+        ArgumentCaptor<Sample> update = ArgumentCaptor.forClass(Sample.class);
+        verify(samples).update(update.capture());
+        assertTrue("audit must compare against the reloaded instance", update.getValue() != current);
+        assertEquals(current.getLastupdated(), update.getValue().getLastupdated());
+        assertEquals("CURRENT-VERSION", update.getValue().getAccessionNumber());
+        assertEquals("2", current.getStatusId());
+        assertEquals(Timestamp.valueOf("2026-10-15 12:00:00"), sample.getLastupdated());
+    }
+
     private LogbookResultsPersistService prepare(Object service) {
         samples = mock(SampleService.class);
         when(samples.getPatient(sample)).thenReturn(patient);
+        when(samples.get(sample.getId())).thenReturn(sample);
         analyses = mock(AnalysisService.class);
         when(analyses.get(item.getAnalysisId())).thenReturn(analysis);
         LogbookResultsPersistService persistence = mock(LogbookResultsPersistService.class);

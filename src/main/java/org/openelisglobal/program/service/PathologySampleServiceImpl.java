@@ -192,8 +192,7 @@ public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<P
         specialtyCaseWriteGuard.requireDraftStatus(release, form.getStatus());
         if (release) {
             specialtyCaseWriteGuard.requireReleaseAssignments(authorization,
-                    new Assignment(Constants.ROLE_PATHOLOGIST, persisted.getPathologist()),
-                    persisted.getTechnician());
+                    new Assignment(Constants.ROLE_PATHOLOGIST, persisted.getPathologist()), persisted.getTechnician());
         } else {
             specialtyCaseWriteGuard.requireCurrentAssignment(authorization,
                     List.of(new Assignment(Constants.ROLE_PATHOLOGIST, persisted.getPathologist()),
@@ -209,8 +208,7 @@ public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<P
         if (Boolean.TRUE.equals(form.getReferToImmunoHistoChemistry())) {
             // Referral is a specialist decision even when the rest of the case is only
             // being saved as a draft. Authorize it before the first case/IHC write.
-            referralAuthorization = specialtyCaseWriteGuard.requireRead(persisted,
-                    List.of(Constants.ROLE_PATHOLOGIST));
+            referralAuthorization = specialtyCaseWriteGuard.requireRead(persisted, List.of(Constants.ROLE_PATHOLOGIST));
             specialtyCaseWriteGuard.requireCurrentAssignment(referralAuthorization,
                     List.of(new Assignment(Constants.ROLE_PATHOLOGIST, persisted.getPathologist())));
         }
@@ -280,11 +278,11 @@ public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<P
                         StringUtils.defaultString(form.getMicroscopyExam()))
                 || !pathologyValues(persisted.getTechniques(), PathologyTechnique::getValue,
                         technique -> technique.getType() == null ? "" : technique.getType().name())
-                                .equals(formValues(form.getTechniques(), "DICTIONARY"))
+                        .equals(formValues(form.getTechniques(), "DICTIONARY"))
                 || !pathologyValues(persisted.getRequests(), PathologyRequest::getValue,
                         request -> (request.getType() == null ? "" : request.getType().name()) + ":"
                                 + (request.getStatus() == null ? "" : request.getStatus().name()))
-                                .equals(requestFormValues(form.getRequests()))
+                        .equals(requestFormValues(form.getRequests()))
                 || !conclusionValues(persisted).equals(conclusionFormValues(form));
     }
 
@@ -310,8 +308,7 @@ public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<P
             return List.of();
         }
         return requests.stream()
-                .map(request -> "DICTIONARY:"
-                        + (request.getStatus() == null ? "" : request.getStatus().name()) + ":"
+                .map(request -> "DICTIONARY:" + (request.getStatus() == null ? "" : request.getStatus().name()) + ":"
                         + StringUtils.defaultString(request.getValue()))
                 .sorted().collect(Collectors.toList());
     }
@@ -507,7 +504,9 @@ public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<P
         terminalStatusIds.add(statuses.getStatusID(AnalysisStatus.Canceled));
         terminalStatusIds.add(statuses.getStatusID(AnalysisStatus.NonConforming_depricated));
         if (specialtyCaseWriteGuard.allAnalysesTerminal(sample, terminalStatusIds)) {
-            Sample finishedSample = SpecialtyReleaseAuditSupport.detachedSample(sample, form.getSystemUserId());
+            // Result persistence may merge a newer Sample; audit its current version.
+            Sample currentSample = sampleService.get(sample.getId());
+            Sample finishedSample = SpecialtyReleaseAuditSupport.detachedSample(currentSample, form.getSystemUserId());
             finishedSample.setStatusId(statuses.getStatusID(OrderStatus.Finished));
             sampleService.update(finishedSample);
         }
@@ -523,8 +522,7 @@ public class PathologySampleServiceImpl extends AuditableBaseObjectServiceImpl<P
                 .getTestSectionByName(SpecialtyCaseWriteGuard.IMMUNOHISTOCHEMISTRY_SECTION);
         if (immunohistochemistrySection == null || immunohistochemistrySection.getId() == null
                 || pathologyAnalyses == null || pathologyAnalyses.isEmpty()
-                || form.getImmunoHistoChemistryTestIds() == null
-                || form.getImmunoHistoChemistryTestIds().isEmpty()) {
+                || form.getImmunoHistoChemistryTestIds() == null || form.getImmunoHistoChemistryTestIds().isEmpty()) {
             throw new AccessDeniedException("error.notauthorized");
         }
         java.util.Map<String, Test> immunoHistologyTests = new LinkedHashMap<>();

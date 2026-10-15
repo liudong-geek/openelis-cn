@@ -140,8 +140,7 @@ public class ImmunohistochemistrySampleServiceImpl
         specialtyCaseWriteGuard.requireDraftStatus(release, form.getStatus());
         if (release) {
             specialtyCaseWriteGuard.requireReleaseAssignments(authorization,
-                    new Assignment(Constants.ROLE_PATHOLOGIST, persisted.getPathologist()),
-                    persisted.getTechnician());
+                    new Assignment(Constants.ROLE_PATHOLOGIST, persisted.getPathologist()), persisted.getTechnician());
         } else {
             specialtyCaseWriteGuard.requireCurrentAssignment(authorization,
                     List.of(new Assignment(Constants.ROLE_PATHOLOGIST, persisted.getPathologist()),
@@ -266,7 +265,9 @@ public class ImmunohistochemistrySampleServiceImpl
         terminalStatusIds.add(statuses.getStatusID(AnalysisStatus.Canceled));
         terminalStatusIds.add(statuses.getStatusID(AnalysisStatus.NonConforming_depricated));
         if (specialtyCaseWriteGuard.allAnalysesTerminal(sample, terminalStatusIds)) {
-            Sample finishedSample = SpecialtyReleaseAuditSupport.detachedSample(sample, form.getSystemUserId());
+            // Result persistence may merge a newer Sample; audit its current version.
+            Sample currentSample = sampleService.get(sample.getId());
+            Sample finishedSample = SpecialtyReleaseAuditSupport.detachedSample(currentSample, form.getSystemUserId());
             finishedSample.setStatusId(statuses.getStatusID(OrderStatus.Finished));
             sampleService.update(finishedSample);
         }

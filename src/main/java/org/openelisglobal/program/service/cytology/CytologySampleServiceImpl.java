@@ -32,10 +32,10 @@ import org.openelisglobal.program.dao.cytology.CytologySampleDAO;
 import org.openelisglobal.program.service.SpecialtyCaseWriteGuard;
 import org.openelisglobal.program.service.SpecialtyCaseWriteGuard.Assignment;
 import org.openelisglobal.program.service.SpecialtyCaseWriteGuard.Authorization;
-import org.openelisglobal.program.valueholder.cytology.CytologySample;
-import org.openelisglobal.program.valueholder.cytology.CytologySample.CytologyStatus;
 import org.openelisglobal.program.valueholder.cytology.CytologyDiagnosis;
 import org.openelisglobal.program.valueholder.cytology.CytologyDiagnosisCategoryResultsMap;
+import org.openelisglobal.program.valueholder.cytology.CytologySample;
+import org.openelisglobal.program.valueholder.cytology.CytologySample.CytologyStatus;
 import org.openelisglobal.program.valueholder.cytology.CytologySpecimenAdequacy;
 import org.openelisglobal.result.action.util.ResultSet;
 import org.openelisglobal.result.action.util.ResultsLoadUtility;
@@ -393,7 +393,9 @@ public class CytologySampleServiceImpl extends AuditableBaseObjectServiceImpl<Cy
         terminalStatusIds.add(statuses.getStatusID(AnalysisStatus.Canceled));
         terminalStatusIds.add(statuses.getStatusID(AnalysisStatus.NonConforming_depricated));
         if (specialtyCaseWriteGuard.allAnalysesTerminal(sample, terminalStatusIds)) {
-            Sample finishedSample = SpecialtyReleaseAuditSupport.detachedSample(sample, form.getSystemUserId());
+            // Result persistence may merge a newer Sample; audit its current version.
+            Sample currentSample = sampleService.get(sample.getId());
+            Sample finishedSample = SpecialtyReleaseAuditSupport.detachedSample(currentSample, form.getSystemUserId());
             finishedSample.setStatusId(statuses.getStatusID(OrderStatus.Finished));
             sampleService.update(finishedSample);
         }
