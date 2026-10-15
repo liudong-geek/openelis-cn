@@ -49,6 +49,7 @@ class BatchOrderEntry {
     cy.intercept("POST", "**/rest/SamplePatientEntryBatch", (request) => {
       this.saves.push(jsonBody(request));
     }).as("batchClinicalSave");
+    cy.intercept("GET", "**/rest/order/saved?*").as("batchPageSavedOrder");
   }
   visitSetupPage() {
     cy.location("pathname").should("eq", "/SampleBatchEntrySetup");
@@ -517,9 +518,17 @@ class BatchOrderEntry {
     });
   }
   checkNextLabel() {
-    return cy
-      .get("[data-testid='next-button-BatchOrderEntry']")
-      .should("be.enabled");
+    // The page enables the next label only after its own save readback.
+    return cy.wait("@batchPageSavedOrder").then(({ request, response }) => {
+      expect(String(request.query.queryVersion)).to.eq("2");
+      expect(String(request.query.labNumber)).to.eq(this.expected.accession);
+      expectJSON(response);
+      expect(response.body.queryVersion).to.eq("2");
+      expect(response.body.labNumber).to.eq(this.expected.accession);
+      return cy
+        .get("[data-testid='next-button-BatchOrderEntry']")
+        .should("be.enabled");
+    });
   }
   saveOrder() {
     this.watchClinicalSaves();
