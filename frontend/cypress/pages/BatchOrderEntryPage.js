@@ -663,7 +663,7 @@ class BatchOrderEntry {
       .should("be.visible")
       .click();
     cy.location("pathname").should("eq", "/");
-    cy.get(".home-dashboard-container").should("be.visible");
+    cy.get(".home-dashboard #dashboard-title").should("be.visible");
     cy.then(() =>
       expect(attempted, "cancel must not submit a clinical order").to.eq(0),
     );
