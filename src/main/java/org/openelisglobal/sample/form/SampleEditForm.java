@@ -1,10 +1,12 @@
 package org.openelisglobal.sample.form;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import java.util.List;
 import org.openelisglobal.common.form.BaseForm;
+import org.openelisglobal.common.formfields.FormFields;
 import org.openelisglobal.common.util.ConfigurationProperties;
 import org.openelisglobal.common.util.ConfigurationProperties.Property;
 import org.openelisglobal.common.util.IdValuePair;
@@ -122,6 +124,11 @@ public class SampleEditForm extends BaseForm {
 
     public SampleEditForm() {
         setFormName("SampleEditForm");
+    }
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    public boolean isRequestDateRequired() {
+        return FormFields.getInstance().useField(FormFields.Field.SampleEntryUseRequestDate);
     }
 
     public Boolean getNoSampleFound() {

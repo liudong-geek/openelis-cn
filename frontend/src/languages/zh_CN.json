@@ -10166,6 +10166,7 @@
   "modify.order.validation.lastName": "请填写申请医生的姓",
   "modify.order.validation.email": "邮箱格式不正确",
   "modify.order.validation.site": "请选择送检机构",
+  "modify.order.validation.requestDate": "请填写申请日期",
   "modify.order.readonly": "当前申请为只读，不能保存修改。",
   "modify.order.new.number": "新实验室编号（选填）",
   "modify.order.new.number.placeholder": "留空保留原编号",

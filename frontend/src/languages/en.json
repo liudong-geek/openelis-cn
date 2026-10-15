@@ -10076,6 +10076,7 @@
   "modify.order.validation.lastName": "Requester last name is required",
   "modify.order.validation.email": "Invalid email",
   "modify.order.validation.site": "Referring organization is required",
+  "modify.order.validation.requestDate": "Enter the request date",
   "modify.order.readonly": "This order is read-only. Changes cannot be saved.",
   "modify.order.new.number": "New laboratory number (optional)",
   "modify.order.new.number.placeholder": "Leave blank to keep the current number",

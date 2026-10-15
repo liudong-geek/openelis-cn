@@ -377,6 +377,29 @@ describe("AddOrder existing-application initialization", () => {
     },
   });
 
+  test("marks the required request date and its exact field error without filling a legacy blank", () => {
+    const form = {
+      ...existingForm({ requestDate: null }),
+      requestDateRequired: true,
+    };
+    const view = renderAddOrder({
+      orderFormValues: form,
+      isModifyOrder: true,
+      samples: [],
+      error: (path) =>
+        path === "sampleOrderItems.requestDate"
+          ? "Enter the request date"
+          : null,
+    });
+    const picker = utilsMock.dateProps.get("order_requestDate");
+    expect(picker.labelText).toBe("Request date *");
+    expect(picker.invalid).toBe(true);
+    expect(picker.invalidText).toBe("Enter the request date");
+    expect(picker.value).toBe("");
+    expect(picker.autofillDate).toBe(false);
+    expect(view.setOrderFormValues).not.toHaveBeenCalled();
+  });
+
   test("keeps persisted dates and time when mounting and remounting the real modification form", () => {
     const form = existingForm();
     const snapshot = JSON.stringify(form);

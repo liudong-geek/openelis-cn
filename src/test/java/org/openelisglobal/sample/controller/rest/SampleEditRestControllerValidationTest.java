@@ -177,6 +177,56 @@ public class SampleEditRestControllerValidationTest {
         when(edits.getUpdatedAnalysisList()).thenReturn(List.of());
     }
 
+    private AutoCloseable requestDateFieldSet(String fieldSet) {
+        Object previous = ReflectionTestUtils.getField(FormFields.class, "instance");
+        DefaultConfigurationProperties properties = context.getBean(DefaultConfigurationProperties.class);
+        when(properties.getPropertyValueUpperCase(Property.FormFieldSet)).thenReturn(fieldSet);
+        ReflectionTestUtils.setField(FormFields.class, "instance", null);
+        return () -> {
+            when(properties.getPropertyValueUpperCase(Property.FormFieldSet)).thenReturn(null);
+            ReflectionTestUtils.setField(FormFields.class, "instance", previous);
+        };
+    }
+
+    @Test
+    public void serializedEditFormExposesTheExistingRequestDateRequirementWithoutFillingADate() throws Exception {
+        try (AutoCloseable ignored = requestDateFieldSet("CI_GENERAL")) {
+            assertTrue(mapper.valueToTree(form).path("requestDateRequired").asBoolean());
+            assertNull(form.getSampleOrderItems().getRequestDate());
+        }
+        try (AutoCloseable ignored = requestDateFieldSet(null)) {
+            assertFalse(mapper.valueToTree(form).path("requestDateRequired").asBoolean(true));
+        }
+    }
+
+    @Test
+    public void clientCannotDisableRequiredDateAndMissingDateNeverReachesWriteService() throws Exception {
+        try (AutoCloseable ignored = requestDateFieldSet("CI_GENERAL")) {
+            var body = mapper.valueToTree(form);
+            ((com.fasterxml.jackson.databind.node.ObjectNode) body).put("requestDateRequired", false);
+            UserSessionData actor = new UserSessionData();
+            actor.setSytemUserId(12);
+            mvc.perform(post("/rest/SampleEdit").sessionAttr(IActionConstants.USER_SESSION_DATA, actor)
+                    .contentType(MediaType.APPLICATION_JSON).content(body.toString()))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errors[0].field").value("sampleOrderItems.requestDate"))
+                    .andExpect(jsonPath("$.errors[0].code").value("OptionalNotBlank"));
+            assertNoWrites();
+        }
+    }
+
+    @Test
+    public void explicitlyEnteredRequestDateReachesSaveWithoutChangingReceiptDate() throws Exception {
+        try (AutoCloseable ignored = requestDateFieldSet("CI_GENERAL")) {
+            form.getSampleOrderItems().setRequestDate("01/02/2023");
+            perform(200);
+            ArgumentCaptor<SampleEditForm> captured = ArgumentCaptor.forClass(SampleEditForm.class);
+            verify(edits).editSample(captured.capture(), any(), isNull(), eq(false), eq("12"));
+            assertEquals("01/02/2023", captured.getValue().getSampleOrderItems().getRequestDate());
+            assertEquals("01/01/2024", captured.getValue().getSampleOrderItems().getReceivedDateForDisplay());
+        }
+    }
+
     @Test
     public void serverFormattedWesternDisplayNameCanBeSubmittedUnchanged() throws Exception {
         form.setPatientName("Smith, John");

@@ -105,6 +105,22 @@ vi.mock("../addOrder/AddOrder", () => ({
         />
       </label>
       <label>
+        申请日期
+        <input
+          value={orderFormValues.sampleOrderItems.requestDate || ""}
+          onChange={(event) => {
+            const requestDate = event.target.value;
+            setOrderFormValues((previous) => ({
+              ...previous,
+              sampleOrderItems: { ...previous.sampleOrderItems, requestDate },
+            }));
+          }}
+        />
+      </label>
+      {error?.("sampleOrderItems.requestDate") && (
+        <p>{error("sampleOrderItems.requestDate")}</p>
+      )}
+      <label>
         医生邮箱
         <input
           value={orderFormValues.sampleOrderItems.providerEmail || ""}
@@ -359,6 +375,58 @@ beforeEach(() => {
 });
 
 describe("ModifyOrder Chinese existing-application workspace", () => {
+  test("blocks the server-required missing request date without inventing one, then saves the explicit date", async () => {
+    setup({ response: fixture({ requestDateRequired: true }) });
+    await loaded();
+    nextStep();
+    expect(screen.getByLabelText("申请日期")).toHaveValue("");
+    await screen.findByText("请填写申请日期");
+    save();
+    await screen.findByText(messages["modify.order.invalid"]);
+    expect(api.post).not.toHaveBeenCalled();
+    expect(screen.getByTestId("location")).toHaveTextContent("/ModifyOrder");
+    fireEvent.change(screen.getByLabelText("申请日期"), {
+      target: { value: "2024/01/02" },
+    });
+    api.post.mockImplementationOnce((_url, _body, callback) =>
+      callback(response(200)),
+    );
+    save();
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    const payload = JSON.parse(api.post.mock.calls[0][1]);
+    expect(payload.sampleOrderItems.requestDate).toBe("2024/01/02");
+    expect(payload.sampleOrderItems.receivedDateForDisplay).toBe("2026/09/28");
+    expect(payload.accessionNumber).toBe(accession);
+  });
+
+  test("maps the actual structured request-date rejection to the current field without losing the draft", async () => {
+    setup();
+    await editReferringInformation();
+    api.post.mockImplementationOnce((_url, _body, callback) =>
+      callback(
+        response(400, {
+          message: "Cannot be blank",
+          errors: [
+            {
+              field: "sampleOrderItems.requestDate",
+              code: "OptionalNotBlank",
+              message: "Cannot be blank",
+            },
+          ],
+        }),
+      ),
+    );
+    save();
+    await waitFor(() =>
+      expect(screen.getAllByText("请填写申请日期")).toHaveLength(2),
+    );
+    expect(screen.queryByText("Cannot be blank")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("申请日期")).toHaveValue("");
+    expect(screen.getByLabelText("申请医生名字")).toHaveValue("华");
+    expect(screen.getByTestId("location")).toHaveTextContent("/ModifyOrder");
+    expect(api.post).toHaveBeenCalledTimes(1);
+  });
+
   test.each([true, false])(
     "the actual modify save caller omits local preference %s while retaining draft and business fields through failure/retry",
     async (remembered) => {
@@ -769,6 +837,65 @@ describe("ModifyOrder Chinese existing-application workspace", () => {
     nextStep();
     expect(saveButton()).not.toBeDisabled();
     expect(screen.getByLabelText("申请医生名字")).toHaveValue("明");
+  });
+
+  test("ignores delayed request-date error JSON after switching the application", async () => {
+    const callbacks = setup({ defer: true });
+    await act(async () => callbacks[0].callback(fixture()));
+    await editReferringInformation();
+    save();
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    let finishJSON;
+    const json = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          finishJSON = resolve;
+        }),
+    );
+    let responseFinished;
+    await act(async () => {
+      responseFinished = api.post.mock.calls[0][2]({
+        ok: false,
+        status: 400,
+        json,
+      });
+    });
+    expect(json).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "切换另一申请" }));
+    await waitFor(() => expect(callbacks).toHaveLength(2));
+    await act(async () =>
+      callbacks[1].callback(
+        fixture({
+          accessionNumber: "HMC26092800002",
+          patientName: "李, 芳",
+          sampleOrderItems: {
+            labNo: "HMC26092800002",
+            requestDate: "2024/01/02",
+          },
+        }),
+      ),
+    );
+    await loaded();
+    nextStep();
+    await act(async () => {
+      finishJSON({
+        message: "Cannot be blank",
+        errors: [
+          {
+            field: "sampleOrderItems.requestDate",
+            code: "OptionalNotBlank",
+          },
+        ],
+      });
+      await responseFinished;
+    });
+    expect(screen.getByText("李芳")).toBeInTheDocument();
+    expect(screen.getByLabelText("申请日期")).toHaveValue("2024/01/02");
+    expect(
+      screen.queryByText(messages["modify.order.validation.requestDate"]),
+    ).not.toBeInTheDocument();
+    expect(saveButton()).not.toBeDisabled();
+    expect(api.post).toHaveBeenCalledTimes(1);
   });
 
   test("shows the existing required-doctor rule in Chinese when a loaded value is null", async () => {

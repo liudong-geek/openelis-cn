@@ -1,6 +1,9 @@
 import * as Yup from "yup";
 
-export const createModifyOrderEntryValidationSchema = (intl) => {
+export const createModifyOrderEntryValidationSchema = (
+  intl,
+  requestDateRequired = false,
+) => {
   const message = (id, fallback) =>
     intl ? intl.formatMessage({ id }) : fallback;
   return Yup.object().shape({
@@ -13,6 +16,16 @@ export const createModifyOrderEntryValidationSchema = (intl) => {
               "modify.order.validation.lab",
               "Sample Lab Number is required",
             ),
+          ),
+        requestDate: Yup.string()
+          .nullable()
+          .test(
+            "required-request-date",
+            message(
+              "modify.order.validation.requestDate",
+              "Enter the request date",
+            ),
+            (value) => !requestDateRequired || Boolean(value?.trim()),
           ),
         referringSiteName: Yup.string().nullable(),
         referringSiteId: Yup.string().nullable(),

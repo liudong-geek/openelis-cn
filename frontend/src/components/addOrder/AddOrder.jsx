@@ -965,7 +965,25 @@ const AddOrder = (props) => {
             <Column lg={8} md={4} sm={4}>
               <CustomDatePicker
                 id={"order_requestDate"}
-                labelText={intl.formatMessage({ id: "sample.requestDate" })}
+                labelText={
+                  intl.formatMessage({
+                    id: isModifyOrder
+                      ? "order.saved.requestDate"
+                      : "sample.requestDate",
+                  }) +
+                  (isModifyOrder && orderFormValues.requestDateRequired
+                    ? " *"
+                    : "")
+                }
+                invalid={
+                  isModifyOrder &&
+                  Boolean(error?.("sampleOrderItems.requestDate"))
+                }
+                invalidText={
+                  isModifyOrder
+                    ? error?.("sampleOrderItems.requestDate")
+                    : undefined
+                }
                 autofillDate={!isModifyOrder}
                 value={
                   orderFormValues.sampleOrderItems.requestDate

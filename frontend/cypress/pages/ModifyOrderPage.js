@@ -42,6 +42,7 @@ class ModifyOrderPage {
   expectedAddition = null;
   expectedNewSample = null;
   expectedMetadata = null;
+  expectedRequestDate = null;
   saves = [];
 
   visit() {
@@ -140,6 +141,7 @@ class ModifyOrderPage {
         this.expectedAddition = null;
         this.expectedNewSample = null;
         this.expectedMetadata = null;
+        this.expectedRequestDate = form.sampleOrderItems.requestDate || null;
         this.saves = [];
         cy.location("pathname").should("eq", "/ModifyOrder");
         cy.location("search").should(
@@ -298,7 +300,56 @@ class ModifyOrderPage {
     });
   }
 
+  fillMissingRequiredRequestDate(order) {
+    if (
+      this.editor.requestDateRequired !== true ||
+      String(this.editor.sampleOrderItems.requestDate || "").trim()
+    )
+      return;
+    // Explicit synthetic request date for this acceptance fixture only. Never
+    // infer an unknown historical request date from today or receipt metadata.
+    expect(order.modifyRequestDateISO).to.match(/^\d{4}-\d{2}-\d{2}$/);
+    const [year, month, day] = order.modifyRequestDateISO.split("-");
+    expect(
+      new Date(`${order.modifyRequestDateISO}T00:00:00Z`)
+        .toISOString()
+        .slice(0, 10),
+    ).to.eq(order.modifyRequestDateISO);
+    cy.get("#order_requestDate")
+      .should("have.length", 1)
+      .and("be.visible")
+      .and("be.enabled")
+      .and("have.value", "")
+      .then(($input) => {
+        const placeholder = $input.attr("placeholder");
+        const patterns = ["ymd", "dmy", "mdy"].filter((pattern) =>
+          messages.some(
+            (locale) =>
+              locale[`datepicker.placeholder.${pattern}`] === placeholder,
+          ),
+        );
+        expect(patterns, "actual configured date order").to.have.length(1);
+        const values = {
+          ymd: `${year}/${month}/${day}`,
+          dmy: `${day}/${month}/${year}`,
+          mdy: `${month}/${day}/${year}`,
+        };
+        this.expectedRequestDate = values[patterns[0]];
+        cy.wrap($input)
+          .clear()
+          .type(`${this.expectedRequestDate}{esc}`)
+          .blur()
+          .should("have.value", this.expectedRequestDate);
+        cy.get(".flatpickr-calendar.open").should("not.exist");
+      });
+  }
+
   setOriginalSiteAndRequester(order) {
+    this.saves = [];
+    cy.intercept("POST", "**/rest/SampleEdit", (save) => {
+      this.saves.push(bodyJSON(save));
+    }).as("currentSampleEditSave");
+    this.fillMissingRequiredRequestDate(order);
     // The original foundational fixture binds Provider 9000001. The order
     // autocomplete uses Person IDs, so a repeated name is not its identity.
     let originalProvider;
@@ -417,10 +468,9 @@ class ModifyOrderPage {
 
   clickSubmitAndReadBack() {
     const baseline = this.baseline;
-    this.saves = [];
-    cy.intercept("POST", "**/rest/SampleEdit", (save) => {
-      this.saves.push(bodyJSON(save));
-    }).as("currentSampleEditSave");
+    cy.then(() => {
+      expect(this.saves, "no edit POST before explicit save").to.have.length(0);
+    });
     cy.get("[data-cy='submit-order']")
       .should("be.visible")
       .and("be.enabled")
@@ -442,6 +492,10 @@ class ModifyOrderPage {
         String(baseline.patient.patientId),
       );
       expect(payload).not.to.have.property("rememberSiteAndRequester");
+      if (this.expectedRequestDate !== null)
+        expect(payload.sampleOrderItems.requestDate).to.eq(
+          this.expectedRequestDate,
+        );
       const xml = new DOMParser().parseFromString(
         payload.sampleXML,
         "application/xml",
@@ -496,6 +550,11 @@ class ModifyOrderPage {
       return this.readSaved(baseline.labNumber).then((after) => {
         expect(after.orderId).to.eq(baseline.orderId);
         expect(after.patient).to.deep.equal(baseline.patient);
+        if (this.expectedRequestDate !== null)
+          expect(
+            after.sampleOrderItems.requestDate,
+            "same explicit request date in the independent saved-order readback",
+          ).to.eq(this.expectedRequestDate);
         const original = analysisIdentities(baseline);
         const remaining = new Set(analysisIdentities(after));
         original.forEach((id) =>

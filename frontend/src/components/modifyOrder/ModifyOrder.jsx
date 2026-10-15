@@ -70,8 +70,12 @@ const ModifyOrder = () => {
   const requestScope = useRef(0);
   const mounted = useRef(true);
   const schema = useMemo(
-    () => createModifyOrderEntryValidationSchema(intl),
-    [intl],
+    () =>
+      createModifyOrderEntryValidationSchema(
+        intl,
+        orderFormValues?.requestDateRequired === true,
+      ),
+    [intl, orderFormValues?.requestDateRequired],
   );
   const { notificationVisible, setNotificationVisible, addNotification } =
     useContext(NotificationContext);
@@ -246,9 +250,29 @@ const ModifyOrder = () => {
           ) {
             try {
               const body = await response.json();
+              if (!mounted.current || requestScope.current !== scope) return;
+              const missingRequestDate = body?.errors?.some?.(
+                (error) =>
+                  error.field === "sampleOrderItems.requestDate" &&
+                  error.code === "OptionalNotBlank",
+              );
+              if (missingRequestDate) {
+                serverMessage = intl.formatMessage({
+                  id: "modify.order.validation.requestDate",
+                });
+                setErrors({
+                  inner: [
+                    {
+                      path: "sampleOrderItems.requestDate",
+                      message: serverMessage,
+                    },
+                  ],
+                });
+              }
               // Legacy endpoints may return English diagnostics. Keep Chinese
               // business errors readable; other bodies use the localized fallback.
               if (
+                !missingRequestDate &&
                 typeof body?.message === "string" &&
                 /[\u3400-\u9fff]/.test(body.message)
               )
