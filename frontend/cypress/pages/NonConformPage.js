@@ -652,7 +652,11 @@ class NonConform {
         const value = /^(?:Y|y|\u5e74)/.test(placeholder)
           ? `${year}/${month}/${day}`
           : fixtureDate;
-        cy.wrap($input).clear().type(value).blur().should("have.value", value);
+        cy.wrap($input)
+          .clear()
+          .type(`${value}{esc}`)
+          .blur()
+          .should("have.value", value);
       });
   }
 
