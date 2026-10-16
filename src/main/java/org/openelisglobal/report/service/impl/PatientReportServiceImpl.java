@@ -91,6 +91,10 @@ public class PatientReportServiceImpl implements PatientReportService {
     @Override
     @Transactional(readOnly = true)
     public ReportingData buildPatientResultsReport(String patientId, String sysUserId) {
+        return buildPatientResultsReport(patientId, sysUserId, false);
+    }
+
+    private ReportingData buildPatientResultsReport(String patientId, String sysUserId, boolean clinicalPdf) {
         if (sysUserId == null) {
             throw new org.springframework.web.server.ResponseStatusException(
                     org.springframework.http.HttpStatus.UNAUTHORIZED, "Unauthorized");
@@ -107,13 +111,13 @@ public class PatientReportServiceImpl implements PatientReportService {
 
         List<TestResultItem> results = resultsUtility.getGroupedTestsForPatient(patient);
         results = authorizePreviewResults(sysUserId, results);
-        return buildReportFromResults(results, patient);
+        return buildReportFromResults(results, patient, clinicalPdf);
     }
 
     @Override
     @Transactional(readOnly = true)
     public byte[] buildPatientResultsPdf(String patientId, String sysUserId) {
-        ReportingData data = buildPatientResultsReport(patientId, sysUserId);
+        ReportingData data = buildPatientResultsReport(patientId, sysUserId, true);
         return data == null ? null : patientReportPdfRenderer.render(data);
     }
 
@@ -153,11 +157,17 @@ public class PatientReportServiceImpl implements PatientReportService {
     }
 
     ReportingData buildReportFromResults(List<TestResultItem> results, Patient patient) {
+        return buildReportFromResults(results, patient, false);
+    }
+
+    private ReportingData buildReportFromResults(List<TestResultItem> results, Patient patient, boolean clinicalPdf) {
         results = results.stream().filter(item -> item.getIsGroupSeparator()
                 || (IActionConstants.YES.equals(item.getReportable()) && isFinalized(item.getAnalysisStatusId())))
                 .collect(Collectors.toList());
 
-        List<ReportColumn> columns = resolveColumns();
+        // The fixed clinical PDF requires complete fields; custom columns apply to the
+        // JSON table.
+        List<ReportColumn> columns = clinicalPdf ? getDefaultPatientReportColumns() : resolveColumns();
         return mapToReportingData(results, patient, columns);
     }
 
@@ -301,7 +311,7 @@ public class PatientReportServiceImpl implements PatientReportService {
         case "accessionNumber":
             return item.getAccessionNumber() != null ? item.getAccessionNumber() : "";
         case "patientName":
-            return item.getPatientName() != null ? item.getPatientName() : "";
+            return resolvePatientName(item, patient);
         case "patientExternalId":
             return patient.getExternalId() != null ? patient.getExternalId() : "";
         case "patientGender":
@@ -349,6 +359,23 @@ public class PatientReportServiceImpl implements PatientReportService {
         default:
             return "";
         }
+    }
+
+    private String resolvePatientName(TestResultItem item, Patient patient) {
+        if (item.getPatientName() != null && !item.getPatientName().isBlank()) {
+            return item.getPatientName();
+        }
+        var person = patient.getPerson();
+        if (person == null) {
+            return "";
+        }
+        if (person.getLastName() == null || person.getLastName().isBlank()) {
+            return Objects.requireNonNullElse(person.getFirstName(), "");
+        }
+        if (person.getFirstName() == null || person.getFirstName().isBlank()) {
+            return person.getLastName();
+        }
+        return Objects.requireNonNullElse(patientService.getLastFirstName(patient), "");
     }
 
     private String localizeGender(String gender) {
