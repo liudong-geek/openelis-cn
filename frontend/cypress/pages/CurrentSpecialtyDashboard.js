@@ -122,19 +122,33 @@ class CurrentSpecialtyDashboard {
     return cy.then(() => {
       const d = this.definition;
       const labNumber = this.state.labNumber;
+      const savedStatus = this.state.dashboardStatus;
       expect(labNumber, "the order created by this original scenario").to.be.a(
         "string",
       ).and.not.be.empty;
       cy.intercept({
         method: "GET",
         pathname: `**/rest/${d.api}/dashboard`,
-        query: { searchTerm: labNumber },
+        query: {
+          searchTerm: labNumber,
+          ...(savedStatus ? { statuses: savedStatus } : {}),
+        },
       }).as("exactCreatedSpecialtyOrder");
+      if (savedStatus) {
+        cy.get("#statusFilter")
+          .should("be.visible")
+          .select(savedStatus)
+          .should("have.value", savedStatus);
+      }
       cy.get(".gridBoundary input.cds--search-input")
         .should("be.visible")
         .clear()
         .type(labNumber);
-      cy.wait("@exactCreatedSpecialtyOrder").then(({ response }) => {
+      cy.wait("@exactCreatedSpecialtyOrder").then(({ request, response }) => {
+        if (savedStatus)
+          expect(new URL(request.url).searchParams.get("statuses")).to.eq(
+            savedStatus,
+          );
         expect(response.statusCode).to.eq(200);
         expect(response.headers["content-type"]).to.match(/application\/json/i);
         expect(response.body).to.be.an("array");
@@ -868,6 +882,7 @@ class CurrentSpecialtyDashboard {
         return jsonRead(`/rest/${d.api}/caseView/${id}`).then((saved) => {
           expect(saved.labNumber).to.eq(this.state.labNumber);
           expect(saved.status).to.eq(release ? "COMPLETED" : status);
+          this.state.dashboardStatus = saved.status;
           expect(String(saved.assignedTechnicianId)).to.eq(this.state.userId);
           if (release)
             expect(String(saved.assignedPathologistId)).to.eq(
