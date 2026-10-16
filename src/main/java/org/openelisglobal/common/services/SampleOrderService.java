@@ -267,12 +267,12 @@ public class SampleOrderService {
         Person providerPerson = null;
         Provider provider = null;
 
-        if (!namesDiffer(requesterService.getPerson(), sampleOrder)) {
-            if (!GenericValidator.isBlankOrNull(sampleOrder.getProviderPersonId())) {
-                provider = SpringContext.getBean(ProviderService.class).getProviderByPerson(
-                        SpringContext.getBean(PersonService.class).get(sampleOrder.getProviderPersonId()));
+        if (!GenericValidator.isBlankOrNull(sampleOrder.getProviderPersonId())) {
+            Provider selectedProvider = SpringContext.getBean(ProviderService.class).getProviderByPerson(
+                    SpringContext.getBean(PersonService.class).get(sampleOrder.getProviderPersonId()));
+            if (selectedProvider != null && !namesDiffer(selectedProvider.getPerson(), sampleOrder)) {
+                provider = selectedProvider;
                 providerPerson = provider.getPerson();
-                providerPerson.setSysUserId(currentUserId);
             }
         }
 
