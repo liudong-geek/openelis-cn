@@ -3,7 +3,6 @@ package org.openelisglobal.sampletyperequest.controller;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -343,8 +342,7 @@ public class SampleTypeRequestRestControllerTest {
     @Test
     public void cancelRequest_validCall_returns200WithDto() {
         SampleTypeRequest cancelled = buildRequest(30, "5", SampleTypeRequest.Status.CANCELLED);
-        doNothing().when(sampleTypeRequestService).cancelRequest(30);
-        when(sampleTypeRequestService.get(30)).thenReturn(cancelled);
+        when(sampleTypeRequestService.cancelRequest(30)).thenReturn(cancelled);
 
         ResponseEntity<?> response = controller.cancelRequest(30);
 

@@ -6,7 +6,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import org.apache.commons.lang3.StringUtils;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.rest.provider.bean.patientHistory.PanelDisplay;
@@ -60,6 +62,16 @@ public class PatientResultHistoryServiceImpl implements PatientResultHistoryServ
     @Override
     @Transactional(readOnly = true)
     public List<ResultTree> getResultTree(String patientId) {
+        return resultTree(patientId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ResultTree> getResultTree(String patientId, Set<String> permittedSectionIds) {
+        return resultTree(patientId, Objects.requireNonNull(permittedSectionIds));
+    }
+
+    private List<ResultTree> resultTree(String patientId, Set<String> permittedSectionIds) {
         if (StringUtils.isBlank(patientId)) {
             return new ArrayList<>();
         }
@@ -68,14 +80,25 @@ public class PatientResultHistoryServiceImpl implements PatientResultHistoryServ
             return new ArrayList<>();
         }
 
-        List<Result> results = safeResults(resultDAO.getFinalizedReportableResultsForPatient(patientId.trim(),
-                finalizedStatusId, null), finalizedStatusId);
-        return buildTree(results);
+        List<Result> results = safeResults(
+                resultDAO.getFinalizedReportableResultsForPatient(patientId.trim(), finalizedStatusId, null),
+                finalizedStatusId);
+        return buildTree(visibleResults(results, permittedSectionIds));
     }
 
     @Override
     @Transactional(readOnly = true)
     public PanelDisplay getTestResultTree(String patientId, String testId) {
+        return testResultTree(patientId, testId, null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PanelDisplay getTestResultTree(String patientId, String testId, Set<String> permittedSectionIds) {
+        return testResultTree(patientId, testId, Objects.requireNonNull(permittedSectionIds));
+    }
+
+    private PanelDisplay testResultTree(String patientId, String testId, Set<String> permittedSectionIds) {
         if (StringUtils.isBlank(patientId) || StringUtils.isBlank(testId)) {
             return null;
         }
@@ -90,21 +113,33 @@ public class PatientResultHistoryServiceImpl implements PatientResultHistoryServ
 
         String finalizedStatusId = finalizedStatusId();
         if (finalizedStatusId == null) {
-            return panel;
+            return permittedSectionIds == null ? panel : null;
         }
         List<Result> results = safeResults(resultDAO.getFinalizedReportableResultsForPatient(patientId.trim(),
                 finalizedStatusId, normalizedTestId), finalizedStatusId);
         List<Result> matchingResults = new ArrayList<>();
-        for (Result result : results) {
+        for (Result result : visibleResults(results, permittedSectionIds)) {
             Test resultTest = result.getAnalysis().getTest();
             if (resultTest != null && normalizedTestId.equals(resultTest.getId())) {
                 matchingResults.add(result);
             }
         }
+        if (permittedSectionIds != null && matchingResults.isEmpty()) {
+            return null;
+        }
         if (!matchingResults.isEmpty()) {
             panel.getSubSets().add(buildTestDisplay(test, matchingResults, true));
         }
         return panel;
+    }
+
+    private List<Result> visibleResults(List<Result> results, Set<String> permittedSectionIds) {
+        if (permittedSectionIds == null) {
+            return results;
+        }
+        // Authorization follows the analysis's actual section, never a test default.
+        return results.stream().filter(result -> result.getAnalysis().getTestSection() != null)
+                .filter(result -> permittedSectionIds.contains(result.getAnalysis().getTestSection().getId())).toList();
     }
 
     private String finalizedStatusId() {
@@ -205,7 +240,8 @@ public class PatientResultHistoryServiceImpl implements PatientResultHistoryServ
         display.setUnits(resolveUnit(result));
         display.setStatusId(analysis.getStatusId());
         String statusName = statusService.getStatusNameFromId(analysis.getStatusId());
-        display.setStatus(StringUtils.isBlank(statusName) || "unknown".equalsIgnoreCase(statusName) ? null : statusName);
+        display.setStatus(
+                StringUtils.isBlank(statusName) || "unknown".equalsIgnoreCase(statusName) ? null : statusName);
         display.setReportable(Boolean.TRUE);
         display.setObsDatetime(formatClinicalTime(analysis.getCompletedDate()));
 
@@ -246,7 +282,8 @@ public class PatientResultHistoryServiceImpl implements PatientResultHistoryServ
     private String resolveUnit(Result result) {
         TestResult configuredResult = result.getTestResult();
         if (configuredResult != null && StringUtils.isNotBlank(configuredResult.getComponentId())) {
-            Optional<TestResultComponent> component = componentService.getMatch("id", configuredResult.getComponentId());
+            Optional<TestResultComponent> component = componentService.getMatch("id",
+                    configuredResult.getComponentId());
             if (component.isEmpty() || StringUtils.isBlank(component.get().getUomId())) {
                 return null;
             }
@@ -342,8 +379,7 @@ public class PatientResultHistoryServiceImpl implements PatientResultHistoryServ
     }
 
     private boolean isDictionaryType(String resultType) {
-        return "D".equalsIgnoreCase(resultType) || "M".equalsIgnoreCase(resultType)
-                || "C".equalsIgnoreCase(resultType);
+        return "D".equalsIgnoreCase(resultType) || "M".equalsIgnoreCase(resultType) || "C".equalsIgnoreCase(resultType);
     }
 
     private String formatClinicalTime(Timestamp completedDate) {
@@ -365,8 +401,8 @@ public class PatientResultHistoryServiceImpl implements PatientResultHistoryServ
                 .allMatch(observation -> observation.getLowNormal() != null && observation.getHiNormal() != null)) {
             Double low = observations.get(0).getLowNormal();
             Double high = observations.get(0).getHiNormal();
-            if (observations.stream().allMatch(observation -> low.equals(observation.getLowNormal())
-                    && high.equals(observation.getHiNormal()))) {
+            if (observations.stream().allMatch(
+                    observation -> low.equals(observation.getLowNormal()) && high.equals(observation.getHiNormal()))) {
                 display.setLowNormal(low);
                 display.setHiNormal(high);
             }

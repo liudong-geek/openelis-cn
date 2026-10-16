@@ -177,9 +177,7 @@ public class SampleTypeRequestRestController {
     @PutMapping("/{requestId}/cancel")
     public ResponseEntity<?> cancelRequest(@PathVariable Integer requestId) {
         try {
-            sampleTypeRequestService.cancelRequest(requestId);
-
-            SampleTypeRequest request = sampleTypeRequestService.get(requestId);
+            SampleTypeRequest request = sampleTypeRequestService.cancelRequest(requestId);
             LogEvent.logInfo(this.getClass().getSimpleName(), "cancelRequest", "Cancelled request: " + requestId);
 
             return ResponseEntity.ok(convertToDTO(request));

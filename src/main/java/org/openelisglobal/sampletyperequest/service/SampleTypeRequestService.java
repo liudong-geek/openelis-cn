@@ -69,7 +69,8 @@ public interface SampleTypeRequestService extends BaseObjectService<SampleTypeRe
             Map<SampleItem, Integer> explicitRequestIds);
 
     /**
-     * Cancel a pending request.
+     * Cancel a pending request and prepare its response associations in the
+     * transaction.
      */
-    void cancelRequest(Integer requestId);
+    SampleTypeRequest cancelRequest(Integer requestId);
 }

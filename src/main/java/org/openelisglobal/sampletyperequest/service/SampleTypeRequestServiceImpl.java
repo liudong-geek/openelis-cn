@@ -673,7 +673,7 @@ public class SampleTypeRequestServiceImpl extends AuditableBaseObjectServiceImpl
 
     @Override
     @Transactional
-    public void cancelRequest(Integer requestId) {
+    public SampleTypeRequest cancelRequest(Integer requestId) {
         SampleTypeRequest request = get(requestId);
         if (request == null) {
             throw new IllegalArgumentException("SampleTypeRequest not found: " + requestId);
@@ -683,6 +683,8 @@ public class SampleTypeRequestServiceImpl extends AuditableBaseObjectServiceImpl
         }
 
         request.setStatus(SampleTypeRequest.Status.CANCELLED);
-        update(request);
+        request = update(request);
+        initializeLazyAssociations(request);
+        return request;
     }
 }

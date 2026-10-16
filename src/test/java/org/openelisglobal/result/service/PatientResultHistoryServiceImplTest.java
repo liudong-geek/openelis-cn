@@ -3,6 +3,7 @@ package org.openelisglobal.result.service;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -12,6 +13,7 @@ import static org.mockito.Mockito.when;
 import java.sql.Timestamp;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -129,8 +131,7 @@ public class PatientResultHistoryServiceImplTest {
         Result result = result("11", "8", "Y", "Y", "12.0", "N");
         result.setMinNormal(4.0);
         result.setMaxNormal(10.0);
-        ReflectionTestUtils.setField(result.getAnalysis(), "completedDate",
-                Timestamp.valueOf("2026-08-22 06:58:00"));
+        ReflectionTestUtils.setField(result.getAnalysis(), "completedDate", Timestamp.valueOf("2026-08-22 06:58:00"));
         result.setLastupdated(Timestamp.valueOf("2026-08-23 23:59:59"));
         when(resultDAO.getFinalizedReportableResultsForPatient("4", "8", null)).thenReturn(List.of(result));
 
@@ -242,8 +243,7 @@ public class PatientResultHistoryServiceImplTest {
         Result newer = result("11", "8", "Y", "Y", "7.0", "N");
         newer.setMinNormal(5.0);
         newer.setMaxNormal(11.0);
-        when(resultDAO.getFinalizedReportableResultsForPatient("4", "8", null))
-                .thenReturn(List.of(newer, older));
+        when(resultDAO.getFinalizedReportableResultsForPatient("4", "8", null)).thenReturn(List.of(newer, older));
 
         org.openelisglobal.common.rest.provider.bean.patientHistory.TestDisplay display = service.getResultTree("4")
                 .get(0).getSubSets().get(0).getSubSets().get(0);
@@ -285,6 +285,67 @@ public class PatientResultHistoryServiceImplTest {
         assertNull(service.getTestResultTree("4", "999"));
 
         verify(resultDAO, never()).getFinalizedReportableResultsForPatient("4", "8", "999");
+    }
+
+    @Test
+    public void scopedResultTreeExcludesOtherSectionsAndNonFinalOrNonReportableResults() {
+        Result allowed = result("11", "8", "Y", "Y", "5.6", "N");
+        allowed.getAnalysis().setTestSection(testSection);
+        Result otherSection = result("12", "8", "Y", "Y", "9.9", "N");
+        otherSection.getAnalysis().setTestSection(actualTestSection);
+        when(actualTestSection.getId()).thenReturn("9");
+        Result draft = result("13", "3", "Y", "Y", "8.1", "N");
+        draft.getAnalysis().setTestSection(testSection);
+        Result hidden = result("14", "8", "Y", "N", "9.1", "N");
+        hidden.getAnalysis().setTestSection(testSection);
+        when(resultDAO.getFinalizedReportableResultsForPatient("4", "8", null))
+                .thenReturn(List.of(allowed, otherSection, draft, hidden));
+        var trees = service.getResultTree("4", Set.of("2"));
+        var observations = trees.get(0).getSubSets().get(0).getSubSets().get(0).getObs();
+        assertEquals(1, trees.size());
+        assertEquals(1, observations.size());
+        assertEquals("11", observations.get(0).getResultId());
+    }
+
+    @Test
+    public void scopedHistoryDoesNotUseTestDefaultToAuthorizeActualSectionOrMissingSection() {
+        Result wrongSection = result("11", "8", "Y", "Y", "5.6", "N");
+        wrongSection.getAnalysis().setTestSection(actualTestSection);
+        when(actualTestSection.getId()).thenReturn("9");
+        Result noSection = result("12", "8", "Y", "Y", "9.9", "N");
+        when(resultDAO.getFinalizedReportableResultsForPatient("4", "8", null))
+                .thenReturn(List.of(wrongSection, noSection));
+        assertTrue(service.getResultTree("4", Set.of("2")).isEmpty());
+        assertTrue(service.getResultTree("4", Set.of()).isEmpty());
+    }
+
+    @Test
+    public void scopedSingleTestDoesNotExposeUnauthorizedTestNameOrObservations() {
+        Result otherSection = result("11", "8", "Y", "Y", "5.6", "N");
+        otherSection.getAnalysis().setTestSection(actualTestSection);
+        when(actualTestSection.getId()).thenReturn("9");
+        when(testService.get("379")).thenReturn(test);
+        when(resultDAO.getFinalizedReportableResultsForPatient("4", "8", "379")).thenReturn(List.of(otherSection));
+        assertNull(service.getTestResultTree("4", "379", Set.of("2")));
+        assertNull(service.getTestResultTree("4", "379", Set.of()));
+    }
+
+    @Test
+    public void scopedSingleTestReturnsAuthorizedFinalResultAndKeepsRawValue() {
+        Result allowed = result("11", "8", "Y", "Y", "<5", "N");
+        allowed.getAnalysis().setTestSection(testSection);
+        when(testService.get("379")).thenReturn(test);
+        when(resultDAO.getFinalizedReportableResultsForPatient("4", "8", "379")).thenReturn(List.of(allowed));
+        var panel = service.getTestResultTree("4", "379", Set.of("2"));
+        assertEquals("11", panel.getSubSets().get(0).getObs().get(0).getResultId());
+        assertEquals("<5", panel.getSubSets().get(0).getObs().get(0).getRawValue());
+    }
+
+    @Test
+    public void scopedMethodsRejectMissingScopeInsteadOfUsingReceptionHistory() {
+        assertThrows(NullPointerException.class, () -> service.getResultTree("4", null));
+        assertThrows(NullPointerException.class, () -> service.getTestResultTree("4", "379", null));
+        verifyZeroInteractions(resultDAO);
     }
 
     private Result result(String id, String statusId, String analysisReportable, String resultReportable, String value,

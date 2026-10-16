@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
 import org.openelisglobal.common.action.IActionConstants;
+import org.openelisglobal.common.constants.Constants;
 import org.openelisglobal.common.services.IStatusService;
 import org.openelisglobal.common.services.StatusService.AnalysisStatus;
 import org.openelisglobal.patient.service.PatientService;
@@ -34,6 +35,7 @@ import org.openelisglobal.test.beanItems.TestResultItem;
 import org.openelisglobal.test.service.TestService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -133,9 +135,18 @@ public class PatientReportServiceImpl implements PatientReportService {
                 || !actual.stream().map(Analysis::getId).collect(Collectors.toSet()).equals(ids)) {
             throw new IllegalStateException("Patient result preview analysis scope changed");
         }
-        Set<String> visible = userService
-                .filterAnalysesByLabUnitRoles(actor, actual, org.openelisglobal.common.constants.Constants.ROLE_RESULTS)
-                .stream().map(Analysis::getId).collect(Collectors.toSet());
+        Set<String> visible = new LinkedHashSet<>();
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated()) {
+            for (String role : List.of(Constants.ROLE_RESULTS, Constants.ROLE_REPORTS)) {
+                boolean held = authentication.getAuthorities().stream().anyMatch(
+                        authority -> ("ROLE_" + role.toUpperCase(Locale.ROOT)).equals(authority.getAuthority()));
+                if (held) {
+                    visible.addAll(userService.filterAnalysesByLabUnitRoles(actor, actual, role).stream()
+                            .map(Analysis::getId).collect(Collectors.toSet()));
+                }
+            }
+        }
         // The legacy patient chart is a visibility-filtered preview, not a formally
         // issued report.
         return rows.stream().filter(item -> visible.contains(item.getAnalysisId())).toList();
