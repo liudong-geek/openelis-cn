@@ -89,6 +89,30 @@ class NonConform {
       .should("be.visible");
   }
 
+  openRegistration() {
+    const metadataAlias = Cypress._.uniqueId("nceRegistrationMetadataReady");
+    cy.intercept({
+      method: "GET",
+      pathname: /\/rest\/nce\/registration\/meta$/,
+      query: { queryVersion: "2" },
+    }).as(metadataAlias);
+    cy.contains(".nce-dashboard-header button", label("nce.button.reportNce"))
+      .should("be.visible")
+      .and("be.enabled")
+      .click();
+    cy.wait(`@${metadataAlias}`).then(({ response }) => {
+      expect(response.statusCode, "NCE registration options loaded").to.eq(200);
+      expect(response.headers["content-type"]).to.include("application/json");
+      expect(response.body).to.be.an("object");
+      expect(response.body.queryVersion).to.eq("2");
+      expect(response.body.canCreate, "current actor may register NCE").to.eq(
+        true,
+      );
+    });
+    cy.get(".nce-registration-modal.is-visible").should("be.visible");
+    cy.get(".nce-registration-modal #search-type").should("be.visible");
+  }
+
   selectSearchType(type) {
     expect(searchTypes[type], "preserved patient/NCE search category").to.be.a(
       "string",
@@ -97,13 +121,7 @@ class NonConform {
     if (this.registration) {
       cy.get("body").then(($body) => {
         if (!$body.find(".nce-registration-modal.is-visible").length) {
-          cy.contains(
-            ".nce-dashboard-header button",
-            label("nce.button.reportNce"),
-          )
-            .should("be.visible")
-            .and("be.enabled")
-            .click();
+          this.openRegistration();
         }
       });
       cy.get(".nce-registration-modal #search-type")

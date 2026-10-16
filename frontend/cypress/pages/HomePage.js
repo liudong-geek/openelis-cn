@@ -314,15 +314,9 @@ class HomePage {
         true,
       );
     });
-    cy.contains(
-      ".nce-dashboard-header button",
-      labelPattern("nce.button.reportNce"),
-    )
-      .should("be.visible")
-      .and("be.enabled")
-      .click();
-    cy.get(".nce-registration-modal.is-visible").should("be.visible");
-    return new NonConform("report");
+    const nonConform = new NonConform("report");
+    nonConform.openRegistration();
+    return nonConform;
   }
 
   goToViewNCE() {
