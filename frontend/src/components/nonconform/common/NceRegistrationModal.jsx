@@ -21,6 +21,7 @@ export const NceRegistrationModal = ({
   const intl = useIntl(),
     history = useHistory();
   const formState = useRef({ dirty: false, busy: false, unknown: false });
+  const eventDatePicker = useRef(null);
   const [discard, setDiscard] = useState(false),
     [blocked, setBlocked] = useState(false);
   const discardLauncher = useRef(null);
@@ -36,6 +37,12 @@ export const NceRegistrationModal = ({
       const top = modals[modals.length - 1];
       if (top && !top.classList.contains("nce-registration-modal"))
         return false;
+      const calendar = eventDatePicker.current?.calendar;
+      if (calendar?.isOpen) {
+        calendar.input.focus();
+        calendar.close();
+        return false;
+      }
     }
     if (discard) return false;
     if (formState.current.busy || formState.current.unknown) {
@@ -112,6 +119,7 @@ export const NceRegistrationModal = ({
             />
           )}
           <ReportNonConformingEvent
+            eventDatePickerRef={eventDatePicker}
             resultRow={resultRow}
             onScopeUnavailable={onScopeUnavailable}
             onCancel={close}

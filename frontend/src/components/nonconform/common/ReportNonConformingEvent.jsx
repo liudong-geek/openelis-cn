@@ -60,6 +60,7 @@ export const ReportNonConformingEvent = ({
   onStateChange = () => {},
   onScopeUnavailable = () => {},
   resultRow = null,
+  eventDatePickerRef,
 }) => {
   const intl = useIntl(),
     scope = useNceScope();
@@ -521,6 +522,7 @@ export const ReportNonConformingEvent = ({
                   readOnly
                 />
                 <DatePicker
+                  ref={eventDatePickerRef}
                   datePickerType="single"
                   dateFormat={getCarbonDateFormat(dateLocale)}
                   locale={calendarLocale}

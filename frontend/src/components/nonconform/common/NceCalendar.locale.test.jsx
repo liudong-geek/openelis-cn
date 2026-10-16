@@ -9,6 +9,7 @@ import { ConfigurationContext } from "../../layout/Layout";
 import zh from "../../../languages/zh.json";
 import en from "../../../languages/en.json";
 import ReportNonConformingEvent from "./ReportNonConformingEvent";
+import NceRegistrationModal from "./NceRegistrationModal";
 import {
   jsonResponse,
   metadata,
@@ -296,3 +297,112 @@ test("clearing the current real calendar date prevents an implicit previous-date
     fetcher.mock.calls.filter(([, options]) => options.method === "POST"),
   ).toHaveLength(0);
 });
+
+const openRegistrationWithTypedDate = async () => {
+  const close = vi.fn();
+  render(
+    <MemoryRouter>
+      <IntlProvider locale="zh-CN" messages={zh}>
+        <UserSessionDetailsContext.Provider
+          value={{ userSessionDetails: session, isCheckingLogin: () => false }}
+        >
+          <ConfigurationContext.Provider
+            value={{
+              configurationProperties: { DEFAULT_DATE_LOCALE: "zh-CN" },
+            }}
+          >
+            <NceRegistrationModal onClose={close} onSaved={vi.fn()} />
+          </ConfigurationContext.Provider>
+        </UserSessionDetailsContext.Provider>
+      </IntlProvider>
+    </MemoryRouter>,
+  );
+  await waitFor(() =>
+    expect(document.querySelector("#date-of-event")).toBeEnabled(),
+  );
+  const input = document.querySelector("#date-of-event");
+  const user = userEvent.setup();
+  await user.clear(input);
+  await user.type(input, "2024/07/10");
+  expect(input).toHaveValue("2024/07/10");
+  return { input, calendar: input._flatpickr, user, close };
+};
+const escapeFrom = (target) => {
+  fireEvent.keyDown(target, {
+    key: "Escape",
+    code: "Escape",
+    keyCode: 27,
+    which: 27,
+  });
+  fireEvent.keyUp(target, {
+    key: "Escape",
+    code: "Escape",
+    keyCode: 27,
+    which: 27,
+  });
+};
+const noWrite = () =>
+  expect(
+    fetcher.mock.calls.filter(([, options]) => options.method === "POST"),
+  ).toHaveLength(0);
+
+test("modal calendar Escape closes the open calendar without requesting draft discard", async () => {
+  const { input, calendar, close } = await openRegistrationWithTypedDate();
+  expect(calendar.isOpen).toBe(true);
+  expect(input).toHaveFocus();
+  escapeFrom(input);
+  expect(
+    screen.queryByRole("dialog", { name: zh["nce.workspace.discardTitle"] }),
+  ).not.toBeInTheDocument();
+  expect(calendar.isOpen).toBe(false);
+  expect(
+    screen.getByRole("dialog", { name: zh["nce.form.title"] }),
+  ).toBeInTheDocument();
+  expect(input).toHaveValue("2024/07/10");
+  expect(close).not.toHaveBeenCalled();
+  noWrite();
+  escapeFrom(input);
+  expect(
+    await screen.findByRole("dialog", {
+      name: zh["nce.workspace.discardTitle"],
+    }),
+  ).toBeInTheDocument();
+  expect(close).not.toHaveBeenCalled();
+  noWrite();
+});
+
+test("modal Escape after the calendar is closed retains the original draft confirmation", async () => {
+  const { input, calendar, close, user } =
+    await openRegistrationWithTypedDate();
+  await user.click(document.querySelector("#nce-description"));
+  await waitFor(() => expect(calendar.isOpen).toBe(false));
+  escapeFrom(document.activeElement);
+  expect(
+    await screen.findByRole("dialog", {
+      name: zh["nce.workspace.discardTitle"],
+    }),
+  ).toBeInTheDocument();
+  expect(close).not.toHaveBeenCalled();
+  expect(input).toHaveValue("2024/07/10");
+  noWrite();
+});
+
+test.each(["close", "cancel"])(
+  "modal %s still protects the dirty draft while its calendar is open",
+  async (action) => {
+    const { calendar, close, user } = await openRegistrationWithTypedDate();
+    expect(calendar.isOpen).toBe(true);
+    const button =
+      action === "close"
+        ? document.querySelector(".nce-registration-modal .cds--modal-close")
+        : screen.getByRole("button", { name: zh["label.button.cancel"] });
+    await user.click(button);
+    expect(
+      await screen.findByRole("dialog", {
+        name: zh["nce.workspace.discardTitle"],
+      }),
+    ).toBeInTheDocument();
+    expect(close).not.toHaveBeenCalled();
+    noWrite();
+  },
+);
