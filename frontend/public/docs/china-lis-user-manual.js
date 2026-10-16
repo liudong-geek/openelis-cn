@@ -10,7 +10,6 @@
 
   var defaultLabel = button.textContent;
   var resetTimer;
-  var printLifecycleStarted = false;
 
   function restoreButton() {
     window.clearTimeout(resetTimer);
@@ -19,8 +18,7 @@
   }
 
   window.addEventListener("beforeprint", function () {
-    printLifecycleStarted = true;
-    status.textContent = "打印窗口已打开。";
+    status.textContent = "已调用浏览器打印。";
   });
 
   window.addEventListener("afterprint", function () {
@@ -32,7 +30,7 @@
   });
 
   button.addEventListener("click", function () {
-    printLifecycleStarted = false;
+    window.clearTimeout(resetTimer);
     button.disabled = true;
     button.textContent = "正在打开打印窗口…";
     status.textContent = "正在调用系统打印功能。";
@@ -40,7 +38,7 @@
     window.requestAnimationFrame(function () {
       try {
         window.print();
-        if (!printLifecycleStarted) {
+        if (button.disabled) {
           resetTimer = window.setTimeout(function () {
             restoreButton();
             status.textContent =
