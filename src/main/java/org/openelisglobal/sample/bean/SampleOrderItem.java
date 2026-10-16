@@ -203,8 +203,11 @@ public class SampleOrderItem implements Serializable {
     // for display
     private Collection testLocationCodeList;
 
+    // Existing orders can contain a literal program name; new-entry fields use
+    // dictionary IDs.
     @Pattern(regexp = ValidationHelper.ID_REGEX, groups = { SamplePatientEntryForm.SamplePatientEntry.class,
-            SamplePatientEntryBatch.class, SampleEditForm.SampleEdit.class })
+            SamplePatientEntryBatch.class })
+    @Pattern(regexp = "[^<>]*", groups = { SampleEditForm.SampleEdit.class })
     private String program;
 
     // for display

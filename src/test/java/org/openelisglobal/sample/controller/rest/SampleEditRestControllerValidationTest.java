@@ -490,6 +490,52 @@ public class SampleEditRestControllerValidationTest {
         return tube;
     }
 
+    @Test
+    public void existingNamedProgramAndItsSeparateIdentityReachSaveUnchanged() throws Exception {
+        form.getSampleOrderItems().setProgram("Cytology");
+        form.getSampleOrderItems().setProgramId("7");
+        perform(200);
+        ArgumentCaptor<SampleEditForm> captured = ArgumentCaptor.forClass(SampleEditForm.class);
+        verify(edits).editSample(captured.capture(), any(), isNull(), eq(false), eq("12"));
+        assertEquals("Cytology", captured.getValue().getSampleOrderItems().getProgram());
+        assertEquals("7", captured.getValue().getSampleOrderItems().getProgramId());
+    }
+
+    @Test
+    public void existingChineseProgramNameReachesSaveUnchanged() throws Exception {
+        form.getSampleOrderItems().setProgram("细胞学检验");
+        perform(200);
+        ArgumentCaptor<SampleEditForm> captured = ArgumentCaptor.forClass(SampleEditForm.class);
+        verify(edits).editSample(captured.capture(), any(), isNull(), eq(false), eq("12"));
+        assertEquals("细胞学检验", captured.getValue().getSampleOrderItems().getProgram());
+    }
+
+    @Test
+    public void numericProgramRemainsValidAndEntryGroupsStillRequireDictionaryIds() throws Exception {
+        form.getSampleOrderItems().setProgram("42");
+        perform(200);
+        for (Class<?> group : List.of(org.openelisglobal.sample.form.SamplePatientEntryForm.SamplePatientEntry.class,
+                org.openelisglobal.sample.form.SamplePatientEntryForm.SamplePatientEntryBatch.class)) {
+            assertTrue(beanValidator.validateValue(SampleOrderItem.class, "program", "42", group).isEmpty());
+            assertTrue(beanValidator.validateValue(SampleOrderItem.class, "program", "", group).isEmpty());
+            assertTrue(beanValidator.validateValue(SampleOrderItem.class, "program", null, group).isEmpty());
+            for (String invalid : List.of("Cytology", "细胞学检验", "<b>42</b>", "42\n<b>invalid</b>")) {
+                assertFalse(beanValidator.validateValue(SampleOrderItem.class, "program", invalid, group).isEmpty());
+            }
+        }
+    }
+
+    @Test
+    public void editingProgramRejectsMarkupIncludingMultilineWithoutWriting() throws Exception {
+        for (String invalid : List.of("<b>Cytology</b>", "Cytology\n<b>invalid</b>", "<script>alert(1)</script>",
+                "Cytology<", "Cytology>")) {
+            form.getSampleOrderItems().setProgram(invalid);
+            perform(400);
+        }
+        verify(validator, never()).validate(any(), any());
+        assertNoWrites();
+    }
+
     private void perform(int status) throws Exception {
         UserSessionData actor = new UserSessionData();
         actor.setSytemUserId(12);
