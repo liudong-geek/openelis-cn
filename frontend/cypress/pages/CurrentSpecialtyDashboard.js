@@ -7,6 +7,7 @@ const DEFINITIONS = {
     casePath: "/PathologyCaseView",
     api: "pathology",
     sampleKey: "pathologySampleId",
+    dashboardIdKey: "pathologySampleId",
     heading: "pathology.label.title",
     unit: "Pathology",
     specialistRole: "Pathologist",
@@ -22,6 +23,7 @@ const DEFINITIONS = {
     casePath: "/ImmunohistochemistryCaseView",
     api: "immunohistochemistry",
     sampleKey: "immunohistochemistrySampleId",
+    dashboardIdKey: "immunohistochemistrySampleId",
     heading: "immunohistochemistry.label.title",
     unit: "Immunohistochemistry",
     specialistRole: "Pathologist",
@@ -37,6 +39,7 @@ const DEFINITIONS = {
     casePath: "/CytologyCaseView",
     api: "cytology",
     sampleKey: "cytologySampleId",
+    dashboardIdKey: "pathologySampleId",
     heading: "cytology.label.title",
     unit: "Cytology",
     specialistRole: "Cytopathologist",
@@ -159,7 +162,7 @@ class CurrentSpecialtyDashboard {
         expect(matches, "one actual newly saved specialty case").to.have.length(
           1,
         );
-        const id = String(matches[0][d.sampleKey]);
+        const id = String(matches[0][d.dashboardIdKey]);
         expect(id).to.match(/^[1-9]\d*$/);
         if (this.state.caseId) expect(id).to.eq(this.state.caseId);
         this.state.caseId = id;
@@ -1005,7 +1008,7 @@ class CurrentSpecialtyDashboard {
           (entry) => entry.labNumber === this.state.labNumber,
         );
         expect(matches).to.have.length(1);
-        expect(String(matches[0][d.sampleKey])).to.eq(this.state.caseId);
+        expect(String(matches[0][d.dashboardIdKey])).to.eq(this.state.caseId);
         expect(matches[0].status).to.eq("COMPLETED");
       });
       this.row().should("have.length", 1).and("be.visible");
