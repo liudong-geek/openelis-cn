@@ -110,7 +110,9 @@ class NonConform {
       );
     });
     cy.get(".nce-registration-modal.is-visible").should("be.visible");
-    cy.get(".nce-registration-modal #search-type").should("be.visible");
+    cy.get(".nce-registration-modal #search-type")
+      .scrollIntoView()
+      .should("be.visible");
   }
 
   selectSearchType(type) {
