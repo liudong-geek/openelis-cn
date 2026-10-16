@@ -41,3 +41,16 @@ DIAG_SELECT_READBACK_STATUS=1 node node_modules/vitest/vitest.mjs run --config "
 ```
 
 完整真实验证仍须在下一新鲜隔离矩阵执行原349（含原14专科场景），以及原主335＋关闭3与补验。不得重跑a15已成功保存的专科申请，不以临时组件绿代替真实签发及完整发布通过。
+
+
+## a16 重复查询标记修正
+
+a16 原完整349实际195通过、1失败、153未执行。失败位于 findExactOrder 对筛选请求 URL 的 statuses 断言：本次期望 READY_PATHOLOGIST，重复标记却返回先前 GROSSING 请求。它不是 saveCase 的独立病例GET断言。根任务随后对同运行只读查回，确认病例状态 READY_PATHOLOGIST、待审核筛选唯一匹配、GROSSING同病例匹配0；业务POST为0。已成功保存不重放。
+
+当前 Cypress 15.12.0 的 getAliasedRequests 会汇总所有同名路由的请求，waitForRoute 再取其中尚未等待的完成回执。findExactOrder 在同一场景反复注册同名 alias，旧路由及其未消费请求仍在，不能保证 wait 返回当前筛选的请求。
+
+仅为每次 findExactOrder 调用生成独立 queryAlias，并由该次 intercept 和 wait 共同使用。原路径、编号及状态 matcher、请求状态断言、200与JSON校验、唯一病例、同caseId、唯一可见行全部保留。产品保存、查询、权限、原14场景、预算、重试和保存次数不改。
+
+外部 a16-specialty-alias-diagnosis 使用已缓存的真实 Cypress 15.12.0／Electron 138，直接导入同字节助手；本地随机端口只提供合成GET，没有账号或LIS业务请求。连续两次GROSSING查找后切换READY，原助手0通过1失败，错误与原line149相同；仅改alias后同字节场景1通过0失败。两轮均实际发出GROSSING与READY请求，未靠屏蔽断言或改响应得到通过。局部格式通过。
+
+复现入口：在该外部目录执行 `node "$PAT/frontend/node_modules/cypress/bin/cypress" run --project baseline --browser electron` 或将project改为candidate。原始日志、native-result及差异保留。此局部反馈验证实际Cypress查询等待语义，不替代新鲜完整349与主335＋关闭3、跨岗位及配置补验。中文手册业务操作不变。

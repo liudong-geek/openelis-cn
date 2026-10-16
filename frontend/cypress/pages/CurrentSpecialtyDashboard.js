@@ -123,6 +123,7 @@ class CurrentSpecialtyDashboard {
       const d = this.definition;
       const labNumber = this.state.labNumber;
       const savedStatus = this.state.dashboardStatus;
+      const queryAlias = Cypress._.uniqueId("exactCreatedSpecialtyOrder");
       expect(labNumber, "the order created by this original scenario").to.be.a(
         "string",
       ).and.not.be.empty;
@@ -133,7 +134,7 @@ class CurrentSpecialtyDashboard {
           searchTerm: labNumber,
           ...(savedStatus ? { statuses: savedStatus } : {}),
         },
-      }).as("exactCreatedSpecialtyOrder");
+      }).as(queryAlias);
       if (savedStatus) {
         cy.get("#statusFilter")
           .should("be.visible")
@@ -144,7 +145,7 @@ class CurrentSpecialtyDashboard {
         .should("be.visible")
         .clear()
         .type(labNumber);
-      cy.wait("@exactCreatedSpecialtyOrder").then(({ request, response }) => {
+      cy.wait(`@${queryAlias}`).then(({ request, response }) => {
         if (savedStatus)
           expect(new URL(request.url).searchParams.get("statuses")).to.eq(
             savedStatus,
