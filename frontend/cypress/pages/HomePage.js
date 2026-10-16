@@ -296,10 +296,24 @@ class HomePage {
 
   // Non-Conforming related functions
   goToReportNCE() {
+    cy.intercept({
+      method: "GET",
+      pathname: /\/rest\/nce\/workspace$/,
+      query: { queryVersion: "2" },
+    }).as("nceWorkspaceReady");
     this.openWorkspaceTask(
       "#menu_quality_workspace",
       /^\/NceDashboard(?:\?|$)/,
     );
+    cy.wait("@nceWorkspaceReady").then(({ response }) => {
+      expect(response.statusCode, "NCE workspace loaded").to.eq(200);
+      expect(response.headers["content-type"]).to.include("application/json");
+      expect(response.body).to.be.an("object");
+      expect(response.body.queryVersion).to.eq("2");
+      expect(response.body.canCreate, "current actor may register NCE").to.eq(
+        true,
+      );
+    });
     cy.contains(
       ".nce-dashboard-header button",
       labelPattern("nce.button.reportNce"),
