@@ -91,7 +91,7 @@ describe("Current patient criteria then saved-order editing — replaces retired
     homePage = loginPage.goToHomePage();
     homePage.goToModifyOrderPage();
     modifyOrderPage.assertCurrentList();
-    modifyOrderPage.bindFixtureOrder(fixturePatient);
+    modifyOrderPage.bindCreatedOrder(fixturePatient);
   });
   it("queries first and last name in current patient search and retains the same seeded patient", () => {
     resetPatientSearch();
@@ -130,7 +130,7 @@ describe("Current patient criteria then saved-order editing — replaces retired
   it("opens that patient's exact saved accession from the current application row", () => {
     homePage = loginPage.goToHomePage();
     homePage.goToModifyOrderPage();
-    modifyOrderPage.openSavedOrder(fixturePatient.labNo);
+    modifyOrderPage.openSavedOrder(modifyOrderPage.baseline.labNumber);
   });
   it("shows all persisted tests without an obsolete program-selection gate", () => {
     modifyOrderPage.checkExistingTestsWorkspace();
@@ -153,10 +153,13 @@ describe("Current accession-based saved-order editing — preserves the existing
     homePage = loginPage.goToHomePage();
     homePage.goToModifyOrderPage();
     modifyOrderPage.assertCurrentList();
-    modifyOrderPage.bindFixtureOrder(fixturePatient);
+    modifyOrderPage.bindFixtureOrder(
+      fixturePatient,
+      modifyOrderPage.baseline.labNumber,
+    );
   });
   it("queries the original accession and opens its exact current edit action", () => {
-    modifyOrderPage.openSavedOrder(fixturePatient.labNo);
+    modifyOrderPage.openSavedOrder(modifyOrderPage.baseline.labNumber);
   });
   it("retains the original patient, specimen and persisted-test identities", () => {
     modifyOrderPage.checkExistingTestsWorkspace();

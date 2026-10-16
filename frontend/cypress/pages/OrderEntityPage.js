@@ -561,6 +561,8 @@ class OrderEntityPage {
           }).then(({ status: referralStatus, body: referral }) => {
             return cy
               .writeFile("cypress/results/compatibility-order-readback.json", {
+                runtimeDatabaseId: Cypress.env("OWNED_DATABASE_ID"),
+                origin: Cypress.config("baseUrl"),
                 selectedPatientId: this.patientPage.selectedPatientId,
                 requestPatientId: String(body.patientProperties.patientPK),
                 saveStatus: response.statusCode,

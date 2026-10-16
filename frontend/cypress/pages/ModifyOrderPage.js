@@ -77,8 +77,68 @@ class ModifyOrderPage {
       });
   }
 
-  bindFixtureOrder(patient) {
-    return this.readSaved(patient.labNo).then((order) => {
+  bindCreatedOrder(patient) {
+    return cy
+      .readFile("cypress/results/compatibility-order-readback.json", {
+        log: false,
+      })
+      .then((receipt) => {
+        expect(receipt.runtimeDatabaseId, "same-run order creation database")
+          .to.match(/^[a-f0-9]{64}$/)
+          .and.eq(Cypress.env("OWNED_DATABASE_ID"));
+        expect(receipt.origin, "same-run order creation origin").to.eq(
+          Cypress.config("baseUrl"),
+        );
+        expect(receipt.saveStatus).to.eq(200);
+        expect(receipt.saved.queryVersion).to.eq("2");
+        expect(receipt.labNumber).to.eq(receipt.saved.labNumber);
+        expect(
+          receipt.labNumber,
+          "result-entry fixture stays unchanged",
+        ).not.to.eq(patient.labNo);
+        expect(receipt.selectedPatientId).to.eq(receipt.requestPatientId);
+        expect(receipt.requestPatientId).to.eq(receipt.saved.patient.patientId);
+        return this.bindFixtureOrder(patient, receipt.labNumber).then(
+          (order) => {
+            expect(order.orderId, "exact UI-created order").to.eq(
+              receipt.saved.orderId,
+            );
+            expect(order.currentUserId, "same actual order actor").to.eq(
+              receipt.saved.currentUserId,
+            );
+            expect(order.patient).to.deep.equal(receipt.saved.patient);
+            expect(
+              order.samples.map((sample) => sample.sampleItemId).sort(),
+            ).to.deep.equal(
+              receipt.saved.samples.map((sample) => sample.sampleItemId).sort(),
+            );
+            receipt.saved.samples.forEach((original) => {
+              const matching = order.samples.filter(
+                (sample) => sample.sampleItemId === original.sampleItemId,
+              );
+              expect(matching, "same originally saved tube").to.have.length(1);
+              expect(matching[0].sampleTypeId).to.eq(original.sampleTypeId);
+              const identities = (sample) =>
+                sample.analyses
+                  .map(({ analysisId, testId, panelId }) => ({
+                    analysisId,
+                    testId,
+                    panelId,
+                  }))
+                  .sort((a, b) => a.analysisId.localeCompare(b.analysisId));
+              expect(
+                identities(matching[0]),
+                "all original analysis identities",
+              ).to.deep.equal(identities(original));
+            });
+            return order;
+          },
+        );
+      });
+  }
+
+  bindFixtureOrder(patient, labNumber) {
+    return this.readSaved(labNumber).then((order) => {
       expect(order.patient.firstName).to.eq(patient.firstName);
       expect(order.patient.lastName).to.eq(patient.lastName);
       expect(order.patient.nationalId).to.eq(patient.nationalId);
