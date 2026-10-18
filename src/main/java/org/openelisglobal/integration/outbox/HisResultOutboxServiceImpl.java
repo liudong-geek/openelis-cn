@@ -6,169 +6,181 @@ import java.security.NoSuchAlgorithmException;
 import java.time.OffsetDateTime;
 import java.util.HexFormat;
 import java.util.List;
+import org.openelisglobal.report.service.impl.ReportPublicationService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class HisResultOutboxServiceImpl implements HisResultOutboxService {
 
-  private static final int MAX_LIST_LIMIT = 200;
-  private final HisResultOutboxRepository repository;
+    private static final int MAX_LIST_LIMIT = 200;
+    private final HisResultOutboxRepository repository;
+    @Autowired
+    private ReportPublicationService reportPublication;
 
-  public HisResultOutboxServiceImpl(HisResultOutboxRepository repository) {
-    this.repository = repository;
-  }
-
-  @Override
-  @Transactional
-  public HisResultOutbox enqueue(
-      String sourceSystem,
-      String businessId,
-      HisResultEventType eventType,
-      String idempotencyKey,
-      String payload,
-      int maxAttempts,
-      String owner,
-      OffsetDateTime now) {
-    String normalizedKey = required(idempotencyKey, "idempotencyKey");
-    String normalizedPayload = required(payload, "payload");
-    String normalizedSource = required(sourceSystem, "sourceSystem");
-    String normalizedBusinessId = required(businessId, "businessId");
-    HisResultEventType normalizedEventType = eventType == null ? HisResultEventType.RESULT : eventType;
-    String payloadHash = sha256(normalizedPayload);
-    var existing = repository.findByIdempotencyKey(normalizedKey);
-    if (existing.isPresent()) {
-      if (!payloadHash.equals(existing.get().getPayloadHash())
-          || !normalizedSource.equals(existing.get().getSourceSystem())
-          || !normalizedBusinessId.equals(existing.get().getBusinessId())
-          || normalizedEventType != existing.get().getEventType()) {
-        throw new IllegalStateException("Idempotency key already belongs to a different event");
-      }
-      return existing.get();
+    public HisResultOutboxServiceImpl(HisResultOutboxRepository repository) {
+        this.repository = repository;
     }
 
-    HisResultOutbox message = new HisResultOutbox();
-    message.setSourceSystem(normalizedSource);
-    message.setBusinessId(normalizedBusinessId);
-    message.setEventType(normalizedEventType);
-    message.setIdempotencyKey(normalizedKey);
-    message.setPayload(normalizedPayload);
-    message.setPayloadHash(payloadHash);
-    message.setStatus(HisResultOutboxStatus.PENDING);
-    message.setAttemptCount(0);
-    message.setMaxAttempts(Math.max(1, Math.min(maxAttempts, 20)));
-    message.setOwner(trimToNull(owner));
-    message.setCreatedAt(now);
-    message.setNextAttemptAt(now);
-    return repository.save(message);
-  }
+    @Override
+    @Transactional
+    public HisResultOutbox enqueue(String sourceSystem, String businessId, HisResultEventType eventType,
+            String idempotencyKey, String payload, int maxAttempts, String owner, OffsetDateTime now) {
+        String normalizedKey = required(idempotencyKey, "idempotencyKey");
+        String normalizedPayload = required(payload, "payload");
+        String normalizedSource = required(sourceSystem, "sourceSystem");
+        String normalizedBusinessId = required(businessId, "businessId");
+        HisResultEventType normalizedEventType = eventType == null ? HisResultEventType.RESULT : eventType;
+        String payloadHash = sha256(normalizedPayload);
+        var existing = repository.findByIdempotencyKey(normalizedKey);
+        if (existing.isPresent()) {
+            if (!payloadHash.equals(existing.get().getPayloadHash())
+                    || !normalizedSource.equals(existing.get().getSourceSystem())
+                    || !normalizedBusinessId.equals(existing.get().getBusinessId())
+                    || normalizedEventType != existing.get().getEventType()) {
+                throw new IllegalStateException("Idempotency key already belongs to a different event");
+            }
+            return existing.get();
+        }
 
-  @Override
-  @Transactional(readOnly = true)
-  public List<HisResultOutbox> list(HisResultOutboxStatus status, int limit) {
-    return repository.findRecent(status, Math.max(1, Math.min(limit, MAX_LIST_LIMIT)));
-  }
-
-  @Override
-  @Transactional
-  public HisResultOutbox recordAttempt(
-      Long id,
-      boolean acknowledged,
-      String responseCode,
-      String responseBody,
-      String error,
-      OffsetDateTime now) {
-    HisResultOutbox message = locked(id);
-    if (message.getStatus() == HisResultOutboxStatus.ACKNOWLEDGED && acknowledged) {
-      return message;
+        HisResultOutbox message = new HisResultOutbox();
+        message.setSourceSystem(normalizedSource);
+        message.setBusinessId(normalizedBusinessId);
+        message.setEventType(normalizedEventType);
+        message.setIdempotencyKey(normalizedKey);
+        message.setPayload(normalizedPayload);
+        message.setPayloadHash(payloadHash);
+        message.setStatus(HisResultOutboxStatus.PENDING);
+        message.setAttemptCount(0);
+        message.setMaxAttempts(Math.max(1, Math.min(maxAttempts, 20)));
+        message.setOwner(trimToNull(owner));
+        message.setCreatedAt(now);
+        message.setNextAttemptAt(now);
+        return repository.save(message);
     }
-    ensureMutable(message);
-    message.setAttemptCount(message.getAttemptCount() + 1);
-    message.setResponseCode(trimToNull(responseCode));
-    message.setResponseBody(trimToNull(responseBody));
-    if (acknowledged) {
-      message.setStatus(HisResultOutboxStatus.ACKNOWLEDGED);
-      message.setAcknowledgedAt(now);
-      message.setLastError(null);
-      message.setNextAttemptAt(null);
-    } else {
-      message.setLastError(required(error, "error"));
-      if (message.getAttemptCount() >= message.getMaxAttempts()) {
-        message.setStatus(HisResultOutboxStatus.DEAD_LETTER);
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<HisResultOutbox> list(HisResultOutboxStatus status, int limit) {
+        return repository.findRecent(status, Math.max(1, Math.min(limit, MAX_LIST_LIMIT)));
+    }
+
+    @Override
+    @Transactional
+    public HisResultOutbox recordAttempt(Long id, boolean acknowledged, String responseCode, String responseBody,
+            String error, OffsetDateTime now) {
+        HisResultOutbox message = locked(id);
+        if (message.getStatus() == HisResultOutboxStatus.ACKNOWLEDGED && acknowledged) {
+            return message;
+        }
+        ensureMutable(message);
+        message.setAttemptCount(message.getAttemptCount() + 1);
+        message.setResponseCode(trimToNull(responseCode));
+        message.setResponseBody(trimToNull(responseBody));
+        if (acknowledged) {
+            message.setStatus(HisResultOutboxStatus.ACKNOWLEDGED);
+            message.setAcknowledgedAt(now);
+            message.setLastError(null);
+            message.setNextAttemptAt(null);
+        } else {
+            message.setLastError(required(error, "error"));
+            if (message.getAttemptCount() >= message.getMaxAttempts()) {
+                message.setStatus(HisResultOutboxStatus.DEAD_LETTER);
+                message.setNextAttemptAt(null);
+            } else {
+                message.setStatus(HisResultOutboxStatus.FAILED);
+                long delaySeconds = Math.min(3600L, 60L << Math.min(message.getAttemptCount() - 1, 5));
+                message.setNextAttemptAt(now.plusSeconds(delaySeconds));
+            }
+        }
+        return repository.save(message);
+    }
+
+    @Override
+    @Transactional
+    public HisResultOutbox retry(Long id, String owner, OffsetDateTime now) {
+        HisResultOutbox message = mutable(id);
+        if ("LIS-CN".equals(message.getSourceSystem())) {
+            // This validation is read-only and takes no release lock. Report transitions
+            // acquire the document/release lock before locking their pending messages.
+            reportPublication.validateOutboxRetry(message);
+        }
+        message.setStatus(HisResultOutboxStatus.PENDING);
+        message.setNextAttemptAt(now);
+        message.setOwner(trimToNull(owner));
+        message.setCloseReason(null);
+        return repository.save(message);
+    }
+
+    @Override
+    @Transactional
+    public HisResultOutbox close(Long id, String reason, String owner) {
+        String normalizedReason = required(reason, "reason");
+        HisResultOutbox message = mutable(id);
+        message.setStatus(HisResultOutboxStatus.CLOSED);
+        message.setCloseReason(normalizedReason);
+        message.setOwner(trimToNull(owner));
         message.setNextAttemptAt(null);
-      } else {
-        message.setStatus(HisResultOutboxStatus.FAILED);
-        long delaySeconds = Math.min(3600L, 60L << Math.min(message.getAttemptCount() - 1, 5));
-        message.setNextAttemptAt(now.plusSeconds(delaySeconds));
-      }
+        return repository.save(message);
     }
-    return repository.save(message);
-  }
 
-  @Override
-  @Transactional
-  public HisResultOutbox retry(Long id, String owner, OffsetDateTime now) {
-    HisResultOutbox message = mutable(id);
-    message.setStatus(HisResultOutboxStatus.PENDING);
-    message.setNextAttemptAt(now);
-    message.setOwner(trimToNull(owner));
-    message.setCloseReason(null);
-    return repository.save(message);
-  }
-
-  @Override
-  @Transactional
-  public HisResultOutbox close(Long id, String reason, String owner) {
-    String normalizedReason = required(reason, "reason");
-    HisResultOutbox message = mutable(id);
-    message.setStatus(HisResultOutboxStatus.CLOSED);
-    message.setCloseReason(normalizedReason);
-    message.setOwner(trimToNull(owner));
-    message.setNextAttemptAt(null);
-    return repository.save(message);
-  }
-
-  private HisResultOutbox mutable(Long id) {
-    HisResultOutbox message = locked(id);
-    ensureMutable(message);
-    return message;
-  }
-
-  private HisResultOutbox locked(Long id) {
-    return repository
-        .findForUpdate(id)
-        .orElseThrow(() -> new IllegalArgumentException("Outbox message not found"));
-  }
-
-  private void ensureMutable(HisResultOutbox message) {
-    if (message.getStatus() == HisResultOutboxStatus.ACKNOWLEDGED
-        || message.getStatus() == HisResultOutboxStatus.CLOSED) {
-      throw new IllegalStateException("Completed outbox message cannot be changed");
+    @Override
+    @Transactional
+    public int closeUndeliveredReport(Long releaseId, String reason, String actor) {
+        if (releaseId == null || releaseId <= 0) {
+            throw new IllegalArgumentException("Invalid report release identifier");
+        }
+        String normalizedReason = required(reason, "reason");
+        List<HisResultOutbox> messages = repository.findUndeliveredReportForUpdate(releaseId.toString());
+        for (HisResultOutbox message : messages) {
+            message.setStatus(HisResultOutboxStatus.CLOSED);
+            message.setCloseReason(normalizedReason);
+            message.setOwner(trimToNull(actor));
+            message.setNextAttemptAt(null);
+            repository.save(message);
+        }
+        return messages.size();
     }
-  }
 
-  private static String required(String value, String field) {
-    String normalized = trimToNull(value);
-    if (normalized == null) {
-      throw new IllegalArgumentException(field + " is required");
+    private HisResultOutbox mutable(Long id) {
+        HisResultOutbox message = locked(id);
+        ensureMutable(message);
+        return message;
     }
-    return normalized;
-  }
 
-  private static String trimToNull(String value) {
-    if (value == null || value.trim().isEmpty()) {
-      return null;
+    private HisResultOutbox locked(Long id) {
+        return repository.findForUpdate(id).orElseThrow(() -> new IllegalArgumentException("Outbox message not found"));
     }
-    return value.trim();
-  }
 
-  static String sha256(String value) {
-    try {
-      return HexFormat.of()
-          .formatHex(
-              MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
-    } catch (NoSuchAlgorithmException e) {
-      throw new IllegalStateException("SHA-256 is not available", e);
+    private void ensureMutable(HisResultOutbox message) {
+        if (message.getStatus() == HisResultOutboxStatus.ACKNOWLEDGED
+                || message.getStatus() == HisResultOutboxStatus.CLOSED) {
+            throw new IllegalStateException("Completed outbox message cannot be changed");
+        }
     }
-  }
+
+    private static String required(String value, String field) {
+        String normalized = trimToNull(value);
+        if (normalized == null) {
+            throw new IllegalArgumentException(field + " is required");
+        }
+        return normalized;
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        return value.trim();
+    }
+
+    static String sha256(String value) {
+        try {
+            return HexFormat.of()
+                    .formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
+    }
 }

@@ -355,6 +355,8 @@ public class SpecimenProvider implements IResourceProvider {
 
             return bundle;
 
+        } catch (ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException e) {
+            throw e;
         } catch (Exception e) {
             LogEvent.logError(this.getClass().getSimpleName(), methodName,
                     "Error searching Practitioners: " + e.getMessage());

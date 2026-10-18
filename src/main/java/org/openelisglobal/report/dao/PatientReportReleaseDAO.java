@@ -17,5 +17,14 @@ public interface PatientReportReleaseDAO extends BaseDAO<PatientReportRelease, L
 
     List<PatientReportRelease> getByDocument(String documentId);
 
+    /**
+     * Committed formal version IDs only, in ascending keyset pages of at most 100.
+     */
+    List<Long> getPublicationIds(java.time.Instant through, Long afterId, int limit);
+
+    List<PatientReportRelease> getPublishedByAnalysisUuid(java.util.UUID uuid);
+
+    List<PatientReportRelease> findPublished(String reportNumber, String patientId, int limit);
+
     void flush();
 }

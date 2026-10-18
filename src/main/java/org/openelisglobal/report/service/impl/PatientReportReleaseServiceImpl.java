@@ -31,8 +31,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Document-scoped release preparation. Issuance is enabled only after
- * frozen-content signing is implemented.
+ * Document-scoped frozen report signing, version transitions and delivery
+ * intent.
  */
 @Service
 public class PatientReportReleaseServiceImpl extends AuditableBaseObjectServiceImpl<PatientReportRelease, Long>
@@ -183,6 +183,10 @@ public class PatientReportReleaseServiceImpl extends AuditableBaseObjectServiceI
             // predecessor transition before the new release can acquire that slot.
             patientReportReleaseDAO.flush();
         }
+        if (prior != null) {
+            hisResultOutboxService.closeUndeliveredReport(prior.getId(),
+                    "Report superseded by release " + release.getId(), actor);
+        }
         release.setStatus(PatientReportReleaseStatus.ISSUED);
         release.setIssuedBy(actor);
         release.setIssuerNamePrinted(signature.getSignerNamePrinted());
@@ -201,10 +205,16 @@ public class PatientReportReleaseServiceImpl extends AuditableBaseObjectServiceI
 
     /** Persist delivery intent with the signed original in the same transaction. */
     private void enqueueIssuedReport(PatientReportRelease release, String actor) {
+        HisResultEventType eventType = release.getSupersedesReleaseId() == null ? HisResultEventType.REPORT
+                : HisResultEventType.AMENDMENT;
+        enqueueReportIntent(release, actor, eventType);
+    }
+
+    private void enqueueReportIntent(PatientReportRelease release, String actor, HisResultEventType eventType) {
         if (release.getId() == null || release.getReportVersion() == null || release.getReportVersion() < 1
                 || release.getReportDocumentId() == null || release.getReportNumber() == null
                 || release.getPdfSha256() == null || release.getFrozenContentSha256() == null) {
-            throw new IllegalStateException("Issued report delivery evidence is incomplete");
+            throw new IllegalStateException("Report delivery evidence is incomplete");
         }
         String payload;
         try {
@@ -212,19 +222,18 @@ public class PatientReportReleaseServiceImpl extends AuditableBaseObjectServiceI
                     release.getReportDocumentId(), release.getReportNumber(), release.getReportVersion(),
                     release.getSupersedesReleaseId(), release.getFrozenContentSha256(), release.getPdfSha256()));
         } catch (com.fasterxml.jackson.core.JsonProcessingException error) {
-            throw new IllegalStateException("Cannot serialize issued report delivery intent", error);
+            throw new IllegalStateException("Cannot serialize report delivery intent", error);
         }
         String businessId = release.getId().toString();
-        String idempotencyKey = "LIS-CN:REPORT:" + release.getId() + ":V" + release.getReportVersion();
-        HisResultEventType eventType = release.getSupersedesReleaseId() == null ? HisResultEventType.REPORT
-                : HisResultEventType.AMENDMENT;
+        String keyEvent = eventType == HisResultEventType.WITHDRAWAL ? "WITHDRAWAL" : "REPORT";
+        String idempotencyKey = "LIS-CN:" + keyEvent + ":" + release.getId() + ":V" + release.getReportVersion();
         HisResultOutbox queued = hisResultOutboxService.enqueue("LIS-CN", businessId, eventType, idempotencyKey,
                 payload, 3, actor, OffsetDateTime.now(ZoneOffset.UTC));
         if (queued == null || queued.getId() == null || queued.getStatus() != HisResultOutboxStatus.PENDING
                 || !"LIS-CN".equals(queued.getSourceSystem()) || !businessId.equals(queued.getBusinessId())
                 || queued.getEventType() != eventType || !idempotencyKey.equals(queued.getIdempotencyKey())
                 || !DigestUtils.sha256Hex(payload).equals(queued.getPayloadHash())) {
-            throw new IllegalStateException("Issued report delivery intent was not persisted as pending");
+            throw new IllegalStateException("Report delivery intent was not persisted as pending");
         }
     }
 
@@ -263,6 +272,10 @@ public class PatientReportReleaseServiceImpl extends AuditableBaseObjectServiceI
         release.setVoidReason(normalizedReason);
         release.setSysUserId(actor);
         update(release);
+        hisResultOutboxService.closeUndeliveredReport(release.getId(), "Report voided: " + normalizedReason, actor);
+        // This records a withdrawal request, not a claim that the recipient has
+        // withdrawn it.
+        enqueueReportIntent(release, actor, HisResultEventType.WITHDRAWAL);
         return toSummary(release);
     }
 

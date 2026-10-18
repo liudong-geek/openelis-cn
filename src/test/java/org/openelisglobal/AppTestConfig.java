@@ -11,6 +11,8 @@ import java.util.List;
 import lombok.NonNull;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.itech.fhir.dataexport.api.service.DataExportService;
+import org.itech.fhir.dataexport.api.service.DataExportStatusService;
+import org.itech.fhir.dataexport.core.dao.DataExportAttemptDAO;
 import org.itech.fhir.dataexport.core.dao.DataExportTaskDAO;
 import org.itech.fhir.dataexport.core.service.DataExportTaskService;
 import org.jasypt.util.text.TextEncryptor;
@@ -408,6 +410,21 @@ public class AppTestConfig implements WebMvcConfigurer {
     @Profile("test")
     public DataExportService dataExportService() {
         return mock(DataExportService.class);
+    }
+
+    // This context intentionally excludes org.itech and live FHIR transport.
+    // Keep the publication service real while supplying its external attempt
+    // boundary.
+    @Bean
+    @Profile("test")
+    public DataExportAttemptDAO dataExportAttemptDAO() {
+        return mock(DataExportAttemptDAO.class);
+    }
+
+    @Bean
+    @Profile("test")
+    public DataExportStatusService dataExportStatusService() {
+        return mock(DataExportStatusService.class);
     }
 
     @Bean

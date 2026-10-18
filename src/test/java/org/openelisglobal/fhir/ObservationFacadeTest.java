@@ -101,7 +101,7 @@ public class ObservationFacadeTest extends BaseWebContextSensitiveTest {
     }
 
     @Test
-    public void readObservation_shouldReturnSuccess() throws Exception {
+    public void reviewedResultWithoutFrozenStructuredSnapshot_shouldReturn404() throws Exception {
 
         String fhirUuid = "550e8400-e29b-41d4-a716-446655440004";
 
@@ -114,18 +114,13 @@ public class ObservationFacadeTest extends BaseWebContextSensitiveTest {
 
         fhirServlet.service(request, response);
 
-        assertEquals(response.getContentAsString(), 200, response.getStatus());
+        assertEquals(response.getContentAsString(), 404, response.getStatus());
 
         JsonNode jsonResponse = objectMapper.readTree(response.getContentAsString());
 
-        assertEquals("Observation", jsonResponse.get("resourceType").asText());
-
-        assertEquals("final", jsonResponse.get("status").asText());
-        assertEquals("543216", jsonResponse.path("code").path("coding").get(0).path("code").asText());
-        assertEquals("Patient/550e8400-e29b-41d4-a716-446655440004",
-                jsonResponse.path("subject").path("reference").asText());
-        assertEquals("Specimen/68438220-5cef-44c4-9e6f-9f88e6b93271",
-                jsonResponse.path("specimen").path("reference").asText());
+        assertEquals("OperationOutcome", jsonResponse.get("resourceType").asText());
+        assertTrue(response.getContentAsString().contains("DiagnosticReport"));
+        assertTrue(!jsonResponse.has("valueQuantity"));
     }
 
     @Test
@@ -253,7 +248,7 @@ public class ObservationFacadeTest extends BaseWebContextSensitiveTest {
     }
 
     @Test
-    public void searchObservation_endpointExists_shouldNotReturn404() throws Exception {
+    public void searchObservation_shouldRejectStagingStoreQueries() throws Exception {
 
         String patientUuid = "550e8400-e29b-41d4-a716-446655440001";
 
@@ -266,8 +261,9 @@ public class ObservationFacadeTest extends BaseWebContextSensitiveTest {
 
         fhirServlet.service(request, response);
 
-        assertNotNull(response);
-        assertTrue(response.getStatus() != 404);
+        assertEquals(response.getContentAsString(), 422, response.getStatus());
+        assertEquals("OperationOutcome",
+                objectMapper.readTree(response.getContentAsString()).path("resourceType").asText());
     }
 
     @Test

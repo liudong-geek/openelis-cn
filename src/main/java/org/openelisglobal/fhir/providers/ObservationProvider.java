@@ -71,10 +71,10 @@ import org.springframework.validation.ObjectError;
  * FHIR R4 Resource Provider for Observation resources.
  *
  * <p>
- * Exposes lab results from OpenELIS directly via the native FHIR facade. Read
- * and Write operations query OpenELIS DB directly for consistency with the
- * source of truth. Search forwards to the HAPI FHIR store to support the full
- * FHIR search parameter set.
+ * Accepts incoming results through the controlled LIS workflow. Outgoing
+ * results use formally signed DiagnosticReport originals; legacy mutable
+ * Observation READ and SEARCH are unavailable until structured frozen snapshots
+ * exist.
  *
  * <p>
  * Creation accepts a single quantitative result for an existing, collected and
@@ -134,32 +134,9 @@ public class ObservationProvider implements IResourceProvider {
 
     @Read
     public Observation read(@IdParam IdType id) {
-        String method = "read";
-        try {
-            if (id == null || !id.hasIdPart()) {
-                throw new ResourceNotFoundException("Missing Observation ID");
-            }
-            String uuid = id.getIdPart();
-
-            Result result = resultService.getResultByFhirUuid(uuid);
-            if (result == null) {
-                throw new ResourceNotFoundException("Observation not found: " + uuid);
-            }
-
-            Observation observation = fhirTransformService.transformResultToObservation(result);
-            if (observation == null) {
-                throw new ResourceNotFoundException("Failed to transform result to observation: " + uuid);
-            }
-
-            return observation;
-
-        } catch (ResourceNotFoundException e) {
-            throw e;
-        } catch (Exception e) {
-            LogEvent.logError(this.getClass().getSimpleName(), method,
-                    "Unexpected error reading observation: " + e.getMessage());
-            throw new InternalErrorException("Unexpected server error retrieving Observation");
-        }
+        // Schema 1 freezes the signed PDF, not a result-to-terminology projection.
+        // Do not expose a mutable Result as an issued Observation.
+        throw new ResourceNotFoundException("结构化结果未提供签发快照，请查询正式 DiagnosticReport 报告原件");
     }
 
     @Create
@@ -193,21 +170,12 @@ public class ObservationProvider implements IResourceProvider {
             LogEvent.logInfo(getClass().getSimpleName(), method,
                     "Results created: " + actionDataSet.getNewResults().size());
 
-            MethodOutcome outcome = new MethodOutcome();
-            outcome.setCreated(true);
-
+            MethodOutcome outcome = writeReceipt(true);
             for (ResultSet resultSet : actionDataSet.getNewResults()) {
-
-                if (resultSet == null || resultSet.result == null) {
-                    continue;
+                if (resultSet != null && resultSet.result != null) {
+                    outcome.setId(new IdType("Observation", resultSet.result.getFhirUuidAsString()));
                 }
-
-                Observation fhirObservation = fhirTransformService.transformResultToObservation(resultSet.result);
-
-                outcome.setResource(fhirObservation);
-                outcome.setId(fhirObservation.getIdElement());
             }
-
             return outcome;
 
         } catch (ca.uhn.fhir.rest.server.exceptions.BaseServerResponseException e) {
@@ -225,6 +193,19 @@ public class ObservationProvider implements IResourceProvider {
 
             throw new InternalErrorException("Unexpected server error while creating Observation", e);
         }
+    }
+
+    private MethodOutcome writeReceipt(boolean created) {
+        MethodOutcome outcome = new MethodOutcome();
+        outcome.setCreated(created);
+        outcome.setResponseStatusCode(created ? 201 : 200);
+        OperationOutcome receipt = new OperationOutcome();
+        receipt.addIssue().setSeverity(OperationOutcome.IssueSeverity.INFORMATION)
+                .setCode(OperationOutcome.IssueType.INFORMATIONAL).setDiagnostics("结果已接收，仍须完成 LIS 审核和正式报告签发");
+        outcome.setOperationOutcome(receipt);
+        // HAPI's default and Prefer: return=representation must not project a
+        // mutable Result. The ID remains available through the Location header.
+        return outcome;
     }
 
     @Update
@@ -289,25 +270,8 @@ public class ObservationProvider implements IResourceProvider {
             LogEvent.logInfo(getClass().getSimpleName(), method,
                     "Results updated successfully: count=" + actionDataSet.getModifiedItems().size());
 
-            MethodOutcome outcome = new MethodOutcome();
-            outcome.setCreated(false);
-
-            for (ResultSet resultSet : actionDataSet.getModifiedResults()) {
-
-                if (resultSet == null || resultSet.result == null) {
-
-                    LogEvent.logWarn(getClass().getSimpleName(), method,
-                            "Null ResultSet encountered during response building");
-                    continue;
-                }
-
-                Observation updatedObservation = fhirTransformService.transformResultToObservation(resultSet.result);
-
-                updatedObservation.setId(theId);
-
-                outcome.setResource(updatedObservation);
-            }
-
+            MethodOutcome outcome = writeReceipt(false);
+            outcome.setId(new IdType("Observation", existingResult.getFhirUuidAsString()));
             return outcome;
 
         } catch (ca.uhn.fhir.rest.server.exceptions.BaseServerResponseException e) {
@@ -360,29 +324,7 @@ public class ObservationProvider implements IResourceProvider {
             @IncludeParam(reverse = true, allow = { "Observation:" + Observation.SP_HAS_MEMBER,
                     "DiagnosticReport:" + DiagnosticReport.SP_RESULT }) HashSet<Include> revIncludes,
             HttpServletRequest request) {
-        String method = "search";
-        try {
-
-            Bundle resultBundle = util.forwardSearchToFhirStore(request);
-
-            if (resultBundle == null) {
-                resultBundle = new Bundle();
-            }
-
-            if (resultBundle.getType() == null) {
-                resultBundle.setType(Bundle.BundleType.SEARCHSET);
-            }
-
-            if (resultBundle.getEntry() == null) {
-                resultBundle.setEntry(new ArrayList<>());
-            }
-
-            return resultBundle;
-        } catch (Exception e) {
-            LogEvent.logError(this.getClass().getSimpleName(), method,
-                    "Error searching Observations: " + e.getMessage());
-            throw new InternalErrorException("Unexpected server error searching Observations");
-        }
+        throw new UnprocessableEntityException("结构化结果未提供签发快照，请按正式报告编号查询 DiagnosticReport");
     }
 
     private ResultsUpdateDataSet handleObservationPersistence(TestResultItem item, Observation observation,

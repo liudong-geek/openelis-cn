@@ -5,27 +5,17 @@ import java.util.List;
 
 public interface HisResultOutboxService {
 
-  HisResultOutbox enqueue(
-      String sourceSystem,
-      String businessId,
-      HisResultEventType eventType,
-      String idempotencyKey,
-      String payload,
-      int maxAttempts,
-      String owner,
-      OffsetDateTime now);
+    HisResultOutbox enqueue(String sourceSystem, String businessId, HisResultEventType eventType, String idempotencyKey,
+            String payload, int maxAttempts, String owner, OffsetDateTime now);
 
-  List<HisResultOutbox> list(HisResultOutboxStatus status, int limit);
+    List<HisResultOutbox> list(HisResultOutboxStatus status, int limit);
 
-  HisResultOutbox recordAttempt(
-      Long id,
-      boolean acknowledged,
-      String responseCode,
-      String responseBody,
-      String error,
-      OffsetDateTime now);
+    HisResultOutbox recordAttempt(Long id, boolean acknowledged, String responseCode, String responseBody, String error,
+            OffsetDateTime now);
 
-  HisResultOutbox retry(Long id, String owner, OffsetDateTime now);
+    HisResultOutbox retry(Long id, String owner, OffsetDateTime now);
 
-  HisResultOutbox close(Long id, String reason, String owner);
+    HisResultOutbox close(Long id, String reason, String owner);
+
+    int closeUndeliveredReport(Long releaseId, String reason, String actor);
 }

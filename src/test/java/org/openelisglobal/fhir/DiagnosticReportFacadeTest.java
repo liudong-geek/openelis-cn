@@ -46,7 +46,7 @@ public class DiagnosticReportFacadeTest extends BaseWebContextSensitiveTest {
     }
 
     @Test
-    public void readDiagnosticReport_shouldReturnSuccess() throws Exception {
+    public void reviewedButUnissuedDiagnosticReport_shouldReturn404() throws Exception {
 
         String fhirUuid = "f8b9e2c1-7a2d-4e8b-b3a4-9c1e7f6d2b02";
 
@@ -56,13 +56,11 @@ public class DiagnosticReportFacadeTest extends BaseWebContextSensitiveTest {
 
         fhirServlet.service(request, response);
 
-        assertEquals(200, response.getStatus());
+        assertEquals(404, response.getStatus());
 
         JsonNode jsonResponse = objectMapper.readTree(response.getContentAsString());
 
-        assertEquals("DiagnosticReport", jsonResponse.get("resourceType").asText());
-        assertEquals("final", jsonResponse.get("status").asText());
-        assertNotNull(jsonResponse.get("result"));
+        assertEquals("OperationOutcome", jsonResponse.get("resourceType").asText());
     }
 
     @Test

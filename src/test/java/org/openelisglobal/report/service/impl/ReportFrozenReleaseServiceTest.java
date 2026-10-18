@@ -264,9 +264,10 @@ public class ReportFrozenReleaseServiceTest {
 
         issue(release.getFrozenContentSha256());
 
-        InOrder writes = inOrder(patientReportReleaseDAO);
+        InOrder writes = inOrder(patientReportReleaseDAO, hisResultOutboxService);
         writes.verify(patientReportReleaseDAO).update(prior);
         writes.verify(patientReportReleaseDAO).flush();
+        writes.verify(hisResultOutboxService).closeUndeliveredReport(eq(9L), contains("superseded"), eq("7"));
         writes.verify(patientReportReleaseDAO).update(release);
         assertEquals(PatientReportReleaseStatus.SUPERSEDED, prior.getStatus());
         assertEquals(PatientReportReleaseStatus.ISSUED, release.getStatus());
@@ -292,6 +293,21 @@ public class ReportFrozenReleaseServiceTest {
         assertEquals("VOID_REPORT", signed.get("action").asText());
         assertEquals(release.getPdfSha256(), signed.get("pdfSha256").asText());
         assertEquals("SIM 修正申请", signed.get("reason").asText());
+        verify(hisResultOutboxService).closeUndeliveredReport(eq(10L), contains("voided"), eq("7"));
+        var payload = ArgumentCaptor.forClass(String.class);
+        verify(hisResultOutboxService).enqueue(eq("LIS-CN"), eq("10"), eq(HisResultEventType.WITHDRAWAL),
+                eq("LIS-CN:WITHDRAWAL:10:V1"), payload.capture(), eq(3), eq("7"), any());
+        var withdrawal = mapper.readTree(payload.getValue());
+        assertEquals(10L, withdrawal.get("releaseId").asLong());
+        assertEquals(1, withdrawal.get("reportVersion").asInt());
+        assertEquals(release.getFrozenContentSha256(), withdrawal.get("snapshotSha256").asText());
+        assertEquals(release.getPdfSha256(), withdrawal.get("pdfSha256").asText());
+        assertFalse(withdrawal.has("patientId"));
+        assertFalse(withdrawal.has("pdfContent"));
+        clearInvocations(signatures, hisResultOutboxService);
+        assertThrows(IllegalStateException.class, () -> service.voidDocument("201", 10L, release.getPdfSha256(),
+                "SIM-SECRET", "SIM 修正申请", "7", "ip", "ua"));
+        verifyZeroInteractions(signatures, hisResultOutboxService);
     }
 
     @Test
@@ -415,6 +431,51 @@ public class ReportFrozenReleaseServiceTest {
                 String.class, java.time.OffsetDateTime.class);
         assertEquals(org.springframework.transaction.annotation.Propagation.REQUIRED, enqueueMethod
                 .getAnnotation(org.springframework.transaction.annotation.Transactional.class).propagation());
+    }
+
+    @Test
+    public void withdrawalFailurePropagatesThroughTheSameVoidTransaction() {
+        issue(release.getFrozenContentSha256());
+        byte[] original = release.getPdfContent().clone();
+        clearInvocations(hisResultOutboxService);
+        var rolledBack = new java.util.concurrent.atomic.AtomicBoolean();
+        var committed = new java.util.concurrent.atomic.AtomicBoolean();
+        var tx = new org.springframework.transaction.support.AbstractPlatformTransactionManager() {
+            protected Object doGetTransaction() {
+                return new Object();
+            }
+
+            protected void doBegin(Object transaction,
+                    org.springframework.transaction.TransactionDefinition definition) {
+            }
+
+            protected void doCommit(org.springframework.transaction.support.DefaultTransactionStatus status) {
+                committed.set(true);
+            }
+
+            protected void doRollback(org.springframework.transaction.support.DefaultTransactionStatus status) {
+                rolledBack.set(true);
+            }
+        };
+        doAnswer(call -> {
+            assertTrue(org.springframework.transaction.support.TransactionSynchronizationManager
+                    .isActualTransactionActive());
+            assertEquals(SignatureMeaning.REJECTED, signature.getSignatureMeaning());
+            throw new IllegalStateException("SIM withdrawal intent unavailable");
+        }).when(hisResultOutboxService).enqueue(eq("LIS-CN"), eq("10"), eq(HisResultEventType.WITHDRAWAL), any(), any(),
+                anyInt(), any(), any());
+        var proxy = new org.springframework.aop.framework.ProxyFactory(service);
+        proxy.addAdvice(new org.springframework.transaction.interceptor.TransactionInterceptor(tx,
+                new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource()));
+        var transactional = (org.openelisglobal.report.service.PatientReportReleaseService) proxy.getProxy();
+
+        assertThrows(IllegalStateException.class, () -> transactional.voidDocument("201", 10L, release.getPdfSha256(),
+                "SIM-SECRET", "SIM void", "7", "ip", "ua"));
+
+        assertTrue(rolledBack.get());
+        assertFalse(committed.get());
+        verify(hisResultOutboxService).closeUndeliveredReport(eq(10L), contains("voided"), eq("7"));
+        assertArrayEquals(original, release.getPdfContent());
     }
 
     private PatientReportReleaseSummary issue(String hash) {

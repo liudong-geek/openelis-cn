@@ -5,11 +5,13 @@ import java.util.Optional;
 
 public interface HisResultOutboxRepository {
 
-  Optional<HisResultOutbox> findByIdempotencyKey(String idempotencyKey);
+    Optional<HisResultOutbox> findByIdempotencyKey(String idempotencyKey);
 
-  Optional<HisResultOutbox> findForUpdate(Long id);
+    Optional<HisResultOutbox> findForUpdate(Long id);
 
-  List<HisResultOutbox> findRecent(HisResultOutboxStatus status, int limit);
+    List<HisResultOutbox> findRecent(HisResultOutboxStatus status, int limit);
 
-  HisResultOutbox save(HisResultOutbox message);
+    List<HisResultOutbox> findUndeliveredReportForUpdate(String releaseId);
+
+    HisResultOutbox save(HisResultOutbox message);
 }

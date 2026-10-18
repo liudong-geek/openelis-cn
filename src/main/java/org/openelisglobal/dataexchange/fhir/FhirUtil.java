@@ -6,6 +6,7 @@ import ca.uhn.fhir.rest.client.api.IClientInterceptor;
 import ca.uhn.fhir.rest.client.api.IGenericClient;
 import ca.uhn.fhir.rest.client.interceptor.BasicAuthInterceptor;
 import ca.uhn.fhir.rest.client.interceptor.BearerTokenAuthInterceptor;
+import ca.uhn.fhir.rest.server.exceptions.UnprocessableEntityException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -150,13 +151,21 @@ public class FhirUtil implements FhirClientFetcher {
 
                 if (statusCode >= 200 && statusCode < 300) {
 
-                    return getFhirParser().parseResource(Bundle.class, body);
+                    Bundle parsed = getFhirParser().parseResource(Bundle.class, body);
+                    rejectStagedClinicalContent(parsed);
+                    String self = request.getRequestURL().toString();
+                    if (request.getQueryString() != null && !request.getQueryString().isBlank())
+                        self += "?" + request.getQueryString();
+                    guardSearchNavigation(parsed, self, true);
+                    return parsed;
                 } else {
                     LogEvent.logError(this.getClass().getSimpleName(), method,
                             "FHIR store returned error: " + statusCode + " - " + body);
                     throw new RuntimeException("FHIR store returned error: " + statusCode);
                 }
             }
+        } catch (UnprocessableEntityException e) {
+            throw e;
         } catch (SocketTimeoutException | ConnectTimeoutException e) {
             LogEvent.logError(this.getClass().getSimpleName(), method,
                     "Timeout while calling FHIR store: " + e.getMessage());
@@ -174,6 +183,41 @@ public class FhirUtil implements FhirClientFetcher {
         } catch (Exception e) {
             LogEvent.logError(this.getClass().getSimpleName(), method, "Unexpected error: " + e.getMessage());
             throw new RuntimeException("Unexpected error communicating with FHIR store", e);
+        }
+    }
+
+    private void guardSearchNavigation(org.hl7.fhir.r4.model.Resource resource, String self, boolean root) {
+        if (resource instanceof Bundle bundle) {
+            for (var link : bundle.getLink()) {
+                if (!root || !"self".equals(link.getRelation()))
+                    throw new UnprocessableEntityException("暂不支持上游分页查询，请缩小查询范围后重试");
+                link.setUrl(self);
+            }
+            for (var entry : bundle.getEntry())
+                guardSearchNavigation(entry.getResource(), self, false);
+        }
+        if (resource instanceof org.hl7.fhir.r4.model.DomainResource domain)
+            for (var contained : domain.getContained())
+                guardSearchNavigation(contained, self, false);
+    }
+
+    /**
+     * Includes and reverse-includes must not bypass the formal publication
+     * provider.
+     */
+    static void rejectStagedClinicalContent(org.hl7.fhir.r4.model.Resource resource) {
+        if (resource == null)
+            return;
+        if (resource instanceof org.hl7.fhir.r4.model.Observation
+                || resource instanceof org.hl7.fhir.r4.model.DiagnosticReport)
+            throw new UnprocessableEntityException("请通过正式报告发布接口查询检验结果");
+        if (resource instanceof org.hl7.fhir.r4.model.Bundle bundle) {
+            for (var entry : bundle.getEntry())
+                rejectStagedClinicalContent(entry.getResource());
+        }
+        if (resource instanceof org.hl7.fhir.r4.model.DomainResource domain) {
+            for (var contained : domain.getContained())
+                rejectStagedClinicalContent(contained);
         }
     }
 
