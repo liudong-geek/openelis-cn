@@ -7,6 +7,7 @@ import org.openelisglobal.common.log.LogEvent;
 import org.openelisglobal.qc.dao.QCControlLotDAO;
 import org.openelisglobal.qc.service.QCResultService;
 import org.openelisglobal.qc.valueholder.QCControlLot;
+import org.openelisglobal.qc.valueholder.QCResult;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -31,7 +32,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>
  * If no matching lot is found (zero active lots or multiple ambiguous lots),
- * logs an ERROR so the failure is visible in monitoring.
+ * returns a NOT_PROCESSED receipt. Persistence failures cross the transaction
+ * boundary so the caller cannot report success before commit.
  */
 @Service
 @Transactional
@@ -47,13 +49,14 @@ public class QCResultProcessingServiceImpl implements QCResultProcessingService 
 
     @Override
     @Transactional(propagation = Propagation.REQUIRED)
-    public void processQCResult(String analyzerId, String testId, String accessionNumber, String lotNumber,
-            String controlLevel, BigDecimal resultValue, String unit, LocalDateTime timestamp) {
+    public QCProcessingResult processQCResult(String analyzerId, String testId, String accessionNumber,
+            String lotNumber, String controlLevel, BigDecimal resultValue, String unit, LocalDateTime timestamp) {
 
-        if (testId == null || analyzerId == null || accessionNumber == null) {
+        if (testId == null || testId.isBlank() || analyzerId == null || analyzerId.isBlank() || accessionNumber == null
+                || accessionNumber.isBlank() || resultValue == null || timestamp == null) {
             LogEvent.logWarn(CLASS_NAME, "processQCResult", "Skipping QC processing — missing required field: testId="
                     + testId + " analyzerId=" + analyzerId + " accession=" + accessionNumber);
-            return;
+            return QCProcessingResult.notProcessed("QC_REQUIRED_FIELD_MISSING");
         }
 
         // analyzerId and testId are already String — they match the
@@ -65,21 +68,12 @@ public class QCResultProcessingServiceImpl implements QCResultProcessingService 
                     "No matching QC control lot for accession=" + accessionNumber + " lotNumber=" + lotNumber
                             + " controlLevel=" + controlLevel + " testId=" + testId + " instrumentId=" + analyzerId
                             + " — create an ACTIVE control lot for this test+instrument via the QC dashboard");
-            return;
+            return QCProcessingResult.notProcessed("QC_CONTROL_LOT_NOT_RESOLVED");
         }
 
-        try {
-            qcResultService.createQCResult(analyzerId, testId, lot.getId(), lot.getControlLevel(), resultValue, unit,
-                    timestamp);
-
-            LogEvent.logInfo(CLASS_NAME, "processQCResult", "QC result created for lot=" + lot.getLotNumber() + " test="
-                    + testId + " instrument=" + analyzerId);
-        } catch (Exception e) {
-            LogEvent.logError(CLASS_NAME, "processQCResult", "Failed to create QC result for lot=" + lot.getLotNumber()
-                    + " test=" + testId + ": " + e.getMessage());
-            // Don't rethrow — the staging AnalyzerResult is still persisted,
-            // and QC processing failure should not block analyzer import.
-        }
+        QCResult created = qcResultService.createQCResult(analyzerId, testId, lot.getId(), lot.getControlLevel(),
+                resultValue, unit, timestamp);
+        return QCProcessingResult.created(created != null ? created.getId() : null);
     }
 
     /**

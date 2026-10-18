@@ -1,5 +1,6 @@
 package org.openelisglobal.analyzer.service;
 
+import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -11,6 +12,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -20,6 +22,7 @@ import org.mockito.junit.MockitoJUnitRunner;
 import org.openelisglobal.qc.dao.QCControlLotDAO;
 import org.openelisglobal.qc.service.QCResultService;
 import org.openelisglobal.qc.valueholder.QCControlLot;
+import org.openelisglobal.qc.valueholder.QCResult;
 
 /**
  * Lot-resolution behavior tests for processQCResult.
@@ -78,23 +81,29 @@ public class QCResultProcessingServiceImplTest {
 
     @Test
     public void tier2_singleControlLevelMatch_resolvesAndPersists() {
+        stubCreatedResult();
         when(controlLotDAO.getByTestAndInstrument(TEST_ID_INT, INSTRUMENT_ID))
                 .thenReturn(Arrays.asList(lpcLot, hpcLot));
 
-        service.processQCResult(ANALYZER_ID, TEST_ID, ACCESSION, null, "LPC", RESULT, UNIT, TS);
+        QCProcessingResult outcome = service.processQCResult(ANALYZER_ID, TEST_ID, ACCESSION, null, "LPC", RESULT, UNIT,
+                TS);
+        assertEquals(QCProcessingResult.Status.CREATED, outcome.status());
+        assertEquals("qc-created", outcome.qcResultId());
 
         verify(qcResultService).createQCResult(eq(ANALYZER_ID), eq(TEST_ID), eq("100"), eq("LPC"), eq(RESULT), eq(UNIT),
                 eq(TS));
     }
 
     @Test
-    public void tier2_ambiguousControlLevel_returnsNullAndDoesNotPersist() {
+    public void tier2_ambiguousControlLevel_reportsNotProcessedAndDoesNotPersist() {
         // Two ACTIVE lots share controlLevel="LPC" — schema allows this; resolver
         // must refuse rather than pick one by DAO order.
         when(controlLotDAO.getByTestAndInstrument(TEST_ID_INT, INSTRUMENT_ID))
                 .thenReturn(Arrays.asList(lpcLot, duplicateLpcLot, hpcLot));
 
-        service.processQCResult(ANALYZER_ID, TEST_ID, ACCESSION, null, "LPC", RESULT, UNIT, TS);
+        QCProcessingResult outcome = service.processQCResult(ANALYZER_ID, TEST_ID, ACCESSION, null, "LPC", RESULT, UNIT, TS);
+        assertEquals(QCProcessingResult.Status.NOT_PROCESSED, outcome.status());
+        assertEquals("QC_CONTROL_LOT_NOT_RESOLVED", outcome.reasonCode());
 
         verify(qcResultService, never()).createQCResult(anyString(), anyString(), anyString(), anyString(),
                 any(BigDecimal.class), anyString(), any(LocalDateTime.class));
@@ -102,6 +111,7 @@ public class QCResultProcessingServiceImplTest {
 
     @Test
     public void tier2_controlLevelMatchesNoLot_fallsThroughToTier3SingleActive() {
+        stubCreatedResult();
         // controlLevel is provided but no lot has it. With exactly one ACTIVE
         // lot in the list overall, Tier 3 single-active fallback applies.
         QCControlLot soloActive = new QCControlLot();
@@ -121,6 +131,7 @@ public class QCResultProcessingServiceImplTest {
 
     @Test
     public void tier1_explicitLotNumberMatch_winsOverLevelMatch() {
+        stubCreatedResult();
         // Tier 1 short-circuits before Tier 2, so even if controlLevel is
         // ambiguous, an explicit lotNumber resolves cleanly.
         when(controlLotDAO.getByTestAndInstrument(TEST_ID_INT, INSTRUMENT_ID))
@@ -133,10 +144,12 @@ public class QCResultProcessingServiceImplTest {
     }
 
     @Test
-    public void tier2_emptyLotsList_returnsNullAndDoesNotPersist() {
+    public void tier2_emptyLotsList_reportsNotProcessedAndDoesNotPersist() {
         when(controlLotDAO.getByTestAndInstrument(TEST_ID_INT, INSTRUMENT_ID)).thenReturn(Collections.emptyList());
 
-        service.processQCResult(ANALYZER_ID, TEST_ID, ACCESSION, null, "LPC", RESULT, UNIT, TS);
+        QCProcessingResult outcome = service.processQCResult(ANALYZER_ID, TEST_ID, ACCESSION, null, "LPC", RESULT, UNIT, TS);
+        assertEquals(QCProcessingResult.Status.NOT_PROCESSED, outcome.status());
+        assertEquals("QC_CONTROL_LOT_NOT_RESOLVED", outcome.reasonCode());
 
         verify(qcResultService, never()).createQCResult(anyString(), anyString(), anyString(), anyString(),
                 any(BigDecimal.class), anyString(), any(LocalDateTime.class));
@@ -144,6 +157,7 @@ public class QCResultProcessingServiceImplTest {
 
     @Test
     public void tier2_establishmentLotMatch_resolves() {
+        stubCreatedResult();
         // Tier 2 must accept ESTABLISHMENT lots — `isUsable` treats them as
         // eligible, so when the bridge surfaces an explicit controlLevel and
         // the only matching lot is in establishment, it resolves cleanly
@@ -165,6 +179,7 @@ public class QCResultProcessingServiceImplTest {
 
     @Test
     public void tier2_controlLevelWithWhitespace_isTrimmedBeforeMatching() {
+        stubCreatedResult();
         when(controlLotDAO.getByTestAndInstrument(TEST_ID_INT, INSTRUMENT_ID))
                 .thenReturn(Arrays.asList(lpcLot, hpcLot));
 
@@ -172,5 +187,36 @@ public class QCResultProcessingServiceImplTest {
 
         verify(qcResultService).createQCResult(eq(ANALYZER_ID), eq(TEST_ID), eq("100"), eq("LPC"), eq(RESULT), eq(UNIT),
                 eq(TS));
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void persistenceFailurePropagatesAcrossTransactionBoundary() {
+        when(controlLotDAO.getByTestAndInstrument(TEST_ID, ANALYZER_ID)).thenReturn(List.of(lpcLot));
+        when(qcResultService.createQCResult(anyString(), anyString(), anyString(), anyString(), any(), any(), any()))
+                .thenThrow(new IllegalStateException("write failed"));
+        service.processQCResult(ANALYZER_ID, TEST_ID, ACCESSION, null, "LPC", RESULT, UNIT, TS);
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void missingPersistedIdentifierCannotBeReportedAsCreated() {
+        when(controlLotDAO.getByTestAndInstrument(TEST_ID, ANALYZER_ID)).thenReturn(List.of(lpcLot));
+        service.processQCResult(ANALYZER_ID, TEST_ID, ACCESSION, null, "LPC", RESULT, UNIT, TS);
+    }
+
+    @Test
+    public void missingRequiredFieldDoesNotAttemptPersistence() {
+        QCProcessingResult outcome = service.processQCResult(" ", TEST_ID, ACCESSION, null, "LPC", RESULT, UNIT, TS);
+        assertEquals(QCProcessingResult.Status.NOT_PROCESSED, outcome.status());
+        assertEquals("QC_REQUIRED_FIELD_MISSING", outcome.reasonCode());
+        verify(controlLotDAO, never()).getByTestAndInstrument(anyString(), anyString());
+        verify(qcResultService, never()).createQCResult(anyString(), anyString(), anyString(), anyString(), any(),
+                any(), any());
+    }
+
+    private void stubCreatedResult() {
+        QCResult result = new QCResult();
+        result.setId("qc-created");
+        when(qcResultService.createQCResult(anyString(), anyString(), anyString(), anyString(), any(), any(), any()))
+                .thenReturn(result);
     }
 }

@@ -24,6 +24,7 @@ import org.hl7.fhir.r4.model.Observation;
 import org.hl7.fhir.r4.model.Resource;
 import org.hl7.fhir.r4.model.Specimen;
 import org.openelisglobal.analyzer.service.AnalyzerService;
+import org.openelisglobal.analyzer.service.QCProcessingResult;
 import org.openelisglobal.analyzer.service.QCResultProcessingService;
 import org.openelisglobal.analyzer.valueholder.Analyzer;
 import org.openelisglobal.analyzer.valueholder.Analyzer.AnalyzerStatus;
@@ -220,21 +221,58 @@ public class AnalyzerFhirImportController extends org.openelisglobal.common.rest
             }
             analyzerResultsService.insertAnalyzerResults(results, userId);
 
-            // Process QC results through Westgard pipeline
+            // Acknowledge staging separately from QC creation. A QC receipt is
+            // counted only after the transactional service has returned.
             int qcProcessed = 0;
+            int qcNotProcessed = 0;
+            int qcUnknown = 0;
+            int qcDuplicatesSkipped = 0;
+            int stagingRowsInserted = 0;
+            List<Map<String, Object>> qcOutcomes = new ArrayList<>();
             for (AnalyzerResults ar : results) {
-                if (ar.getIsControl() && ar.getTestId() != null && analyzer != null) {
-                    processQCAnalyzerResult(ar, analyzer);
-                    qcProcessed++;
+                boolean inserted = ar.getId() != null && !ar.getId().isBlank();
+                if (inserted) {
+                    stagingRowsInserted++;
+                }
+                if (ar.getIsControl()) {
+                    QCProcessingResult outcome = inserted ? processQCAnalyzerResult(ar, analyzer)
+                            : QCProcessingResult.duplicateSkipped();
+                    switch (outcome.status()) {
+                    case CREATED -> qcProcessed++;
+                    case NOT_PROCESSED -> qcNotProcessed++;
+                    case UNKNOWN -> qcUnknown++;
+                    case DUPLICATE_SKIPPED -> qcDuplicatesSkipped++;
+                    }
+                    Map<String, Object> receipt = new LinkedHashMap<>();
+                    receipt.put("analyzerResultId", ar.getId());
+                    receipt.put("accessionNumber", ar.getAccessionNumber());
+                    receipt.put("testId", ar.getTestId());
+                    receipt.put("status", outcome.status().name());
+                    receipt.put("qcResultId", outcome.qcResultId());
+                    receipt.put("reasonCode", outcome.reasonCode());
+                    qcOutcomes.add(receipt);
                 }
             }
 
+            // Keep the legacy accepted-row count for existing bridge clients;
+            // expose exact new/duplicate staging counts under explicit names.
             response.put("success", true);
             response.put("resultsInserted", results.size());
+            response.put("resultsReceived", results.size());
+            response.put("stagingRowsInserted", stagingRowsInserted);
+            response.put("stagingDuplicatesSkipped", results.size() - stagingRowsInserted);
+            response.put("qcResultsReceived", qcOutcomes.size());
             response.put("qcResultsProcessed", qcProcessed);
+            response.put("qcResultsNotProcessed", qcNotProcessed);
+            response.put("qcResultsUnknown", qcUnknown);
+            response.put("qcResultsDuplicateSkipped", qcDuplicatesSkipped);
+            response.put("qcProcessingComplete", qcNotProcessed == 0 && qcUnknown == 0 && qcDuplicatesSkipped == 0);
+            response.put("qcOutcomes", qcOutcomes);
             response.put("analyzerId", analyzer != null ? analyzer.getId() : null);
-            LogEvent.logInfo(CLASS_NAME, "importFhirBundle", "Inserted " + results.size() + " results from FHIR Bundle"
-                    + " (" + qcProcessed + " QC)" + (analyzer != null ? " for analyzer " + analyzer.getName() : ""));
+            LogEvent.logInfo(CLASS_NAME, "importFhirBundle",
+                    "Accepted " + results.size() + " results from FHIR Bundle" + " (" + stagingRowsInserted
+                            + " staging rows inserted, " + qcProcessed + " QC records created)"
+                            + (analyzer != null ? " for analyzer " + analyzer.getName() : ""));
 
             return ResponseEntity.ok(response);
 
@@ -746,21 +784,38 @@ public class AnalyzerFhirImportController extends org.openelisglobal.common.rest
      * matching {@code QCControlLot} by lot number + test + instrument and creates a
      * {@code QCResult} that triggers Westgard rule evaluation.
      */
-    private void processQCAnalyzerResult(AnalyzerResults ar, Analyzer analyzer) {
+    private QCProcessingResult processQCAnalyzerResult(AnalyzerResults ar, Analyzer analyzer) {
+        if (analyzer == null) {
+            return QCProcessingResult.notProcessed("QC_ANALYZER_NOT_RESOLVED");
+        }
+        if (ar.getTestId() == null || ar.getTestId().isBlank() || "-1".equals(ar.getTestId())) {
+            return QCProcessingResult.notProcessed("QC_TEST_NOT_MAPPED");
+        }
+        if (ar.getDuplicateAnalyzerResultId() != null) {
+            return QCProcessingResult.notProcessed("QC_CORRECTION_REQUIRES_REVIEW");
+        }
+        if (ar.isReadOnly() || ar.getImportIssueReason() != null) {
+            return QCProcessingResult.notProcessed("QC_CONFIGURATION_REQUIRED");
+        }
+        BigDecimal resultValue;
         try {
-            BigDecimal resultValue = new BigDecimal(ar.getResult());
+            resultValue = new BigDecimal(ar.getResult());
+        } catch (NumberFormatException | NullPointerException e) {
+            return QCProcessingResult.notProcessed("QC_NON_NUMERIC_RESULT");
+        }
+        try {
             LocalDateTime timestamp = ar.getCompleteDate() != null
                     ? ar.getCompleteDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime()
                     : LocalDateTime.now();
 
-            qcResultProcessingService.processQCResult(analyzer.getId(), ar.getTestId(), ar.getAccessionNumber(),
+            return qcResultProcessingService.processQCResult(analyzer.getId(), ar.getTestId(), ar.getAccessionNumber(),
                     ar.getLotNumber(), ar.getControlLevel(), resultValue, ar.getUnits(), timestamp);
-        } catch (NumberFormatException e) {
-            LogEvent.logWarn(CLASS_NAME, "processQCAnalyzerResult",
-                    "QC result value is not numeric — skipping QC processing: " + ar.getResult());
         } catch (Exception e) {
             LogEvent.logError(CLASS_NAME, "processQCAnalyzerResult", "QC processing failed for accession="
                     + ar.getAccessionNumber() + " test=" + ar.getTestId() + ": " + e.getMessage());
+            // The commit acknowledgement may be uncertain. Do not encourage
+            // automatic replay of an already accepted bundle.
+            return QCProcessingResult.unknown();
         }
     }
 }

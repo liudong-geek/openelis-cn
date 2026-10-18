@@ -20,9 +20,10 @@ import java.time.LocalDateTime;
  * {@code QCControlLot.lotNumber} for the given test and instrument.
  *
  * <p>
- * Transaction Boundary: Runs within the same transaction as the FHIR import
- * (REQUIRED propagation) so that both the staging {@code AnalyzerResults} row
- * and the {@code QCResult} row are committed atomically.
+ * The import controller stages observations before calling this transactional
+ * service. QC failure does not undo already committed staging rows. The caller
+ * must only count CREATED after this service's transaction proxy returns, and
+ * must not interpret creation as a successful Westgard evaluation.
  */
 public interface QCResultProcessingService {
 
@@ -46,6 +47,6 @@ public interface QCResultProcessingService {
      * @param unit            Unit of measure
      * @param timestamp       Run date/time from Observation.effectiveDateTime
      */
-    void processQCResult(String analyzerId, String testId, String accessionNumber, String lotNumber,
+    QCProcessingResult processQCResult(String analyzerId, String testId, String accessionNumber, String lotNumber,
             String controlLevel, BigDecimal resultValue, String unit, LocalDateTime timestamp);
 }
