@@ -313,6 +313,7 @@ const CHINA_ITEM_DISPLAY_KEYS = Object.freeze({
   menu_reports_tatreport: "sideNav.title.tatreport",
   menu_reports_audittrail: "sideNav.label.audittrail",
   menu_reports_auditTrail: "sideNav.label.audittrail",
+  menu_qc_imports: "qc.imports.title",
 });
 
 // Menu endpoints must represent the page users actually land on. Keeping a
@@ -890,6 +891,12 @@ const compactQualityDestinations = (destinations) => {
     ],
     [
       compacted.find(
+        (entry) => getActionURL(entry) === "/analyzers/qc/imports",
+      ),
+      "qc.imports.title",
+    ],
+    [
+      compacted.find(
         (entry) =>
           getElementId(entry) === "menu_analyzers_qc_dashboard" ||
           getActionURL(entry) === "/analyzers/qc/db",
@@ -1386,6 +1393,22 @@ const buildChinaMenu = (items, options) => {
     allowedQualityRoles,
     (item) => getElementId(item) === ANALYZER_QC_ELEMENT_ID,
   );
+  // Imports have their own API/route permission. Expose this direct task only
+  // under an enabled server QC root; do not grant the other QC destinations.
+  if (
+    analyzerSplit.qualityItems.length > 0 &&
+    [ROLE_NAMES.GLOBAL_ADMIN, ROLE_NAMES.LAB_SUPERVISOR].some((role) =>
+      roleSet.has(role),
+    )
+  ) {
+    qualityItems.push(
+      createDestination(
+        "menu_qc_imports",
+        "qc.imports.title",
+        "/analyzers/qc/imports",
+      ),
+    );
+  }
   if (qualityItems.length > 0) {
     output.push(
       createGroup(

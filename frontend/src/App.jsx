@@ -1463,7 +1463,7 @@ export default function App() {
                   path="/analyzers/qc/imports"
                   exact
                   component={() => <QCImports />}
-                  role={Roles.LAB_SUPERVISOR}
+                  role={[Roles.GLOBAL_ADMIN, Roles.LAB_SUPERVISOR]}
                 />
                 <SecureRoute
                   path="/analyzers/qc/charts/:analyzerId"

@@ -492,6 +492,7 @@ describe("taskFocusedMenu", () => {
       [
         "menu_nonconformity",
         "menu_alerts_standalone",
+        "menu_qc_imports",
         "menu_analyzers_qc_dashboard",
       ],
     );
@@ -523,13 +524,65 @@ describe("taskFocusedMenu", () => {
     });
     const qualityRoot = findById(result, "menu_quality_workspace");
 
-    expect(qualityRoot.childMenus).toHaveLength(1);
+    expect(qualityRoot.childMenus).toHaveLength(2);
     expect(qualityRoot.childMenus[0].menu).toMatchObject({
+      elementId: "menu_qc_imports",
+      actionURL: "/analyzers/qc/imports",
+      displayKey: "qc.imports.title",
+    });
+    expect(qualityRoot.childMenus[1].menu).toMatchObject({
       elementId: "menu_analyzers_qc_dashboard",
       actionURL: "/analyzers/qc/db",
       displayKey: "qc.dashboard.title",
     });
   });
+
+  test("gives a global administrator a direct QC imports entry without QC configuration", () => {
+    const result = buildTaskFocusedMenu(chinaMenuFixture(), {
+      roles: [ROLE_NAMES.GLOBAL_ADMIN],
+    });
+    const qualityRoot = findById(result, "menu_quality_workspace");
+
+    expect(qualityRoot?.childMenus).toEqual([
+      expect.objectContaining({
+        menu: expect.objectContaining({
+          actionURL: "/analyzers/qc/imports",
+          displayKey: "qc.imports.title",
+        }),
+        childMenus: [],
+      }),
+    ]);
+    expect(findById(result, "menu_analyzers_qc_dashboard")).toBeNull();
+    expect(findById(result, "menu_analyzers_qc_control_lots")).toBeNull();
+    expect(findById(result, "menu_analyzers_qc_rule_config")).toBeNull();
+  });
+
+  test.each([
+    { roles: [] },
+    { roles: ["ROLE_USER"] },
+    { roles: [ROLE_NAMES.RESULTS] },
+    { roles: [ROLE_NAMES.ANALYSER_IMPORT] },
+    { roles: [ROLE_NAMES.VALIDATION] },
+  ])("does not expose the QC imports task to roles $roles", ({ roles }) => {
+    const result = buildTaskFocusedMenu(chinaMenuFixture(), { roles });
+    expect(findById(result, "menu_qc_imports")).toBeNull();
+  });
+
+  test.each([ROLE_NAMES.GLOBAL_ADMIN, ROLE_NAMES.LAB_SUPERVISOR])(
+    "does not manufacture an imports entry for %s when the server disabled QC",
+    (role) => {
+      const source = chinaMenuFixture();
+      findById(source, "menu_analyzers_qc").menu.isActive = false;
+      const disabled = buildTaskFocusedMenu(source, { roles: [role] });
+      expect(findById(disabled, "menu_qc_imports")).toBeNull();
+
+      const absent = buildTaskFocusedMenu(
+        source.filter((entry) => entry.menu.elementId !== "menu_analyzers"),
+        { roles: [role] },
+      );
+      expect(findById(absent, "menu_qc_imports")).toBeNull();
+    },
+  );
 
   test("separates daily configuration from system operations", () => {
     const result = buildTaskFocusedMenu(chinaMenuFixture(), {
