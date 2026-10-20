@@ -94,21 +94,99 @@ public class AnalyzerResults extends BaseObject<String> implements Cloneable {
     @Column(name = "import_issue_reason", length = 200)
     private String importIssueReason;
 
-    // QC metadata propagated from the analyzer-bridge for control samples.
-    // Transient — only carried in-memory from FHIR ingest
-    // (AnalyzerFhirImportController) through to QCResultProcessingService.
-    // Not persisted on analyzer_results because the matched lot is
-    // already recorded on the qc_result row (control_lot_id FK).
-    // - lotNumber: canonical qc_control_lot.lot_number when the bridge
-    // extracted it (ASTM Q-segment field 3 component 2)
-    // - controlLevel: clinical level identifier (LPC/HPC/CNEG/CPOS/etc.)
-    // — ASTM Q-segment field 3 component 3, OR matched FILE qcRule's
-    // SPECIMEN_ID_PREFIX operand
-    @jakarta.persistence.Transient
+    @Column(name = "qc_lot_number", columnDefinition = "TEXT")
     private String lotNumber;
 
-    @jakarta.persistence.Transient
+    @Column(name = "qc_control_level", columnDefinition = "TEXT")
     private String controlLevel;
+
+    @Column(name = "qc_source_key", length = 64)
+    private String qcSourceKey;
+
+    @Column(name = "qc_source_identity", length = 64)
+    private String qcSourceIdentity;
+
+    @Column(name = "qc_raw_observation", columnDefinition = "TEXT")
+    private String qcRawObservation;
+
+    @Column(name = "qc_processing_status", length = 30)
+    private String qcProcessingStatus;
+
+    @Column(name = "qc_processing_reason", length = 200)
+    private String qcProcessingReason;
+
+    @Column(name = "qc_result_id", length = 36)
+    private String qcResultId;
+
+    @Column(name = "qc_processed_at")
+    private Timestamp qcProcessedAt;
+
+    @Column(name = "qc_processed_by", length = 36)
+    private String qcProcessedBy;
+
+    public String getQcSourceKey() {
+        return qcSourceKey;
+    }
+
+    public void setQcSourceKey(String qcSourceKey) {
+        this.qcSourceKey = qcSourceKey;
+    }
+
+    public String getQcSourceIdentity() {
+        return qcSourceIdentity;
+    }
+
+    public void setQcSourceIdentity(String qcSourceIdentity) {
+        this.qcSourceIdentity = qcSourceIdentity;
+    }
+
+    public String getQcRawObservation() {
+        return qcRawObservation;
+    }
+
+    public void setQcRawObservation(String qcRawObservation) {
+        this.qcRawObservation = qcRawObservation;
+    }
+
+    public String getQcProcessingStatus() {
+        return qcProcessingStatus;
+    }
+
+    public void setQcProcessingStatus(String qcProcessingStatus) {
+        this.qcProcessingStatus = qcProcessingStatus;
+    }
+
+    public String getQcProcessingReason() {
+        return qcProcessingReason;
+    }
+
+    public void setQcProcessingReason(String qcProcessingReason) {
+        this.qcProcessingReason = qcProcessingReason;
+    }
+
+    public String getQcResultId() {
+        return qcResultId;
+    }
+
+    public void setQcResultId(String qcResultId) {
+        this.qcResultId = qcResultId;
+    }
+
+    public Timestamp getQcProcessedAt() {
+        return qcProcessedAt;
+    }
+
+    public void setQcProcessedAt(Timestamp qcProcessedAt) {
+        this.qcProcessedAt = qcProcessedAt;
+    }
+
+    public String getQcProcessedBy() {
+        return qcProcessedBy;
+    }
+
+    public void setQcProcessedBy(String qcProcessedBy) {
+        this.qcProcessedBy = qcProcessedBy;
+    }
 
     public String getImportIssueReason() {
         return importIssueReason;

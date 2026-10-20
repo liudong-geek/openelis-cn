@@ -158,6 +158,7 @@ import {
   ControlLotSetup,
   RuleConfigPanel,
 } from "./components/qc";
+import QCImports from "./components/qc/imports/QCImports";
 import ResultSearch from "./components/resultPage/ResultSearch";
 import {
   LegacyResultsGate,
@@ -1456,6 +1457,12 @@ export default function App() {
                   path="/analyzers/qc/db"
                   exact
                   component={() => <QCDashboard />}
+                  role={Roles.LAB_SUPERVISOR}
+                />
+                <SecureRoute
+                  path="/analyzers/qc/imports"
+                  exact
+                  component={() => <QCImports />}
                   role={Roles.LAB_SUPERVISOR}
                 />
                 <SecureRoute

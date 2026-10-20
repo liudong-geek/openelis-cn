@@ -104,6 +104,8 @@ public class AnalyzerResultsAcceptServiceImpl implements AnalyzerResultsAcceptSe
     @Override
     public void acceptAndPersist(List<AnalyzerResultItem> allResults, String sysUserId) {
         List<AnalyzerResultItem> actionableResults = extractActionableResult(allResults);
+        Map<String, Boolean> storedControls = new HashMap<>();
+        actionableResults.removeIf(item -> isStoredControl(item, storedControls));
 
         if (actionableResults.isEmpty()) {
             return;
@@ -124,6 +126,7 @@ public class AnalyzerResultsAcceptServiceImpl implements AnalyzerResultsAcceptSe
         remaining.removeAll(actionableResults);
 
         List<AnalyzerResultItem> childlessControls = extractChildlessControls(remaining);
+        childlessControls.removeIf(item -> isStoredControl(item, storedControls));
         List<AnalyzerResults> deletableAnalyzerResults = getRemovableAnalyzerResults(actionableResults,
                 childlessControls);
 
@@ -140,6 +143,15 @@ public class AnalyzerResultsAcceptServiceImpl implements AnalyzerResultsAcceptSe
         }
 
         analyzerResultsService.persistAnalyzerResults(deletableAnalyzerResults, sampleGroupList, sysUserId);
+    }
+
+    private boolean isStoredControl(AnalyzerResultItem item, Map<String, Boolean> storedControls) {
+        // Existing manual rows without a staging ID keep their original path. A
+        // manual flag on a staged row never bypasses its persisted QC identity.
+        if (GenericValidator.isBlankOrNull(item.getId())) {
+            return false;
+        }
+        return storedControls.computeIfAbsent(item.getId(), id -> analyzerResultsService.get(id).getIsControl());
     }
 
     // ---------------------------------------------------------------

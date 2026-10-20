@@ -183,6 +183,13 @@ const QCDashboard = () => {
           <Button
             kind="tertiary"
             size="sm"
+            onClick={() => history.push("/analyzers/qc/imports")}
+          >
+            {intl.formatMessage({ id: "qc.imports.title" })}
+          </Button>
+          <Button
+            kind="tertiary"
+            size="sm"
             onClick={() => history.push("/analyzers/qc/control-lots")}
           >
             {intl.formatMessage({ id: "qc.controlLots.title" })}

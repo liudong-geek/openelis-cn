@@ -5,6 +5,7 @@ import java.util.List;
 import org.apache.commons.validator.GenericValidator;
 import org.openelisglobal.analysis.service.AnalysisService;
 import org.openelisglobal.analysis.valueholder.Analysis;
+import org.openelisglobal.analyzer.service.QCStagingService;
 import org.openelisglobal.analyzerresults.dao.AnalyzerResultsDAO;
 import org.openelisglobal.analyzerresults.valueholder.AnalyzerResults;
 import org.openelisglobal.analyzerresults.valueholder.SampleGrouping;
@@ -47,6 +48,9 @@ public class AnalyzerResultsServiceImpl extends AuditableBaseObjectServiceImpl<A
     private AnalysisService analysisService;
     @Autowired
     private ResultService resultService;
+
+    @Autowired
+    private QCStagingService qcStagingService;
 
     AnalyzerResultsServiceImpl() {
         super(AnalyzerResults.class);
@@ -123,6 +127,16 @@ public class AnalyzerResultsServiceImpl extends AuditableBaseObjectServiceImpl<A
     public void insertAnalyzerResults(List<AnalyzerResults> results, String sysUserId) {
         try {
             for (AnalyzerResults result : results) {
+                if (result.getIsControl() && result.getQcRawObservation() != null
+                        && !result.getQcRawObservation().isBlank()) {
+                    qcStagingService.stage(result, sysUserId);
+                    continue;
+                }
+                if (result.getIsControl()) {
+                    // Originals received before durable QC metadata cannot be safely replayed.
+                    result.setQcProcessingStatus("LEGACY_REVIEW");
+                    result.setQcProcessingReason("QC_LEGACY_REVIEW_REQUIRED");
+                }
                 boolean duplicateByAccessionAndTestOnly = false;
                 List<AnalyzerResults> previousResults = baseObjectDAO.getDuplicateResultByAccessionAndTest(result);
                 AnalyzerResults previousResult = null;
@@ -189,6 +203,18 @@ public class AnalyzerResultsServiceImpl extends AuditableBaseObjectServiceImpl<A
         for (AnalyzerResults currentAnalyzerResult : deletableAnalyzerResults) {
             delete(currentAnalyzerResult.getId(), sysUserId);
         }
+    }
+
+    @Override
+    @Transactional
+    public void delete(AnalyzerResults result) {
+        // All inherited delete/deleteAll entry points eventually reach this method.
+        // Inspect storage because the patient cleanup can pass ID-only objects.
+        AnalyzerResults stored = baseObjectDAO.get(result.getId()).orElse(null);
+        if (stored != null && stored.getIsControl()) {
+            return;
+        }
+        super.delete(result);
     }
 
     private boolean insertResults(List<SampleGrouping> sampleGroupList, String sysUserId) {

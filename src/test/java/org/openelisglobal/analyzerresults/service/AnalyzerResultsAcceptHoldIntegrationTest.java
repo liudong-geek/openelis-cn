@@ -79,12 +79,13 @@ public class AnalyzerResultsAcceptHoldIntegrationTest extends BaseWebContextSens
     }
 
     private void ensureRecordHistoryType(long preferredId, String typeName, String description) {
-        jdbc.update("INSERT INTO clinlims.observation_history_type (id, type_name, description, lastupdated) "
-                + "SELECT CASE WHEN EXISTS (SELECT 1 FROM clinlims.observation_history_type WHERE id = ?) "
-                + "THEN (SELECT COALESCE(MAX(id), 0) + 1 FROM clinlims.observation_history_type) ELSE ? END, "
-                + "?, ?, NOW() WHERE NOT EXISTS "
-                + "(SELECT 1 FROM clinlims.observation_history_type WHERE type_name = ?)", preferredId,
-                preferredId, typeName, description, typeName);
+        jdbc.update(
+                "INSERT INTO clinlims.observation_history_type (id, type_name, description, lastupdated) "
+                        + "SELECT CASE WHEN EXISTS (SELECT 1 FROM clinlims.observation_history_type WHERE id = ?) "
+                        + "THEN (SELECT COALESCE(MAX(id), 0) + 1 FROM clinlims.observation_history_type) ELSE ? END, "
+                        + "?, ?, NOW() WHERE NOT EXISTS "
+                        + "(SELECT 1 FROM clinlims.observation_history_type WHERE type_name = ?)",
+                preferredId, preferredId, typeName, description, typeName);
     }
 
     /**
@@ -224,5 +225,54 @@ public class AnalyzerResultsAcceptHoldIntegrationTest extends BaseWebContextSens
                 String.class, ACCESSION);
         assertEquals("the sample item carries the reviewer's chosen type, not the primary link", String.valueOf(TYPE_B),
                 persistedType);
+    }
+
+    @org.junit.Test
+    public void storedControlCannotBeAcceptedAsPatientByChangingClientFlags() {
+        jdbc.update("UPDATE clinlims.analyzer_results SET iscontrol = true WHERE id = ?::numeric", stagedRowId);
+        AnalyzerResultItem forged = acceptedItem();
+        forged.setIsControl(false);
+        forged.setReadOnly(false);
+        forged.setManual(true);
+        forged.setTypeOfSampleId(String.valueOf(TYPE_B));
+
+        acceptService.acceptAndPersist(List.of(forged), "1");
+
+        assertEquals("the QC original survives unchanged", Integer.valueOf(1),
+                jdbc.queryForObject("SELECT count(*) FROM clinlims.analyzer_results WHERE id = ?::numeric"
+                        + " AND iscontrol = true AND result = '42'", Integer.class, stagedRowId));
+        assertEquals("QC does not create a clinical sample", Integer.valueOf(0), jdbc.queryForObject(
+                "SELECT count(*) FROM clinlims.sample WHERE accession_number = ?", Integer.class, ACCESSION));
+    }
+
+    @org.junit.Test
+    public void storedControlIsPreservedWhileAdjacentPatientIsActuallyAccepted() {
+        String controlId = String.valueOf(jdbc.queryForObject("SELECT nextval('analyzer_results_seq')", Long.class));
+        jdbc.update("INSERT INTO clinlims.analyzer_results (id, analyzer_id, accession_number, test_name, result,"
+                + " iscontrol, test_id, last_updated) VALUES (?::numeric, ?, ?, 'HoldIT QC 1145', '99', true,"
+                + " ?, NOW())", controlId, ANALYZER_ID, ACCESSION, MULTI_TYPE_TEST);
+        AnalyzerResultItem forged = acceptedItem();
+        forged.setId(controlId);
+        forged.setIsControl(false);
+        forged.setReadOnly(false);
+        forged.setResult("999");
+        forged.setTypeOfSampleId(String.valueOf(TYPE_B));
+        AnalyzerResultItem patient = acceptedItem();
+        patient.setSampleGroupingNumber(2);
+        patient.setTypeOfSampleId(String.valueOf(TYPE_B));
+
+        acceptService.acceptAndPersist(List.of(forged, patient), "1");
+
+        assertEquals("the original QC value remains staged", Integer.valueOf(1),
+                jdbc.queryForObject("SELECT count(*) FROM clinlims.analyzer_results WHERE id = ?::numeric"
+                        + " AND iscontrol = true AND result = '99'", Integer.class, controlId));
+        assertEquals("the patient staging row is consumed normally", Integer.valueOf(0), jdbc.queryForObject(
+                "SELECT count(*) FROM clinlims.analyzer_results WHERE id = ?::numeric", Integer.class, stagedRowId));
+        assertEquals("only the patient measurement becomes a clinical result", List.of("42"),
+                jdbc.queryForList(
+                        "SELECT r.value FROM clinlims.result r JOIN clinlims.analysis a"
+                                + " ON r.analysis_id = a.id JOIN clinlims.sample_item si ON a.sampitem_id = si.id"
+                                + " JOIN clinlims.sample s ON si.samp_id = s.id WHERE s.accession_number = ?",
+                        String.class, ACCESSION));
     }
 }

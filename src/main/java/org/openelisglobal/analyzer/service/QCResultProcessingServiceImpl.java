@@ -17,12 +17,11 @@ import org.springframework.transaction.annotation.Transactional;
  * Processes QC results received via the FHIR import pipeline.
  *
  * <p>
- * Resolves the {@link QCControlLot} for a QC observation using a two-tier
- * strategy: (1) strict match — specimen accession equals a lot's lotNumber, (2)
- * fallback — if no strict match, use the single ACTIVE lot for the (test,
- * instrument) pair. This follows the design spec's
- * {@code getActiveControlLot(testId, instrumentId, level)} pattern while
- * remaining compatible with labs that encode lot numbers in specimen IDs.
+ * Resolves the {@link QCControlLot} within the test and instrument. An explicit
+ * lot number and its supplied control level must identify exactly one usable
+ * entry. An unresolved explicit identity never falls back to another lot.
+ * Legacy accession matching and sole-usable-lot matching remain available when
+ * no conflicting identity is supplied.
  *
  * <p>
  * If a matching lot is found, delegates to
@@ -31,7 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
  * rule evaluation.
  *
  * <p>
- * If no matching lot is found (zero active lots or multiple ambiguous lots),
+ * If no matching lot is found (unavailable, conflicting or ambiguous identity),
  * returns a NOT_PROCESSED receipt. Persistence failures cross the transaction
  * boundary so the caller cannot report success before commit.
  */
@@ -67,7 +66,7 @@ public class QCResultProcessingServiceImpl implements QCResultProcessingService 
             LogEvent.logError(CLASS_NAME, "processQCResult",
                     "No matching QC control lot for accession=" + accessionNumber + " lotNumber=" + lotNumber
                             + " controlLevel=" + controlLevel + " testId=" + testId + " instrumentId=" + analyzerId
-                            + " — create an ACTIVE control lot for this test+instrument via the QC dashboard");
+                            + " — verify the lot identity, level and status for this test+instrument");
             return QCProcessingResult.notProcessed("QC_CONTROL_LOT_NOT_RESOLVED");
         }
 
@@ -77,61 +76,33 @@ public class QCResultProcessingServiceImpl implements QCResultProcessingService 
     }
 
     /**
-     * Find a control lot for the given QC observation.
+     * Match explicit lot numbers before legacy accession-as-lot identifiers. A
+     * supplied level is part of the identity within that lot number. Duplicate
+     * identities are rejected before checking status. ACTIVE and ESTABLISHMENT
+     * retain their existing usable status.
      *
      * <p>
-     * Three-tier resolution. Each tier consumes metadata that the bridge propagated
-     * upstream — no guessing, no substring heuristics:
-     *
-     * <ol>
-     * <li><b>Tier 1 — explicit lot match</b>: bridge extracted a canonical lot
-     * identifier (ASTM Q-segment field 3 component 2, or future FILE profile
-     * mappings). Equality match on {@code lotNumber}.</li>
-     * <li><b>Tier 2 — level match</b>: bridge surfaced a control level (ASTM
-     * Q-segment field 3 component 3, or matched FILE qcRule SPECIMEN_ID_PREFIX
-     * operand like "LPC"/"HPC"/"CNEG"). Equality match on {@code controlLevel} for
-     * the (test, instrument). Handles the normal multi-level QC case where labs run
-     * LPC + HPC simultaneously.</li>
-     * <li><b>Tier 3 — single-lot fallback</b>: backwards-compat for pre-extension
-     * bundles or ad-hoc registrations with exactly one ACTIVE lot on (test,
-     * instrument).</li>
-     * </ol>
-     *
-     * <p>
-     * Returns {@code null} when no tier matches. Caller logs the error including
-     * all metadata so a clinician can identify which lot was expected.
+     * If neither lot identifier applies, a supplied level must match exactly one
+     * usable lot. Only when no level is supplied may a single usable lot be
+     * selected without an identifier.
      */
     private QCControlLot findMatchingControlLot(String accessionNumber, String lotNumber, String controlLevel,
             String testId, String instrumentId) {
         List<QCControlLot> lots = controlLotDAO.getByTestAndInstrument(testId, instrumentId);
 
-        // Tier 1: explicit lot_number from FHIR extension OR from accession
-        // when operator encoded it in specimen ID (BioRad-Lot-12345 pattern)
+        // Explicit identifiers are exact and binding, including unknown values.
         if (lotNumber != null && !lotNumber.isEmpty()) {
-            for (QCControlLot lot : lots) {
-                if (isUsable(lot) && lotNumber.equals(lot.getLotNumber())) {
-                    LogEvent.logInfo(CLASS_NAME, "findMatchingControlLot", "Tier 1: explicit lot match '" + lotNumber
-                            + "' for testId=" + testId + " instrumentId=" + instrumentId);
-                    return lot;
-                }
-            }
+            List<QCControlLot> matches = lots.stream().filter(l -> lotNumber.equals(l.getLotNumber())).toList();
+            return resolveWithinLot(matches, controlLevel);
         }
-        for (QCControlLot lot : lots) {
-            if (isUsable(lot) && accessionNumber.equals(lot.getLotNumber())) {
-                LogEvent.logInfo(CLASS_NAME, "findMatchingControlLot", "Tier 1: accession-as-lot match '"
-                        + accessionNumber + "' for testId=" + testId + " instrumentId=" + instrumentId);
-                return lot;
-            }
+        // Legacy instruments may encode the lot number in the specimen accession.
+        List<QCControlLot> accessionMatches = lots.stream().filter(l -> accessionNumber.equals(l.getLotNumber()))
+                .toList();
+        if (!accessionMatches.isEmpty()) {
+            return resolveWithinLot(accessionMatches, controlLevel);
         }
 
-        // Tier 2: level match — controlLevel from FHIR extension picks the
-        // right lot when (testId, instrumentId) has multiple usable lots
-        // (the normal multi-level QC case: LPC + HPC simultaneously). The
-        // schema does not enforce uniqueness on (test, instrument, controlLevel)
-        // so we require exactly-one match; ambiguity returns null + logWarn
-        // rather than picking the first by DAO order. Uses isUsable so
-        // ESTABLISHMENT lots resolve deterministically when the bridge
-        // surfaces an explicit controlLevel (consistent with Tier 1).
+        // A supplied level is also binding; neither zero nor multiple matches resolve.
         if (controlLevel != null && !controlLevel.trim().isEmpty()) {
             String trimmedLevel = controlLevel.trim();
             List<QCControlLot> levelMatches = lots.stream()
@@ -151,38 +122,40 @@ public class QCResultProcessingServiceImpl implements QCResultProcessingService 
                                 + " instrumentId=" + instrumentId + " — " + levelMatches.size()
                                 + " usable lots share this level [" + matchedLotNumbers
                                 + "]; cannot disambiguate, returning null.");
-                return null;
             }
+            return null;
         }
 
-        // Tier 3: single-ACTIVE-lot fallback (backwards-compat / pre-extension bundles)
-        List<QCControlLot> activeLots = lots.stream().filter(l -> "ACTIVE".equals(l.getStatus())).toList();
-        if (activeLots.size() == 1) {
+        // Compatibility fallback requires exactly one usable lot and no supplied
+        // identity.
+        List<QCControlLot> usableLots = lots.stream().filter(QCResultProcessingServiceImpl::isUsable).toList();
+        if (usableLots.size() == 1) {
             LogEvent.logInfo(CLASS_NAME, "findMatchingControlLot",
-                    "Tier 3: single-ACTIVE-lot fallback — using '" + activeLots.get(0).getLotNumber()
-                            + "' for accession=" + accessionNumber + " testId=" + testId + " instrumentId="
-                            + instrumentId);
-            return activeLots.get(0);
+                    "Single-usable-lot fallback — using '" + usableLots.get(0).getLotNumber() + "' for accession="
+                            + accessionNumber + " testId=" + testId + " instrumentId=" + instrumentId);
+            return usableLots.get(0);
         }
 
-        // Also check ESTABLISHMENT lots (single = use it for data accumulation)
-        List<QCControlLot> establishmentLots = lots.stream().filter(l -> "ESTABLISHMENT".equals(l.getStatus()))
-                .toList();
-        if (activeLots.isEmpty() && establishmentLots.size() == 1) {
-            LogEvent.logInfo(CLASS_NAME, "findMatchingControlLot",
-                    "No active lot; using single ESTABLISHMENT lot '" + establishmentLots.get(0).getLotNumber()
-                            + "' for data accumulation (testId=" + testId + " instrumentId=" + instrumentId + ")");
-            return establishmentLots.get(0);
-        }
-
-        if (activeLots.size() > 1) {
+        if (usableLots.size() > 1) {
             LogEvent.logWarn(CLASS_NAME, "findMatchingControlLot",
-                    "Multiple ACTIVE lots for testId=" + testId + " instrumentId=" + instrumentId + " (count="
-                            + activeLots.size() + "); bridge did not propagate lotNumber/"
+                    "Multiple usable lots for testId=" + testId + " instrumentId=" + instrumentId + " (count="
+                            + usableLots.size() + "); bridge did not propagate lotNumber/"
                             + "controlLevel — cannot disambiguate.");
         }
 
         return null;
+    }
+
+    private QCControlLot resolveWithinLot(List<QCControlLot> sameLot, String controlLevel) {
+        // Different levels may share one lot number. Availability cannot resolve
+        // duplicate entries with the same lot and level, even if one is inactive.
+        List<QCControlLot> identity = sameLot.stream().filter(lot -> matchesLevel(lot, controlLevel)).toList();
+        return identity.size() == 1 && isUsable(identity.get(0)) ? identity.get(0) : null;
+    }
+
+    private static boolean matchesLevel(QCControlLot lot, String controlLevel) {
+        return controlLevel == null || controlLevel.isBlank()
+                || controlLevel.trim().equalsIgnoreCase(lot.getControlLevel());
     }
 
     private static boolean isUsable(QCControlLot lot) {

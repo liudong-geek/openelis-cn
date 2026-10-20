@@ -49,6 +49,18 @@ public interface AnalyzerResultsDAO extends BaseDAO<AnalyzerResults, String> {
      */
     public List<AnalyzerResults> findWithImportIssues(int limit);
 
+    void lockQCAnalyzer(String analyzerId);
+
+    AnalyzerResults findQCBySourceKey(String analyzerId, String sourceKey);
+
+    boolean hasQCSourceIdentity(String sourceIdentity);
+
+    AnalyzerResults lockQCStaging(String id);
+
+    List<AnalyzerResults> findQCStaging(String status, int limit, int offset);
+
+    long countQCStaging(String status);
+
     // public void deleteAll(List<AnalyzerResults> deletableAnalyzerResults) throws
     // LIMSRuntimeException;
 }

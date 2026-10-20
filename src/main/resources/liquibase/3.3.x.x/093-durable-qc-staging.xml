@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+  <changeSet id="qc-011-durable-staging" author="openelis-cn">
+    <addColumn tableName="analyzer_results">
+      <column name="qc_lot_number" type="TEXT"/>
+      <column name="qc_control_level" type="TEXT"/>
+      <column name="qc_source_key" type="VARCHAR(64)"/>
+      <column name="qc_source_identity" type="VARCHAR(64)"/>
+      <column name="qc_raw_observation" type="TEXT"/>
+      <column name="qc_processing_status" type="VARCHAR(30)"/>
+      <column name="qc_processing_reason" type="VARCHAR(200)"/>
+      <column name="qc_result_id" type="VARCHAR(36)"/>
+      <column name="qc_processed_at" type="TIMESTAMP"/>
+      <column name="qc_processed_by" type="VARCHAR(36)"/>
+    </addColumn>
+    <update tableName="analyzer_results">
+      <column name="qc_processing_status" value="LEGACY_REVIEW"/>
+      <column name="qc_processing_reason" value="QC_LEGACY_REVIEW_REQUIRED"/>
+      <where>iscontrol = true</where>
+    </update>
+    <addUniqueConstraint tableName="analyzer_results" columnNames="analyzer_id,qc_source_key"
+      constraintName="uq_analyzer_qc_source"/>
+    <addUniqueConstraint tableName="analyzer_results" columnNames="qc_result_id"
+      constraintName="uq_analyzer_qc_result"/>
+    <addForeignKeyConstraint baseTableName="analyzer_results" baseColumnNames="qc_result_id"
+      referencedTableName="qc_result" referencedColumnNames="id" constraintName="fk_analyzer_qc_result"
+      onDelete="RESTRICT"/>
+    <createIndex tableName="analyzer_results" indexName="idx_analyzer_qc_status">
+      <column name="qc_processing_status"/>
+      <column name="id"/>
+    </createIndex>
+    <createIndex tableName="analyzer_results" indexName="idx_analyzer_qc_identity">
+      <column name="qc_source_identity"/>
+    </createIndex>
+    <sql>
+      CREATE UNIQUE INDEX uq_analyzer_qc_unknown_source ON analyzer_results(qc_source_key)
+      WHERE analyzer_id IS NULL AND qc_source_key IS NOT NULL;
+      ALTER TABLE analyzer_results ADD CONSTRAINT ck_analyzer_qc_status
+      CHECK (qc_processing_status IS NULL OR qc_processing_status IN
+        ('PENDING','NOT_PROCESSED','UNKNOWN','CREATED','LEGACY_REVIEW'));
+      ALTER TABLE analyzer_results ADD CONSTRAINT ck_analyzer_qc_created
+      CHECK (qc_result_id IS NULL OR (iscontrol = true AND qc_processing_status = 'CREATED'));
+    </sql>
+    <rollback>
+      <sql splitStatements="false"><![CDATA[
+        DO $$
+        BEGIN
+          LOCK TABLE analyzer_results IN ACCESS EXCLUSIVE MODE;
+          IF EXISTS (SELECT 1 FROM analyzer_results WHERE qc_source_key IS NOT NULL
+              OR qc_raw_observation IS NOT NULL OR qc_result_id IS NOT NULL) THEN
+            RAISE EXCEPTION 'Durable QC originals exist; restore the matching backup instead of dropping their metadata';
+          END IF;
+        END $$;
+      ]]></sql>
+      <sql>ALTER TABLE analyzer_results DROP CONSTRAINT ck_analyzer_qc_created;
+        ALTER TABLE analyzer_results DROP CONSTRAINT ck_analyzer_qc_status;
+        DROP INDEX uq_analyzer_qc_unknown_source;</sql>
+      <dropIndex tableName="analyzer_results" indexName="idx_analyzer_qc_status"/>
+      <dropIndex tableName="analyzer_results" indexName="idx_analyzer_qc_identity"/>
+      <dropForeignKeyConstraint baseTableName="analyzer_results" constraintName="fk_analyzer_qc_result"/>
+      <dropUniqueConstraint tableName="analyzer_results" constraintName="uq_analyzer_qc_result"/>
+      <dropUniqueConstraint tableName="analyzer_results" constraintName="uq_analyzer_qc_source"/>
+      <dropColumn tableName="analyzer_results" columnName="qc_processed_by"/>
+      <dropColumn tableName="analyzer_results" columnName="qc_processed_at"/>
+      <dropColumn tableName="analyzer_results" columnName="qc_result_id"/>
+      <dropColumn tableName="analyzer_results" columnName="qc_processing_reason"/>
+      <dropColumn tableName="analyzer_results" columnName="qc_processing_status"/>
+      <dropColumn tableName="analyzer_results" columnName="qc_raw_observation"/>
+      <dropColumn tableName="analyzer_results" columnName="qc_source_key"/>
+      <dropColumn tableName="analyzer_results" columnName="qc_source_identity"/>
+      <dropColumn tableName="analyzer_results" columnName="qc_control_level"/>
+      <dropColumn tableName="analyzer_results" columnName="qc_lot_number"/>
+    </rollback>
+  </changeSet>
+</databaseChangeLog>

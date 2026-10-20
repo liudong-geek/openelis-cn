@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -27,11 +28,9 @@ import org.openelisglobal.qc.valueholder.QCResult;
 /**
  * Lot-resolution behavior tests for processQCResult.
  *
- * The Tier 2 controlLevel match must require exactly one ACTIVE lot at the
- * given level. When multiple ACTIVE lots share a controlLevel for the same
- * (test, instrument), schema permits it (no uniqueness constraint) but the
- * pipeline cannot pick one without silent QC mis-attribution — the resolver
- * must return null and log so the caller surfaces the disambiguation failure.
+ * Explicit lot identifiers and levels must resolve without substituting another
+ * lot. Legacy accession and sole-usable-lot matching remain available when no
+ * conflicting identity is supplied.
  */
 @RunWith(MockitoJUnitRunner.class)
 public class QCResultProcessingServiceImplTest {
@@ -110,23 +109,15 @@ public class QCResultProcessingServiceImplTest {
     }
 
     @Test
-    public void tier2_controlLevelMatchesNoLot_fallsThroughToTier3SingleActive() {
-        stubCreatedResult();
-        // controlLevel is provided but no lot has it. With exactly one ACTIVE
-        // lot in the list overall, Tier 3 single-active fallback applies.
+    public void unmatchedControlLevelDoesNotUseTheOnlyActiveLot() {
+        // An explicit level cannot be replaced by a different level.
         QCControlLot soloActive = new QCControlLot();
         soloActive.setId("200");
         soloActive.setLotNumber("LOT-SOLO");
         soloActive.setControlLevel("MID");
         soloActive.setStatus("ACTIVE");
 
-        when(controlLotDAO.getByTestAndInstrument(TEST_ID_INT, INSTRUMENT_ID))
-                .thenReturn(Collections.singletonList(soloActive));
-
-        service.processQCResult(ANALYZER_ID, TEST_ID, ACCESSION, null, "LPC", RESULT, UNIT, TS);
-
-        verify(qcResultService).createQCResult(eq(ANALYZER_ID), eq(TEST_ID), eq("200"), eq("MID"), eq(RESULT), eq(UNIT),
-                eq(TS));
+        assertUnresolved(ACCESSION, null, "LPC", List.of(soloActive));
     }
 
     @Test
@@ -211,6 +202,165 @@ public class QCResultProcessingServiceImplTest {
         verify(controlLotDAO, never()).getByTestAndInstrument(anyString(), anyString());
         verify(qcResultService, never()).createQCResult(anyString(), anyString(), anyString(), anyString(), any(),
                 any(), any());
+    }
+
+    @Test
+    public void explicitUnknownLotDoesNotUseTheOnlyActiveLot() {
+        assertUnresolved(ACCESSION, "LOT-UNKNOWN", null, List.of(lpcLot));
+    }
+
+    @Test
+    public void explicitLotWithMultipleLevelsResolvesTheSpecifiedLevelInEitherDaoOrder() {
+        hpcLot.setLotNumber(lpcLot.getLotNumber());
+        assertCreated(ACCESSION, lpcLot.getLotNumber(), "LPC", List.of(hpcLot, lpcLot), lpcLot);
+        assertCreated(ACCESSION, lpcLot.getLotNumber(), "HPC", List.of(lpcLot, hpcLot), hpcLot);
+    }
+
+    @Test
+    public void explicitLotWithMultipleLevelsIsAmbiguousWithoutALevel() {
+        hpcLot.setLotNumber(lpcLot.getLotNumber());
+        assertUnresolved(ACCESSION, lpcLot.getLotNumber(), null, List.of(hpcLot, lpcLot));
+    }
+
+    @Test
+    public void duplicateExplicitLotAndLevelIsNotResolvedByDaoOrder() {
+        duplicateLpcLot.setLotNumber(lpcLot.getLotNumber());
+        assertUnresolved(ACCESSION, lpcLot.getLotNumber(), "LPC", List.of(duplicateLpcLot, lpcLot));
+        assertUnresolved(ACCESSION, lpcLot.getLotNumber(), "LPC", List.of(lpcLot, duplicateLpcLot));
+    }
+
+    @Test
+    public void accessionLotWithMultipleLevelsResolvesTheSpecifiedLevel() {
+        hpcLot.setLotNumber(lpcLot.getLotNumber());
+        assertCreated(lpcLot.getLotNumber(), null, "LPC", List.of(hpcLot, lpcLot), lpcLot);
+        assertCreated(lpcLot.getLotNumber(), null, "HPC", List.of(lpcLot, hpcLot), hpcLot);
+    }
+
+    @Test
+    public void explicitLotWithConflictingLevelIsNotProcessed() {
+        assertUnresolved(ACCESSION, lpcLot.getLotNumber(), "HPC", List.of(lpcLot, hpcLot));
+    }
+
+    @Test
+    public void accessionLotWithConflictingLevelIsNotProcessed() {
+        assertUnresolved(lpcLot.getLotNumber(), null, "HPC", List.of(lpcLot, hpcLot));
+    }
+
+    @Test
+    public void duplicateAccessionLotIsNotResolvedByDaoOrder() {
+        duplicateLpcLot.setLotNumber(lpcLot.getLotNumber());
+        assertUnresolved(lpcLot.getLotNumber(), null, null, List.of(duplicateLpcLot, lpcLot));
+    }
+
+    @Test
+    public void inactiveAccessionLotDoesNotFallBackToAnotherLevelMatch() {
+        lpcLot.setStatus("INACTIVE");
+        assertUnresolved(lpcLot.getLotNumber(), null, "LPC", List.of(lpcLot, duplicateLpcLot));
+    }
+
+    @Test
+    public void absentIdentityDoesNotChooseBetweenActiveAndEstablishmentLots() {
+        hpcLot.setStatus("ESTABLISHMENT");
+        assertUnresolved(ACCESSION, null, null, List.of(lpcLot, hpcLot));
+    }
+
+    @Test
+    public void explicitUnknownLotDoesNotUseAnAccessionLotMatch() {
+        assertUnresolved(lpcLot.getLotNumber(), "LOT-UNKNOWN", null, List.of(lpcLot, hpcLot));
+    }
+
+    @Test
+    public void explicitUnknownLotDoesNotUseAUniqueLevelMatch() {
+        assertUnresolved(ACCESSION, "LOT-UNKNOWN", "LPC", List.of(lpcLot, hpcLot));
+    }
+
+    @Test
+    public void explicitInactiveLotDoesNotUseAnotherAvailableLot() {
+        lpcLot.setStatus("INACTIVE");
+        assertUnresolved(ACCESSION, lpcLot.getLotNumber(), "LPC", List.of(lpcLot, duplicateLpcLot));
+    }
+
+    @Test
+    public void explicitDuplicateLotRemainsAmbiguousWhenOneRecordIsInactive() {
+        duplicateLpcLot.setLotNumber(lpcLot.getLotNumber());
+        duplicateLpcLot.setStatus("INACTIVE");
+        assertUnresolved(ACCESSION, lpcLot.getLotNumber(), "LPC", List.of(lpcLot, duplicateLpcLot));
+    }
+
+    @Test
+    public void explicitLotRequiresExactCharacters() {
+        assertUnresolved(ACCESSION, "lot-lpc-001", null, List.of(lpcLot));
+        assertUnresolved(ACCESSION, " LOT-LPC-001 ", null, List.of(lpcLot));
+        assertUnresolved(ACCESSION, " ", null, List.of(lpcLot));
+    }
+
+    @Test
+    public void explicitLotWithoutStoredLevelCannotSatisfyASuppliedLevel() {
+        lpcLot.setControlLevel(null);
+        assertUnresolved(ACCESSION, lpcLot.getLotNumber(), "LPC", List.of(lpcLot));
+    }
+
+    @Test
+    public void explicitEstablishmentLotRemainsAvailable() {
+        lpcLot.setStatus("ESTABLISHMENT");
+        assertCreated(ACCESSION, lpcLot.getLotNumber(), null, List.of(lpcLot, hpcLot), lpcLot);
+    }
+
+    @Test
+    public void explicitLotTakesPrecedenceOverLegacyAccessionAndAcceptsNormalizedLevel() {
+        assertCreated(hpcLot.getLotNumber(), lpcLot.getLotNumber(), " lpc ", List.of(lpcLot, hpcLot), lpcLot);
+    }
+
+    @Test
+    public void missingExplicitLotRetainsExactAccessionMatching() {
+        assertCreated(lpcLot.getLotNumber(), null, "LPC", List.of(lpcLot, hpcLot), lpcLot);
+    }
+
+    @Test
+    public void missingLotAndLevelUseTheOnlyActiveLot() {
+        hpcLot.setStatus("INACTIVE");
+        assertCreated(ACCESSION, null, null, List.of(lpcLot, hpcLot), lpcLot);
+    }
+
+    @Test
+    public void emptyLotAndLevelUseTheOnlyEstablishmentLot() {
+        lpcLot.setStatus("ESTABLISHMENT");
+        assertCreated(ACCESSION, "", " ", List.of(lpcLot), lpcLot);
+    }
+
+    @Test
+    public void missingIdentityDoesNotChooseBetweenActiveLots() {
+        assertUnresolved(ACCESSION, null, null, List.of(lpcLot, hpcLot));
+    }
+
+    private void assertCreated(String accession, String lotNumber, String level, List<QCControlLot> lots,
+            QCControlLot expectedLot) {
+        stubCreatedResult();
+        when(controlLotDAO.getByTestAndInstrument(TEST_ID, ANALYZER_ID)).thenReturn(lots);
+
+        QCProcessingResult outcome = service.processQCResult(ANALYZER_ID, TEST_ID, accession, lotNumber, level, RESULT,
+                UNIT, TS);
+
+        assertEquals(QCProcessingResult.Status.CREATED, outcome.status());
+        assertEquals("qc-created", outcome.qcResultId());
+        verify(qcResultService).createQCResult(ANALYZER_ID, TEST_ID, expectedLot.getId(), expectedLot.getControlLevel(),
+                RESULT, UNIT, TS);
+    }
+
+    private void assertUnresolved(String accession, String lotNumber, String level, List<QCControlLot> lots) {
+        when(controlLotDAO.getByTestAndInstrument(TEST_ID, ANALYZER_ID)).thenReturn(lots);
+        QCResult unexpectedResult = new QCResult();
+        unexpectedResult.setId("unexpected-result");
+        lenient().when(qcResultService.createQCResult(anyString(), anyString(), anyString(), anyString(), any(), any(),
+                any())).thenReturn(unexpectedResult);
+
+        QCProcessingResult outcome = service.processQCResult(ANALYZER_ID, TEST_ID, accession, lotNumber, level, RESULT,
+                UNIT, TS);
+
+        assertEquals(QCProcessingResult.Status.NOT_PROCESSED, outcome.status());
+        assertEquals("QC_CONTROL_LOT_NOT_RESOLVED", outcome.reasonCode());
+        verify(qcResultService, never()).createQCResult(anyString(), anyString(), anyString(), anyString(), any(), any(),
+                any());
     }
 
     private void stubCreatedResult() {

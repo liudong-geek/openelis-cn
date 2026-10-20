@@ -31,6 +31,7 @@
   <include file="liquibase/qc/008-add-instrument-fk-constraints.xml" />
   <include file="liquibase/qc/009-nullable-unit-of-measure.xml" />
   <include file="liquibase/qc/010-qc-release-gate.xml" />
+  <include file="liquibase/3.3.x.x/093-durable-qc-staging.xml" />
   <!-- Canonical identities for interface-facing master data -->
   <include file="liquibase/masterdata/001-master-data-identity.xml" />
   <!-- Shared task execution slots for multi-instance scheduling -->

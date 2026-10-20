@@ -4,12 +4,9 @@ import ca.uhn.fhir.context.FhirContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Timestamp;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -25,7 +22,7 @@ import org.hl7.fhir.r4.model.Resource;
 import org.hl7.fhir.r4.model.Specimen;
 import org.openelisglobal.analyzer.service.AnalyzerService;
 import org.openelisglobal.analyzer.service.QCProcessingResult;
-import org.openelisglobal.analyzer.service.QCResultProcessingService;
+import org.openelisglobal.analyzer.service.QCStagingService;
 import org.openelisglobal.analyzer.valueholder.Analyzer;
 import org.openelisglobal.analyzer.valueholder.Analyzer.AnalyzerStatus;
 import org.openelisglobal.analyzerresults.service.AnalyzerResultsService;
@@ -85,7 +82,7 @@ public class AnalyzerFhirImportController extends org.openelisglobal.common.rest
     private static final int MIN_PROFILE_MATCH_SCORE = 2;
 
     @Autowired
-    private QCResultProcessingService qcResultProcessingService;
+    private QCStagingService qcStagingService;
 
     @Autowired
     private TestService testService;
@@ -235,7 +232,7 @@ public class AnalyzerFhirImportController extends org.openelisglobal.common.rest
                     stagingRowsInserted++;
                 }
                 if (ar.getIsControl()) {
-                    QCProcessingResult outcome = inserted ? processQCAnalyzerResult(ar, analyzer)
+                    QCProcessingResult outcome = inserted ? processQCAnalyzerResult(ar, userId)
                             : QCProcessingResult.duplicateSkipped();
                     switch (outcome.status()) {
                     case CREATED -> qcProcessed++;
@@ -492,12 +489,8 @@ public class AnalyzerFhirImportController extends org.openelisglobal.common.rest
             ar.setIsControl(isQc);
         }
 
-        // QC metadata from bridge extensions — used by
-        // QCResultProcessingService.findMatchingControlLot to resolve to
-        // the right qc_control_lot row directly. Populated by the bridge
-        // when it could extract them (ASTM Q-segment OR matched FILE
-        // qcRule operand). Carried in-memory only (transient on AR), so
-        // no schema migration required.
+        // Retain bridge metadata with the original QC observation. A failed
+        // import must be reviewable and processable without another delivery.
         if (obs.hasExtension("http://openelis-global.org/fhir/qc/lot-number")) {
             org.hl7.fhir.r4.model.Extension lotExt = obs
                     .getExtensionByUrl("http://openelis-global.org/fhir/qc/lot-number");
@@ -522,6 +515,15 @@ public class AnalyzerFhirImportController extends org.openelisglobal.common.rest
             }
         } else {
             ar.setCompleteDate(new Timestamp(System.currentTimeMillis()));
+        }
+
+        if (ar.getIsControl()) {
+            ar.setQcRawObservation(fhirContext.newJsonParser().encodeResourceToString(obs));
+            if (obs.getStatus() == Observation.ObservationStatus.CORRECTED
+                    || obs.getStatus() == Observation.ObservationStatus.AMENDED) {
+                ar.setReadOnly(true);
+                ar.setImportIssueReason("qc_correction_requires_review");
+            }
         }
 
         // testId is set by the mapping lookup above; if unmapped, it stays null
@@ -784,38 +786,18 @@ public class AnalyzerFhirImportController extends org.openelisglobal.common.rest
      * matching {@code QCControlLot} by lot number + test + instrument and creates a
      * {@code QCResult} that triggers Westgard rule evaluation.
      */
-    private QCProcessingResult processQCAnalyzerResult(AnalyzerResults ar, Analyzer analyzer) {
-        if (analyzer == null) {
-            return QCProcessingResult.notProcessed("QC_ANALYZER_NOT_RESOLVED");
-        }
-        if (ar.getTestId() == null || ar.getTestId().isBlank() || "-1".equals(ar.getTestId())) {
-            return QCProcessingResult.notProcessed("QC_TEST_NOT_MAPPED");
-        }
-        if (ar.getDuplicateAnalyzerResultId() != null) {
-            return QCProcessingResult.notProcessed("QC_CORRECTION_REQUIRES_REVIEW");
-        }
-        if (ar.isReadOnly() || ar.getImportIssueReason() != null) {
-            return QCProcessingResult.notProcessed("QC_CONFIGURATION_REQUIRED");
-        }
-        BigDecimal resultValue;
+    private QCProcessingResult processQCAnalyzerResult(AnalyzerResults ar, String userId) {
         try {
-            resultValue = new BigDecimal(ar.getResult());
-        } catch (NumberFormatException | NullPointerException e) {
-            return QCProcessingResult.notProcessed("QC_NON_NUMERIC_RESULT");
-        }
-        try {
-            LocalDateTime timestamp = ar.getCompleteDate() != null
-                    ? ar.getCompleteDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime()
-                    : LocalDateTime.now();
-
-            return qcResultProcessingService.processQCResult(analyzer.getId(), ar.getTestId(), ar.getAccessionNumber(),
-                    ar.getLotNumber(), ar.getControlLevel(), resultValue, ar.getUnits(), timestamp);
+            return qcStagingService.process(ar.getId(), userId);
         } catch (Exception e) {
-            LogEvent.logError(CLASS_NAME, "processQCAnalyzerResult", "QC processing failed for accession="
-                    + ar.getAccessionNumber() + " test=" + ar.getTestId() + ": " + e.getMessage());
-            // The commit acknowledgement may be uncertain. Do not encourage
-            // automatic replay of an already accepted bundle.
-            return QCProcessingResult.unknown();
+            LogEvent.logError(CLASS_NAME, "processQCAnalyzerResult", "QC transaction acknowledgement unavailable");
+            try {
+                return qcStagingService.markUnknown(ar.getId(), userId);
+            } catch (Exception unavailable) {
+                // The original PENDING row remains durable even if readback is
+                // unavailable. Do not replay the bundle or claim success.
+                return QCProcessingResult.unknown();
+            }
         }
     }
 }

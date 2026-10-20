@@ -15,10 +15,12 @@
  */
 package org.openelisglobal.analyzerresults.daoimpl;
 
+import jakarta.persistence.LockModeType;
 import java.util.ArrayList;
 import java.util.List;
 import org.hibernate.Session;
 import org.hibernate.query.Query;
+import org.openelisglobal.analyzer.valueholder.Analyzer;
 import org.openelisglobal.analyzerresults.dao.AnalyzerResultsDAO;
 import org.openelisglobal.analyzerresults.valueholder.AnalyzerResults;
 import org.openelisglobal.common.daoimpl.BaseDAOImpl;
@@ -49,12 +51,13 @@ public class AnalyzerResultsDAOImpl extends BaseDAOImpl<AnalyzerResults, String>
             // same testName. Include component_id so distinct components of one test are
             // not treated as duplicates of each other (null = PRIMARY, today's behavior).
             String sql = "from AnalyzerResults a where a.analyzerId = :analyzerId and "
-                    + "a.accessionNumber = :assessionNumber and a.testName = :testName and "
+                    + "a.accessionNumber = :assessionNumber and a.testName = :testName and a.isControl = :isControl and "
                     + "((:componentId is null and a.componentId is null) or a.componentId = :componentId)";
             Query<AnalyzerResults> query = entityManager.unwrap(Session.class).createQuery(sql, AnalyzerResults.class);
             query.setParameter("analyzerId", result.getAnalyzerId());
             query.setParameter("assessionNumber", result.getAccessionNumber());
             query.setParameter("testName", result.getTestName());
+            query.setParameter("isControl", result.getIsControl());
             query.setParameter("componentId", result.getComponentId());
 
             list = query.list();
@@ -92,5 +95,77 @@ public class AnalyzerResultsDAOImpl extends BaseDAOImpl<AnalyzerResults, String>
             LogEvent.logError(e);
             throw new LIMSRuntimeException("Error in AnalyzerResults findWithImportIssues()", e);
         }
+    }
+
+    @Override
+    public void lockQCAnalyzer(String analyzerId) {
+        Analyzer analyzer = entityManager.find(Analyzer.class, analyzerId, LockModeType.PESSIMISTIC_WRITE);
+        if (analyzer == null) {
+            throw new IllegalArgumentException("QC analyzer does not exist");
+        }
+    }
+
+    @Override
+    public AnalyzerResults findQCBySourceKey(String analyzerId, String sourceKey) {
+        return entityManager
+                .createQuery("FROM AnalyzerResults a WHERE a.isControl = true "
+                        + "AND ((:analyzerId IS NULL AND a.analyzerId IS NULL) OR a.analyzerId = :analyzerId) "
+                        + "AND a.qcSourceKey = :sourceKey", AnalyzerResults.class)
+                .setParameter("analyzerId", analyzerId).setParameter("sourceKey", sourceKey).getResultStream()
+                .findFirst().orElse(null);
+    }
+
+    @Override
+    public AnalyzerResults lockQCStaging(String id) {
+        AnalyzerResults result = entityManager.find(AnalyzerResults.class, id, LockModeType.PESSIMISTIC_WRITE);
+        if (result != null) {
+            // A row loaded earlier in this transaction may predate another committed
+            // attempt.
+            entityManager.refresh(result, LockModeType.PESSIMISTIC_WRITE);
+        }
+        return result;
+    }
+
+    @Override
+    public boolean hasQCSourceIdentity(String sourceIdentity) {
+        return !entityManager.createQuery(
+                "SELECT a.id FROM AnalyzerResults a WHERE a.isControl = true AND a.qcSourceIdentity = :identity",
+                String.class).setParameter("identity", sourceIdentity).setMaxResults(1).getResultList().isEmpty();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AnalyzerResults> findQCStaging(String status, int limit, int offset) {
+        String filter = qcStatusFilter(status);
+        var query = entityManager.createQuery(
+                "FROM AnalyzerResults a WHERE a.isControl = true" + filter + " ORDER BY a.id DESC",
+                AnalyzerResults.class);
+        if (filter.contains(":status")) {
+            query.setParameter("status", status);
+        }
+        return query.setFirstResult(Math.max(0, offset)).setMaxResults(Math.max(1, Math.min(100, limit)))
+                .getResultList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long countQCStaging(String status) {
+        String filter = qcStatusFilter(status);
+        var query = entityManager
+                .createQuery("SELECT count(a) FROM AnalyzerResults a WHERE a.isControl = true" + filter, Long.class);
+        if (filter.contains(":status")) {
+            query.setParameter("status", status);
+        }
+        return query.getSingleResult();
+    }
+
+    private String qcStatusFilter(String status) {
+        if (status == null || "ALL".equals(status)) {
+            return "";
+        }
+        if ("OPEN".equals(status)) {
+            return " AND a.qcProcessingStatus IN ('PENDING', 'NOT_PROCESSED', 'UNKNOWN')";
+        }
+        return " AND a.qcProcessingStatus = :status";
     }
 }

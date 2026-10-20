@@ -21,7 +21,9 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.openelisglobal.BaseWebContextSensitiveTest;
+import org.openelisglobal.analyzer.service.QCProcessingResult;
 import org.openelisglobal.analyzer.service.QCResultProcessingService;
+import org.openelisglobal.analyzer.service.QCStagingService;
 import org.openelisglobal.analyzerimport.action.AnalyzerFhirImportController;
 import org.openelisglobal.analyzerimport.service.AnalyzerTestMappingService;
 import org.openelisglobal.analyzerimport.util.AnalyzerTestNameCache;
@@ -64,6 +66,9 @@ public class AnalyzerFhirImportQCReceiptIntegrationTest extends BaseWebContextSe
     private QCResultService resultService;
 
     @Autowired
+    private QCStagingService stagingService;
+
+    @Autowired
     private DataSource receiptDataSource;
 
     private final Map<String, Object> originalCacheFields = new LinkedHashMap<>();
@@ -81,7 +86,8 @@ public class AnalyzerFhirImportQCReceiptIntegrationTest extends BaseWebContextSe
                 TransactionSynchronizationManager.isActualTransactionActive());
         assertTrue("QC processing must use its Spring transaction proxy", AopUtils.isAopProxy(processingService));
         assertTrue("QC creation must use its Spring transaction proxy", AopUtils.isAopProxy(resultService));
-        assertSame(processingService, ReflectionTestUtils.getField(controller, "qcResultProcessingService"));
+        assertTrue("QC staging must use its Spring transaction proxy", AopUtils.isAopProxy(stagingService));
+        assertSame(stagingService, ReflectionTestUtils.getField(controller, "qcStagingService"));
 
         receiptJdbc = new JdbcTemplate(receiptDataSource);
         originalFhirContext = ReflectionTestUtils.getField(controller, "fhirContext");
@@ -231,7 +237,7 @@ public class AnalyzerFhirImportQCReceiptIntegrationTest extends BaseWebContextSe
     }
 
     @Test
-    public void stagedCorrectionKeepsBacklinksWithoutCreatingAnotherQc() {
+    public void explicitCorrectionRetainsBothOriginalsWithoutCreatingAnotherQc() {
         useEstablishmentLot();
         Map<String, Object> first = submit();
         assertCounts(first, 1, 0, 0, 0, true);
@@ -240,6 +246,7 @@ public class AnalyzerFhirImportQCReceiptIntegrationTest extends BaseWebContextSe
         Object firstQcId = onlyOutcome(first).get("qcResultId");
         assertNotNull(firstQcId);
         Observation correction = observation(ACCESSION, "GLU", "102.0", null, null);
+        correction.setStatus(Observation.ObservationStatus.CORRECTED);
         correction.setEffective(new DateTimeType("2026-10-18T09:05:00+08:00"));
 
         Map<String, Object> body = submitObservations(correction);
@@ -260,8 +267,8 @@ public class AnalyzerFhirImportQCReceiptIntegrationTest extends BaseWebContextSe
                 .orElseThrow();
         Map<String, Object> revised = rows.stream().filter(row -> outcome.get("analyzerResultId").equals(row.get("id")))
                 .findFirst().orElseThrow();
-        assertEquals(revised.get("id"), original.get("duplicate_id"));
-        assertEquals(original.get("id"), revised.get("duplicate_id"));
+        assertEquals(null, original.get("duplicate_id"));
+        assertEquals(null, revised.get("duplicate_id"));
         assertEquals(true, revised.get("read_only"));
         assertEquals("101.0", original.get("result"));
         assertEquals("102.0", revised.get("result"));
@@ -297,6 +304,116 @@ public class AnalyzerFhirImportQCReceiptIntegrationTest extends BaseWebContextSe
         assertEquals("QC_CONTROL_LOT_NOT_RESOLVED", onlyOutcome(body).get("reasonCode"));
         assertEquals(1, stagingCount());
         assertEquals(0, qcCount());
+    }
+
+    @Test
+    public void unknownExplicitLotRemainsDurableThenClosesOnlyAfterItsConfigurationIsCorrected() {
+        useEstablishmentLot();
+        Map<String, Object> body = submitObservations(
+                observation(ACCESSION, "GLU", "101.0", "QC-UNKNOWN-2026", "NORMAL"));
+        assertCounts(body, 0, 1, 0, 0, false);
+        assertEquals(0, qcCount());
+        String id = stagingId();
+        Map<String, Object> pending = stagingService.get(id);
+        assertEquals("QC-UNKNOWN-2026", pending.get("lotNumber"));
+        assertEquals("NORMAL", pending.get("controlLevel"));
+        assertEquals("NOT_PROCESSED", pending.get("qcProcessingStatus"));
+        assertEquals("QC_CONTROL_LOT_NOT_RESOLVED", pending.get("qcProcessingReason"));
+        String original = (String) pending.get("qcRawObservation");
+        assertNotNull(original);
+        Observation retained = FHIR.newJsonParser().parseResource(Observation.class, original);
+        assertEquals("101.0", retained.getValueStringType().getValue());
+        assertEquals("GLU", retained.getCode().getCodingFirstRep().getCode());
+        assertEquals(1L, ((Number) stagingService.list("OPEN", 20, 0).get("total")).longValue());
+
+        assertEquals(1, receiptJdbc.update("UPDATE clinlims.qc_control_lot SET lot_number = ? WHERE id = ?",
+                "QC-UNKNOWN-2026", LOT_ID));
+        QCProcessingResult created = stagingService.process(id, "1");
+        assertEquals(QCProcessingResult.Status.CREATED, created.status());
+        assertEquals(1, qcCount());
+        assertEquals(created.qcResultId(), receiptJdbc.queryForObject(
+                "SELECT qc_result_id FROM clinlims.analyzer_results WHERE id = ?::numeric", String.class, id));
+        assertEquals(created, stagingService.process(id, "1"));
+        assertEquals(1, qcCount());
+        Map<String, Object> completed = stagingService.get(id);
+        assertEquals("CREATED", completed.get("qcProcessingStatus"));
+        assertEquals("1", completed.get("qcProcessedBy"));
+        assertEquals(original, completed.get("qcRawObservation"));
+        assertEquals(false, completed.get("canRetry"));
+        assertEquals(0L, ((Number) stagingService.list("OPEN", 20, 0).get("total")).longValue());
+    }
+
+    @Test
+    public void independentLaterQcRunWithTheSameValueIsNotSwallowedAsDuplicate() {
+        useEstablishmentLot();
+        assertCounts(submit(), 1, 0, 0, 0, true);
+        Observation later = observation(ACCESSION, "GLU", "101.0", null, null);
+        later.setEffective(new DateTimeType("2026-10-19T09:00:00+08:00"));
+
+        Map<String, Object> body = submitObservations(later);
+
+        assertCounts(body, 1, 0, 0, 0, true);
+        assertStagingCounts(body, 1, 1, 0);
+        assertEquals(2, stagingCount());
+        assertEquals(2, qcCount());
+    }
+
+    @Test
+    public void sameLotNumberWithExplicitDistinctLevelsUsesTheCorrespondingLotOnly() {
+        useEstablishmentLot();
+        addLot("lot-receipt-high", "QC-LOT-2025-GLU", "HIGH", "ESTABLISHMENT");
+
+        Map<String, Object> body = submitObservations(
+                observation(ACCESSION, "GLU", "101.0", "QC-LOT-2025-GLU", "NORMAL"),
+                observation(ACCESSION, "GLU", "101.0", "QC-LOT-2025-GLU", "HIGH"));
+
+        assertEquals(2, body.get("qcResultsReceived"));
+        assertEquals(2, body.get("qcResultsProcessed"));
+        assertEquals(0, body.get("qcResultsNotProcessed"));
+        assertEquals(true, body.get("qcProcessingComplete"));
+        assertEquals(2, stagingCount());
+        assertEquals(2, qcCount());
+        List<Map<String, Object>> links = receiptJdbc.queryForList("""
+                SELECT a.qc_control_level, q.control_lot_id
+                FROM clinlims.analyzer_results a JOIN clinlims.qc_result q ON q.id = a.qc_result_id
+                WHERE a.analyzer_id = 1 AND a.accession_number = ?
+                """, ACCESSION);
+        assertEquals(2, links.size());
+        assertTrue(links.stream().anyMatch(
+                row -> "NORMAL".equals(row.get("qc_control_level")) && LOT_ID.equals(row.get("control_lot_id"))));
+        assertTrue(links.stream().anyMatch(row -> "HIGH".equals(row.get("qc_control_level"))
+                && "lot-receipt-high".equals(row.get("control_lot_id"))));
+    }
+
+    @Test
+    public void differentLaterQcRunIsNotMisclassifiedAsAnAmendedObservation() {
+        useEstablishmentLot();
+        assertCounts(submit(), 1, 0, 0, 0, true);
+        Observation later = observation(ACCESSION, "GLU", "102.0", null, null);
+        later.setEffective(new DateTimeType("2026-10-19T09:00:00+08:00"));
+        assertCounts(submitObservations(later), 1, 0, 0, 0, true);
+        assertEquals(2, stagingCount());
+        assertEquals(2, qcCount());
+    }
+
+    @Test
+    public void commitFailureRetainsUnknownOriginalAndExplicitRetryUsesOneAtomicLink() {
+        useEstablishmentLot();
+        installDeferredCommitFailure();
+        Map<String, Object> body = submit();
+        assertUnknownCreationWithStaging(body);
+        String id = stagingId();
+        assertEquals("UNKNOWN", stagingService.get(id).get("qcProcessingStatus"));
+        receiptJdbc.execute("DROP TRIGGER qc_receipt_fail_commit ON clinlims.qc_result");
+        receiptJdbc.execute("DROP FUNCTION clinlims.qc_receipt_fail_commit()");
+        commitFailureFixtureInstalled = false;
+
+        QCProcessingResult created = stagingService.process(id, "1");
+        assertEquals(QCProcessingResult.Status.CREATED, created.status());
+        assertEquals(created, stagingService.readOutcome(id));
+        assertEquals(created, stagingService.markUnknown(id, "1"));
+        assertEquals(created, stagingService.process(id, "1"));
+        assertEquals(1, qcCount());
     }
 
     @Test
